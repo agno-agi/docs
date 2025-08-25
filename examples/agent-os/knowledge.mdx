@@ -1,0 +1,111 @@
+---
+title: "AgentOS Knowledge (RAG)"
+description: "Attach a vector-backed knowledge base and query it at runtime."
+---
+
+## Overview
+
+Add a knowledge base for retrieval-augmented generation (RAG). This lets your agents search domain data at runtime using a vector database.
+
+<Steps>
+  <Step title="Set up a virtual environment">
+
+```shell
+python -m venv .venv
+source .venv/bin/activate
+```
+
+  </Step>
+  <Step title="Start Postgres (pgvector) locally">
+
+```shell
+docker run --name agno-pg -e POSTGRES_USER=ai -e POSTGRES_PASSWORD=ai -e POSTGRES_DB=ai -p 5532:5432 -d pgvector/pgvector:pg16
+```
+
+  </Step>
+  <Step title="Install dependencies">
+
+```shell
+pip install -U agno fastapi uvicorn sqlalchemy pgvector psycopg openai
+```
+
+  </Step>
+  <Step title="Set API keys (OpenAI example)">
+
+```shell
+export OPENAI_API_KEY=your_key
+```
+
+  </Step>
+  <Step title="Use the SDK cookbook: cookbook/os/knowledge_demo.py">
+
+Open `cookbook/os/knowledge_demo.py` in the Agno SDK:
+
+```python cookbook/os/knowledge_demo.py
+from agno.agent import Agent
+from agno.db.json import JsonDb  # noqa: F401
+from agno.knowledge.knowledge import Knowledge
+from agno.models.openai import OpenAIChat
+from agno.os import AgentOS
+from agno.vectordb.pgvector import PgVector
+
+db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
+
+vector_db = PgVector(
+    table_name="vectors",
+    # Can inspect database via psql e.g. "psql -h localhost -p 5432 -U ai -d ai"
+    db_url=db_url,
+)
+
+contents_db = JsonDb(db_path="./agno_json_data")
+
+# Create knowledge base
+knowledge = Knowledge(
+    name="My Knowledge Base",
+    description="A simple knowledge base",
+    contents_db=contents_db,
+    vector_db=vector_db,
+)
+
+basic_agent = Agent(
+    name="Basic Agent",
+    model=OpenAIChat(id="gpt-4o"),
+    knowledge=knowledge,
+    add_datetime_to_context=True,
+    markdown=True,
+    db=contents_db,
+)
+
+agent_os = AgentOS(
+    description="Example app for knowledge capabilities",
+    os_id="knowledge-demo",
+    agents=[basic_agent],
+)
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    # Interact with your knowledge base via the API
+    agent_os.serve(app="knowledge_demo:app", reload=True)
+```
+
+  </Step>
+  <Step title="Run and manage documents">
+
+```shell
+# Set required API keys (if your model/toolkit needs them)
+export OPENAI_API_KEY=your_key
+
+python cookbook/os/knowledge_demo.py
+```
+
+Manage documents and query knowledge:
+
+```text
+http://localhost:8001/knowledge/{id}/documents
+http://localhost:8001/knowledge/{id}/documents/123
+http://localhost:8001/knowledge/{id}/documents?agent_id=123
+http://localhost:8001/knowledge/{id}/documents?limit=10&page=0&sort_by=created_at&sort_order=desc
+```
+
+  </Step>
+</Steps>

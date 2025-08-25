@@ -1,0 +1,122 @@
+---
+title: "AgentOS"
+description: "Build and run AgentOS locally with a minimal app."
+---
+
+## Quickstart
+
+Run a minimal AgentOS app that exposes your agents, teams, and workflows with a FastAPI server and UI.
+
+<Steps>
+  <Step title="Set up a virtual environment">
+
+```shell
+python -m venv .venv
+source .venv/bin/activate
+```
+
+  </Step>
+  <Step title="Start Postgres (pgvector) locally">
+
+```shell
+docker run --name agno-pg -e POSTGRES_USER=ai -e POSTGRES_PASSWORD=ai -e POSTGRES_DB=ai -p 5532:5432 -d pgvector/pgvector:pg16
+```
+
+  </Step>
+  <Step title="Install dependencies">
+
+```shell
+pip install -U agno fastapi uvicorn sqlalchemy pgvector psycopg openai
+```
+
+  </Step>
+  <Step title="Set API keys (OpenAI example)">
+
+```shell
+export OPENAI_API_KEY=your_key
+```
+
+  </Step>
+  <Step title="Use the SDK cookbook: cookbook/os/basic.py">
+
+Open `cookbook/os/basic.py` in the Agno SDK:
+
+```python cookbook/os/basic.py
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+from agno.os import AgentOS
+from agno.team import Team
+from agno.workflow.step import Step
+from agno.workflow.workflow import Workflow
+
+# Setup the database
+db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+# Setup basic agents, teams and workflows
+basic_agent = Agent(
+    name="Basic Agent",
+    db=db,
+    enable_session_summaries=True,
+    enable_user_memories=True,
+    add_history_to_context=True,
+    num_history_runs=3,
+    add_datetime_to_context=True,
+    markdown=True,
+)
+
+basic_team = Team(
+    id="basic-team",
+    name="Basic Team",
+    model=OpenAIChat(id="gpt-4o"),
+    db=db,
+    members=[basic_agent],
+    enable_user_memories=True,
+)
+
+basic_workflow = Workflow(
+    id="basic-workflow",
+    name="Basic Workflow",
+    description="Just a simple workflow",
+    db=db,
+    steps=[
+        Step(
+            name="step1",
+            description="Just a simple step",
+            agent=basic_agent,
+        )
+    ],
+)
+
+# Setup our AgentOS app
+agent_os = AgentOS(
+    description="Example app for basic agent with playground capabilities",
+    os_id="basic-app",
+    agents=[basic_agent],
+    teams=[basic_team],
+    workflows=[basic_workflow],
+)
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    # Visit http://localhost:7777/config to view configuration
+    agent_os.serve(app="basic:app", reload=True)
+```
+
+  </Step>
+  <Step title="Run the app">
+
+```shell
+python cookbook/os/basic.py
+```
+
+  </Step>
+</Steps>
+
+### Next steps
+
+- Sessions: `examples/agent-os/sessions`
+- Memory: `examples/agent-os/memory`
+- Knowledge: `examples/agent-os/knowledge`
+- Metrics: `examples/agent-os/metrics`
+- Evals: `examples/agent-os/evals`
