@@ -1,29 +1,30 @@
 ---
-title: Agent with Knowledge
+title: Knowledge
 ---
 
 ## Code
 
 ```python cookbook/models/openai/chat/knowledge.py
+"""Run `pip install ddgs sqlalchemy pgvector pypdf openai` to install dependencies."""
+
 from agno.agent import Agent
-from agno.knowledge.pdf_url import PDFUrlKnowledgeBase
+from agno.knowledge.knowledge import Knowledge
 from agno.models.openai import OpenAIChat
 from agno.vectordb.pgvector import PgVector
 
 db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
 
-knowledge_base = PDFUrlKnowledgeBase(
-    urls=["https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf"],
+knowledge = Knowledge(
     vector_db=PgVector(table_name="recipes", db_url=db_url),
 )
-knowledge_base.load(recreate=True)  # Comment out after first run
-
-agent = Agent(
-    model=OpenAIChat(id="gpt-4o"),
-    knowledge=knowledge_base,
-    use_tools=True,
+# Add content to the knowledge
+knowledge.add_content_sync(
+    url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf"
 )
+
+agent = Agent(model=OpenAIChat(id="gpt-4o"), knowledge=knowledge)
 agent.print_response("How to make Thai curry?", markdown=True)
+
 ```
 
 ## Usage
@@ -39,21 +40,7 @@ agent.print_response("How to make Thai curry?", markdown=True)
 
   <Step title="Install libraries">
     ```bash
-    pip install -U openai sqlalchemy pgvector pypdf agno
-    ```
-  </Step>
-
-  <Step title="Run PgVector">
-    ```bash
-    docker run -d \
-      -e POSTGRES_DB=ai \
-      -e POSTGRES_USER=ai \
-      -e POSTGRES_PASSWORD=ai \
-      -e PGDATA=/var/lib/postgresql/data/pgdata \
-      -v pgvolume:/var/lib/postgresql/data \
-      -p 5532:5432 \
-      --name pgvector \
-      agnohq/pgvector:16
+    pip install -U openai agno
     ```
   </Step>
 
