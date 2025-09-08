@@ -11,23 +11,33 @@ The `TeamRunOutput` class represents the response from a team run, containing bo
 |-----------|------|---------|-------------|
 | `content` | `Any` | `None` | Content of the response |
 | `content_type` | `str` | `"str"` | Specifies the data type of the content |
-| `thinking` | `str` | `None` | Any thinking content the model produced (used by Anthropic models) |
 | `messages` | `List[Message]` | `None` | A list of messages included in the response |
-| `metrics` | `Dict[str, Any]` | `None` | Usage metrics of the run |
+| `metrics` | `Metrics` | `None` | Usage metrics of the run |
 | `model` | `str` | `None` | The model used in the run |
 | `model_provider` | `str` | `None` | The model provider used in the run |
 | `member_responses` | `List[Union[TeamRunOutput, RunOutput]]` | `[]` | Responses from individual team members |
 | `run_id` | `str` | `None` | Run Id |
 | `team_id` | `str` | `None` | Team Id for the run |
+| `team_name` | `str` | `None` | Name of the team |
 | `session_id` | `str` | `None` | Session Id for the run |
-| `tools` | `List[Dict[str, Any]]` | `None` | List of tools provided to the model |
-| `images` | `List[Image]` | `None` | List of images from member runs |
-| `videos` | `List[Video]` | `None` | List of videos from member runs |
-| `audio` | `List[Audio]` | `None` | List of audio snippets from member runs |
-| `response_audio` | `ModelResponseAudio` | `None` | The model's raw response in audio |
+| `parent_run_id` | `str` | `None` | Parent run ID if this is a nested run |
+| `tools` | `List[ToolExecution]` | `None` | List of tools provided to the model |
+| `images` | `List[ImageArtifact]` | `None` | List of images from member runs |
+| `videos` | `List[VideoArtifact]` | `None` | List of videos from member runs |
+| `audio` | `List[AudioArtifact]` | `None` | List of audio snippets from member runs |
+| `response_audio` | `AudioResponse` | `None` | The model's raw response in audio |
+| `input` | `TeamRunInput` | `None` | Input media and messages from user |
 | `reasoning_content` | `str` | `None` | Any reasoning content the model produced |
 | `citations` | `Citations` | `None` | Any citations used in the response |
+| `metadata` | `Dict[str, Any]` | `None` | Additional metadata for the run |
+| `references` | `List[MessageReferences]` | `None` | Message references |
+| `additional_input` | `List[Message]` | `None` | Additional input messages |
+| `reasoning_steps` | `List[ReasoningStep]` | `None` | Reasoning steps taken during execution |
+| `reasoning_messages` | `List[Message]` | `None` | Messages related to reasoning |
 | `created_at` | `int` | Current timestamp | Unix timestamp of the response creation |
+| `events` | `List[Union[RunOutputEvent, TeamRunOutputEvent]]` | `None` | List of events that occurred during the run |
+| `status` | `RunStatus` | `RunStatus.running` | Current status of the run |
+| `workflow_step_id` | `str` | `None` | FK: Points to StepOutput.step_id |
 
 ## TeamRunOutputEvent Types
 
@@ -39,6 +49,7 @@ The following events are sent by the `Team.run()` function depending on the team
 |------------|-------------|
 | `TeamRunStarted` | Indicates the start of a team run |
 | `TeamRunContent` | Contains the model's response text as individual chunks |
+| `TeamRunIntermediateContent` | Contains intermediate content during the run |
 | `TeamRunCompleted` | Signals successful completion of the team run |
 | `TeamRunError` | Indicates an error occurred during the team run |
 | `TeamRunCancelled` | Signals that the team run was cancelled |
@@ -69,15 +80,21 @@ The following events are sent by the `Team.run()` function depending on the team
 
 ### Base TeamRunOutputEvent
 
-All events inherit from `BaseTeamRunOutputEvent` which provides these common attributes:
+All events inherit from `BaseTeamRunEvent` which provides these common attributes:
 
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `created_at` | `int` | Current timestamp | Unix timestamp of the event creation |
-| `event` | `str` | Event type value | The type of event |
+| `event` | `str` | `""` | The type of event |
 | `team_id` | `str` | `""` | ID of the team generating the event |
+| `team_name` | `str` | `""` | Name of the team generating the event |
 | `run_id` | `Optional[str]` | `None` | ID of the current run |
 | `session_id` | `Optional[str]` | `None` | ID of the current session |
+| `workflow_id` | `Optional[str]` | `None` | ID of the workflow |
+| `workflow_run_id` | `Optional[str]` | `None` | ID of the workflow's run |
+| `step_id` | `Optional[str]` | `None` | ID of the workflow step |
+| `step_name` | `Optional[str]` | `None` | Name of the workflow step |
+| `step_index` | `Optional[int]` | `None` | Index of the workflow step |
 | `content` | `Optional[Any]` | `None` | For backwards compatibility |
 
 ### RunStartedEvent
@@ -103,33 +120,41 @@ All events inherit from `BaseTeamRunOutputEvent` which provides these common att
 | `event` | `str` | `"TeamRunContent"` | Event type |
 | `content` | `Optional[Any]` | `None` | The content of the response |
 | `content_type` | `str` | `"str"` | Type of the content |
-| `thinking` | `Optional[str]` | `None` | Internal thoughts of the model |
+| `reasoning_content` | `Optional[str]` | `None` | Reasoning content produced |
 | `citations` | `Optional[Citations]` | `None` | Citations used in the response |
 | `response_audio` | `Optional[AudioResponse]` | `None` | Model's audio response |
 | `image` | `Optional[ImageArtifact]` | `None` | Image attached to the response |
+| `references` | `Optional[List[MessageReferences]]` | `None` | Message references |
+| `additional_input` | `Optional[List[Message]]` | `None` | Additional input messages |
+| `reasoning_steps` | `Optional[List[ReasoningStep]]` | `None` | Reasoning steps |
 
 ### RunCompletedEvent
 
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `event` | `str` | `"TeamRunContent"` | Event type |
+| `event` | `str` | `"TeamRunCompleted"` | Event type |
 | `content` | `Optional[Any]` | `None` | Final content of the response |
 | `content_type` | `str` | `"str"` | Type of the content |
 | `reasoning_content` | `Optional[str]` | `None` | Reasoning content produced |
-| `thinking` | `Optional[str]` | `None` | Internal thoughts of the model |
 | `citations` | `Optional[Citations]` | `None` | Citations used in the response |
 | `images` | `Optional[List[ImageArtifact]]` | `None` | Images attached to the response |
 | `videos` | `Optional[List[VideoArtifact]]` | `None` | Videos attached to the response |
 | `audio` | `Optional[List[AudioArtifact]]` | `None` | Audio snippets attached to the response |
 | `response_audio` | `Optional[AudioResponse]` | `None` | Model's audio response |
+| `references` | `Optional[List[MessageReferences]]` | `None` | Message references |
+| `additional_input` | `Optional[List[Message]]` | `None` | Additional input messages |
+| `reasoning_steps` | `Optional[List[ReasoningStep]]` | `None` | Reasoning steps |
+| `reasoning_messages` | `Optional[List[Message]]` | `None` | Reasoning messages |
 | `member_responses` | `List[Union[TeamRunOutput, RunOutput]]` | `[]` | Responses from individual team members |
+| `metadata` | `Optional[Dict[str, Any]]` | `None` | Additional metadata |
+| `metrics` | `Optional[Metrics]` | `None` | Usage metrics |
 
 ### RunErrorEvent
 
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `event` | `str` | `"TeamRunError"` | Event type |
-| `content` | `Optional[Any]` | `None` | Error message |
+| `content` | `Optional[str]` | `None` | Error message |
 
 ### RunCancelledEvent
 
@@ -216,3 +241,9 @@ All events inherit from `BaseTeamRunOutputEvent` which provides these common att
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `event` | `str` | `"TeamOutputModelResponseCompleted"` | Event type |
+
+### CustomEvent
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `event` | `str` | `"CustomEvent"` | Event type |

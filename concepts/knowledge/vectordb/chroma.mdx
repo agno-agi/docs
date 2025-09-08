@@ -12,46 +12,38 @@ pip install chromadb
 ## Example
 
 ```python agent_with_knowledge.py
-import typer
-from rich.prompt import Prompt
-from typing import Optional
+import asyncio
 
 from agno.agent import Agent
 from agno.knowledge.knowledge import Knowledge
 from agno.vectordb.chroma import ChromaDb
 
-knowledge_base = Knowledge(
-    vector_db=ChromaDb(collection="recipes"),
+# Create Knowledge Instance with ChromaDB
+knowledge = Knowledge(
+    name="Basic SDK Knowledge Base",
+    description="Agno 2.0 Knowledge Implementation with ChromaDB",
+    vector_db=ChromaDb(
+        collection="vectors", path="tmp/chromadb", persistent_client=True
+    ),
 )
 
-def pdf_agent(user: str = "user"):
-    run_id: Optional[str] = None
-
-    agent = Agent(
-        run_id=run_id,
-        user_id=user,
-        knowledge_base=knowledge_base,
-        debug_mode=True,
+asyncio.run(
+    knowledge.add_content_async(
+        name="Recipes",
+        url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
+        metadata={"doc_type": "recipe_book"},
     )
-    if run_id is None:
-        run_id = agent.run_id
-        print(f"Started Run: {run_id}\n")
-    else:
-        print(f"Continuing Run: {run_id}\n")
+)
 
-    while True:
-        message = Prompt.ask(f"[bold] :sunglasses: {user} [/bold]")
-        if message in ("exit", "bye"):
-            break
-        agent.print_response(message)
+# Create and use the agent
+agent = Agent(knowledge=knowledge)
+agent.print_response("List down the ingredients to make Massaman Gai", markdown=True)
 
-if __name__ == "__main__":
-    
-    knowledge_base.add_content(
-        urls="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
-    )
-
-    typer.run(pdf_agent)
+# Delete operations examples
+vector_db = knowledge.vector_db
+vector_db.delete_by_name("Recipes")
+# or
+vector_db.delete_by_metadata({"user_tag": "Recipes from website"})
 ```
 
 <Card title="Async Support ⚡">
@@ -73,26 +65,27 @@ if __name__ == "__main__":
     vector_db = ChromaDb(collection="recipes", path="tmp/chromadb", persistent_client=True)
 
     # Create knowledge base
-    knowledge_base = Knowledge(
+    knowledge = Knowledge(
         vector_db=vector_db,
     )
 
     # Create and use the agent
-    agent = Agent(knowledge=knowledge_base)
+    agent = Agent(knowledge=knowledge)
 
     if __name__ == "__main__":
         # Comment out after first run
-        asyncio.run(knowledge_base.add_content_async(
-            url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
-            )
+        asyncio.run(
+            knowledge.add_content_async(url="https://docs.agno.com/introduction/agents.md")
         )
 
         # Create and use the agent
-        asyncio.run(agent.aprint_response("How to make Tom Kha Gai", markdown=True))
+        asyncio.run(
+            agent.aprint_response("What is the purpose of an Agno Agent?", markdown=True)
+        )
     ```
     
     <Tip className="mt-4">
-      Use <code>aload()</code> and <code>aprint_response()</code> methods with <code>asyncio.run()</code> for non-blocking operations in high-throughput applications.
+      Use <code>add_content_async()</code> and <code>aprint_response()</code> methods with <code>asyncio.run()</code> for non-blocking operations in high-throughput applications.
     </Tip>
   </div>
 </Card>
@@ -103,5 +96,5 @@ if __name__ == "__main__":
 
 ## Developer Resources
 
-- View [Cookbook (Sync)](https://github.com/agno-agi/agno/tree/v2.0/cookbook/agent_concepts/knowledge/vector_dbs/chroma_db/chroma_db.py)
-- View [Cookbook (Async)](https://github.com/agno-agi/agno/tree/v2.0/cookbook/agent_concepts/knowledge/vector_dbs/chroma_db/async_chroma_db.py)
+- View [Cookbook (Sync)](https://github.com/agno-agi/agno/tree/v2.0/cookbook/knowledge/vector_db/chroma_db/chroma_db.py)
+- View [Cookbook (Async)](https://github.com/agno-agi/agno/tree/v2.0/cookbook/knowledge/vector_db/chroma_db/async_chroma_db.py)
