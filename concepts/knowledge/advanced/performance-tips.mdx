@@ -1,0 +1,677 @@
+---
+title: Performance Optimization
+description: Best practices and techniques for optimizing Agno knowledge base performance, search quality, and agent response times.
+---
+
+Building a high-performance knowledge base with the Agno SDK requires understanding its specific architecture and capabilities. This guide covers proven strategies for optimizing both search quality and system performance using Agno's actual implementation.
+
+## Performance Optimization Strategy
+
+### The Agno Performance Hierarchy
+
+Optimize in this order for maximum impact:
+
+<Steps>
+  <Step title="Content Organization">
+    Well-structured content loading and metadata management
+  </Step>
+  <Step title="Chunking Strategy Selection">
+    Choose the right chunking approach for your content type
+  </Step>
+  <Step title="Vector Database Configuration">
+    Proper embedder and vector database setup
+  </Step>
+  <Step title="Search and Retrieval Optimization">
+    Effective filtering and search parameter tuning
+  </Step>
+</Steps>
+
+## Agno Knowledge Base Architecture
+
+### Understanding the Knowledge Class
+
+The Agno `Knowledge` class is a dataclass with specific fields designed for efficient content management:
+
+```python
+from agno.knowledge.knowledge import Knowledge
+from agno.vectordb.pgvector import PgVector
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+
+# Basic Knowledge setup
+knowledge = Knowledge(
+    name="company_docs",
+    description="Company documentation knowledge base",
+    vector_db=PgVector(
+        table_name="company_docs",
+        db_url="postgresql+psycopg://user:pass@localhost:5432/db",
+        embedder=OpenAIEmbedder(id="text-embedding-3-small")
+    ),
+    max_results=10
+)
+```
+
+### Key Knowledge Methods
+
+**Content Loading:**
+```python
+# Single content item
+knowledge.add_content(
+    path="documents/policy.pdf",
+    metadata={"type": "policy", "department": "hr"},
+    upsert=True,
+    skip_if_exists=True
+)
+
+# Multiple content items
+knowledge.add_contents(
+    paths=["docs/", "policies/"],
+    metadata={"category": "internal"},
+    include=["*.pdf", "*.md"],
+    exclude=["*temp*", "*draft*"]
+)
+
+# URL content
+knowledge.add_content(
+    url="https://example.com/documentation",
+    metadata={"source": "external"}
+)
+
+# Direct text content
+knowledge.add_content(
+    text_content="Important company information...",
+    metadata={"type": "announcement"}
+)
+```
+
+## Chunking Strategy Optimization
+
+### Available Chunking Strategies
+
+Agno provides three main chunking strategies, each with specific use cases:
+
+<Tabs>
+  <Tab title="Fixed Size Chunking">
+    ```python
+    from agno.knowledge.chunking.fixed import FixedSizeChunking
+    from agno.knowledge.reader.pdf_reader import PDFReader
+
+    # Best for: Consistent processing, simple documents
+    chunking_strategy = FixedSizeChunking(
+        chunk_size=1000,    # Characters per chunk
+        overlap=100         # Characters to overlap between chunks
+    )
+
+    reader = PDFReader(
+        name="Fixed Size Reader",
+        chunking_strategy=chunking_strategy
+    )
+    ```
+  </Tab>
+  <Tab title="Semantic Chunking">
+    ```python
+    from agno.knowledge.chunking.semantic import SemanticChunking
+    from agno.knowledge.embedder.openai import OpenAIEmbedder
+
+    # Best for: Preserving meaning, complex documents
+    chunking_strategy = SemanticChunking(
+        embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+        chunk_size=5000,              # Maximum chunk size
+        similarity_threshold=0.5      # Lower = more splits
+    )
+    ```
+  </Tab>
+  <Tab title="Recursive Chunking">
+    ```python
+    from agno.knowledge.chunking.recursive import RecursiveChunking
+
+    # Best for: Natural break points, hierarchical content
+    chunking_strategy = RecursiveChunking(
+        chunk_size=1500,    # Target chunk size
+        overlap=150         # Overlap between chunks
+    )
+    # Uses separators: ["\n", "."] automatically
+    ```
+  </Tab>
+</Tabs>
+
+### Chunking Strategy Selection Guide
+
+**Choose Fixed Size for:**
+- Consistent processing performance
+- Simple text documents
+- When you need predictable chunk sizes
+
+**Choose Semantic for:**
+- Technical documentation
+- Complex topics that need context preservation
+- When meaning is more important than size
+
+**Choose Recursive for:**
+- Structured documents with natural sections
+- When you want to respect document structure
+- Mixed content types
+
+### Testing Chunk Strategies
+
+```python
+def test_chunking_strategies(content_path: str):
+    strategies = [
+        ("Fixed", FixedSizeChunking(chunk_size=800, overlap=80)),
+        ("Semantic", SemanticChunking(similarity_threshold=0.5)),
+        ("Recursive", RecursiveChunking(chunk_size=800, overlap=80))
+    ]
+
+    test_queries = [
+        "What is our remote work policy?",
+        "How do I submit expenses?",
+        "What are the deployment procedures?"
+    ]
+
+    for strategy_name, strategy in strategies:
+        # Create knowledge base with strategy
+        knowledge = Knowledge(
+            vector_db=PgVector(
+                table_name=f"test_{strategy_name.lower()}",
+                db_url="postgresql+psycopg://user:pass@localhost:5432/db"
+            )
+        )
+
+        # Add content with chunking strategy
+        reader = PDFReader(chunking_strategy=strategy)
+        knowledge.add_content(path=content_path, reader=reader)
+
+        # Test search quality
+        print(f"\n--- {strategy_name} Chunking Results ---")
+        for query in test_queries:
+            results = knowledge.search(query, max_results=3)
+            print(f"Query: {query}")
+            print(f"Results: {len(results)} documents found")
+```
+
+## Vector Database Configuration
+
+### Embedder Selection and Configuration
+
+**OpenAI Embedders:**
+```python
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+
+# For general content (recommended)
+embedder = OpenAIEmbedder(
+    id="text-embedding-3-small",  # Fast and cost-effective
+    dimensions=1536               # Full dimensionality
+)
+
+# For high-quality embeddings
+embedder = OpenAIEmbedder(
+    id="text-embedding-3-large",  # Best quality
+    dimensions=3072               # Higher dimensionality
+)
+
+# For reduced dimensions (faster search)
+embedder = OpenAIEmbedder(
+    id="text-embedding-3-large",
+    dimensions=1024               # Reduced for speed
+)
+```
+
+**Alternative Embedders:**
+```python
+from agno.knowledge.embedder.sentence_transformer import SentenceTransformerEmbedder
+
+# For local processing (no API costs)
+embedder = SentenceTransformerEmbedder(
+    id="sentence-transformers/all-MiniLM-L6-v2",
+    dimensions=384
+)
+```
+
+### Vector Database Options
+
+<Tabs>
+  <Tab title="PgVector (Production)">
+    ```python
+    from agno.vectordb.pgvector import PgVector, SearchType
+
+    # Best for: Production, scalability, full SQL features
+    vector_db = PgVector(
+        table_name="production_knowledge",
+        db_url="postgresql+psycopg://user:pass@db:5432/knowledge",
+        embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+        search_type=SearchType.hybrid  # Vector + keyword search
+    )
+    ```
+  </Tab>
+  <Tab title="LanceDB (Development)">
+    ```python
+    from agno.vectordb.lancedb import LanceDb, SearchType
+
+    # Best for: Development, local testing, no setup
+    vector_db = LanceDb(
+        table_name="dev_knowledge",
+        uri="./local_knowledge_db",
+        embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+        search_type=SearchType.hybrid
+    )
+    ```
+  </Tab>
+  <Tab title="Pinecone (Managed)">
+    ```python
+    from agno.vectordb.pineconedb import PineconeDb
+
+    # Best for: Managed service, no operations overhead
+    vector_db = PineconeDb(
+        name="knowledge-index",
+        dimension=1536,
+        spec={"cloud": "aws", "region": "us-east-1"},
+        embedder=OpenAIEmbedder(id="text-embedding-3-small")
+    )
+    ```
+  </Tab>
+</Tabs>
+
+## Content Loading Optimization
+
+### Efficient Content Loading Strategies
+
+**Use Skip and Upsert Options:**
+```python
+# Skip existing content (fastest for re-runs)
+knowledge.add_content(
+    path="large_document.pdf",
+    skip_if_exists=True,  # Skip if already processed
+    upsert=False          # Don't update existing
+)
+
+# Update existing content when needed
+knowledge.add_content(
+    path="updated_document.pdf",
+    skip_if_exists=False, # Process even if exists
+    upsert=True           # Update existing content
+)
+```
+
+**Batch Loading with Filtering:**
+```python
+# Load multiple files efficiently
+knowledge.add_contents(
+    paths=["docs/", "policies/", "procedures/"],
+    include=["*.pdf", "*.md", "*.txt"],    # Only these types
+    exclude=["*temp*", "*backup*", "*draft*"], # Skip these
+    metadata={"batch": "company_docs_2024"},
+    skip_if_exists=True,   # Skip already processed files
+    upsert=False           # Faster than upsert for new content
+)
+```
+
+**Async Content Loading:**
+```python
+import asyncio
+
+async def load_knowledge_efficiently():
+    # Load multiple content sources in parallel
+    tasks = [
+        knowledge.add_content_async(path="docs/hr/"),
+        knowledge.add_content_async(path="docs/engineering/"),
+        knowledge.add_content_async(url="https://company.com/api-docs"),
+        knowledge.add_content_async(text_content="Recent announcement...")
+    ]
+
+    await asyncio.gather(*tasks)
+
+# Run async loading
+asyncio.run(load_knowledge_efficiently())
+```
+
+### Metadata Strategy for Better Filtering
+
+```python
+# Rich metadata for effective filtering
+knowledge.add_content(
+    path="employee_handbook.pdf",
+    metadata={
+        "type": "policy",
+        "department": "human_resources",
+        "audience": "all_employees",
+        "version": "2024.1",
+        "last_updated": "2024-01-15",
+        "classification": "internal",
+        "keywords": ["benefits", "pto", "remote_work"]
+    }
+)
+
+# Hierarchical metadata
+knowledge.add_content(
+    path="api_documentation.md",
+    metadata={
+        "category": "engineering",
+        "subcategory": "api",
+        "service": "user_management",
+        "version": "v2.1",
+        "status": "current"
+    }
+)
+```
+
+## Search and Retrieval Optimization
+
+### Effective Search Strategies
+
+**Basic Search:**
+```python
+# Simple search
+results = knowledge.search(
+    query="remote work policy",
+    max_results=5
+)
+```
+
+**Filtered Search:**
+```python
+# Search with metadata filtering
+results = knowledge.search(
+    query="deployment procedures",
+    max_results=10,
+    filters={
+        "department": "engineering",
+        "type": "procedure",
+        "status": "current"
+    }
+)
+```
+
+**Async Search for Better Performance:**
+```python
+# Use async search when available
+results = await knowledge.async_search(
+    query="benefits information",
+    max_results=5,
+    filters={"audience": "all_employees"}
+)
+```
+
+### Search Parameter Tuning
+
+```python
+def optimize_search_parameters(knowledge: Knowledge):
+    test_queries = [
+        "remote work policy",
+        "expense reimbursement",
+        "deployment process"
+    ]
+
+    # Test different result counts
+    for max_results in [3, 5, 8, 10]:
+        print(f"\n--- Testing max_results: {max_results} ---")
+        for query in test_queries:
+            results = knowledge.search(query, max_results=max_results)
+            print(f"Query: {query} -> {len(results)} results")
+
+            # Analyze result quality
+            if results:
+                print(f"Top result preview: {results[0].content[:100]}...")
+```
+
+### Advanced Filtering and Validation
+
+```python
+# Validate filters before search
+valid_filters, invalid_keys = knowledge.validate_filters({
+    "department": "engineering",
+    "invalid_key": "some_value"  # This will be flagged
+})
+
+if invalid_keys:
+    print(f"Invalid filter keys: {invalid_keys}")
+    print(f"Valid keys: {knowledge.valid_metadata_filters}")
+
+# Use only valid filters
+results = knowledge.search(
+    query="search term",
+    filters=valid_filters  # Only valid filters applied
+)
+```
+
+## Reranking for Improved Results
+
+### Using Cohere Reranker
+
+```python
+from agno.knowledge.reranker.cohere import CohereReranker
+from agno.vectordb.pgvector import PgVector
+
+# Setup vector DB with reranker
+vector_db = PgVector(
+    table_name="reranked_knowledge",
+    db_url="postgresql+psycopg://user:pass@localhost:5432/db",
+    embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+    reranker=CohereReranker(
+        model="rerank-multilingual-v3.0",  # Current default model
+        top_n=10  # Return top 10 after reranking
+    )
+)
+
+knowledge = Knowledge(vector_db=vector_db)
+```
+
+### Alternative Rerankers
+
+```python
+from agno.knowledge.reranker.sentence_transformer import SentenceTransformerReranker
+
+# Local reranker (no API costs)
+reranker = SentenceTransformerReranker(
+    model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+    top_n=5
+)
+```
+
+## Performance Monitoring and Optimization
+
+### Content Status Monitoring
+
+```python
+# Check content loading status
+content_list, count = knowledge.get_content()
+
+for content in content_list:
+    status, message = knowledge.get_content_status(content.id)
+    print(f"Content: {content.name}")
+    print(f"Status: {status}")
+    if message:
+        print(f"Message: {message}")
+```
+
+### Content Management
+
+```python
+# Remove outdated content
+knowledge.remove_content_by_id("content_id_123")
+
+# Remove content by metadata
+knowledge.remove_vectors_by_metadata({"version": "old"})
+
+# Clean up all content (for fresh start)
+knowledge.remove_all_content()
+```
+
+### Memory and Performance Optimization
+
+```python
+# Efficient reader configuration
+from agno.knowledge.reader.pdf_reader import PDFReader
+
+# Configure readers for performance
+pdf_reader = PDFReader(
+    name="Optimized PDF Reader",
+    chunk=True,  # Enable chunking in reader
+    chunking_strategy=FixedSizeChunking(
+        chunk_size=800,   # Smaller chunks for faster search
+        overlap=80        # Minimal overlap for speed
+    )
+)
+
+# Use reader with knowledge
+knowledge.add_content(
+    path="large_document.pdf",
+    reader=pdf_reader,
+    skip_if_exists=True  # Avoid reprocessing
+)
+```
+
+## Production Best Practices
+
+### Database Connection Optimization
+
+```python
+# Production PgVector setup
+vector_db = PgVector(
+    table_name="production_knowledge",
+    db_url="postgresql+psycopg://user:pass@db-host:5432/knowledge",
+    embedder=OpenAIEmbedder(
+        id="text-embedding-3-small",
+        api_key="your-openai-key"  # Use environment variables
+    ),
+    search_type=SearchType.hybrid
+)
+```
+
+### Error Handling and Logging
+
+```python
+from agno.utils.log import log_info, log_warning, log_error
+
+try:
+    knowledge.add_content(
+        path="document.pdf",
+        metadata={"source": "upload"}
+    )
+    log_info("Content added successfully")
+except Exception as e:
+    log_error(f"Failed to add content: {e}")
+    # Handle error appropriately
+```
+
+### Content Validation
+
+```python
+def validate_content_loading(knowledge: Knowledge):
+    """Validate that content was loaded properly"""
+    content_list, total_count = knowledge.get_content()
+
+    failed_content = [
+        content for content in content_list
+        if content.status == "failed"
+    ]
+
+    if failed_content:
+        log_warning(f"Found {len(failed_content)} failed content items")
+        for content in failed_content:
+            print(f"Failed: {content.name} - {content.status_message}")
+
+    log_info(f"Total content items: {total_count}")
+    log_info(f"Successful items: {total_count - len(failed_content)}")
+```
+
+## Troubleshooting Common Issues
+
+### Poor Search Results
+
+**Issue:** Irrelevant results or missing expected content
+
+**Solutions:**
+1. **Check chunking strategy** - Try semantic chunking for better context preservation
+2. **Verify metadata filters** - Use `validate_filters()` to check filter keys
+3. **Adjust search parameters** - Increase `max_results` or modify filters
+4. **Review content status** - Check if content loaded successfully
+
+```python
+# Debug search issues
+results = knowledge.search("your query", max_results=10)
+if not results:
+    print("No results found - checking content...")
+    content_list, count = knowledge.get_content()
+    print(f"Total content items: {count}")
+
+    # Check for failed content
+    for content in content_list[:5]:  # Check first 5
+        status, message = knowledge.get_content_status(content.id)
+        print(f"{content.name}: {status}")
+```
+
+### Slow Performance
+
+**Issue:** Long search times or content loading delays
+
+**Solutions:**
+1. **Use smaller chunk sizes** - Reduces search time
+2. **Enable skip_if_exists** - Avoid reprocessing content
+3. **Optimize database** - Use appropriate vector database for scale
+4. **Use async methods** - For concurrent operations
+
+```python
+# Performance optimization
+knowledge.add_contents(
+    paths=["large_dataset/"],
+    skip_if_exists=True,      # Skip existing content
+    upsert=False,             # Faster than upsert
+    include=["*.pdf"],        # Limit file types
+    metadata={"batch": "optimized"}
+)
+```
+
+### Memory Issues
+
+**Issue:** High memory usage during content loading
+
+**Solutions:**
+1. **Process in batches** - Don't load all content at once
+2. **Use appropriate chunk sizes** - Balance context vs. memory
+3. **Clear old content** - Remove outdated content regularly
+
+```python
+# Batch processing for large datasets
+import os
+
+def load_content_in_batches(knowledge: Knowledge, content_dir: str, batch_size: int = 10):
+    files = [f for f in os.listdir(content_dir) if f.endswith('.pdf')]
+
+    for i in range(0, len(files), batch_size):
+        batch_files = files[i:i+batch_size]
+        print(f"Processing batch {i//batch_size + 1}: {len(batch_files)} files")
+
+        for file in batch_files:
+            knowledge.add_content(
+                path=os.path.join(content_dir, file),
+                skip_if_exists=True
+            )
+```
+
+## Summary
+
+Optimizing Agno knowledge bases requires understanding its specific architecture:
+
+<Steps>
+  <Step title="Content Strategy">
+    ✅ Use appropriate metadata for effective filtering
+    ✅ Implement skip_if_exists for faster reloading
+    ✅ Choose optimal include/exclude patterns
+  </Step>
+  <Step title="Chunking Selection">
+    ✅ Fixed size for consistency and speed
+    ✅ Semantic for meaning preservation
+    ✅ Recursive for document structure
+  </Step>
+  <Step title="Vector Database">
+    ✅ PgVector for production scalability
+    ✅ LanceDB for development simplicity
+    ✅ Appropriate embedder for content type
+  </Step>
+  <Step title="Search Optimization">
+    ✅ Validate filters before searching
+    ✅ Use async methods when available
+    ✅ Implement reranking for quality
+  </Step>
+</Steps>
+
+Following these Agno-specific optimization strategies will ensure your knowledge base performs well while providing high-quality, relevant results to your agents.

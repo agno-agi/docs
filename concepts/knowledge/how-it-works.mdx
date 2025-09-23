@@ -1,0 +1,202 @@
+---
+title: How Knowledge Works
+description: Learn the RAG pipeline and technical architecture that powers intelligent knowledge retrieval in Agno agents.
+---
+
+Knowledge in Agno implements **Retrieval Augmented Generation (RAG)** through a structured pipeline that processes, stores, and retrieves information for intelligent agent responses.
+
+## The RAG Pipeline: Three Simple Steps
+
+<Steps>
+  <Step title="Store: Break Down and Index Information">
+    Your documents, files, and data are processed by specialized readers, broken into chunks using configurable strategies, and stored in a vector database with their meanings captured as embeddings.
+
+    **Example:** A 50-page employee handbook is processed by Agno's PDFReader, chunked using SemanticChunking strategy, and becomes 200 searchable chunks with topics like "vacation policy," "remote work guidelines," or "expense procedures."
+  </Step>
+
+  <Step title="Search: Find Relevant Information">
+    When a user asks a question, the agent (with `search_knowledge=True`) automatically searches the knowledge base using Agno's search methods to find the most relevant information chunks.
+
+    **Example:** User asks "How many vacation days do I get?" → Agent calls `knowledge.search()` and finds chunks about vacation policies, PTO accrual, and holiday schedules.
+  </Step>
+
+  <Step title="Generate: Create Contextual Responses">
+    The agent combines the retrieved information with the user's question to generate an accurate, contextual response, with sources tracked through Agno's content management system.
+
+    **Example:** "Based on your employee handbook, full-time employees receive 15 vacation days per year, accrued monthly at 1.25 days per month..."
+  </Step>
+</Steps>
+
+## Vector Embeddings and Search
+
+Knowledge uses **vector embeddings** to enable semantic search beyond keyword matching. Text is converted into mathematical representations that capture meaning and context, allowing agents to find relevant information even when exact words don't match.
+
+## Behind the Scenes: The Technical Flow
+
+Setting up Knowledge with an agent involves several Agno-specific components working together:
+
+```python
+from agno.knowledge.knowledge import Knowledge
+from agno.vectordb.pgvector import PgVector
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.knowledge.chunking.semantic import SemanticChunking
+from agno.knowledge.reader.pdf_reader import PDFReader
+from agno.agent import Agent
+
+# 1. Configure vector database with embedder
+vector_db = PgVector(
+    table_name="company_knowledge",
+    db_url="postgresql+psycopg://user:pass@localhost:5432/db",
+    embedder=OpenAIEmbedder(id="text-embedding-3-small")  # Optional: defaults to OpenAIEmbedder
+)
+
+# 2. Create knowledge base
+knowledge = Knowledge(
+    name="Company Documentation",
+    vector_db=vector_db,
+    max_results=10
+)
+
+# 3. Add content with chunking strategy
+knowledge.add_content(
+    path="company_docs/employee_handbook.pdf",
+    reader=PDFReader(
+        chunking_strategy=SemanticChunking(  # Optional: defaults to FixedSizeChunking
+            chunk_size=1000,
+            similarity_threshold=0.5
+        )
+    ),
+    metadata={"type": "policy", "department": "hr"}
+)
+
+# 4. Create agent with knowledge search enabled
+agent = Agent(
+    knowledge=knowledge,
+    search_knowledge=True,  # Required for automatic search
+    knowledge_filters={"type": "policy"}  # Optional filtering
+)
+```
+
+<Note>
+**Smart Defaults**: Agno provides sensible defaults to get you started quickly:
+- **Embedder**: If no embedder is specified, Agno automatically uses `OpenAIEmbedder` with default settings
+- **Chunking**: If no chunking strategy is provided to readers, Agno defaults to `FixedSizeChunking(chunk_size=5000)`
+- **Search Type**: Vector databases default to `SearchType.vector` for semantic search
+
+This means you can start with minimal configuration and customize as needed!
+</Note>
+
+**During content processing:**
+1. **Agno readers** parse different file types (PDF, website, CSV, etc.)
+2. **Chunking strategies** break content into searchable pieces
+3. **Embeddings are generated** using your chosen embedder (OpenAI, SentenceTransformer, etc.)
+4. **Content status** is tracked (PROCESSING → COMPLETED/FAILED)
+5. **Everything is stored** with metadata in your vector database
+
+**During conversation:**
+1. **User sends a message** to the agent
+2. **Agent analyzes** whether it needs additional context
+3. **`knowledge.search()`** or **`knowledge.async_search()`** retrieves relevant chunks
+4. **Metadata filtering** applies any configured filters
+5. **Agent combines** the context with the question to respond
+
+## Key Components Working Together
+
+<CardGroup cols={2}>
+  <Card title="Readers" icon="book-open">
+    Agno's reader factory provides specialized parsers: PDFReader, CSVReader, WebsiteReader, MarkdownReader, and more for different content types.
+  </Card>
+  <Card title="Chunking Strategies" icon="scissors">
+    Choose from FixedSizeChunking, SemanticChunking, or RecursiveChunking to optimize how documents are broken down for search.
+  </Card>
+  <Card title="Embedders" icon="vector-square">
+    Support for OpenAIEmbedder, SentenceTransformerEmbedder, and other embedding models to convert text into searchable vectors.
+  </Card>
+  <Card title="Vector Databases" icon="database">
+    PgVector for production, LanceDB for development, or PineconeDB for managed services - each with hybrid search capabilities.
+  </Card>
+</CardGroup>
+
+## Chunking Strategy Selection
+
+The way content is chunked significantly affects search quality. Agno provides three main strategies:
+
+```python
+from agno.knowledge.chunking.fixed import FixedSizeChunking
+from agno.knowledge.chunking.semantic import SemanticChunking
+from agno.knowledge.chunking.recursive import RecursiveChunking
+
+# Fixed size - consistent chunks, predictable performance
+fixed_chunking = FixedSizeChunking(
+    chunk_size=800,
+    overlap=80
+)
+
+# Semantic - preserves meaning, better for complex content
+semantic_chunking = SemanticChunking(
+    chunk_size=1200,
+    similarity_threshold=0.5
+)
+
+# Recursive - respects document structure
+recursive_chunking = RecursiveChunking(
+    chunk_size=1000,
+    overlap=100
+)
+```
+
+## Content Management and Monitoring
+
+Agno provides tools to monitor and manage your knowledge base:
+
+```python
+# Check content status
+content_list, total_count = knowledge.get_content()
+for content in content_list:
+    status, message = knowledge.get_content_status(content.id)
+    print(f"{content.name}: {status}")
+
+# Search with filtering
+results = knowledge.search(
+    query="vacation policy",
+    max_results=5,
+    filters={"department": "hr", "type": "policy"}
+)
+
+# Validate filters
+valid_filters, invalid_keys = knowledge.validate_filters({
+    "department": "hr",
+    "invalid_key": "value"
+})
+```
+
+## Agent Knowledge Integration
+
+When `search_knowledge=True` is enabled, agents automatically determine when and how to search the knowledge base. This integration happens seamlessly during conversation without requiring explicit search commands.
+
+## Performance Considerations
+
+For optimal performance, consider:
+
+- **Vector Database Choice**: PgVector for production scale, LanceDB for development
+- **Chunking Strategy**: Match strategy to content type (semantic for complex docs, fixed for consistency)
+- **Content Loading**: Use `skip_if_exists=True` and `upsert=False` for faster reloading
+- **Search Filtering**: Apply metadata filters to narrow search scope
+
+```python
+# Optimized for production
+knowledge.add_content(
+    path="large_dataset/",
+    skip_if_exists=True,    # Skip already processed files
+    metadata={"category": "docs"},
+    include=["*.pdf", "*.md"]  # Process only specific types
+)
+```
+
+## Ready to Build?
+
+Now that you understand how Knowledge works in Agno, let's build your first knowledge-powered agent:
+
+<Card title="Next: Getting Started Guide" icon="rocket" href="/concepts/knowledge/getting-started">
+  Follow our step-by-step tutorial to create your first knowledge base in minutes
+</Card>
