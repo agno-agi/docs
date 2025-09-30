@@ -3,298 +3,334 @@ title: Search & Retrieval
 description: Understand how agents intelligently search and retrieve information from knowledge bases to provide accurate, contextual responses.
 ---
 
-When an agent needs information to answer a question or complete a task, it doesn't just dump all available knowledge into the prompt. Instead, it intelligently searches for and retrieves only the most relevant information. This process is the heart of what makes knowledge-powered agents so effective.
+When an agent needs information to answer a question, it doesn't dump everything into the prompt. Instead, it searches for just the most relevant pieces. This focused approach is what makes knowledge-powered agents both effective and efficient—they get exactly what they need, when they need it.
 
 ## How Agents Search Knowledge
 
-Think of an agent's search process like a skilled researcher who knows exactly what information to look for and where to find it:
+Think of an agent's search process like a skilled researcher who knows what to look for and where to find it:
 
 <Steps>
   <Step title="Query Analysis">
-    The agent analyzes the user's question to understand what type of information would be helpful
+    The agent analyzes the user's question to understand what type of
+    information would be helpful.
   </Step>
   <Step title="Search Strategy">
-    Based on the analysis, the agent formulates one or more search queries to find relevant content
+    Based on the analysis, the system formulates one or more searches (vector,
+    keyword, or hybrid).
   </Step>
   <Step title="Information Retrieval">
-    The agent searches the knowledge base and retrieves the most relevant content chunks
+    The knowledge base returns the most relevant content chunks.
   </Step>
   <Step title="Context Integration">
-    The retrieved information is combined with the original question to generate a comprehensive response
+    The retrieved information is combined with the original question to generate
+    a comprehensive response.
   </Step>
 </Steps>
 
 ## Agentic Search: The Smart Difference
 
-What makes Agno's approach special is **Agentic Search** - the agent has full control over the search process:
+What makes Agno's approach special? Agents can programmatically decide when to search and how to use results. Think of it as giving your agent the keys to the library instead of handing it a fixed stack of books. You can even plug in custom retrieval logic to match your specific needs.
 
-<CardGroup cols={2}>
-  <Card title="Automatic Decision Making" icon="brain">
-    The agent decides when it needs additional information and when it can answer from its existing knowledge.
-  </Card>
-  <Card title="Smart Query Generation" icon="search">
-    The agent formulates optimal search queries, often using different keywords than the original question.
-  </Card>
-  <Card title="Multi-Step Search" icon="repeat">
-    If the first search doesn't provide enough information, the agent can search again with refined queries.
-  </Card>
-  <Card title="Context Synthesis" icon="puzzle-piece">
-    The agent combines information from multiple sources to provide comprehensive answers.
-  </Card>
-</CardGroup>
+**Key capabilities:**
+
+- **Automatic Decision Making** - The agent can choose to search when it needs additional information—or skip it when not necessary.
+
+- **Smart Query Generation** - Implement logic to reformulate queries for better recall—like expanding "vacation" to include "PTO" and "time off."
+
+- **Multi-Step Search** - If the first search isn't enough, run follow-up searches with refined queries.
+
+- **Context Synthesis** - Combine information from multiple results to produce a thorough, grounded answer.
 
 ### Traditional RAG vs. Agentic RAG
 
+Here's how they compare in practice:
+
 <Tabs>
   <Tab title="Traditional RAG">
-    ```python
-    # Static approach - searches for everything
-    user_query = "What's our return policy?"
 
-    # Always searches, uses exact query
-    search_results = vector_db.search(user_query)
+```python
+# Static approach - always searches with the exact user query
+user_query = "What's our return policy?"
 
-    # Uses whatever is found
-    response = llm.generate(user_query + search_results)
-    ```
-    **Limitations:**
-    - Searches even when not needed
-    - Uses user's exact words (may miss relevant content)
-    - No ability to refine or follow up
+results = vector_db.search(user_query, limit=5)
+response = llm.generate(user_query + "\n" + "\n\n".join([d.content for d in results]))
+```
+
   </Tab>
   <Tab title="Agentic RAG">
-    ```python
-    # Agent decides when and how to search
-    user_query = "What's our return policy?"
 
-    # Agent determines: "I need policy information"
-    # Agent generates: "return policy, refund procedures, exchange rules"
-    if agent.needs_knowledge(user_query):
-        search_query = agent.generate_search_query(user_query)
-        results = knowledge.search(search_query)
+```python
+from agno.agent import Agent
 
-        # Agent can search again if needed
-        if agent.needs_more_info(results):
-            additional_results = knowledge.search(refined_query)
+# Agent with knowledge configured (see configuration below)
+user_query = "What's our return policy?"
 
-    response = agent.synthesize_response(user_query, all_results)
-    ```
-    **Benefits:**
-    - Only searches when helpful
-    - Uses optimal search terms
-    - Can perform multiple searches
-    - Intelligent result synthesis
+# Agent fetches relevant docs when needed
+docs = await agent.aget_relevant_docs_from_knowledge(
+    query=user_query,
+    num_documents=5,
+    filters=None,
+)
+
+context = "\n\n".join([d["content"] for d in docs]) if docs else ""
+answer = await agent.run(user_query, context=context)
+```
+
   </Tab>
 </Tabs>
 
-## Types of Search Strategies
+## Configuring Search in Agno
 
-Agno supports multiple search approaches, and agents can use the most appropriate one for their needs:
-
-### Vector Similarity Search
-Finds content based on semantic meaning rather than exact keyword matches.
-
-**How it works:**
-- User query is converted to an embedding vector
-- System finds content with similar embedding vectors
-- Results are ranked by similarity score
-
-**Best for:**
-- Conceptual questions ("How do I improve performance?")
-- Questions using different terminology than the source material
-- Finding related but not identical information
-
-### Keyword Search
-Traditional text search that looks for exact word matches.
-
-**How it works:**
-- System searches for specific words and phrases
-- Results are ranked by relevance and frequency
-- Supports boolean operators and exact phrases
-
-**Best for:**
-- Finding specific terms, names, or identifiers
-- Technical documentation with precise terminology
-- Cases where exact word matching is important
-
-### Hybrid Search
-Combines vector similarity and keyword search for the best of both approaches.
-
-**How it works:**
-- Performs both vector and keyword searches simultaneously
-- Combines and reranks results using sophisticated algorithms
-- Often includes reranking models for optimal result ordering
-
-**Best for:**
-- Most production use cases
-- Complex queries that benefit from both approaches
-- Maximum accuracy and recall
-
-<Tip>
-We recommend using **hybrid search with reranking** for the best search quality. This approach combines the semantic understanding of vector search with the precision of keyword search.
-</Tip>
-
-## Search Quality Factors
-
-Several factors influence how well agents can find and use information:
-
-### Content Chunking Strategy
-How your content is broken down affects search precision:
-
-- **Smaller chunks**: More precise retrieval, but may lose context
-- **Larger chunks**: Better context preservation, but less precise matching
-- **Semantic chunking**: Respects natural content boundaries for optimal balance
-
-### Embedding Model Quality
-The model used to create vector embeddings impacts search understanding:
-
-- **General models**: Good for broad content types
-- **Domain-specific models**: Better for specialized content (legal, medical, technical)
-- **Multilingual models**: Essential for non-English content
-
-### Search Parameters
-Fine-tuning search behavior for your use case:
+You configure search behavior on your vector database, and Knowledge uses those settings when retrieving documents. It's a simple setup:
 
 ```python
-# Configure search behavior
+from agno.knowledge.knowledge import Knowledge
+from agno.knowledge.reranker.cohere import CohereReranker
+from agno.vectordb.pgvector import PgVector
+from agno.vectordb.search import SearchType
+
+vector_db = PgVector(
+    table_name="embeddings_table",
+    db_url=db_url,
+    # Choose the search strategy per your use case
+    search_type=SearchType.hybrid,  # vector | keyword | hybrid
+    # Optional: add a reranker for higher quality ordering
+    reranker=CohereReranker(),
+)
+
 knowledge = Knowledge(
     vector_db=vector_db,
-    max_results=5,        # Number of chunks to retrieve
-    similarity_threshold=0.7,  # Minimum relevance score
-    reranker=CohereReranker()  # Improve result ordering
+    max_results=5,  # default retrieval size
 )
 ```
 
-## Optimizing Search Results
+### Types of Search Strategies
 
-### Improving Search Quality
+Agno gives you three main approaches. Pick the one that fits your content and how users ask questions:
 
-**Add Rich Metadata:**
+#### Vector Similarity Search
+
+Finds content by meaning, not just matching words. When you ask "How do I reset my password?", it finds documents about "changing credentials" even though the exact words don't match.
+
+**How it works:**
+- Your query becomes a vector (list of numbers capturing meaning)
+- The system finds content with similar vectors
+- Results are ranked by how close the meanings are
+
+**Best for:** Conceptual questions where users might phrase things differently than your docs.
+
+#### Keyword Search
+
+Classic text search—looks for exact words and phrases in your content. When using PgVector, this leverages Postgres's full-text search under the hood.
+
+**How it works:**
+- Matches specific words and phrases
+- Supports search operators (where your backend allows)
+- Works great when users know the exact terminology
+
+**Best for:** Finding specific terms, product names, error codes, or technical identifiers.
+
+#### Hybrid Search
+
+The best of both worlds—combines semantic understanding with exact-match precision. This is usually your best bet for production.
+
+**How it works:**
+- Runs both vector similarity and keyword matching
+- Merges results intelligently
+- Can add a reranker on top for even better ordering
+
+**Best for:** Most real-world applications where you want both accuracy and flexibility.
+
+```python
+from agno.vectordb.search import SearchType
+from agno.knowledge.reranker.cohere import CohereReranker
+
+vector_db = PgVector(
+    table_name="embeddings_table",
+    db_url=db_url,
+    search_type=SearchType.hybrid,
+    reranker=CohereReranker(),
+)
+knowledge = Knowledge(vector_db=vector_db, max_results=5)
+```
+
+<Tip>
+  We recommend starting with <b>hybrid search with reranking</b> for strong
+  recall and precision.
+</Tip>
+
+## What Affects Search Quality
+
+### Content Chunking Strategy
+
+How you split your content matters a lot:
+
+- **Smaller chunks** (200-500 chars): Super precise, but might miss the big picture
+- **Larger chunks** (1000-2000 chars): Better context, but less targeted
+- **Semantic chunking**: Splits at natural topic boundaries—usually the sweet spot
+
+### Embedding Model Quality
+
+Your embedder is what turns text into vectors that capture meaning:
+
+- **General-purpose** (like OpenAI's text-embedding-3-small): Works well for most content
+- **Domain-specific**: Better for specialized fields like medical or legal docs
+- **Multilingual**: Essential if you're working in multiple languages
+
+### Practical Configuration
+
+```python
+# VectorDB controls search strategy; Knowledge controls retrieval size
+vector_db = PgVector(table_name="embeddings_table", db_url=db_url, search_type=SearchType.hybrid)
+knowledge = Knowledge(vector_db=vector_db, max_results=5)
+```
+
+## Making Search Work Better
+
+### Add Rich Metadata
+
+Metadata helps filter and organize results:
+
 ```python
 knowledge.add_content(
     path="policies/",
-    meta_data={"type": "policy", "department": "HR", "audience": "employees"}
+    metadata={"type": "policy", "department": "HR", "audience": "employees"},
 )
 ```
 
-**Use Descriptive Filenames:**
+### Use Descriptive Filenames
+
+File names can help with search relevance in some backends:
+
 ```python
-# Better search results with clear naming
 "hr_employee_handbook_2024.pdf"  # ✅ Clear and descriptive
 "document1.pdf"                  # ❌ Generic and unhelpful
 ```
 
-**Structure Content Logically:**
+### Structure Content Logically
+
+Well-organized content searches better:
+
 - Use clear headings and sections
-- Include relevant keywords naturally
-- Add summaries and abstracts
+- Include relevant terminology naturally (don't keyword-stuff)
+- Add summaries at the top of long documents
 - Cross-reference related topics
 
-### Monitoring Search Performance
+### Test with Real Queries
 
-**Test with Real Queries:**
+The best way to know if search is working? Try it with actual questions:
+
 ```python
-# Test search quality with actual questions
 test_queries = [
     "What's our vacation policy?",
     "How do I submit expenses?",
-    "Remote work guidelines"
+    "Remote work guidelines",
 ]
 
-for query in test_queries:
-    results = knowledge.search(query)
-    print(f"Query: {query}")
-    print(f"Top result: {results[0]['content'][:100]}...")
+for q in test_queries:
+    results = knowledge.search(q)
+    print(q, "->", results[0].content[:100] + "..." if results else "No results")
 ```
 
-**Analyze Retrieved Content:**
-- Are the results relevant to the query?
-- Is important information being missed?
-- Are results ranked in the right order?
-- Do you need to adjust chunking or search parameters?
+### Analyze What's Being Retrieved
+
+Ask yourself:
+
+- Are results actually relevant to the query?
+- Is important information missing from results?
+- Are results in a sensible order? (If not, try adding a reranker)
+- Should you adjust chunk sizes or metadata?
 
 ## Advanced Search Features
 
-### Custom Search Logic
-For specialized search requirements:
+### Custom Retrieval Logic for Agents
+
+Provide a `knowledge_retriever` callable to implement your own decisioning (e.g., reformulation, follow-up searches, domain rules). The agent will call this when fetching documents.
 
 ```python
-def custom_search_logic(query: str, knowledge: Knowledge) -> List[Dict]:
-    # Apply business rules
-    if "confidential" in query.lower():
-        # Filter to only public information
-        return knowledge.search(query, filters={"classification": "public"})
+async def my_retriever(query: str, num_documents: int = 5, filters: dict | None = None, **kwargs):
+    # Example: reformulate query, then search with metadata filters
+    refined = query.replace("vacation", "paid time off")
+    docs = await knowledge.async_search(refined, max_results=num_documents, filters=filters)
+    return [d.to_dict() for d in docs]
 
-    # Use different search strategies based on query type
-    if query.startswith("How to"):
-        # Prioritize procedural content
-        return knowledge.search(query, content_type="procedure")
-
-    return knowledge.search(query)
+agent.knowledge_retriever = my_retriever
 ```
 
 ### Search with Filtering
-Restrict search to specific content subsets:
+
+Restrict results to subsets based on metadata you stored with documents.
 
 ```python
-# Search within specific categories
 results = knowledge.search(
     "deployment process",
-    filters={"department": "engineering", "type": "documentation"}
-)
-
-# Search by date range
-results = knowledge.search(
-    "quarterly results",
-    filters={"created_after": "2024-01-01"}
+    filters={"department": "engineering", "type": "documentation"},
 )
 ```
 
-### Multi-Modal Search
-Search across different types of content:
+### Working with Different Content Types
+
+Use appropriate readers; they handle parsing their formats.
 
 ```python
-# Search text and extracted image content
-knowledge.add_content(
-    path="presentations/",
-    extract_images=True,  # OCR text from images
-    extract_tables=True   # Parse table content
-)
+from agno.knowledge.reader.pdf_reader import PdfReader
+
+# Add a directory of PDFs using the PDF reader
+knowledge.add_content(path="presentations/", reader=PdfReader())
 ```
 
 ## Best Practices for Search & Retrieval
 
 ### Content Strategy
-- **Organize logically**: Group related content together
-- **Use consistent terminology**: Maintain vocabulary across documents
-- **Include context**: Add background information and cross-references
-- **Update regularly**: Keep content current and remove outdated information
+
+- Organize logically; group related content
+- Use consistent terminology
+- Include context and cross-references
+- Keep content current; retire outdated docs
 
 ### Technical Optimization
-- **Choose appropriate chunk sizes**: Test different sizes for your content type
-- **Select quality embedders**: Use models that understand your domain
-- **Configure hybrid search**: Combine vector and keyword search for best results
-- **Implement reranking**: Use reranking models to improve result ordering
+
+- Choose appropriate chunk sizes and strategies
+- Select a quality embedder for your domain
+- Configure VectorDB search type (vector/keyword/hybrid)
+- Add a reranker for better ordering
 
 ### Monitoring and Improvement
-- **Test search quality**: Regularly test with real user queries
-- **Analyze agent behavior**: Monitor what information agents retrieve
-- **Gather feedback**: Track when agents can't find needed information
-- **Iterate on strategy**: Continuously refine your approach based on results
+
+- Test with real user queries regularly
+- Observe what agents retrieve
+- Gather feedback when answers lack context
+- Iterate on chunking, metadata, and search configuration
 
 ## Next Steps
 
 <CardGroup cols={2}>
-  <Card title="Content Database" icon="database" href="/concepts/knowledge/content_db">
+  <Card
+    title="Content Database"
+    icon="database"
+    href="/concepts/knowledge/content_db"
+  >
     Learn how content metadata is tracked and managed
   </Card>
-  <Card title="Vector Databases" icon="vector-square" href="/concepts/knowledge/vectordb/introduction">
+  <Card
+    title="Vector Databases"
+    icon="vector-square"
+    href="/concepts/knowledge/vectordb/introduction"
+  >
     Explore storage options for your knowledge base
   </Card>
-  <Card title="Hybrid Search" icon="search" href="/concepts/knowledge/hybrid_search">
+  <Card
+    title="Hybrid Search"
+    icon="magnifying-glass"
+    href="/concepts/knowledge/advanced/hybrid-search"
+  >
     Deep dive into advanced search strategies
   </Card>
-  <Card title="Performance Tips" icon="zap" href="/concepts/knowledge/advanced/performance-tips">
+  <Card
+    title="Performance Tips"
+    icon="gauge"
+    href="/concepts/knowledge/advanced/performance-tips"
+  >
     Optimize your knowledge base for speed and accuracy
   </Card>
 </CardGroup>
