@@ -3,9 +3,20 @@ title: Reasoning Tools
 description: Give any model explicit tools for structured thinking—transforming regular models into careful problem-solvers through deliberate reasoning steps.
 ---
 
-**The problem:** Reasoning Agents force systematic thinking on every request. Reasoning Models require specialized models. What if you want reasoning only when needed?
+**The problem:** Reasoning Agents force systematic thinking on every request. Reasoning Models require specialized models. What if you want reasoning only when needed, tailored to specific contexts?
 
 **The solution:** Reasoning Tools give your agent explicit `think()` and `analyze()` tools—and let the agent decide when to use them. The agent chooses when to reason, when to act, and when it has enough information to respond.
+
+Agno provides **four specialized reasoning toolkits**, each optimized for different domains:
+
+| Toolkit            | Purpose                                | Core Tools                                               |
+| ------------------ | -------------------------------------- | -------------------------------------------------------- |
+| **ReasoningTools** | General-purpose thinking and analysis  | `think()`, `analyze()`                                   |
+| **KnowledgeTools** | Reasoning with knowledge base searches | `think()`, `search_knowledge()`, `analyze()`             |
+| **MemoryTools**    | Reasoning about user memory operations | `think()`, `get/add/update/delete_memory()`, `analyze()` |
+| **WorkflowTools**  | Reasoning about workflow execution     | `think()`, `run_workflow()`, `analyze()`                 |
+
+All four toolkits follow the same **Think → Act → Analyze** pattern but provide domain-specific actions tailored to their use case.
 
 This approach was first popularized by Anthropic in their ["Extended Thinking" blog post](https://www.anthropic.com/engineering/claude-think-tool), though many AI engineers (including our team) were using similar patterns long before.
 
@@ -17,162 +28,257 @@ Reasoning Tools give you the **best of both worlds**:
 2. **Explicit control** - The agent decides when to think vs. when to act
 3. **Full transparency** - You see exactly what the agent is thinking
 4. **Flexible workflow** - The agent can interleave thinking with tool calls
-5. **Natural reasoning** - Feels more like human problem-solving (think, act, analyze, repeat)
+5. **Domain-optimized** - Each toolkit is specialized for its specific use case
+6. **Natural reasoning** - Feels more like human problem-solving (think, act, analyze, repeat)
 
 **The key difference:** With Reasoning Agents, the reasoning happens automatically in a structured loop. With Reasoning Tools, the agent explicitly chooses when to use the `think()` and `analyze()` tools—giving you more control and visibility.
 
-## How It Works
+## The Four Reasoning Toolkits
 
-The `ReasoningTools` class provides two primary tools:
+### 1. ReasoningTools - General Purpose Thinking
 
-### 1. The `think()` Tool - Your Mental Scratchpad
+For general problem-solving without domain-specific tools.
 
-The `think()` tool acts as a scratchpad where the agent works through problems step-by-step before taking action.
+**What it provides:**
 
-**Purpose:**
+- `think()` - Plan and reason about the problem
+- `analyze()` - Evaluate results and determine next steps
 
-- Break down complex problems into logical steps
-- Plan actions before executing them
-- Record assumptions and reasoning
-- Structure internal thought process
+**When to use:**
 
-**Parameters:**
-
-- `title` (str) - A concise title for this thinking step
-- `thought` (str) - The detailed reasoning for this step
-- `action` (str, optional) - What the agent plans to do based on this thought
-- `confidence` (float) - Confidence level from 0.0 to 1.0 (default: 0.8)
-
-**Returns:** A formatted list of all previous thoughts plus the new thought, creating a running record of the agent's reasoning.
+- Mathematical or logical problems
+- Strategic planning
+- Analysis tasks that don't require external data
+- Any scenario where you want structured reasoning
 
 **Example:**
 
 ```python
-think(
-    title="Understand User Intent",
-    thought="The user is asking about semiconductor market performance. I need to gather data on NVDA, AMD, INTC, and TSM stock prices, market cap, and recent news.",
-    action="Search for current stock data for each company",
-    confidence=0.95
-)
-```
-
-### 2. The `analyze()` Tool - Result Evaluation
-
-The `analyze()` tool evaluates results from previous actions or thoughts and determines next steps.
-
-**Purpose:**
-
-- Evaluate whether results meet expectations
-- Determine if more information is needed
-- Decide when to conclude or continue
-- Validate findings
-
-**Parameters:**
-
-- `title` (str) - A concise title for this analysis step
-- `result` (str) - The outcome of the previous action
-- `analysis` (str) - Your evaluation of the results
-- `next_action` (str) - What to do next: `"continue"`, `"validate"`, or `"final_answer"` (default: `"continue"`)
-- `confidence` (float) - Confidence level from 0.0 to 1.0 (default: 0.8)
-
-**Returns:** A formatted list of all previous reasoning steps plus the new analysis.
-
-**Example:**
-
-```python
-analyze(
-    title="Evaluate Stock Data",
-    result="Found Q4 data: NVDA +45%, AMD +12%, INTC -8%, TSM +22%",
-    analysis="I have growth data for all four companies. NVDA shows exceptional growth, likely driven by AI chip demand. Need to search for news to understand the drivers.",
-    next_action="continue",
-    confidence=0.9
-)
-```
-
-### The Reasoning Workflow
-
-Reasoning Tools follow a natural **Think → Act → Analyze** cycle:
-
-1. **Think** - Plan what to do and why
-2. **Act** - Execute tool calls (search, calculate, retrieve data)
-3. **Analyze** - Evaluate results and decide next steps
-4. **Repeat** - Continue until reaching `final_answer`
-
-This mirrors how humans solve complex problems: we think before acting, evaluate results, and adjust our approach based on what we learn.
-
-## Basic Example
-
-Here's a simple example showing the complete workflow:
-
-```python basic_reasoning_tools.py
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
 from agno.tools.reasoning import ReasoningTools
 
-reasoning_agent = Agent(
+agent = Agent(
     model=OpenAIChat(id="gpt-4o"),
-    tools=[ReasoningTools(add_instructions=True)],  # Enable reasoning tools
-    markdown=True,
+    tools=[ReasoningTools(add_instructions=True)],
 )
 
-reasoning_agent.print_response(
+agent.print_response(
     "Which is bigger: 9.11 or 9.9? Explain your reasoning.",
     stream=True,
-    stream_intermediate_steps=True,
 )
 ```
 
-**What happens:**
+### 2. KnowledgeTools - Reasoning with Knowledge Bases
 
-1. Agent calls `think()`: "Need to compare decimal values, not digit-by-digit"
-2. Agent performs mental calculation
-3. Agent calls `analyze()`: "9.9 = 9.90, which is greater than 9.11"
-4. Agent sets `next_action="final_answer"`
-5. Agent provides final response to user
+For searching and analyzing information from knowledge bases (RAG).
 
-## Reasoning with External Tools
+**What it provides:**
 
-The real power emerges when combining reasoning tools with external tools like search, databases, or APIs:
+- `think()` - Plan search strategy and refine approach
+- `search_knowledge()` - Query the knowledge base
+- `analyze()` - Evaluate search results for relevance and completeness
 
-```python reasoning_with_tools.py
+**When to use:**
+
+- Document retrieval and analysis
+- RAG (Retrieval-Augmented Generation) workflows
+- Research tasks requiring multiple search iterations
+- When you need to verify information from knowledge bases
+
+**Example:**
+
+```python
 from agno.agent import Agent
-from agno.models.anthropic import Claude
-from agno.tools.reasoning import ReasoningTools
-from agno.tools.duckduckgo import DuckDuckGoTools
+from agno.knowledge.pdf import PDFKnowledgeBase
+from agno.models.openai import OpenAIChat
+from agno.tools.knowledge import KnowledgeTools
+from agno.vectordb.pgvector import PgVector
 
-reasoning_agent = Agent(
-    model=Claude(id="claude-4-5-sonnet-latest"),
+# Create knowledge base
+knowledge = PDFKnowledgeBase(
+    path="data/research_papers/",
+    vector_db=PgVector(
+        table_name="research_papers",
+        db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
+    ),
+)
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o"),
+    tools=[KnowledgeTools(knowledge=knowledge, add_instructions=True)],
+    instructions="Search thoroughly and cite your sources",
+)
+
+agent.print_response(
+    "What are the latest findings on quantum entanglement in our research papers?",
+    stream=True,
+)
+```
+
+**How it works:**
+
+1. Agent calls `think()`: "I need to search for quantum entanglement. Let me try multiple search terms."
+2. Agent calls `search_knowledge("quantum entanglement")`
+3. Agent calls `analyze()`: "Results are too broad. Need more specific search."
+4. Agent calls `search_knowledge("quantum entanglement recent findings")`
+5. Agent calls `analyze()`: "Now I have sufficient, relevant results."
+6. Agent provides final answer
+
+### 3. MemoryTools - Reasoning about User Memories
+
+For managing and reasoning about user memories with CRUD operations.
+
+**What it provides:**
+
+- `think()` - Plan memory operations
+- `get_memories()` - Retrieve user memories
+- `add_memory()` - Store new memories
+- `update_memory()` - Modify existing memories
+- `delete_memory()` - Remove memories
+- `analyze()` - Evaluate memory operations
+
+**When to use:**
+
+- Personalized agent interactions
+- User preference management
+- Maintaining conversation context across sessions
+- Building user profiles over time
+
+**Example:**
+
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+from agno.tools.memory import MemoryTools
+
+db = PostgresDb(
+    db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
+)
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o"),
+    tools=[MemoryTools(db=db, add_instructions=True)],
+    db=db,
+)
+
+agent.print_response(
+    "I prefer vegetarian recipes and I'm allergic to nuts.",
+    user_id="user_123",
+)
+```
+
+**How it works:**
+
+1. Agent calls `think()`: "User is sharing dietary preferences. I should store this."
+2. Agent calls `add_memory(memory="User prefers vegetarian recipes and is allergic to nuts", topics=["dietary_preferences", "allergies"])`
+3. Agent calls `analyze()`: "Memory successfully stored with appropriate topics."
+4. Agent responds to user confirming the information was saved
+
+### 4. WorkflowTools - Reasoning about Workflow Execution
+
+For executing and analyzing complex workflows.
+
+**What it provides:**
+
+- `think()` - Plan workflow inputs and strategy
+- `run_workflow()` - Execute a workflow with specific inputs
+- `analyze()` - Evaluate workflow results
+
+**When to use:**
+
+- Multi-step automated processes
+- Complex task orchestration
+- When workflows need different inputs based on context
+- A/B testing different workflow configurations
+
+**Example:**
+
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.tools.workflow import WorkflowTools
+from agno.workflow import Workflow
+from agno.workflow.step import Step
+
+# Define a research workflow
+research_workflow = Workflow(
+    name="research-workflow",
+    steps=[
+        Step(name="search", agent=search_agent),
+        Step(name="summarize", agent=summary_agent),
+        Step(name="fact-check", agent=fact_check_agent),
+    ],
+)
+
+# Create agent with workflow tools
+orchestrator = Agent(
+    model=OpenAIChat(id="gpt-4o"),
+    tools=[WorkflowTools(workflow=research_workflow, add_instructions=True)],
+)
+
+orchestrator.print_response(
+    "Research climate change impacts on agriculture",
+    stream=True,
+)
+```
+
+**How it works:**
+
+1. Agent calls `think()`: "I need to run the research workflow with 'climate change agriculture' as input."
+2. Agent calls `run_workflow(input_data="climate change impacts on agriculture")`
+3. Workflow executes all steps (search → summarize → fact-check)
+4. Agent calls `analyze()`: "Workflow completed successfully. All fact-checks passed."
+5. Agent provides final synthesized answer
+
+## Common Pattern: Think → Act → Analyze
+
+All four toolkits follow the same reasoning cycle:
+
+1. **THINK** - Plan what to do, refine approach, brainstorm
+2. **ACT** (Domain-Specific)
+   - ReasoningTools: Direct reasoning
+   - KnowledgeTools: search_knowledge()
+   - MemoryTools: get/add/update/delete_memory()
+   - WorkflowTools: run_workflow()
+3. **ANALYZE** - Evaluate results, decide next action
+4. **REPEAT** - Loop back to THINK if needed, or provide answer
+
+This mirrors how humans solve complex problems: we think before acting, evaluate results, and adjust our approach based on what we learn.
+
+## Choosing the Right Reasoning Toolkit
+
+| If you need to...                    | Use                   | Example                                                |
+| ------------------------------------ | --------------------- | ------------------------------------------------------ |
+| Solve logic puzzles or math problems | `ReasoningTools`      | "Solve: If x² + 5x + 6 = 0, what is x?"                |
+| Search through documents             | `KnowledgeTools`      | "Find all mentions of user authentication in our docs" |
+| Remember user preferences            | `MemoryTools`         | "Remember that I'm allergic to shellfish"              |
+| Orchestrate complex multi-step tasks | `WorkflowTools`       | "Research, write, and fact-check an article"           |
+| Combine multiple domains             | Use multiple toolkits | See examples for more patterns                         |
+
+## Combining Multiple Reasoning Toolkits
+
+You can use multiple reasoning toolkits together for powerful multi-domain reasoning:
+
+```python
+from agno.agent import Agent
+from agno.knowledge.pdf import PDFKnowledgeBase
+from agno.models.openai import OpenAIChat
+from agno.tools.knowledge import KnowledgeTools
+from agno.tools.memory import MemoryTools
+from agno.tools.reasoning import ReasoningTools
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o"),
     tools=[
         ReasoningTools(add_instructions=True),
-        DuckDuckGoTools(enable_search=True),
+        KnowledgeTools(knowledge=my_knowledge, add_instructions=True),
+        MemoryTools(db=my_db, add_instructions=True),
     ],
-    instructions="Use tables to display data clearly",
-    markdown=True,
-)
-
-reasoning_agent.print_response(
-    """Analyze the semiconductor market performance focusing on:
-    - NVIDIA (NVDA)
-    - AMD (AMD)
-    - Intel (INTC)
-    - Taiwan Semiconductor (TSM)
-    Compare their market positions, growth metrics, and future outlook.""",
-    stream=True,
-    show_full_reasoning=True,
-    stream_intermediate_steps=True,
+    instructions="Use reasoning for planning, knowledge for facts, and memory for personalization",
 )
 ```
-
-**The agent's workflow:**
-
-1. `think()`: "I need current market data for 4 companies. I'll search for each one, then compare."
-2. **Acts:** Makes parallel DuckDuckGo searches for all 4 companies
-3. `analyze()`: "I have data for NVDA, AMD, INTC. TSM search returned limited results. Need more specific search."
-4. **Acts:** Searches for "TSM Taiwan Semiconductor stock performance"
-5. `analyze()`: "Now I have complete data. I can see NVDA leading in growth. Ready to create comparison."
-6. **Acts:** Generates comparison table
-7. `analyze()`: "Analysis is complete and comprehensive", `next_action="final_answer"`
-8. **Final response:** Delivers formatted analysis to user
 
 ## Configuration Options
 
@@ -277,76 +383,6 @@ ReasoningTools(
 )
 ```
 
-## Advanced Example: Complex Problem-Solving
-
-Here's a comprehensive example showing advanced reasoning patterns:
-
-```python advanced_reasoning.py
-from textwrap import dedent
-from agno.agent import Agent
-from agno.models.openai import OpenAIChat
-from agno.tools.reasoning import ReasoningTools
-
-reasoning_agent = Agent(
-    model=OpenAIChat(id="gpt-4o"),
-    tools=[ReasoningTools(add_instructions=True, add_few_shot=True)],
-    instructions=dedent("""
-        You are an expert problem-solving assistant with strong analytical skills.
-
-        Your approach to problems:
-        1. Break down complex questions into component parts
-        2. Clearly state your assumptions
-        3. Develop a structured reasoning path
-        4. Consider multiple perspectives
-        5. Evaluate evidence and counter-arguments
-        6. Draw well-justified conclusions
-
-        For quantitative problems:
-        - Show your calculations
-        - Explain the significance of numbers
-        - Consider confidence intervals when appropriate
-
-        For qualitative reasoning:
-        - Assess how different factors interact
-        - Consider psychological and social dynamics
-        - Evaluate practical constraints
-    """),
-    stream_intermediate_steps=True,
-    markdown=True,
-)
-
-# Logic puzzle
-reasoning_agent.print_response(
-    "Solve this logic puzzle: A man has to take a fox, a chicken, and a sack of grain across a river. "
-    "The boat is only big enough for the man and one item. If left unattended together, the fox will "
-    "eat the chicken, and the chicken will eat the grain. How can the man get everything across safely?",
-    stream=True,
-)
-```
-
-**What you'll see:**
-
-```
-Step 1:
-Title: Identify Constraints
-Reasoning: The constraints are: boat capacity (1 item + man), fox eats chicken, chicken eats grain
-Action: Map out all possible states
-Confidence: 0.95
-
-Step 2:
-Title: Analyze Invalid States
-Reasoning: Invalid states are: fox+chicken alone, chicken+grain alone. Need to avoid these.
-Action: Work through sequence avoiding invalid states
-Confidence: 0.9
-
-Step 3:
-Title: Solution Path
-Result: Take chicken first (leaves fox+grain, which is safe). Return alone. Take fox. Return with chicken. Take grain. Return alone. Take chicken.
-Analysis: This sequence never leaves fox+chicken or chicken+grain together unattended. All constraints satisfied.
-Next Action: final_answer
-Confidence: 0.95
-```
-
 ## Monitoring Your Agent's Thinking
 
 ### Show Full Reasoning
@@ -386,66 +422,6 @@ if "reasoning_steps" in agent.session_state:
         print(step)  # Each step is JSON
 ```
 
-## Real-World Use Cases
-
-### Financial Analysis
-
-```python
-reasoning_agent.print_response(
-    "Should I invest in renewable energy stocks given current market conditions? "
-    "Consider policy changes, technological trends, and market risks.",
-    stream=True,
-)
-```
-
-The agent will:
-
-1. Think about factors (policy, tech, risks)
-2. Search for current renewable energy policy news
-3. Analyze search results
-4. Search for technology trends
-5. Analyze market data
-6. Think through risk factors
-7. Provide final recommendation with reasoning
-
-### Legal Analysis
-
-```python
-reasoning_agent.print_response(
-    "Review this contract clause for potential issues: 'The contractor shall complete "
-    "all work within a reasonable timeframe as determined solely by the client.'",
-    stream=True,
-)
-```
-
-The agent will:
-
-1. Think about what makes contract terms enforceable
-2. Identify ambiguous terms ("reasonable timeframe")
-3. Analyze the power imbalance ("determined solely by client")
-4. Think through potential disputes
-5. Provide analysis with recommended revisions
-
-### Scientific Research Planning
-
-```python
-reasoning_agent.print_response(
-    "Design an experiment to test whether blue light affects sleep quality. "
-    "Include controls, variables, and methodology.",
-    stream=True,
-)
-```
-
-The agent will:
-
-1. Think about experimental design principles
-2. Define independent variables (blue light exposure)
-3. Define dependent variables (sleep quality metrics)
-4. Plan control groups
-5. Analyze potential confounds
-6. Design measurement protocol
-7. Provide complete experimental design
-
 ## When to Use Reasoning Tools
 
 **Use Reasoning Tools when:**
@@ -480,97 +456,4 @@ Both approaches add reasoning to any model, but they differ in control and autom
 - Use **Reasoning Tools** when you want the agent to control its own reasoning process
 - Use **Reasoning Agents** when you want guaranteed systematic thinking for every request
 
-## Tips and Best Practices
 
-### 1. Always Use `add_instructions=True`
-
-The default instructions ensure the agent uses the tools correctly:
-
-```python
-# Good
-ReasoningTools(add_instructions=True)
-
-# Bad (agent won't know how to use tools effectively)
-ReasoningTools(add_instructions=False)
-```
-
-### 2. Combine with Other Tools
-
-Reasoning Tools shine when combined with external tools:
-
-```python
-from agno.tools.reasoning import ReasoningTools
-from agno.tools.duckduckgo import DuckDuckGoTools
-from agno.tools.yfinance import YFinanceTools
-
-Agent(
-    model=OpenAIChat(id="gpt-4o"),
-    tools=[
-        ReasoningTools(add_instructions=True),
-        DuckDuckGoTools(),
-        YFinanceTools(),
-    ],
-)
-```
-
-### 3. Use `stream_intermediate_steps=True` for Debugging
-
-See reasoning in real-time during development:
-
-```python
-agent.print_response(
-    "Your question",
-    stream_intermediate_steps=True,  # See each step as it happens
-)
-```
-
-### 4. Guide the Agent with Custom Instructions
-
-Add domain-specific reasoning guidance:
-
-```python
-Agent(
-    model=OpenAIChat(id="gpt-4o"),
-    tools=[ReasoningTools(add_instructions=True)],
-    instructions="""
-        When analyzing code:
-        1. Think about edge cases before suggesting changes
-        2. Analyze performance implications
-        3. Consider security vulnerabilities
-        4. Think about maintainability
-    """,
-)
-```
-
-### 5. Monitor Confidence Scores
-
-Low confidence scores signal when the agent is uncertain:
-
-```python
-# In your application
-if step.confidence < 0.7:
-    # Agent is uncertain - might need more information
-    # Consider asking clarifying questions
-```
-
-## Developer Resources
-
-- [Reasoning Tools Examples](/examples/concepts/reasoning/tools)
-- [Reasoning Tools Cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/reasoning/tools)
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="Reasoning Tools Examples" icon="code" href="/examples/concepts/reasoning/tools">
-    See reasoning tools solving real problems
-  </Card>
-  <Card title="Tools Cookbook" icon="book-open" href="https://github.com/agno-agi/agno/tree/main/cookbook/reasoning/tools">
-    Production-ready code examples and patterns
-  </Card>
-  <Card title="Reasoning Agents" icon="users" href="/concepts/reasoning/reasoning-agents">
-    Alternative: Automated chain-of-thought
-  </Card>
-  <Card title="Reasoning Overview" icon="map" href="/concepts/reasoning/introduction">
-    Compare all three reasoning approaches
-  </Card>
-</CardGroup>

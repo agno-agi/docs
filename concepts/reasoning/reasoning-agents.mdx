@@ -158,6 +158,93 @@ agent.print_response(
 )
 ```
 
+### Capturing Reasoning Events
+
+For building custom UIs or tracking reasoning progress, you can capture reasoning events programmatically:
+
+```python
+from agno.agent import Agent, RunEvent
+from agno.models.openai import OpenAIChat
+
+reasoning_agent = Agent(
+    model=OpenAIChat(id="gpt-4o"),
+    reasoning=True,
+)
+
+# Option 1: Synchronous streaming (recommended for most use cases)
+for event in reasoning_agent.run(
+    "What is the sum of the first 100 prime numbers?",
+    stream=True,
+    stream_intermediate_steps=True,
+):
+    if event.event == RunEvent.reasoning_started:
+        print("\n🧠 Reasoning started...")
+
+    elif event.event == RunEvent.reasoning_step:
+        # Access individual reasoning steps as they happen
+        # event.content contains the ReasoningStep object
+        # event.reasoning_content contains the formatted string
+        print(f"💭 Step: {event.reasoning_content}")
+
+    elif event.event == RunEvent.reasoning_completed:
+        print("✅ Reasoning completed!")
+
+    elif event.event == RunEvent.run_content:
+        # Stream the final response content as it's generated
+        print(event.content, end="", flush=True)
+
+print("\n")  # New line after streaming completes
+
+# Option 2: Async streaming (for async applications)
+import asyncio
+
+async def process_reasoning_async():
+    async for event in reasoning_agent.arun(
+        "What is the sum of the first 100 prime numbers?",
+        stream=True,
+        stream_intermediate_steps=True,
+    ):
+        if event.event == RunEvent.reasoning_started:
+            print("\n🧠 Reasoning started...")
+
+        elif event.event == RunEvent.reasoning_step:
+            print(f"💭 Step: {event.reasoning_content}")
+
+        elif event.event == RunEvent.reasoning_completed:
+            print("✅ Reasoning completed!")
+
+        elif event.event == RunEvent.run_content:
+            print(event.content, end="", flush=True)
+    
+    print("\n")
+
+# Run the async version
+# asyncio.run(process_reasoning_async())
+
+# Option 3: Non-streaming - access complete reasoning trace
+response = reasoning_agent.run("What is the sum of the first 100 prime numbers?")
+
+# Access the full reasoning content
+if response.reasoning_content:
+    print("\n=== Full Reasoning Trace ===")
+    print(response.reasoning_content)
+
+# Access individual reasoning steps
+if response.reasoning_steps:
+    print(f"\n=== {len(response.reasoning_steps)} Reasoning Steps ===")
+    for i, step in enumerate(response.reasoning_steps, 1):
+        print(f"\nStep {i}:")
+        print(f"  Title: {step.title}")
+        print(f"  Confidence: {step.confidence_score}")
+        print(f"  Next Action: {step.next_action}")
+
+# Final answer
+print(f"\n=== Final Answer ===")
+print(response.content)
+```
+
+This is essential for building custom interfaces where you want to display reasoning progress, log intermediate steps, or create interactive debugging tools.
+
 ### Iteration Control
 
 Adjust how many reasoning steps the agent takes:
@@ -198,9 +285,9 @@ main_agent = Agent(
 )
 ```
 
-## What Can You Build?
+## Example Use Cases
 
-### Logical Puzzles
+<Accordion title="Logical Puzzles" icon="brain">
 
 Reasoning agents excel at breaking down complex logic problems:
 
@@ -224,7 +311,9 @@ reasoning_agent = Agent(
 reasoning_agent.print_response(task, stream=True, show_full_reasoning=True)
 ```
 
-### Mathematical Proofs
+</Accordion>
+
+<Accordion title="Mathematical Proofs" icon="calculator">
 
 For problems requiring rigorous validation:
 
@@ -243,7 +332,9 @@ reasoning_agent = Agent(
 reasoning_agent.print_response(task, stream=True, show_full_reasoning=True)
 ```
 
-### Scientific Research Analysis
+</Accordion>
+
+<Accordion title="Scientific Research Analysis" icon="microscope">
 
 When you need critical evaluation and multi-faceted analysis:
 
@@ -269,31 +360,9 @@ reasoning_agent = Agent(
 reasoning_agent.print_response(task, stream=True, show_full_reasoning=True)
 ```
 
-### Ethical Dilemmas
+</Accordion>
 
-For complex moral reasoning requiring multiple frameworks:
-
-```python ethical_dilemma.py
-from agno.agent import Agent
-from agno.models.openai import OpenAIChat
-
-task = (
-    "You are a train conductor faced with an emergency: the brakes have failed, and the train is heading towards "
-    "five people tied on the track. You can divert the train onto another track, but there is one person tied there. "
-    "Do you divert the train, sacrificing one to save five? Provide a well-reasoned answer considering utilitarian "
-    "and deontological ethical frameworks. Provide your answer also as an ASCII art diagram."
-)
-
-reasoning_agent = Agent(
-    model=OpenAIChat(id="gpt-4o"),
-    reasoning=True,
-    markdown=True,
-)
-
-reasoning_agent.print_response(task, stream=True, show_full_reasoning=True)
-```
-
-### Planning and Itineraries
+<Accordion title="Planning and Itineraries" icon="map">
 
 For tasks requiring sequential planning and optimization:
 
@@ -312,7 +381,9 @@ reasoning_agent = Agent(
 reasoning_agent.print_response(task, stream=True, show_full_reasoning=True)
 ```
 
-### Creative Writing with Structure
+</Accordion>
+
+<Accordion title="Creative Writing with Structure" icon="pen-fancy">
 
 Even creative tasks benefit from reasoning when structure and coherence matter:
 
@@ -330,6 +401,8 @@ reasoning_agent = Agent(
 
 reasoning_agent.print_response(task, stream=True, show_full_reasoning=True)
 ```
+
+</Accordion>
 
 ## When to Use Reasoning Agents
 
@@ -358,20 +431,3 @@ reasoning_agent.print_response(task, stream=True, show_full_reasoning=True)
 
 - [Reasoning Agent Examples](/examples/concepts/reasoning/agents/basic-cot)
 - [Reasoning Agent Cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/reasoning/agents)
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="Reasoning Examples" icon="code" href="/examples/concepts/reasoning/agents/basic-cot">
-    See reasoning agents solving real problems
-  </Card>
-  <Card title="Agent Cookbook" icon="book-open" href="https://github.com/agno-agi/agno/tree/main/cookbook/reasoning/agents">
-    Production-ready code examples and patterns
-  </Card>
-  <Card title="Reasoning Teams" icon="users" href="/examples/concepts/reasoning/teams/finance_team_chain_of_thought">
-    Build multi-agent reasoning systems
-  </Card>
-  <Card title="Reasoning Tools" icon="wrench" href="/concepts/reasoning/reasoning-tools">
-    Alternative: Explicit control over thinking steps
-  </Card>
-</CardGroup>
