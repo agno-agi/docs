@@ -1,79 +1,111 @@
 ---
-title: What are Tools?
-sidebarTitle: Overview
-description: Tools are functions your Agno Agents can use to get things done.
+title: Add Tools to your Agent or Team
+sidebarTitle: Using Tools
+description: Learn how to use tools in Agno to build AI agents.
 ---
 
-Tools are what make Agents capable of real-world action. While using LLMs directly you can only generate text, Agents equipped with tools can interact with external systems and perform practical actions.
+There are two ways to add tools to an Agent:
+1. Using a pre-built Toolkit
+2. Writing your own tools
 
-They are used to enable Agents to interact with external systems, and perform actions like searching the web, executing shell commands, running SQL, sending an email or calling APIs.
+## Using a Toolkit
 
-Agno comes with 120+ pre-built toolkits, which you can use to give your Agents all kind of abilities. You can also write your own tools, to give your Agents even more capabilities. The general syntax is:
+Agno has 120+ pre-built Toolkits that you can use to add tools to your Agent.
 
-
-```python
-import random
-
-from agno.agent import Agent
-from agno.models.openai import OpenAIChat
-from agno.tools import tool
-
-# This is our tool, marked by the @tool decorator
-@tool(stop_after_tool_call=True)
-def get_weather(city: str) -> str:
-    """Get the weather for the given city."""
-
-    # In a real implementation, this would call a weather API
-    weather_conditions = ["sunny", "cloudy", "rainy", "snowy", "windy"]
-    random_weather = random.choice(weather_conditions)
-
-    return f"The weather in {city} is {random_weather}."
-
-# To equipt our Agent with our tool, we simply pass it with the tools parameter
-agent = Agent(
-    model=OpenAIChat(id="gpt-5-nano"),
-    tools=[get_weather],
-    markdown=True,
-)
-
-# Our Agent will now be able to use our tool, when it deems it relevant
-agent.print_response("What is the weather in San Francisco?", stream=True)
-```
-
-<Tip>
-In the example above, the `get_weather` function is a tool. When called, the tool result is shown in the output.
-
-Then, the Agent will stop after the tool call (without waiting for the model to respond) because we set `stop_after_tool_call=True`.
-</Tip>
-
-### Using the Toolkit Class
-
-The `Toolkit` class provides a way to manage multiple tools with additional control over their execution.
-
-You can specify which tools should stop the agent after execution and which should have their results shown.
+For example, here's how to add the `ExaTools` toolkit to an Agent (uses [Exa](https://exa.ai/) to search the web):
 
 ```python
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
 
-# Importing our GoogleSearchTools ToolKit, containing multiple web search tools
-from agno.tools.googlesearch import GoogleSearchTools
+# Importing our ExaTools ToolKit, containing multiple ExaSearch tools
+from agno.tools.exa import ExaTools
 
 agent = Agent(
     model=OpenAIChat(id="gpt-5-mini"),
     tools=[
-        GoogleSearchTools(),
+        ExaTools(),
     ],
 )
 
-agent.print_response("What's the latest about OpenAIs GPT-5?", markdown=True)
+agent.print_response("Search for the latest news about Quantum Computing.", markdown=True)
 ```
 
-In this example, the `GoogleSearchTools` toolkit is added to the agent. This ToolKit comes pre-configured with the `google_search` function.
+In this example, the `ExaTools` toolkit is added to the agent. This ToolKit comes pre-configured with the `search_exa` function (amongst others).
 
-## Tool Built-in Parameters
+## Writing your own tools
 
-Agno automatically provides special parameters to your tools that give access to the agent's state. These parameters are injected automatically - you don't pass them when calling the tool.
+You can write your own tools to add to your Agent or Team. Either create a python function and add it as a tool, or create a class that inherits from `Toolkit` and add your functions to it.
+
+For example, here's how to create a tool that gets the weather for a city:
+
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+
+@tool(stop_after_tool_call=True)
+def get_weather(city: str) -> str:
+    """Get the weather for a city.
+    
+    Args:
+        city (str): The city to get the weather for.
+
+    Returns:
+        str: The weather in the city.
+    """
+    # Add your tool logic here
+    return f"The weather in {city} is sunny and 75°F"
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-5-mini"),
+    tools=[get_weather],
+    markdown=True,
+)
+
+agent.print_response("What is the weather in Tokyo?", stream=True)
+```
+
+For more control, you can create a class that inherits from `Toolkit` and add your functions to it.
+
+```python
+from agno.tools.function import Toolkit
+
+class WeatherTools(Toolkit):
+    def __init__(self, **kwargs):
+        # Include all the functions in the `tools` argument to the `Toolkit` constructor
+        super().__init__(name="weather_tools", tools=[self.get_weather_today, self.get_weather_tomorrow], **kwargs)
+
+    def get_weather_today(self, city: str) -> str:
+        """Get the weather for a city."""
+        return f"The weather in {city} is sunny and 75°F"
+      
+    def get_weather_tomorrow(self, city: str) -> str:
+        """Get the weather forecast for a city."""
+        return f"The weather forecast in {city} is sunny and 75°F"
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-5-mini"),
+    tools=[WeatherTools()],
+    markdown=True,
+)
+
+agent.print_response("What is the weather in Tokyo?", stream=True)
+```
+
+## Tool State Parameters
+
+Agno automatically provides special parameters to your tools that give access to the current run state. These parameters are injected automatically - you don't pass them when calling the tool.
+
+The following parameters are available:
+
+- **agent**: The Agent instance (when tool is used by an Agent)
+- **team**: The Team instance (when tool is used by a Team)
+- **session_state**: The session state of the current run
+- **dependencies**: The dependencies of the current run
+- **images**: The images of the current run
+- **videos**: The videos of the current run
+- **audios**: The audios of the current run
+- **files**: The files of the current run
 
 ### Session State Parameter
 
