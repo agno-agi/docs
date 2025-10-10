@@ -95,9 +95,7 @@ For multi-platform code examples, use the `<CodeGroup>` component with separate 
 - Include a blank line between code blocks
 
 Example from the documentation:
-```
 <CodeGroup>
-
 ```bash Mac
 pip install agno
 ```
@@ -105,7 +103,6 @@ pip install agno
 ```bash Windows  
 pip install agno
 ```
-
 </CodeGroup>
 ```
 
