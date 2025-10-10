@@ -94,21 +94,6 @@ For multi-platform code examples, use the `<CodeGroup>` component with separate 
 - Each code block should specify the platform (e.g., `bash Mac`, `bash Windows`)
 - Include a blank line between code blocks
 
-Example from the documentation:
-```
-<CodeGroup>
-
-```bash Mac
-pip install agno
-```
-
-```bash Windows  
-pip install agno
-```
-
-</CodeGroup>
-```
-
 The `_snippets/` directory contains reusable MDX components (like common setup steps) that can be referenced across multiple documentation pages for consistency.
 
 ### Adding New Pages

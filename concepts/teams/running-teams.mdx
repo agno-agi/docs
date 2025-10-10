@@ -1,71 +1,66 @@
 ---
-title: Running your Team
-description: Learn how to run a team and get the response.
+title: Running Teams
+sidebarTitle: Running Teams
+description: Learn how to run Agno Teams.
 ---
 
-The `Team.run()` function runs the team and generates a response, either as a `TeamRunOutput` object or a stream of `TeamRunOutputEvent` objects.
+Run your Team by calling `Team.run()` or `Team.arun()`. Here's how they work:
 
-<Note>
-  Many of our examples use `team.print_response()` which is a helper utility to
-  print the response in the terminal. It uses `team.run()` under the hood.
-</Note>
+1. The team leader builds the context to send to the model (system message, user message, chat history, user memories, session state and other relevant inputs).
+2. The team leader sends this context to the model.
+3. The model processes the input and decides whether to delegate to team members, call other tools, or respond directly.
+4. If delegation occurs, team members execute their tasks and return results to the team leader.
+5. The team leader processes the updated context and provides a final response.
+6. The team returns this final response to the caller.
 
-## Running your Team
+## Basic Execution
 
-Here's how to run your team. The response is captured in the `response` and `response_stream` variables.
+The `Team.run()` function runs the team and returns the output — either as a `TeamRunOutput` object or as a stream of `TeamRunOutputEvent` and `RunOutputEvent` (for member agents) objects (when `stream=True`). For example:
 
 ```python
 from agno.team import Team
+from agno.agent import Agent
 from agno.models.openai import OpenAIChat
+from agno.utils.pprint import pprint_run_response
 
-agent_1 = Agent(name="News Agent", role="Get the latest news")
+news_agent = Agent(
+    name="News Agent", 
+    model=OpenAIChat(id="gpt-4o"), 
+    role="Get the latest news",
+    tools=[DuckDuckGoTools()]
+)
+weather_agent = Agent(
+    name="Weather Agent", 
+    model=OpenAIChat(id="gpt-4o"), 
+    role="Get the weather for the next 7 days",
+    tools=[DuckDuckGoTools()]
+)
 
-agent_2 = Agent(name="Weather Agent", role="Get the weather for the next 7 days")
+team = Team(
+    name="News and Weather Team",
+    members=[news_agent, weather_agent],
+    model=OpenAIChat(id="gpt-4o")
+)
 
-team = Team(name="News and Weather Team", members=[agent_1, agent_2])
-
-# Synchronous execution
-result = team.run("What is the weather in Tokyo?")
-
-# Asynchronous execution
-result = await team.arun("What is the weather in Tokyo?")
+# Run team and return the response as a variable
+response = team.run(input="What is the weather in Tokyo?")
+# Print the response in markdown format
+pprint_run_response(response, markdown=True)
 ```
 
 <Tip>
-You can also run the agent asynchronously using the `Team.arun()` method.  This means members will run concurrently if the team leader delegates to multiple members in one request.
+
+You can also run the team asynchronously using `Team.arun()`. This means members will run concurrently if the team leader delegates to multiple members in one request.
+
 </Tip>
-
-### Print Response
-
-For development purposes, you can also print the response in the terminal using the `Team.print_response()` method.
-
-```python
-team.print_response("What is the weather in Tokyo?")
-
-# Or for streaming
-team.print_response("What is the weather in Tokyo?", stream=True)
-```
-
-<Note>
-The `Team.print_response()` method is a helper method that uses the `Team.run()` method under the hood. 
-This is only for convenience during development and not recommended for production use.
-
-See the [Team class reference](/reference/teams/team) for more details.
-</Note>
-
-
-### Typed inputs and outputs
-
-Teams support the same typesafe input and output patterns as individual agents, allowing you to define structured data schemas for validation and consistent response formats.
-
-For comprehensive information about using Pydantic models for input validation and output schema definition, see the [Input and Output](/concepts/agents/input-output) documentation. All patterns shown there apply to teams as well.
 
 <Tip>
-You can set the `input_schema` on the team to validate the input and `output_schema` to ensure structured outputs. See more details in the [Input and Output](/concepts/teams/input-output) documentation.
+
+See the [Input & Output](/concepts/teams/input-output) docs for more information, and to see how to use structured input and output with teams.
+
 </Tip>
 
-
-### RunOutput
+## Run Output
 
 The `Team.run()` function returns a `TeamRunOutput` object when not streaming. Here are some of the core attributes:
 
@@ -84,35 +79,39 @@ The `Team.run()` function returns a `TeamRunOutput` object when not streaming. H
 
 See detailed documentation in the [TeamRunOutput](/reference/teams/team-response) documentation.
 
-## Streaming Responses
+## Streaming
 
 To enable streaming, set `stream=True` when calling `run()`. This will return an iterator of `TeamRunOutputEvent` objects instead of a single response.
 
 ```python
+from typing import Iterator
 from agno.team import Team
+from agno.agent import Agent
 from agno.models.openai import OpenAIChat
 
-agent_1 = Agent(name="News Agent", role="Get the latest news")
+news_agent = Agent(name="News Agent", role="Get the latest news")
+weather_agent = Agent(name="Weather Agent", role="Get the weather for the next 7 days")
 
-agent_2 = Agent(name="Weather Agent", role="Get the weather for the next 7 days")
+team = Team(
+    name="News and Weather Team",
+    members=[news_agent, weather_agent],
+    model=OpenAIChat(id="gpt-4o")
+)
 
-team = Team(name="News and Weather Team", members=[agent_1, agent_2])
-
-# Synchronous execution
-for chunk in team.run("What is the weather in Tokyo?", stream=True, stream_intermediate_steps=True):
-    print(chunk.content, end="", flush=True)
-
-# Asynchronous execution
-async for chunk in team.arun("What is the weather in Tokyo?", stream=True, stream_intermediate_steps=True):
-    print(chunk.content, end="", flush=True)
+# Run team and return the response as a stream
+stream: Iterator[TeamRunOutputEvent] = team.run("What is the weather in Tokyo?", stream=True)
+for chunk in stream:
+    if chunk.event == "TeamRunContent":
+        print(chunk.content)
 ```
 
-<Note>
+<Tip>
+
 When your team is running asynchronously (using `arun`), the members will run concurrently if the team leader delegates to multiple members in one request.
 
 This means you will receive member events concurrently and the order of the events is not guaranteed.
-</Note>
 
+</Tip>
 
 ### Streaming Intermediate Steps
 
@@ -161,10 +160,16 @@ You can store all the events that happened during a run on the `RunOutput` objec
 
 ```python
 from agno.team import Team
+from agno.agent import Agent
 from agno.models.openai import OpenAIChat
 from agno.utils.pprint import pprint_run_response
 
-team = Team(model=OpenAIChat(id="gpt-5-mini"), members=[], store_events=True)
+team = Team(
+    name="Story Team",
+    members=[],
+    model=OpenAIChat(id="gpt-4o"),
+    store_events=True
+)
 
 response = team.run("Tell me a 5 second short story about a lion", stream=True, stream_intermediate_steps=True)
 pprint_run_response(response)
@@ -178,7 +183,13 @@ By default the `TeamRunContentEvent` and `RunContentEvent` events are not stored
 For example:
 
 ```python
-team = Team(model=OpenAIChat(id="gpt-5-mini"), members=[], store_events=True, events_to_skip=[TeamRunEvent.run_started.value])
+team = Team(
+    name="Story Team",
+    members=[],
+    model=OpenAIChat(id="gpt-4o"),
+    store_events=True,
+    events_to_skip=["TeamRunStarted"]
+)
 ```
 
 ### Event Types
@@ -239,7 +250,6 @@ If you are using your own custom tools, it will often be useful to be able to yi
 
 We recommend creating your custom event class extending the built-in `CustomEvent` class:
 
-
 ```python
 from dataclasses import dataclass
 from agno.run.team import CustomEvent
@@ -252,7 +262,6 @@ class CustomerProfileEvent(CustomEvent):
     customer_email: Optional[str] = None
     customer_phone: Optional[str] = None
 ```
-
 
 You can then yield your custom event from your tool. The event will be handled internally as an Agno event, and you will be able to access it in the same way you would access any other Agno event.
 
@@ -272,32 +281,35 @@ async def get_customer_profile():
 
 See the [full example](/examples/concepts/teams/events/custom_events) for more details.
 
-## Interactive CLI 
+## Specify Run User and Session
 
-You can also interact with the team via a CLI.
+You can specify which user and session to use when running the team by passing the `user_id` and `session_id` parameters. 
+This ensures the current run is associated with the correct user and session. For example:
 
 ```python
-team.cli_app(input="What is the weather in Tokyo?", stream=True)
+team.run("Get me my monthly report", user_id="john@example.com", session_id="session_123")
 ```
 
-See the [Team class reference](/reference/teams/team) for more details.
+For more information see the [Team Sessions](/concepts/teams/sessions) documentation.
 
-## Agno Telemetry
+## Passing Images / Audio / Video / Files
 
-Agno logs which model an team used so we can prioritize updates to the most popular providers. You can disable this by setting `AGNO_TELEMETRY=false` in your environment or by setting `telemetry=False` on the team.
+You can pass images, audio, video, or files to the team by passing the `images`, `audio`, `video`, or `files` parameters. For example:
 
-```bash
-export AGNO_TELEMETRY=false
-```
-or:
 ```python
-team = Team(model=OpenAIChat(id="gpt-5-mini"), members=[], telemetry=False)
+team.run("Tell me a 5 second short story about this image", images=[Image(url="https://example.com/image.jpg")])
 ```
 
-See the [Team class reference](/reference/teams/team) for more details.
+For more information see the [Multimodal](/concepts/multimodal) documentation.
+
+## Cancelling a Run
+
+A run can be cancelled by calling the `Team.cancel_run()` method.
+
+See more details in the [Cancelling a Run](/concepts/teams/run-cancel) documentation.
 
 ## Developer Resources
 
 - View the [Team reference](/reference/teams/team)
 - View the [TeamRunOutput schema](/reference/teams/team-response)
-- View [Cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/teams/README.md)
+- View [Team Cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/teams/README.md)
