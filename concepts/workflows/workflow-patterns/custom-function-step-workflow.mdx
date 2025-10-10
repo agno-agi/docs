@@ -1,0 +1,102 @@
+---
+title: Custom Functions in Workflows
+sidebarTitle: Custom Functions in Workflows
+description: How to use custom functions in workflows
+---
+
+Custom functions provide maximum flexibility by allowing you to define specific logic for step execution. Use them to preprocess inputs, orchestrate agents and teams, and postprocess outputs with complete programmatic control.
+
+**Key Capabilities**
+- **Custom Logic**: Implement complex business rules and data transformations
+- **Agent Integration**: Call agents and teams within your custom processing logic
+- **Data Flow Control**: Transform outputs between steps for optimal data handling
+
+**Implementation Pattern**
+Define a `Step` with a custom function as the `executor`. The function must accept a `StepInput` object and return a `StepOutput` object, ensuring seamless integration with the workflow system.
+
+<img 
+  className="block dark:hidden" 
+  src="/images/custom-function-steps-light.png" 
+  alt="Custom function step workflow diagram"
+/>
+<img 
+  className="hidden dark:block" 
+  src="/images/custom-function-steps-dark.png" 
+  alt="Custom function step workflow diagram"
+/>
+
+## Example
+
+```python 
+content_planning_step = Step(
+    name="Content Planning Step",
+    executor=custom_content_planning_function,
+)
+
+def custom_content_planning_function(step_input: StepInput) -> StepOutput:
+    """
+    Custom function that does intelligent content planning with context awareness
+    """
+    message = step_input.input
+    previous_step_content = step_input.previous_step_content
+
+    # Create intelligent planning prompt
+    planning_prompt = f"""
+        STRATEGIC CONTENT PLANNING REQUEST:
+
+        Core Topic: {message}
+
+        Research Results: {previous_step_content[:500] if previous_step_content else "No research results"}
+
+        Planning Requirements:
+        1. Create a comprehensive content strategy based on the research
+        2. Leverage the research findings effectively
+        3. Identify content formats and channels
+        4. Provide timeline and priority recommendations
+        5. Include engagement and distribution strategies
+
+        Please create a detailed, actionable content plan.
+    """
+
+    try:
+        response = content_planner.run(planning_prompt)
+
+        enhanced_content = f"""
+            ## Strategic Content Plan
+
+            **Planning Topic:** {message}
+
+            **Research Integration:** {"✓ Research-based" if previous_step_content else "✗ No research foundation"}
+
+            **Content Strategy:**
+            {response.content}
+
+            **Custom Planning Enhancements:**
+            - Research Integration: {"High" if previous_step_content else "Baseline"}
+            - Strategic Alignment: Optimized for multi-channel distribution
+            - Execution Ready: Detailed action items included
+        """.strip()
+
+        return StepOutput(content=enhanced_content)
+
+    except Exception as e:
+        return StepOutput(
+            content=f"Custom content planning failed: {str(e)}",
+            success=False,
+        )
+```
+
+**Standard Pattern**
+All custom functions follow this consistent structure:
+
+```python
+def custom_content_planning_function(step_input: StepInput) -> StepOutput:
+    # 1. Custom preprocessing
+    # 2. Call agents/teams as needed
+    # 3. Custom postprocessing
+    return StepOutput(content=enhanced_content)
+```
+
+## Developer Resources
+
+- [Step with a Custom Function](/examples/concepts/workflows/01-basic-workflows/step_with_function)

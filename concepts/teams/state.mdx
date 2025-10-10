@@ -78,7 +78,7 @@ def remove_item(session_state, item: str) -> str:
         if list_item.lower() == item.lower():
             session_state["shopping_list"].pop(i)
             return f"Removed '{list_item}' from the shopping list"
-    
+
     return f"'{item}' was not found in the shopping list"
 
 
@@ -96,10 +96,10 @@ def list_items(session_state) -> str:
     """List all items in the shopping list."""
     # Access shared state (not private state)
     shopping_list = session_state["shopping_list"]
-    
+
     if not shopping_list:
         return "The shopping list is empty."
-    
+
     items_text = "\n".join([f"- {item}" for item in shopping_list])
     return f"Current shopping list:\n{items_text}"
 
@@ -109,7 +109,7 @@ def add_chore(session_state, chore: str) -> str:
     # Access team's private state
     if "chores" not in session_state:
         session_state["chores"] = []
-    
+
     session_state["chores"].append(chore)
     return f"Logged chore: {chore}"
 
@@ -139,7 +139,7 @@ shopping_team.print_response("I got the eggs", stream=True)
 print(f"Shared state: {shopping_team.get_session_state()}")
 ```
 
-<Tip> 
+<Tip>
 Notice how shared tools use `session_state`, which allows state to propagate and persist across the entire team — even for subteams within the team. This ensures consistent shared state for all members.
 </Tip>
 
@@ -242,6 +242,47 @@ team.print_response("What is my name?", session_id="user_2_session_1", user_id="
 
 # Will load the session state from the session with the id "user_2_session_1"
 team.print_response("How old am I?", session_id="user_2_session_1", user_id="user_2")
+```
+
+## Overwriting the state in the db
+
+By default, if you pass `session_state` to the run methods, this new state will be merged with the `session_state` in the db.
+
+You can change that behavior if you want to overwrite the `session_state` in the db:
+
+```python overwriting_session_state_in_db.py
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIChat
+
+# Create an Agent that maintains state
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=SqliteDb(db_file="tmp/agents.db"),
+    markdown=True,
+    # Set the default session_state. The values set here won't be overwritten.
+    session_state={},
+    # Adding the session_state to context for the agent to easily access it
+    add_session_state_to_context=True,
+    # Allow overwriting the stored session state with the session state provided in the run
+    overwrite_db_session_state=True,
+)
+
+# Let's run the agent providing a session_state. This session_state will be stored in the database.
+agent.print_response(
+    "Can you tell me what's in your session_state?",
+    session_state={"shopping_list": ["Potatoes"]},
+    stream=True,
+)
+print(f"Stored session state: {agent.get_session_state()}")
+
+# Now if we pass a new session_state, it will overwrite the stored session_state.
+agent.print_response(
+    "Can you tell me what is in your session_state?",
+    session_state={"secret_number": 43},
+    stream=True,
+)
+print(f"Stored session state: {agent.get_session_state()}")
 ```
 
 ## Team Member Interactions

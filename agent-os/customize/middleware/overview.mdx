@@ -1,0 +1,170 @@
+---
+title: Overview
+description: How to add middleware to your AgentOS application
+---
+
+AgentOS is built on FastAPI, which means you can add any [FastAPI/Starlette compatible middleware](https://fastapi.tiangolo.com/tutorial/middleware/) to enhance your application with features like authentication, logging, monitoring, security headers, and more.
+
+Additionally, Agno provides some built-in middleware for common use cases, including authentication.
+
+See the following guides:
+<CardGroup cols={2}>
+  <Card
+    title="Custom Middleware"
+    icon="code"
+    href="/agent-os/customize/middleware/custom"
+  >
+    Create your own middleware for logging, rate limiting, monitoring, and security.
+  </Card>
+  <Card
+    title="JWT Middleware"
+    icon="key"
+    href="/agent-os/customize/middleware/jwt"
+  >
+    Built-in JWT authentication with automatic parameter injection and claims extraction.
+  </Card>
+</CardGroup>
+
+## Quick Start
+
+Adding middleware to your AgentOS application is straightforward:
+
+```python agent_os_with_jwt_middleware.py
+from agno.os import AgentOS
+from agno.os.middleware import JWTMiddleware
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+from agno.agent import Agent
+
+db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+agent = Agent(
+    name="Basic Agent",
+    model=OpenAIChat(id="gpt-5-mini"),
+    db=db,
+)
+
+# Create your AgentOS app
+agent_os = AgentOS(agents=[agent])
+app = agent_os.get_app()
+
+# Add middleware
+app.add_middleware(
+    JWTMiddleware,
+    secret_key="your-secret-key",
+    validate=True
+)
+
+if __name__ == "__main__":
+    agent_os.serve(app="agent_os_with_jwt_middleware:app", reload=True)
+```
+
+
+<Note>
+Always test middleware thoroughly in staging environments before production deployment.
+
+A reminder that middleware adds latency to every request.
+</Note>
+
+## Common Use Cases
+
+<Tabs>
+  <Tab title="Authentication">
+    **Secure your AgentOS with JWT authentication:**
+    
+    - Extract tokens from headers or cookies
+    - Automatic parameter injection (user_id, session_id)
+    - Custom claims extraction for `dependencies` and `session_state`
+    - Route exclusion for public endpoints
+    
+    [Learn more about JWT Middleware](/agent-os/customize/middleware/jwt)
+  </Tab>
+  
+  <Tab title="Rate Limiting">
+    **Prevent API abuse with rate limiting:**
+    
+    ```python
+    class RateLimitMiddleware(BaseHTTPMiddleware):
+        def __init__(self, app, requests_per_minute: int = 60):
+            super().__init__(app)
+            self.requests_per_minute = requests_per_minute
+            # ... implementation
+    
+    app.add_middleware(RateLimitMiddleware, requests_per_minute=100)
+    ```
+
+    See the [full example](/examples/agent-os/middleware/custom-middleware) for more details.
+  </Tab>
+  
+  <Tab title="Logging">
+    **Monitor requests and responses:**
+    
+    ```python
+    class LoggingMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            start_time = time.time()
+            response = await call_next(request)
+            process_time = time.time() - start_time
+            # Log request details...
+            return response
+    ```
+
+    See the [full example](/examples/agent-os/middleware/custom-middleware) for more details.
+  </Tab>
+  
+</Tabs>
+
+## Middleware Execution Order
+
+<Warning>
+Middleware is executed in reverse order of addition. The last middleware added runs first.
+</Warning>
+
+```python
+app.add_middleware(MiddlewareA)  # Runs third (closest to route)
+app.add_middleware(MiddlewareB)  # Runs second
+app.add_middleware(MiddlewareC)  # Runs first (outermost)
+
+# Request: C -> B -> A -> Your Route
+# Response: Your Route -> A -> B -> C
+```
+
+**Best Practice:** Add middleware in logical order:
+1. **Security middleware first** (CORS, security headers)
+2. **Authentication middleware** (JWT, session validation)  
+3. **Monitoring middleware** (logging, metrics)
+4. **Business logic middleware** (rate limiting, custom logic)
+
+
+## Examples
+
+<CardGroup cols={2}>
+  <Card
+    title="JWT with Headers"
+    icon="shield"
+    href="/examples/agent-os/middleware/jwt-middleware"
+  >
+    JWT authentication using Authorization headers for API clients.
+  </Card>
+  <Card
+    title="JWT with Cookies"
+    icon="cookie"
+    href="/examples/agent-os/middleware/jwt-cookies"
+  >
+    JWT authentication using HTTP-only cookies for web applications.
+  </Card>
+  <Card
+    title="Custom Middleware"
+    icon="gear"
+    href="/examples/agent-os/middleware/custom-middleware"
+  >
+    Rate limiting and request logging middleware implementation.
+  </Card>
+  <Card
+    title="Custom FastAPI + JWT"
+    icon="code"
+    href="/examples/agent-os/middleware/custom-fastapi-jwt"
+  >
+    Custom FastAPI app with JWT middleware and AgentOS integration.
+  </Card>
+</CardGroup>

@@ -1,0 +1,234 @@
+---
+title: "JWT Middleware with Cookies"
+description: "AgentOS with JWT middleware using HTTP-only cookies for secure web authentication"
+---
+
+This example demonstrates how to use JWT middleware with AgentOS using HTTP-only cookies instead of Authorization headers. 
+This approach is more secure for web applications as it prevents XSS attacks.
+
+## Code
+
+```python jwt_cookies.py
+from datetime import UTC, datetime, timedelta
+
+import jwt
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+from agno.os import AgentOS
+from agno.os.middleware import JWTMiddleware
+from agno.os.middleware.jwt import TokenSource
+from fastapi import FastAPI, Response
+
+# JWT Secret (use environment variable in production)
+JWT_SECRET = "a-string-secret-at-least-256-bits-long"
+
+# Setup database
+db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+
+def get_user_profile(dependencies: dict) -> dict:
+    """
+    Get the current user's profile.
+    """
+    return {
+        "name": dependencies.get("name", "Unknown"),
+        "email": dependencies.get("email", "Unknown"),
+        "roles": dependencies.get("roles", []),
+        "organization": dependencies.get("org", "Unknown"),
+    }
+
+
+# Create agent
+profile_agent = Agent(
+    id="profile-agent",
+    name="Profile Agent",
+    model=OpenAIChat(id="gpt-4o"),
+    db=db,
+    tools=[get_user_profile],
+    instructions="You are a profile agent. You can search for information and access user profiles.",
+    add_history_to_context=True,
+    markdown=True,
+)
+
+
+app = FastAPI()
+
+
+# Add a simple endpoint to set the JWT authentication cookie
+@app.get("/set-auth-cookie")
+async def set_auth_cookie(response: Response):
+    """
+    Endpoint to set the JWT authentication cookie.
+    In a real application, this would be done after successful login.
+    """
+    # Create a test JWT token
+    payload = {
+        "sub": "cookie_user_789",
+        "session_id": "cookie_session_123",
+        "name": "Jane Smith",
+        "email": "jane.smith@example.com",
+        "roles": ["user", "premium"],
+        "org": "Example Corp",
+        "exp": datetime.now(UTC) + timedelta(hours=24),
+        "iat": datetime.now(UTC),
+    }
+
+    token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+
+    # Set HTTP-only cookie (more secure than localStorage for JWT storage)
+    response.set_cookie(
+        key="auth_token",
+        value=token,
+        httponly=True,  # Prevents access from JavaScript (XSS protection)
+        secure=True,  # Only send over HTTPS in production
+        samesite="strict",  # CSRF protection
+        max_age=24 * 60 * 60,  # 24 hours
+    )
+
+    return {
+        "message": "Authentication cookie set successfully",
+        "cookie_name": "auth_token",
+        "expires_in": "24 hours",
+        "security_features": ["httponly", "secure", "samesite=strict"],
+        "instructions": "Now you can make authenticated requests without Authorization headers",
+    }
+
+
+# Add a simple endpoint to clear the JWT authentication cookie
+@app.get("/clear-auth-cookie")
+async def clear_auth_cookie(response: Response):
+    """Endpoint to clear the JWT authentication cookie (logout)."""
+    response.delete_cookie(key="auth_token")
+    return {"message": "Authentication cookie cleared successfully"}
+
+
+# Add JWT middleware configured for cookie-based authentication
+app.add_middleware(
+    JWTMiddleware,
+    secret_key=JWT_SECRET, # or use JWT_SECRET_KEY environment variable
+    algorithm="HS256",
+    excluded_route_paths=[
+        "/set-auth-cookie",
+        "/clear-auth-cookie",
+    ],
+    token_source=TokenSource.COOKIE,  # Extract JWT from cookies
+    cookie_name="auth_token",  # Name of the cookie containing the JWT
+    user_id_claim="sub",  # Extract user_id from 'sub' claim
+    session_id_claim="session_id",  # Extract session_id from 'session_id' claim
+    dependencies_claims=[
+        "name",
+        "email",
+        "roles",
+        "org",
+    ],  # Additional claims to extract
+    validate=True,  # We want to ensure the token is valid
+)
+
+
+agent_os = AgentOS(
+    description="JWT Cookie-Based AgentOS",
+    agents=[profile_agent],
+    base_app=app,
+)
+
+# Get the final app
+app = agent_os.get_app()
+
+
+if __name__ == "__main__":
+    """
+    Run your AgentOS with JWT cookie authentication.
+    """
+
+    agent_os.serve(
+        app="jwt_cookies:app", port=7777, reload=True
+    )
+```
+
+## Usage
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Set Environment Variables">
+    ```bash
+    export OPENAI_API_KEY=your_openai_api_key
+    ```
+  </Step>
+
+  <Step title="Install libraries">
+    ```bash
+    pip install -U agno openai pyjwt fastapi["standard"] uvicorn sqlalchemy pgvector psycopg
+    ```
+  </Step>
+
+  <Step title="Setup PostgreSQL Database">
+    ```bash
+    # Using Docker
+    docker run -d \
+      --name agno-postgres \
+      -e POSTGRES_DB=ai \
+      -e POSTGRES_USER=ai \
+      -e POSTGRES_PASSWORD=ai \
+      -p 5532:5432 \
+      pgvector/pgvector:pg17
+    ```
+  </Step>
+
+  <Step title="Run Example">
+    ```bash
+    python jwt_cookies.py
+    ```
+  </Step>
+
+  <Step title="Test Cookie Authentication">
+    
+    **Step 1: Set the authentication cookie**
+    ```bash
+    curl --location 'http://localhost:7777/set-auth-cookie'
+    ```
+    
+    **Step 2: Make authenticated requests using the cookie**
+    ```bash
+    curl --location 'http://localhost:7777/agents/profile-agent/runs' \
+        --header 'Content-Type: application/x-www-form-urlencoded' \
+        --data-urlencode 'message=What do you know about me?'
+    ```
+    
+    **Step 3: Test browser-based authentication**
+    1. Visit http://localhost:7777/set-auth-cookie in your browser
+    2. Visit http://localhost:7777/docs to see the API documentation  
+    3. Use the "Try it out" feature - cookies are automatically included
+    
+    **Step 4: Clear authentication (logout)**
+    ```bash
+    curl --location 'http://localhost:7777/clear-auth-cookie'
+    ```
+  </Step>
+</Steps>
+
+## How It Works
+
+1. **Cookie Management**: Custom endpoints handle setting and clearing authentication cookies
+2. **JWT Middleware**: Configured to extract tokens from the `auth_token` cookie
+3. **Token Validation**: Full validation enabled to ensure security  
+4. **Parameter Injection**: User profile data automatically injected into agent tools
+5. **Route Exclusion**: Cookie management endpoints excluded from authentication
+
+## Cookie vs Header Authentication
+
+| Feature | HTTP-Only Cookies | Authorization Headers |
+|---------|-------------------|----------------------|
+| **XSS Protection** | ✅ Protected | ❌ Vulnerable if stored in localStorage |
+| **CSRF Protection** | ✅ With SameSite flag | ✅ Not sent automatically |
+| **Mobile Apps** | ❌ Limited support | ✅ Easy to implement |
+| **Web Apps** | ✅ Automatic handling | ❌ Manual header management |
+| **Server Setup** | ❌ Requires cookie management | ✅ Stateless |
+
+
+## Developer Resources
+
+- [JWT Middleware Documentation](/agent-os/customize/middleware/jwt)
+- [JWT Authorization Headers Example](/examples/agent-os/middleware/jwt-middleware)
+- [Custom FastAPI with JWT](/examples/agent-os/middleware/custom-fastapi-jwt)

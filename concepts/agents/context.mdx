@@ -4,14 +4,16 @@ description: Learn how to write prompts and other context engineering techniques
 ---
 
 Context engineering is the process of designing and controlling the information (context) that is sent to language models to guide their behavior and outputs. 
-In Agno, this means carefully crafting the system message, which includes the agent's description, instructions, and other relevant settings. By thoughtfully engineering this context, you can:
+In practice, building context comes down to one question: "Which information is most likely to achieve the desired outcome?"
+
+In Agno, this means carefully crafting the system message, which includes the agent's description, instructions, and other relevant settings. By thoughtfully constructing this context, you can:
 
 - Steer the agent toward specific behaviors or roles.
 - Constrain or expand the agent's capabilities.
 - Ensure outputs are consistent, relevant, and aligned with your application's needs.
 - Enable advanced use cases such as multi-step reasoning, tool use, or structured output.
 
-Effective context engineering involves iteratively refining the system message, experimenting with different descriptions and instructions, and leveraging features like input/output schemas or tool integrations. 
+Effective context engineering is an iterative process: refining the system message, trying out different descriptions and instructions, and using features such as schemas, delegation, and tool integrations.
 
 The context of an Agno agent consists of the following:
 - **System message**: The system message is the main context that is sent to the agent, including all additional context
@@ -27,38 +29,145 @@ The following are some key parameters that are used to create the system message
 2. **Instructions**: A list of precise, task-specific instructions on how to achieve its goal.
 3. **Expected Output**: A description of the expected output from the Agent.
 
-The system message is created using `description`, `instructions` and a number of other settings. The `description` is added to the start of the system message and `instructions` are added as a list. For example:
+The system message is built from the agent's description, instructions, and other settings.
+
 
 ```python
 from agno.agent import Agent
+from agno.models.openai import OpenAIChat
 
 agent = Agent(
+    model=OpenAIChat(id="gpt-5-mini"),
     description="You are a famous short story writer asked to write for a magazine",
-    instructions=["You are a pilot on a plane flying from Hawaii to Japan."],
+    instructions=["Always write 2 sentence stories."],
     markdown=True,
     debug_mode=True,  # Set to True to view the detailed logs and see the compiled system message
 )
-agent.print_response("Tell me a 2 sentence horror story.", stream=True)
+agent.print_response("Tell me a horror story.", stream=True)
 ```
 
 Will produce the following system message:
 
 ```
-You are a famous short story writer asked to write for a magazine
-<instructions>
-You are a pilot on a plane flying from Hawaii to Japan.
-</instructions>
-
-<additional_information>
-- Use markdown to format your answers.
+You are a famous short story writer asked to write for a magazine                                                                          
+<instructions>                                                                                                                             
+- Always write 2 sentence stories.                                                                                                         
+</instructions>                                                                                                                            
+                                                                                                                                            
+<additional_information>                                                                                                                   
+- Use markdown to format your answer
 </additional_information>
 ```
 
-### Additional Context
+
+### System message Parameters
+
+The Agent creates a default system message that can be customized using the following agent parameters:
+
+| Parameter                        | Type        | Default | Description                                                                                                                                                                |
+| -------------------------------- | ----------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `description`                    | `str`       | `None`  | A description of the Agent that is added to the start of the system message.                                                                                               |
+| `instructions`                   | `List[str]` | `None`  | List of instructions added to the system prompt in `<instructions>` tags. Default instructions are also created depending on values for `markdown`, `expected_output` etc. |
+| `additional_context`             | `str`       | `None`  | Additional context added to the end of the system message.                                                                                                                 |
+| `expected_output`                | `str`       | `None`  | Provide the expected output from the Agent. This is added to the end of the system message.                                                                                |
+| `markdown`                       | `bool`      | `False` | Add an instruction to format the output using markdown.                                                                                                                    |
+| `add_datetime_to_context`        | `bool`      | `False` | If True, add the current datetime to the prompt to give the agent a sense of time. This allows for relative times like "tomorrow" to be used in the prompt                 |
+| `add_name_to_context`            | `bool`      | `False` | If True, add the name of the agent to the context.                                                                                                                         |
+| `add_location_to_context`        | `bool`      | `False` | If True, add the location of the agent to the context. This allows for location-aware responses and local context.                                                         |
+| `add_session_summary_to_context` | `bool`      | `False` | If True, add the session summary to the context. See [sessions](/concepts/agents/sessions) for more information.                                                           |
+| `add_memories_to_context`        | `bool`      | `False` | If True, add the user memories to the context. See [memory](/concepts/agents/memory) for more information.                                                                 |
+| `add_session_state_to_context`   | `bool`      | `False` | If True, add the session state to the context. See [state](/concepts/agents/state) for more information.                                                                   |
+| `enable_agentic_knowledge_filters` | `bool`      | `False` | If True, let the agent choose the knowledge filters. See [knowledge](/concepts/knowledge/filters/introduction) for more information.                                                      |
+| `system_message`                 | `str`       | `None`  | Override the default system message.                                                                                                                                       |
+| `build_context`                  | `bool`      | `True`  | Optionally disable the building of the context.                                                                                                                            |
+
+See the full [Agent reference](/reference/agents/agent) for more information.
+
+### How the system message is built
+
+Lets take the following example agent:
+
+```python
+
+from agno.agent import Agent
+
+agent = Agent(
+    name="Helpful Assistant",
+    role="Assistant",
+    description="You are a helpful assistant",
+    instructions=["Help the user with their question"],
+    additional_context="""
+    Here is an example of how to answer the user's question: 
+        Request: What is the capital of France?
+        Response: The capital of France is Paris.
+    """,
+    expected_output="You should format your response with `Response: <response>`",
+    markdown=True,
+    add_datetime_to_context=True,
+    add_location_to_context=True,
+    add_name_to_context=True,
+    add_session_summary_to_context=True,
+    add_memories_to_context=True,
+    add_session_state_to_context=True,
+)
+```
+
+Below is the system message that will be built:
+```
+You are a helpful assistant
+<your_role>
+Assistant
+</your_role>
+
+<instructions>
+  Help the user with their question
+</instructions>
+
+<additional_information>
+Use markdown to format your answers.
+The current time is 2025-09-30 12:00:00.
+Your approximate location is: New York, NY, USA.
+Your name is: Helpful Assistant.
+</additional_information>
+
+<expected_output>
+  You should format your response with `Response: <response>`
+</expected_output>
+
+Here is an example of how to answer the user's question: 
+    Request: What is the capital of France?
+    Response: The capital of France is Paris.
+
+You have access to memories from previous interactions with the user that you can use:
+
+<memories_from_previous_interactions>
+- User really likes Digimon and Japan.
+- User really likes Japan.
+- User likes coffee.
+</memories_from_previous_interactions>
+
+Note: this information is from previous interactions and may be updated in this conversation. You should always prefer information from this conversation over the past memories.
+
+Here is a brief summary of your previous interactions:
+
+<summary_of_previous_interactions>
+The user asked about information about Digimon and Japan.
+</summary_of_previous_interactions>
+
+Note: this information is from previous interactions and may be outdated. You should ALWAYS prefer information from this conversation over the past summary.
+
+<session_state> ... </session_state>
+```
+
+<Tip>
+This example is exhaustive and illustrates what is possible with the system message, however in practice you would only use some of these settings.
+</Tip>
+
+#### Additional Context
 
 You can add additional context to the end of the system message using the `additional_context` parameter.
 
-In this example, we add additional context to the system message that the agent has access to specific tables in a database.
+Here, `additional_context` adds a note to the system message indicating that the agent can access specific database tables.
 
 ```python
 from textwrap import dedent
@@ -87,29 +196,65 @@ agent = Agent(
 agent.print_response("What is the average rating of movies?", stream=True)
 ```
 
-### System message Parameters
+#### Tool Instructions
 
-The Agent creates a default system message that can be customized using the following parameters:
+If you are using a [Toolkit](/concepts/tools/toolkits/toolkits) on your agent, you can add tool instructions to the system message using the `instructions` parameter:
 
-| Parameter                        | Type        | Default | Description                                                                                                                                                                |
-| -------------------------------- | ----------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `description`                    | `str`       | `None`  | A description of the Agent that is added to the start of the system message.                                                                                               |
-| `instructions`                   | `List[str]` | `None`  | List of instructions added to the system prompt in `<instructions>` tags. Default instructions are also created depending on values for `markdown`, `expected_output` etc. |
-| `additional_context`             | `str`       | `None`  | Additional context added to the end of the system message.                                                                                                                 |
-| `expected_output`                | `str`       | `None`  | Provide the expected output from the Agent. This is added to the end of the system message.                                                                                |
-| `markdown`                       | `bool`      | `False` | Add an instruction to format the output using markdown.                                                                                                                    |
-| `add_datetime_to_context`        | `bool`      | `False` | If True, add the current datetime to the prompt to give the agent a sense of time. This allows for relative times like "tomorrow" to be used in the prompt                 |
-| `add_name_to_context`            | `bool`      | `False` | If True, add the name of the agent to the context.                                                                                                                         |
-| `add_location_to_context`        | `bool`      | `False` | If True, add the location of the agent to the context. This allows for location-aware responses and local context.                                                         |
-| `add_session_summary_to_context` | `bool`      | `False` | If True, add the session summary to the context. See [sessions](/concepts/agents/sessions) for more information.                                                           |
-| `add_memories_to_context`        | `bool`      | `False` | If True, add the user memories to the context. See [memory](/concepts/agents/memory) for more information.                                                                 |
-| `add_dependencies_to_context`    | `bool`      | `False` | If True, add the dependencies to the context. See [dependencies](/concepts/agents/dependencies) for more information.                                                      |
-| `add_session_state_to_context`   | `bool`      | `False` | If True, add the session state to the context. See [state](/concepts/agents/state) for more information.                                                                   |
-| `add_knowledge_to_context`       | `bool`      | `False` | If True, add retrieved knowledge to the context, to enable RAG. See [knowledge](/concepts/agents/knowledge) for more information.                                          |
-| `system_message`                 | `str`       | `None`  | Override the default system message.                                                                                                                                       |
-| `build_context`                  | `bool`      | `True`  | Optionally disable the building of the context.                                                                                                                            |
+```python
+from agno.agent import Agent
+from agno.tools.slack import SlackTools
 
-See the full [Agent reference](/reference/agents/agent) for more information.
+slack_tools = SlackTools(
+    instructions=["Use `send_message` to send a message to the user.  If the user specifies a thread, use `send_message_thread` to send a message to the thread."],
+    add_instructions=True,
+)
+agent = Agent(
+    tools=[slack_tools],
+)
+```
+
+These instructions are injected into the system message after the `<additional_information>` tags.
+
+#### Agentic Memories
+
+If you have `enable_agentic_memory` set to `True` on your agent, the agent gets the ability to create/update user memories using tools.
+
+This adds the following to the system message:
+```
+<updating_user_memories>
+- You have access to the `update_user_memory` tool that you can use to add new memories, update existing memories, delete memories, or clear all memories.
+- If the user's message includes information that should be captured as a memory, use the `update_user_memory` tool to update your memory database.
+- Memories should include details that could personalize ongoing interactions with the user.
+- Use this tool to add new memories or update existing memories that you identify in the conversation.
+- Use this tool if the user asks to update their memory, delete a memory, or clear all memories.
+- If you use the `update_user_memory` tool, remember to pass on the response to the user.
+</updating_user_memories>
+```
+
+#### Agentic Knowledge Filters
+
+If you have knowledge enabled on your agent, you can let the agent choose the knowledge filters using the `enable_agentic_knowledge_filters` parameter.
+
+This will add the following to the system message:
+```
+The knowledge base contains documents with these metadata filters: [filter1, filter2, filter3].
+Always use filters when the user query indicates specific metadata.
+
+Examples:
+1. If the user asks about a specific person like "Jordan Mitchell", you MUST use the search_knowledge_base tool with the filters parameter set to {{'<valid key like user_id>': '<valid value based on the user query>'}}.
+2. If the user asks about a specific document type like "contracts", you MUST use the search_knowledge_base tool with the filters parameter set to {{'document_type': 'contract'}}.
+4. If the user asks about a specific location like "documents from New York", you MUST use the search_knowledge_base tool with the filters parameter set to {{'<valid key like location>': 'New York'}}.
+
+General Guidelines:
+- Always analyze the user query to identify relevant metadata.
+- Use the most specific filter(s) possible to narrow down results.
+- If multiple filters are relevant, combine them in the filters parameter (e.g., {{'name': 'Jordan Mitchell', 'document_type': 'contract'}}).
+- Ensure the filter keys match the valid metadata filters: [filter1, filter2, filter3].
+
+You can use the search_knowledge_base tool to search the knowledge base and get the most relevant documents. Make sure to pass the filters as [Dict[str: Any]] to the tool. FOLLOW THIS STRUCTURE STRICTLY.
+```
+
+Learn about agentic knowledge filters in more detail in the [knowledge filters](/concepts/knowledge/filters/introduction) section.
 
 ### Set the system message directly
 
@@ -117,6 +262,7 @@ You can manually set the system message using the `system_message` parameter. Th
 
 ```python
 from agno.agent import Agent
+agent.print_response("What is the capital of France?")
 
 agent = Agent(system_message="Share a 2 sentence story about")
 agent.print_response("Love in the year 12000.")
@@ -130,27 +276,40 @@ agent.print_response("Love in the year 12000.")
   either remove it or explicitly disable the system message.
 </Tip>
 
-## User message
+## User message context
 
 The `input` sent to the `Agent.run()` or `Agent.print_response()` is used as the user message.
 
+### Additional user message context
+You can add additional context to the user message using the following agent parameters:
+
+The following agent parameters configure how the user message is built:
+- `add_knowledge_to_context`
+- `add_dependencies_to_context`
+
+
+```python
+from agno.agent import Agent
+agent = Agent(add_knowledge_to_context=True, add_dependencies_to_context=True)
+agent.print_response("What is the capital of France?", dependencies={"name": "John Doe"})
+```
+
+The user message that is sent to the model will look like this:
+```
+What is the capital of France?
+
+Use the following references from the knowledge base if it helps:
+<references>
+- Reference 1
+- Reference 2
+</references>
+
+<additional context>
+{"name": "John Doe"}
+</additional context>
+```
+
 See [dependencies](/concepts/agents/dependencies) for how to do dependency injection for your user message.
-
-## Context Caching
-
-Various model providers support caching of system and user messages. The implementation of caching differs between providers.
-
-Generally the approach is to cache repetitive content and common instructions and on subsequent requests to use cached content from the prefix for your system message.
-In other words, if the model supports it, you can reduce the number of tokens sent to the model by putting static content at the start of your system message.
-
-Agno's context construction is designed to put the most probable static content at the start of your system message.  
-If you wish to fine-tune this, the recommended approach is to manually set the system message.
-
-Some examples of prompt caching:
-- [OpenAI's prompt caching](https://platform.openai.com/docs/guides/prompt-caching)
-- [Anthropic prompt caching](https://docs.claude.com/en/docs/build-with-claude/prompt-caching) -> See an [Agno example](/examples/models/anthropic/prompt_caching) of this
-- [OpenRouter prompt caching](https://openrouter.ai/docs/features/prompt-caching)
-
 
 ## Chat history
 
@@ -185,7 +344,7 @@ This will add the history of the conversation to the context, which can be used 
 
 See more details on [sessions](/concepts/agents/sessions#session-history).
 
-## Additional input
+## Few-shot learning with additional input
 
 You can add entire additional messages to your agent's context using the `additional_input` parameter.
 These messages are added to the context as if they were part of the conversation history.
@@ -282,6 +441,23 @@ if __name__ == "__main__":
         print("-" * 50)
         agent.print_response(example)
 ```
+
+## Context Caching
+
+Most model providers support caching of system and user messages, though the implementation differs between providers.
+
+The general approach is to cache repetitive content and common instructions, and then reuse that cached content in subsequent requests as the prefix of your system message.
+In other words, if the model supports it, you can reduce the number of tokens sent to the model by putting static content at the start of your system message.
+
+Agno's context construction is designed to place the most likely static content at the beginning of the system message.  
+If you wish to fine-tune this, the recommended approach is to manually set the system message.
+
+Some examples of prompt caching:
+- [OpenAI's prompt caching](https://platform.openai.com/docs/guides/prompt-caching)
+- [Anthropic prompt caching](https://docs.claude.com/en/docs/build-with-claude/prompt-caching) -> See an [Agno example](/examples/models/anthropic/prompt_caching) of this
+- [OpenRouter prompt caching](https://openrouter.ai/docs/features/prompt-caching)
+
+
 
 ## Developer Resources
 

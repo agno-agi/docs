@@ -4,14 +4,17 @@ description: Learn how to write prompts and other context engineering techniques
 ---
 
 Context engineering is the process of designing and controlling the information (context) that is sent to language models to guide their behavior and outputs. 
-In Agno, this means carefully crafting the system message, which includes the team's description, instructions, and other relevant settings. By thoughtfully engineering this context, you can:
+In practice, building context comes down to one question: "Which information is most likely to achieve the desired outcome?"
+
+In Agno, this means carefully crafting the system message, which includes the team's description, instructions, member information, and other relevant settings. By thoughtfully constructing this context, you can:
 
 - Steer the team toward specific behaviors or roles.
 - Constrain or expand the team's capabilities.
 - Ensure outputs are consistent, relevant, and aligned with your application's needs.
-- Enable advanced use cases such as multi-step reasoning, tool use, or structured output for your team.
+- Enable advanced use cases such as multi-step reasoning, member delegation, tool use, or structured output.
+- Coordinate team members effectively for collaborative tasks.
 
-Effective context engineering involves iteratively refining the system message, experimenting with different descriptions and instructions, and leveraging features like input/output schemas or tool integrations. 
+Effective context engineering is an iterative process: refining the system message, trying out different descriptions and instructions, and using features such as schemas, delegation, and tool integrations.
 
 The context of an Agno team consists of the following:
 - **System message**: The system message is the main context that is sent to the team, including all additional context
@@ -19,17 +22,16 @@ The context of an Agno team consists of the following:
 - **Chat history**: The chat history is the history of the conversation between the team and the user.
 - **Additional input**: Any few-shot examples or other additional input that is added to the context.
 
-See [Agent Context Engineering](/concepts/agents/context) for more information.
-
 ## System message context
 
 The following are some key parameters that are used to create the system message:
 
-1. **Description**: A description that guides the overall behaviour of the agent.
+1. **Description**: A description that guides the overall behaviour of the team.
 2. **Instructions**: A list of precise, task-specific instructions on how to achieve its goal.
-3. **Expected Output**: A description of the expected output from the Agent.
+3. **Expected Output**: A description of the expected output from the Team.
+4. **Members**: Information about team members, their roles, and capabilities.
 
-The system message is created using `description`, `instructions` and a number of other settings. The `description` is added to the start of the system message and `instructions` are added as a list. For example:
+The system message is built from the team’s description, instructions, member details, and other settings. A team leader’s system message additionally includes delegation rules and coordination guidelines. For example:
 
 ```python instructions.py
 from agno.agent import Agent
@@ -123,11 +125,142 @@ member.
 </additional_information>
 ```
 
-### Additional Context
+### System message Parameters
+
+The Team creates a default system message that can be customized using the following parameters:
+
+| Parameter                        | Type        | Default | Description                                                                                                                                                                |
+| -------------------------------- | ----------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `description`                    | `str`       | `None`  | A description of the Team that is added to the start of the system message.                                                                                               |
+| `instructions`                   | `List[str]` | `None`  | List of instructions added to the system prompt in `<instructions>` tags. Default instructions are also created depending on values for `markdown`, `expected_output` etc. |
+| `additional_context`             | `str`       | `None`  | Additional context added to the end of the system message.                                                                                                                 |
+| `expected_output`                | `str`       | `None`  | Provide the expected output from the Team. This is added to the end of the system message.                                                                                |
+| `markdown`                       | `bool`      | `False` | Add an instruction to format the output using markdown.                                                                                                                    |
+| `add_datetime_to_context`        | `bool`      | `False` | If True, add the current datetime to the prompt to give the team a sense of time. This allows for relative times like "tomorrow" to be used in the prompt                 |
+| `add_name_to_context`            | `bool`      | `False` | If True, add the name of the team to the context.                                                                                                                         |
+| `add_location_to_context`        | `bool`      | `False` | If True, add the location of the team to the context. This allows for location-aware responses and local context.                                                         |
+| `timezone_identifier`            | `str`       | `None`  | Allows for custom timezone for datetime instructions following the TZ Database format (e.g. "Etc/UTC")                                                                  |
+| `add_member_tools_to_context`    | `bool`      | `True`  | If True, add the tools available to team members to the context.                                                                                                          |
+| `add_session_summary_to_context` | `bool`      | `False` | If True, add the session summary to the context. See [sessions](/concepts/teams/sessions) for more information.                                                           |
+| `add_memories_to_context`        | `bool`      | `False` | If True, add the user memories to the context. See [memory](/concepts/teams/memory) for more information.                                                                 |
+| `add_dependencies_to_context`    | `bool`      | `False` | If True, add the dependencies to the context. See [dependencies](/concepts/teams/dependencies) for more information.                                                      |
+| `add_session_state_to_context`   | `bool`      | `False` | If True, add the session state to the context. See [state](/concepts/teams/state) for more information.                                                                   |
+| `add_knowledge_to_context`       | `bool`      | `False` | If True, add retrieved knowledge to the context, to enable RAG. See [knowledge](/concepts/teams/knowledge) for more information.                                          |
+| `enable_agentic_knowledge_filters` | `bool`      | `False` | If True, let the team choose the knowledge filters. See [knowledge](/concepts/knowledge/filters/introduction) for more information.                                       |
+| `system_message`                 | `str`       | `None`  | Override the default system message.                                                                                                                                       |
+| `respond_directly`               | `bool`      | `False` | If True, the team leader won't process responses from members and instead will return them directly.                                                                       |
+| `delegate_task_to_all_members`   | `bool`      | `False` | If True, the team leader will delegate the task to all members, instead of deciding for a subset.                                                                         |
+| `determine_input_for_members`    | `bool`      | `True`  | Set to false if you want to send the run input directly to the member agents.                                                                                             |
+| `share_member_interactions`      | `bool`      | `False` | If True, send all previous member interactions to members.                                                                                                                 |
+| `get_member_information_tool`    | `bool`      | `False` | If True, add a tool to get information about the team members.                                                                                                             |
+
+See the full [Team reference](/reference/teams/team) for more information.
+
+### How the system message is built
+
+Lets take the following example team:
+
+```python
+from agno.agent import Agent
+from agno.team import Team
+
+web_agent = Agent(
+    name="Web Researcher",
+    role="You are a web researcher that can find information on the web.",
+    description="You are a helpful web research assistant",
+    instructions=["Search for accurate information"],
+    markdown=True,
+)
+
+team = Team(
+    members=[web_agent],
+    name="Research Team",
+    role="Team Lead",
+    description="You are a research team lead",
+    instructions=["Coordinate the team to provide comprehensive research"],
+    expected_output="You should format your response with detailed findings",
+    markdown=True,
+    add_datetime_to_context=True,
+    add_location_to_context=True,
+    add_name_to_context=True,
+    add_session_summary_to_context=True,
+    add_memories_to_context=True,
+    add_session_state_to_context=True,
+)
+```
+
+Below is the system message that will be built:
+```
+You are the leader of a team and sub-teams of AI Agents.
+Your task is to coordinate the team to complete the user's request.
+
+Here are the members in your team:
+<team_members>
+- Agent 1:
+    - ID: web-researcher
+    - Name: Web Researcher
+    - Role: You are a web researcher that can find information on the web.
+    - Member tools:
+        (none)
+</team_members>
+
+<how_to_respond>
+...
+</how_to_respond>
+
+You have access to memories from previous interactions with the user that you can use:
+
+<memories_from_previous_interactions>
+- User really likes Digimon and Japan.
+- User really likes Japan.
+- User likes coffee.
+</memories_from_previous_interactions>
+
+Note: this information is from previous interactions and may be updated in this conversation. You should always prefer information from this conversation over the past memories.
+
+Here is a brief summary of your previous interactions:
+
+<summary_of_previous_interactions>
+The user asked about information about Digimon and Japan.
+</summary_of_previous_interactions>
+
+Note: this information is from previous interactions and may be outdated. You should ALWAYS prefer information from this conversation over the past summary.
+
+<description>
+You are a research team lead
+</description>
+
+<your_role>
+Team Lead
+</your_role>
+
+<instructions>
+- Coordinate the team to provide comprehensive research
+</instructions>
+
+<additional_information>
+- Use markdown to format your answers.
+- The current time is 2025-09-30 12:00:00.
+- Your approximate location is: New York, NY, USA.
+- Your name is: Research Team.
+</additional_information>
+
+<expected_output>
+You should format your response with detailed findings
+</expected_output>
+
+<session_state> ... </session_state>
+```
+
+<Tip>
+This example is exhaustive and illustrates what is possible with the system message, however in practice you would only use some of these settings.
+</Tip>
+
+#### Additional Context
 
 You can add additional context to the end of the system message using the `additional_context` parameter.
 
-In this example, we add additional context to the system message that the agent has access to specific tables in a database.
+Here, `additional_context` adds a note to the system message indicating that the team can access specific database tables.
 
 ```python
 from textwrap import dedent
@@ -136,7 +269,6 @@ from agno.agent import Agent
 from agno.team import Team
 from agno.models.langdb import LangDB
 from agno.tools.duckdb import DuckDbTools
-from agno.tools.duckduckgo import DuckDuckGoTools
 
 duckdb_tools = DuckDbTools(
     create_tables=False, export_tables=False, summarize_tables=False
@@ -149,7 +281,7 @@ duckdb_tools.create_table_from_path(
 web_researcher = Agent(
     name="Web Researcher",
     role="You are a web researcher that can find information on the web.",
-    tools=[DuckDuckGoTools()],
+    tools=[DuckDbTools()],
     instructions=[
         "Use your web search tool to find information on the web.",
         "Provide a summary of the information found.",
@@ -169,28 +301,117 @@ team = Team(
 team.print_response("What is the average rating of movies?", stream=True)
 ```
 
-### System message Parameters
+#### Team Member Information
 
-The Team leader creates a default system message that can be customized using the following parameters:
+The member information is automatically injected into the system message. This includes the member ID, name, role, and tools.
+You can optionally minimize this by setting `add_member_tools_to_context` to False, which removes the member tools from the system message.
 
-| Parameter                        | Type        | Default | Description                                                                                                                                                                |
-| -------------------------------- | ----------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `description`                    | `str`       | `None`  | A description of the Team that is added to the start of the system message.                                                                                                |
-| `instructions`                   | `List[str]` | `None`  | List of instructions added to the system prompt in `<instructions>` tags. Default instructions are also created depending on values for `markdown`, `expected_output` etc. |
-| `additional_context`             | `str`       | `None`  | Additional context added to the end of the system message.                                                                                                                 |
-| `expected_output`                | `str`       | `None`  | Provide the expected output from the Team. This is added to the end of the system message.                                                                                 |
-| `markdown`                       | `bool`      | `False` | Add an instruction to format the output using markdown.                                                                                                                    |
-| `add_datetime_to_context`        | `bool`      | `False` | If True, add the current datetime to the prompt to give the team a sense of time. This allows for relative times like "tomorrow" to be used in the prompt                  |
-| `add_name_to_context`            | `bool`      | `False` | If True, add the name of the team to the context.                                                                                                                          |
-| `add_location_to_context`        | `bool`      | `False` | If True, add the location of the team to the context. This allows for location-aware responses and local context.                                                          |
-| `add_session_summary_to_context` | `bool`      | `False` | If True, add the session summary to the context. See [sessions](/concepts/teams/sessions) for more information.                                                           |
-| `add_memories_to_context`        | `bool`      | `False` | If True, add the user memories to the context. See [memory](/concepts/teams/memory) for more information.                                                                 |
-| `add_dependencies_to_context`    | `bool`      | `False` | If True, add the dependencies to the context. See [dependencies](/concepts/teams/dependencies) for more information.                                                      |
-| `add_session_state_to_context`   | `bool`      | `False` | If True, add the session state to the context. See [state](/concepts/teams/state) for more information.                                                                   |
-| `add_knowledge_to_context`       | `bool`      | `False` | If True, add retrieved knowledge to the context, to enable RAG. See [knowledge](/concepts/teams/knowledge) for more information.                                          |
-| `system_message`                 | `str`       | `None`  | Override the default system message.                                                                                                                                       |
+You can also give the team leader a tool to get information about the team members.
 
-See the full [Team reference](/reference/teams/team) for more information.
+```python
+from agno.agent import Agent
+from agno.team import Team
+
+web_agent = Agent(
+    name="Web Researcher",
+    role="You are a web researcher that can find information on the web."
+)
+
+team = Team(
+    members=[web_agent],
+    get_member_information_tool=True,  # Adds a tool to get information about team members
+    add_member_tools_to_context=False, # Removes the member tools from the system message
+)
+```
+
+#### Share member interactions
+
+All interactions with team members are automatically recorded. This includes the member name, the task that was given to the member, and the response from the member.
+
+You can pass this interaction history along with future requests to a member by setting `share_member_interactions=True`.
+
+```python
+
+team = Team(
+    members=[...],
+    share_member_interactions=True,
+)
+```
+
+This appends interaction details to the task sent to a team member, for example:
+```
+<member interactions>
+- Member: Web Researcher
+- Task: Find information about the web
+- Response: I found information about the web
+
+- Member: HackerNews Researcher
+- Task: Find information about the web
+- Response: I found information about the web
+</member interactions>
+```
+
+
+#### Tool Instructions
+
+If you are using a [Toolkit](/concepts/tools/toolkits/toolkits) on your team, you can add tool instructions to the system message using the `instructions` parameter:
+
+```python
+from agno.agent import Agent
+from agno.tools.slack import SlackTools
+
+slack_tools = SlackTools(
+    instructions=["Use `send_message` to send a message to the user.  If the user specifies a thread, use `send_message_thread` to send a message to the thread."],
+    add_instructions=True,
+)
+team = Team(
+    members=[...],
+    tools=[slack_tools],
+)
+```
+
+These instructions are injected into the system message after the `<additional_information>` tags.
+
+#### Agentic Memories
+
+If you have `enable_agentic_memory` set to `True` on your team, the team gets the ability to create/update user memories using tools.
+
+This adds the following to the system message:
+```
+<updating_user_memories>
+- You have access to the `update_user_memory` tool that you can use to add new memories, update existing memories, delete memories, or clear all memories.
+- If the user's message includes information that should be captured as a memory, use the `update_user_memory` tool to update your memory database.
+- Memories should include details that could personalize ongoing interactions with the user.
+- Use this tool to add new memories or update existing memories that you identify in the conversation.
+- Use this tool if the user asks to update their memory, delete a memory, or clear all memories.
+- If you use the `update_user_memory` tool, remember to pass on the response to the user.
+</updating_user_memories>
+```
+
+#### Agentic Knowledge Filters
+
+If you have knowledge enabled on your team, you can let the team choose the knowledge filters using the `enable_agentic_knowledge_filters` parameter.
+
+This will add the following to the system message:
+```
+The knowledge base contains documents with these metadata filters: [filter1, filter2, filter3].
+Always use filters when the user query indicates specific metadata.
+
+Examples:
+1. If the user asks about a specific person like "Jordan Mitchell", you MUST use the search_knowledge_base tool with the filters parameter set to {{'<valid key like user_id>': '<valid value based on the user query>'}}.
+2. If the user asks about a specific document type like "contracts", you MUST use the search_knowledge_base tool with the filters parameter set to {{'document_type': 'contract'}}.
+4. If the user asks about a specific location like "documents from New York", you MUST use the search_knowledge_base tool with the filters parameter set to {{'<valid key like location>': 'New York'}}.
+
+General Guidelines:
+- Always analyze the user query to identify relevant metadata.
+- Use the most specific filter(s) possible to narrow down results.
+- If multiple filters are relevant, combine them in the filters parameter (e.g., {{'name': 'Jordan Mitchell', 'document_type': 'contract'}}).
+- Ensure the filter keys match the valid metadata filters: [filter1, filter2, filter3].
+
+You can use the search_knowledge_base tool to search the knowledge base and get the most relevant documents. Make sure to pass the filters as [Dict[str: Any]] to the tool. FOLLOW THIS STRUCTURE STRICTLY.
+```
+
+Learn about agentic knowledge filters in more detail in the [knowledge filters](/concepts/knowledge/filters/introduction) section.
 
 ### Set the system message directly
 
@@ -203,11 +424,51 @@ team = Team(members=[], system_message="Share a 2 sentence story about")
 team.print_response("Love in the year 12000.")
 ```
 
-## User message
+## User message context
 
 The `input` sent to the `Team.run()` or `Team.print_response()` is used as the user message.
 
 See [dependencies](/concepts/teams/dependencies) for how to do dependency injection for your user message.
+
+### Additional user message context
+
+By default, the user message is built using the `input` sent to the `Team.run()` or `Team.print_response()` functions.
+
+The following team parameters configure how the user message is built:
+- `add_knowledge_to_context`
+- `add_dependencies_to_context`
+
+```python
+from agno.agent import Agent
+from agno.team import Team
+
+web_agent = Agent(
+    name="Web Researcher",
+    role="You are a web researcher that can find information on the web."
+)
+
+team = Team(
+    members=[web_agent],
+    add_knowledge_to_context=True, 
+    add_dependencies_to_context=True
+)
+team.print_response("What is the capital of France?", dependencies={"name": "John Doe"})
+```
+
+The user message that is sent to the model will look like this:
+```
+What is the capital of France?
+
+Use the following references from the knowledge base if it helps:
+<references>
+- Reference 1
+- Reference 2
+</references>
+
+<additional context>
+{"name": "John Doe"}
+</additional context>
+```
 
 ## Chat history
 
@@ -355,6 +616,21 @@ if __name__ == "__main__":
         print("-" * 50)
         team.print_response(example)
 ```
+
+## Context Caching
+
+Most model providers support caching of system and user messages, though the implementation differs between providers.
+
+The general approach is to cache repetitive content and common instructions, and then reuse that cached content in subsequent requests as the prefix of your system message. In other words, if the model supports caching, you can reduce the number of tokens sent by placing static content at the start of the system message.
+
+Agno’s context construction is designed to place the most likely static content at the beginning of the system message. If you want more control, you can fine-tune this by manually setting the system message.
+
+For teams, member information, delegation instructions, and coordination guidelines are usually static and therefore strong candidates for caching.
+
+Some examples of prompt caching:
+- [OpenAI's prompt caching](https://platform.openai.com/docs/guides/prompt-caching)
+- [Anthropic prompt caching](https://docs.claude.com/en/docs/build-with-claude/prompt-caching) -> See an [Agno example](/examples/models/anthropic/prompt_caching) of this
+- [OpenRouter prompt caching](https://openrouter.ai/docs/features/prompt-caching)
 
 ## Developer Resources
 

@@ -3,24 +3,32 @@ title: Agent State
 description: Learn about state in agents.
 ---
 
-**State** is any kind of data the Agent needs to maintain throughout runs in a session.
+**State** is any kind of data that needs to be maintained throughout runs in a session.
 
-<Check>
 A simple yet common use case for Agents is to manage lists, items and other "information" for a user. For example, a shopping list, a todo list, a wishlist, etc.
+This can be easily managed using the `session_state`. The Agent can access or update the `session_state` in tool calls and exposes them to the Model via the system message.
 
-This can be easily managed using the `session_state`. The Agent updates the `session_state` in tool calls and exposes them to the Model via the system message.
+The session state is then persisted in the configured database and made available across runs within that session.
 
-The session state is then persisted in a database and made available across runs and sessions.
-</Check>
+<Note>
+**Understanding Agent "Statelessness"**: Agents in Agno don't maintain working state between different sessions or runs, but they do provide state management capabilities:
+
+- The `session_state` parameter on `Agent` provides the default state template for new sessions
+- The `get_session_state()` method retrieves the session state of a particular session from the database  
+- Working state is managed per run and persisted to the database per session
+- The agent instance (or attributes thereof) itself is not modified during runs
+</Note>
 
 ## State Management
-Agno provides a powerful and elegant state management system, here's how it works:
 
-- You can set the `Agent`'s `session_state` parameter with a dictionary of state variables.
+Agno provides a powerful and elegant state management system. Here's how it works:
+
+- You can set the Agent's `session_state` parameter with a dictionary of default state variables.
 - You update the `session_state` dictionary in tool calls or other functions.
-- You share the current `session_state` with the LLM via the system message by referencing the state variables in `description` and `instructions`.
-- You can also pass `session_state` to the agent on `agent.run()`, overriding any state that was set on Agent initialization.
-- The `session_state` is stored with Agent sessions and is persisted in your database. Meaning, it is available across execution cycles. This also means when switching sessions between calls to `agent.run()`, the state is loaded and available.
+- You share the current `session_state` with the LLM via the system message by referencing state variables in `description` and `instructions`.
+- You can pass `session_state` to `agent.run()`, which takes precedence over the agent's default state.
+- The `session_state` is stored per session in your database and persists across runs within that session.
+- When switching sessions via `session_id` in `agent.run()`, the appropriate session state is loaded from the database.
 
 Here's an example of an Agent managing a shopping list:
 
@@ -39,7 +47,7 @@ def add_item(session_state, item: str) -> str:
 # Create an Agent that maintains state
 agent = Agent(
     model=OpenAIChat(id="gpt-5-mini"),
-    # Database to store the session and session state
+    # Database to store sessions and their state
     db=SqliteDb(db_file="tmp/agents.db"),
     # Initialize the session state with an empty shopping list
     session_state={"shopping_list": []},
@@ -64,9 +72,9 @@ print(f"Final session state: {agent.get_session_state()}")
   [Teams](/concepts/teams/state) for more information.
 </Check>
 
-## Maintaining state across multiple runs
+## Maintaining state across multiple runs within a session
 
-A big advantage of **sessions** is the ability to maintain state across multiple runs. For example, let's say the agent is helping a user keep track of their shopping list.
+A big advantage of **sessions** is the ability to maintain state across multiple runs within the same session. For example, let's say the agent is helping a user keep track of their shopping list.
 
 <Tip>
   You have to configure your storage via the `db` parameter for state to be persisted across runs.
@@ -239,6 +247,47 @@ agent.print_response("What is my name?", session_id="user_2_session_1", user_id=
 
 # Will load the session state from the session with the id "user_2_session_1"
 agent.print_response("How old am I?", session_id="user_2_session_1", user_id="user_2")
+```
+
+## Overwriting the state in the db
+
+By default, if you pass `session_state` to the run methods, this new state will be merged with the `session_state` in the db.
+
+You can change that behavior if you want to overwrite the `session_state` in the db:
+
+```python overwriting_session_state_in_db.py
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIChat
+
+# Create an Agent that maintains state
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=SqliteDb(db_file="tmp/agents.db"),
+    markdown=True,
+    # Set the default session_state. The values set here won't be overwritten.
+    session_state={},
+    # Adding the session_state to context for the agent to easily access it
+    add_session_state_to_context=True,
+    # Allow overwriting the stored session state with the session state provided in the run
+    overwrite_db_session_state=True,
+)
+
+# Let's run the agent providing a session_state. This session_state will be stored in the database.
+agent.print_response(
+    "Can you tell me what's in your session_state?",
+    session_state={"shopping_list": ["Potatoes"]},
+    stream=True,
+)
+print(f"Stored session state: {agent.get_session_state()}")
+
+# Now if we pass a new session_state, it will overwrite the stored session_state.
+agent.print_response(
+    "Can you tell me what is in your session_state?",
+    session_state={"secret_number": 43},
+    stream=True,
+)
+print(f"Stored session state: {agent.get_session_state()}")
 ```
 
 ## Developer Resources

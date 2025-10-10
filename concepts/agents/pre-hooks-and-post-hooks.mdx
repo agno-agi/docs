@@ -1,0 +1,133 @@
+---
+title: Pre-hooks and Post-hooks
+description: Learn about using pre-hooks and post-hooks with your agents.
+---
+
+Pre-hooks and post-hooks are a simple way to validate or modify the input and output of an Agent run.
+
+
+## Pre-hooks
+
+Pre-hooks execute **before** your Agent processes the input, giving you complete control over what reaches the LLM.
+
+They're perfect for implementing validation, security checks, or any data preprocessing task against the input your Agent receives.
+
+### Common Use Cases
+
+**Input Validation**
+- Validate format, length, content or any other property of the input.
+- Remove or mask sensitive information.
+- Normalize input data.
+
+**Data Preprocessing**
+- Transform input format or structure.
+- Enrich input with additional context.
+- Apply any other business logic before sending the input to the LLM.
+
+### Basic Example
+
+Let's create a very simple pre-hook that validates the input length and raises an error if it's too long:
+
+```python
+from agno.agent import Agent
+from agno.exceptions import CheckTrigger, InputCheckError
+
+# Simple function we will use as a pre-hook
+def validate_input_length(
+    run_input: RunInput,
+    session: AgentSession,
+    user_id: Optional[str] = None,
+    debug_mode: Optional[bool] = None,
+) -> None:
+    """Pre-hook to validate input length."""
+    max_length = 1000
+    if len(run_input.input_content) > max_length:
+        raise InputCheckError(
+            f"Input too long. Max {max_length} characters allowed",
+            check_trigger=CheckTrigger.INPUT_NOT_ALLOWED,
+        )
+
+agent = Agent(
+    name="My Agent",
+    model=OpenAIChat(id="gpt-5-mini"),
+    # Provide the pre-hook to the Agent using the pre_hooks parameter
+    pre_hooks=[validate_input_length],
+)
+
+You can see some complete examples of pre-hooks in the [Examples](/examples/concepts/agents/pre-hooks-and-post-hooks) section.
+
+## Pre-hooks Parameters
+
+Pre-hooks run automatically during the Agent run. Some parameters will be injected automatically.
+
+You can learn more about the parameters in the [Pre-hooks](/reference/hooks/pre-hooks) reference.
+
+
+## Post-hooks
+
+Post-hooks execute **after** your Agent generates a response, allowing you to validate, transform, or enrich the output before it reaches the user.
+
+They're perfect to handle output filtering, compliance checks, or any other output transformation you need.
+
+### Common Use Cases
+
+**Output Validation**
+- Validate response format, length, and content quality.
+- Remove sensitive or inappropriate information from responses.
+- Ensure compliance with business rules and regulations.
+
+**Output Transformation**
+- Add metadata or additional context to responses.
+- Transform output format for different clients or use cases.
+- Implement any other output transformation you need.
+
+### Basic Example
+
+Let's create a simple post-hook that validates the output length and raises an error if it's too long:
+
+```python
+from agno.exceptions import CheckTrigger, OutputCheckError
+from agno.run.agent import RunOutput
+
+# Simple function we will use as a post-hook
+def validate_output_length(run_output: RunOutput) -> None:
+    """Post-hook to validate output length."""
+    max_length = 1000
+    if len(run_output.content) > max_length:
+        raise OutputCheckError(
+            f"Output too long. Max {max_length} characters allowed",
+            check_trigger=CheckTrigger.OUTPUT_NOT_ALLOWED,
+        )
+
+agent = Agent(
+    name="My Agent",
+    model=OpenAIChat(id="gpt-5-mini"),
+    # Provide the post-hook to the Agent using the post_hooks parameter
+    post_hooks=[validate_output_length],
+)
+```
+
+You can see some complete examples of post-hooks in the [Examples](/examples/concepts/agent/hooks) section.
+
+## Post-hooks Parameters
+
+Post-hooks run automatically during the Agent run. Some parameters will be injected automatically.
+
+You can learn more about the parameters in the [Post-hooks](/reference/hooks/post-hooks) reference.
+
+<Note>
+Post-hooks are not available in streaming scenarios.
+If you provide an Agent with post-hook functions, they will not be executed when streaming the response.
+</Note>
+
+## Guardrails
+
+A popular use case for pre-hooks are Guardrails: built-in safeguards for your Agents.
+
+You can learn more about them in the [Guardrails](/concepts/agents/guardrails) section.
+
+
+## Developer Resources
+
+- View [Examples](/examples/concepts/agent/hooks)
+- View [Cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/agents/hooks)
