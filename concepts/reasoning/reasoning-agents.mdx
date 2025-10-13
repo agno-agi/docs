@@ -1,6 +1,6 @@
 ---
 title: Reasoning Agents
-description: Transform any model into a reasoning system through structured chain-of-thought processing—perfect for complex problems that require multiple steps, tool use, and self-validation.
+description: Transform any model into a reasoning system through structured chain-of-thought processing, perfect for complex problems that require multiple steps, tool use, and self-validation.
 ---
 
 
@@ -8,7 +8,7 @@ description: Transform any model into a reasoning system through structured chai
 
 **The solution:** Enable `reasoning=True` and watch your model break down the problem, explore multiple approaches, validate results, and deliver thoroughly vetted solutions.
 
-**The beauty?** It works with any model—from GPT-4o to Claude to local models via Ollama. You're not limited to specialized reasoning models.
+**The beauty?** It works with any model, from GPT-4o to Claude to local models via Ollama. You're not limited to specialized reasoning models.
 
 ## How It Works
 
@@ -60,7 +60,7 @@ Behind the scenes, Agno creates a **separate reasoning agent instance** that use
    - Deliver the thoroughly validated solution
    - Explain how it addresses the original task
 
-The reasoning agent works through these steps iteratively—up to 10 by default—building on previous results, calling tools, and self-correcting until it reaches a confident solution. Once complete, it hands the full reasoning back to your main agent for the final response.
+The reasoning agent works through these steps iteratively (up to 10 by default), building on previous results, calling tools, and self-correcting until it reaches a confident solution. Once complete, it hands the full reasoning back to your main agent for the final response.
 
 ### How It Differs by Model Type
 
@@ -68,7 +68,7 @@ The reasoning agent works through these steps iteratively—up to 10 by default�
 
 - Forces structured chain-of-thought through the 6-step framework
 - Creates detailed reasoning steps with confidence scores
-- **This is where reasoning agents shine**—transforming any model into a reasoning system
+- **This is where reasoning agents shine**: transforming any model into a reasoning system
 
 **With native reasoning models** (gpt-5-mini, DeepSeek-R1, o3-mini):
 
@@ -160,90 +160,7 @@ agent.print_response(
 
 ### Capturing Reasoning Events
 
-For building custom UIs or tracking reasoning progress, you can capture reasoning events programmatically:
-
-```python
-from agno.agent import Agent, RunEvent
-from agno.models.openai import OpenAIChat
-
-reasoning_agent = Agent(
-    model=OpenAIChat(id="gpt-4o"),
-    reasoning=True,
-)
-
-# Option 1: Synchronous streaming (recommended for most use cases)
-for event in reasoning_agent.run(
-    "What is the sum of the first 100 prime numbers?",
-    stream=True,
-    stream_intermediate_steps=True,
-):
-    if event.event == RunEvent.reasoning_started:
-        print("\n🧠 Reasoning started...")
-
-    elif event.event == RunEvent.reasoning_step:
-        # Access individual reasoning steps as they happen
-        # event.content contains the ReasoningStep object
-        # event.reasoning_content contains the formatted string
-        print(f"💭 Step: {event.reasoning_content}")
-
-    elif event.event == RunEvent.reasoning_completed:
-        print("✅ Reasoning completed!")
-
-    elif event.event == RunEvent.run_content:
-        # Stream the final response content as it's generated
-        print(event.content, end="", flush=True)
-
-print("\n")  # New line after streaming completes
-
-# Option 2: Async streaming (for async applications)
-import asyncio
-
-async def process_reasoning_async():
-    async for event in reasoning_agent.arun(
-        "What is the sum of the first 100 prime numbers?",
-        stream=True,
-        stream_intermediate_steps=True,
-    ):
-        if event.event == RunEvent.reasoning_started:
-            print("\n🧠 Reasoning started...")
-
-        elif event.event == RunEvent.reasoning_step:
-            print(f"💭 Step: {event.reasoning_content}")
-
-        elif event.event == RunEvent.reasoning_completed:
-            print("✅ Reasoning completed!")
-
-        elif event.event == RunEvent.run_content:
-            print(event.content, end="", flush=True)
-    
-    print("\n")
-
-# Run the async version
-# asyncio.run(process_reasoning_async())
-
-# Option 3: Non-streaming - access complete reasoning trace
-response = reasoning_agent.run("What is the sum of the first 100 prime numbers?")
-
-# Access the full reasoning content
-if response.reasoning_content:
-    print("\n=== Full Reasoning Trace ===")
-    print(response.reasoning_content)
-
-# Access individual reasoning steps
-if response.reasoning_steps:
-    print(f"\n=== {len(response.reasoning_steps)} Reasoning Steps ===")
-    for i, step in enumerate(response.reasoning_steps, 1):
-        print(f"\nStep {i}:")
-        print(f"  Title: {step.title}")
-        print(f"  Confidence: {step.confidence_score}")
-        print(f"  Next Action: {step.next_action}")
-
-# Final answer
-print(f"\n=== Final Answer ===")
-print(response.content)
-```
-
-This is essential for building custom interfaces where you want to display reasoning progress, log intermediate steps, or create interactive debugging tools.
+For building custom UIs or programmatically tracking reasoning progress, you can capture reasoning events (`ReasoningStarted`, `ReasoningStep`, `ReasoningCompleted`) as they happen during streaming. See the [Reasoning Reference](/reference/reasoning/reasoning#reasoning-event-types) for event attributes and complete code examples.
 
 ### Iteration Control
 
@@ -287,122 +204,114 @@ main_agent = Agent(
 
 ## Example Use Cases
 
-<Accordion title="Logical Puzzles" icon="brain">
+<Tabs>
+  <Tab title="Logical Puzzles">
+    **Breaking down complex logic problems:**
 
-Reasoning agents excel at breaking down complex logic problems:
+    ```python logical_puzzle.py
+    from agno.agent import Agent
+    from agno.models.openai import OpenAIChat
 
-```python logical_puzzle.py
-from agno.agent import Agent
-from agno.models.openai import OpenAIChat
+    task = (
+        "Three missionaries and three cannibals need to cross a river. "
+        "They have a boat that can carry up to two people at a time. "
+        "If, at any time, the cannibals outnumber the missionaries on either side of the river, the cannibals will eat the missionaries. "
+        "How can all six people get across the river safely? Provide a step-by-step solution and show the solution as an ASCII diagram."
+    )
 
-task = (
-    "Three missionaries and three cannibals need to cross a river. "
-    "They have a boat that can carry up to two people at a time. "
-    "If, at any time, the cannibals outnumber the missionaries on either side of the river, the cannibals will eat the missionaries. "
-    "How can all six people get across the river safely? Provide a step-by-step solution and show the solution as an ASCII diagram."
-)
+    reasoning_agent = Agent(
+        model=OpenAIChat(id="gpt-4o"),
+        reasoning=True,
+        markdown=True,
+    )
 
-reasoning_agent = Agent(
-    model=OpenAIChat(id="gpt-4o"),
-    reasoning=True,
-    markdown=True,
-)
+    reasoning_agent.print_response(task, stream=True, show_full_reasoning=True)
+    ```
+  </Tab>
 
-reasoning_agent.print_response(task, stream=True, show_full_reasoning=True)
-```
+  <Tab title="Mathematical Proofs">
+    **Problems requiring rigorous validation:**
 
-</Accordion>
+    ```python mathematical_proof.py
+    from agno.agent import Agent
+    from agno.models.openai import OpenAIChat
 
-<Accordion title="Mathematical Proofs" icon="calculator">
+    task = "Prove that for any positive integer n, the sum of the first n odd numbers is equal to n squared. Provide a detailed proof."
 
-For problems requiring rigorous validation:
+    reasoning_agent = Agent(
+        model=OpenAIChat(id="gpt-4o"),
+        reasoning=True,
+        markdown=True,
+    )
 
-```python mathematical_proof.py
-from agno.agent import Agent
-from agno.models.openai import OpenAIChat
+    reasoning_agent.print_response(task, stream=True, show_full_reasoning=True)
+    ```
+  </Tab>
 
-task = "Prove that for any positive integer n, the sum of the first n odd numbers is equal to n squared. Provide a detailed proof."
+  <Tab title="Scientific Research">
+    **Critical evaluation and multi-faceted analysis:**
 
-reasoning_agent = Agent(
-    model=OpenAIChat(id="gpt-4o"),
-    reasoning=True,
-    markdown=True,
-)
+    ```python scientific_research.py
+    from agno.agent import Agent
+    from agno.models.openai import OpenAIChat
 
-reasoning_agent.print_response(task, stream=True, show_full_reasoning=True)
-```
+    task = (
+        "Read the following abstract of a scientific paper and provide a critical evaluation of its methodology, "
+        "results, conclusions, and any potential biases or flaws:\n\n"
+        "Abstract: This study examines the effect of a new teaching method on student performance in mathematics. "
+        "A sample of 30 students was selected from a single school and taught using the new method over one semester. "
+        "The results showed a 15% increase in test scores compared to the previous semester. "
+        "The study concludes that the new teaching method is effective in improving mathematical performance among high school students."
+    )
 
-</Accordion>
+    reasoning_agent = Agent(
+        model=OpenAIChat(id="gpt-4o"),
+        reasoning=True,
+        markdown=True,
+    )
 
-<Accordion title="Scientific Research Analysis" icon="microscope">
+    reasoning_agent.print_response(task, stream=True, show_full_reasoning=True)
+    ```
+  </Tab>
 
-When you need critical evaluation and multi-faceted analysis:
+  <Tab title="Planning & Itineraries">
+    **Sequential planning and optimization:**
 
-```python scientific_research.py
-from agno.agent import Agent
-from agno.models.openai import OpenAIChat
+    ```python planning_itinerary.py
+    from agno.agent import Agent
+    from agno.models.openai import OpenAIChat
 
-task = (
-    "Read the following abstract of a scientific paper and provide a critical evaluation of its methodology, "
-    "results, conclusions, and any potential biases or flaws:\n\n"
-    "Abstract: This study examines the effect of a new teaching method on student performance in mathematics. "
-    "A sample of 30 students was selected from a single school and taught using the new method over one semester. "
-    "The results showed a 15% increase in test scores compared to the previous semester. "
-    "The study concludes that the new teaching method is effective in improving mathematical performance among high school students."
-)
+    task = "Plan a 3-day itinerary from Los Angeles to Las Vegas, including must-see attractions, dining recommendations, and optimal travel times."
 
-reasoning_agent = Agent(
-    model=OpenAIChat(id="gpt-4o"),
-    reasoning=True,
-    markdown=True,
-)
+    reasoning_agent = Agent(
+        model=OpenAIChat(id="gpt-4o"),
+        reasoning=True,
+        markdown=True,
+    )
 
-reasoning_agent.print_response(task, stream=True, show_full_reasoning=True)
-```
+    reasoning_agent.print_response(task, stream=True, show_full_reasoning=True)
+    ```
+  </Tab>
 
-</Accordion>
+  <Tab title="Creative Writing">
+    **Structured and coherent creative content:**
 
-<Accordion title="Planning and Itineraries" icon="map">
+    ```python creative_writing.py
+    from agno.agent import Agent
+    from agno.models.openai import OpenAIChat
 
-For tasks requiring sequential planning and optimization:
+    task = "Write a short story about life in 500,000 years. Consider technological, biological, and societal evolution."
 
-```python planning_itinerary.py
-from agno.agent import Agent
-from agno.models.openai import OpenAIChat
+    reasoning_agent = Agent(
+        model=OpenAIChat(id="gpt-4o"),
+        reasoning=True,
+        markdown=True,
+    )
 
-task = "Plan a 3-day itinerary from Los Angeles to Las Vegas, including must-see attractions, dining recommendations, and optimal travel times."
-
-reasoning_agent = Agent(
-    model=OpenAIChat(id="gpt-4o"),
-    reasoning=True,
-    markdown=True,
-)
-
-reasoning_agent.print_response(task, stream=True, show_full_reasoning=True)
-```
-
-</Accordion>
-
-<Accordion title="Creative Writing with Structure" icon="pen-fancy">
-
-Even creative tasks benefit from reasoning when structure and coherence matter:
-
-```python creative_writing.py
-from agno.agent import Agent
-from agno.models.openai import OpenAIChat
-
-task = "Write a short story about life in 500,000 years. Consider technological, biological, and societal evolution."
-
-reasoning_agent = Agent(
-    model=OpenAIChat(id="gpt-4o"),
-    reasoning=True,
-    markdown=True,
-)
-
-reasoning_agent.print_response(task, stream=True, show_full_reasoning=True)
-```
-
-</Accordion>
+    reasoning_agent.print_response(task, stream=True, show_full_reasoning=True)
+    ```
+  </Tab>
+</Tabs>
 
 ## When to Use Reasoning Agents
 
@@ -416,8 +325,8 @@ reasoning_agent.print_response(task, stream=True, show_full_reasoning=True)
 
 **Consider alternatives when:**
 
-- You're using a native reasoning model (gpt-5-mini, DeepSeek-R1) for simple tasks—just use the model directly
-- You want explicit control over when the agent thinks vs. acts—use [Reasoning Tools](/concepts/reasoning/reasoning-tools) instead
+- You're using a native reasoning model (gpt-5-mini, DeepSeek-R1) for simple tasks: just use the model directly
+- You want explicit control over when the agent thinks vs. acts: use [Reasoning Tools](/concepts/reasoning/reasoning-tools) instead
 - The task is straightforward and doesn't require multi-step thinking
 
 <Tip>
