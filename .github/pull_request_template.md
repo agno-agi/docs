@@ -1,6 +1,8 @@
 ## Description
 Brief summary of what you changed and why.
 
+**Note:** Your PR title must follow conventional commit format (e.g., `docs: add authentication guide`, `fix: correct broken links`, `style: update formatting`). See [CONTRIBUTING.md](../CONTRIBUTING.md) for details.
+
 ## Type of Change
 - [ ] Bug fix (errors, broken links, outdated info)
 - [ ] New content

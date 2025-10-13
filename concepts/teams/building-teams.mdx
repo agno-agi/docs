@@ -1,0 +1,89 @@
+---
+title: Building Teams
+sidebarTitle: Building Teams
+description: Learn how to build Teams with Agno.
+---
+
+To build effective teams, start simple -- just a model, members, and instructions. Once that works, layer in more functionality as needed.
+
+It's also best to begin with well-defined tasks like report generation, data extraction, classification, summarization, knowledge search, and document processing. These early wins help you identify what works, validate user needs, and set the stage for advanced systems.
+
+Here's the simplest possible team with specialized agents:
+
+```python news_weather_team.py lines
+from agno.team import Team
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+
+# Create specialized agents
+news_agent = Agent(
+    name="News Agent", 
+    role="Get the latest news and provide summaries"
+)
+
+weather_agent = Agent(
+    name="Weather Agent", 
+    role="Get weather information and forecasts"
+)
+
+# Create the team
+team = Team(
+    name="News and Weather Team",
+    members=[news_agent, weather_agent],
+    model=OpenAIChat(id="gpt-4o"),
+    instructions="Coordinate with team members to provide comprehensive information. Delegate tasks based on the user's request."
+)
+
+team.print_response("What's the latest news and weather in Tokyo?", stream=True)
+```
+
+## Run your Team
+
+When running your team, use the `Team.print_response()` method to print the response in the terminal. This is only for development purposes and not recommended for production use. In production, use the `Team.run()` or `Team.arun()` methods. For example:
+
+```python
+from typing import Iterator
+from agno.team import Team
+from agno.agent import Agent
+from agno.run.team import TeamRunOutputEvent
+from agno.models.openai import OpenAIChat
+from agno.utils.pprint import pprint_run_response
+
+news_agent = Agent(name="News Agent", role="Get the latest news")
+weather_agent = Agent(name="Weather Agent", role="Get the weather for the next 7 days")
+
+team = Team(
+    name="News and Weather Team", 
+    members=[news_agent, weather_agent],
+    model=OpenAIChat(id="gpt-4o")
+)
+
+# Run team and return the response as a variable
+response = team.run("What is the weather in Tokyo?")
+# Print the response
+print(response.content)
+
+################ STREAM RESPONSE #################
+stream: Iterator[TeamRunOutputEvent] = team.run("What is the weather in Tokyo?", stream=True)
+for chunk in stream:
+    if chunk.event == "TeamRunContent":
+        print(chunk.content)
+
+# ################ STREAM AND PRETTY PRINT #################
+stream: Iterator[TeamRunOutputEvent] = team.run("What is the weather in Tokyo?", stream=True)
+pprint_run_response(stream, markdown=True)
+```
+
+Next, continue building your team by adding functionality as needed. Common questions:
+
+- **How do I run my team?** -> See the [running teams](/concepts/teams/running-teams) documentation.
+- **How do I manage sessions?** -> See the [team sessions](/concepts/teams/sessions) documentation.
+- **How do I manage input and capture output?** -> See the [input and output](/concepts/teams/input-output) documentation.
+- **How do I give the team context?** -> See the [context engineering](/concepts/teams/context) documentation.
+- **How do I add knowledge?** -> See the [knowledge](/concepts/teams/knowledge) documentation.
+- **How do I add guardrails?** -> See the [guardrails](/concepts/teams/guardrails) documentation.
+
+## Developer Resources
+
+- View the [Team reference](/reference/teams/team)
+- View [Team Cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/teams/README.md)
