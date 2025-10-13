@@ -1,0 +1,70 @@
+---
+title: Opik via OpenInference
+---
+
+## Overview
+
+This example shows how to instrument your Agno agent with OpenInference and export traces to Opik for deep observability, cost tracking, and debugging.
+
+## Code
+
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.tools.yfinance import YFinanceTools
+from openinference.instrumentation.agno import AgnoInstrumentor
+from opentelemetry import trace as trace_api
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+
+tracer_provider = TracerProvider()
+tracer_provider.add_span_processor(SimpleSpanProcessor(OTLPSpanExporter()))
+trace_api.set_tracer_provider(tracer_provider)
+
+AgnoInstrumentor().instrument()
+
+agent = Agent(
+    name="Stock Price Agent",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    tools=[YFinanceTools()],
+    instructions="You are a stock price analyst. Answer with concise, well-sourced updates.",
+    debug_mode=True,
+    trace_attributes={
+        "session.id": "demo-session-001",
+        "environment": "development",
+    },
+)
+
+agent.print_response("What is the current price of Apple and how did it move today?")
+```
+
+## Usage
+
+<Steps>
+  <Step title="Install Dependencies">
+    ```bash
+    pip install -U opik agno openai opentelemetry-sdk opentelemetry-exporter-otlp openinference-instrumentation-agno
+    ```
+  </Step>
+
+  <Step title="Configure Opik">
+    ```bash wordWrap
+    export OTEL_EXPORTER_OTLP_ENDPOINT=https://www.comet.com/opik/api/v1/private/otel
+    export OTEL_EXPORTER_OTLP_HEADERS='Authorization=<your-api-key>,Comet-Workspace=<workspace>,projectName=<project>'
+    ```
+  </Step>
+
+  <Step title="Run the Example">
+    <CodeGroup>
+    ```bash
+    python cookbook/integrations/observability/opik_via_openinference.py
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+## Notes
+
+- Use the `projectName` header to route traces into a specific Opik project.
+- Call `opik configure` once per environment to persist your API key securely.
