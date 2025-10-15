@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Agno AgentOS
-  description: Demo AgentOS
+  description: An agent operating system.
   version: 1.0.0
 paths:
   /config:
@@ -1164,6 +1164,150 @@ paths:
                     description: AI Agent Operating System API
                     id: demo-os
                     version: 1.0.0
+  /slack/events:
+    post:
+      tags:
+        - Slack
+      summary: Slack Events
+      description: Process incoming Slack events
+      operationId: slack_events_agent
+      responses:
+        '200':
+          description: Event processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SlackEventResponse'
+        '400':
+          description: Missing Slack headers
+        '403':
+          description: Invalid Slack signature
+  /whatsapp/status:
+    get:
+      tags:
+        - Whatsapp
+      summary: Status
+      operationId: status_whatsapp_status_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /whatsapp/webhook:
+    get:
+      tags:
+        - Whatsapp
+      summary: Verify Webhook
+      description: Handle WhatsApp webhook verification
+      operationId: verify_webhook_whatsapp_webhook_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+    post:
+      tags:
+        - Whatsapp
+      summary: Webhook
+      description: Handle incoming WhatsApp messages
+      operationId: webhook_whatsapp_webhook_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /agui:
+    post:
+      tags:
+        - AGUI
+      summary: Run Agent
+      operationId: run_agent_agui_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunAgentInput'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /status:
+    get:
+      tags:
+        - AGUI
+      summary: Get Status
+      operationId: get_status_status_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /a2a/message/send:
+    post:
+      tags:
+        - A2A
+      summary: Send Message
+      description: 'Send a message to an Agno Agent, Team, or Workflow. The Agent, Team or Workflow is identified via the ''agentId'' field in params.message or X-Agent-ID header. Optional: Pass user ID via X-User-ID header (recommended) or ''userId'' in params.message.metadata.'
+      operationId: send_message
+      responses:
+        '200':
+          description: Message sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendMessageSuccessResponse'
+              example:
+                jsonrpc: '2.0'
+                id: request-123
+                result:
+                  task:
+                    id: task-456
+                    context_id: context-789
+                    status: completed
+                    history:
+                      - message_id: msg-1
+                        role: agent
+                        parts:
+                          - kind: text
+                            text: Response from agent
+        '400':
+          description: Invalid request or unsupported method
+        '404':
+          description: 'Agent, Team, or Workflow not found'
+  /a2a/message/stream:
+    post:
+      tags:
+        - A2A
+      summary: Stream Message
+      description: 'Stream a message to an Agno Agent, Team, or Workflow.The Agent, Team or Workflow is identified via the ''agentId'' field in params.message or X-Agent-ID header. Optional: Pass user ID via X-User-ID header (recommended) or ''userId'' in params.message.metadata. Returns real-time updates as newline-delimited JSON (NDJSON).'
+      operationId: stream_message
+      responses:
+        '200':
+          description: Streaming response with task updates
+          content:
+            application/json:
+              schema: {}
+            application/x-ndjson:
+              example: |
+                {"jsonrpc":"2.0","id":"request-123","result":{"taskId":"task-456","status":"working"}}
+                {"jsonrpc":"2.0","id":"request-123","result":{"messageId":"msg-1","role":"agent","parts":[{"kind":"text","text":"Response"}]}}
+        '400':
+          description: Invalid request or unsupported method
+        '404':
+          description: 'Agent, Team, or Workflow not found'
   /sessions:
     get:
       tags:
@@ -4306,6 +4450,117 @@ components:
           title: Db Id
       type: object
       title: AgentSummaryResponse
+    Artifact-Input:
+      properties:
+        artifactId:
+          type: string
+          title: Artifactid
+        description:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Description
+        extensions:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: 'null'
+          title: Extensions
+        metadata:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Metadata
+        name:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Name
+        parts:
+          items:
+            $ref: '#/components/schemas/Part-Input'
+          type: array
+          title: Parts
+      type: object
+      required:
+        - artifactId
+        - parts
+      title: Artifact
+      description: 'Represents a file, data structure, or other resource generated by an agent during a task.'
+    Artifact-Output:
+      properties:
+        artifactId:
+          type: string
+          title: Artifactid
+        description:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Description
+        extensions:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: 'null'
+          title: Extensions
+        metadata:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Metadata
+        name:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Name
+        parts:
+          items:
+            $ref: '#/components/schemas/Part-Output'
+          type: array
+          title: Parts
+      type: object
+      required:
+        - artifactId
+        - parts
+      title: Artifact
+      description: 'Represents a file, data structure, or other resource generated by an agent during a task.'
+    AssistantMessage:
+      properties:
+        id:
+          type: string
+          title: Id
+        role:
+          type: string
+          const: assistant
+          title: Role
+          default: assistant
+        content:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Content
+        name:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Name
+        toolCalls:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/ToolCall'
+              type: array
+            - type: 'null'
+          title: Toolcalls
+      additionalProperties: false
+      type: object
+      required:
+        - id
+      title: AssistantMessage
+      description: An assistant message.
     BadRequestResponse:
       properties:
         detail:
@@ -4768,6 +5023,43 @@ components:
         - status
       title: ContentStatusResponse
       description: Response model for content status endpoint.
+    Context:
+      properties:
+        description:
+          type: string
+          title: Description
+        value:
+          type: string
+          title: Value
+      additionalProperties: false
+      type: object
+      required:
+        - description
+        - value
+      title: Context
+      description: Additional context for the agent.
+    DataPart:
+      properties:
+        data:
+          additionalProperties: true
+          type: object
+          title: Data
+        kind:
+          type: string
+          const: data
+          title: Kind
+          default: data
+        metadata:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Metadata
+      type: object
+      required:
+        - data
+      title: DataPart
+      description: 'Represents a structured data segment (e.g., JSON) within a message or artifact.'
     DatabaseConfig_EvalsDomainConfig_:
       properties:
         db_id:
@@ -4940,6 +5232,31 @@ components:
         - session_ids
         - session_types
       title: DeleteSessionRequest
+    DeveloperMessage:
+      properties:
+        id:
+          type: string
+          title: Id
+        role:
+          type: string
+          const: developer
+          title: Role
+          default: developer
+        content:
+          type: string
+          title: Content
+        name:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Name
+      additionalProperties: false
+      type: object
+      required:
+        - id
+        - content
+      title: DeveloperMessage
+      description: A developer message.
     EvalFilterType:
       type: string
       enum:
@@ -5160,6 +5477,95 @@ components:
       type: object
       title: EvalsDomainConfig
       description: Configuration for the Evals domain of the AgentOS
+    FilePart:
+      properties:
+        file:
+          anyOf:
+            - $ref: '#/components/schemas/FileWithBytes'
+            - $ref: '#/components/schemas/FileWithUri'
+          title: File
+        kind:
+          type: string
+          const: file
+          title: Kind
+          default: file
+        metadata:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Metadata
+      type: object
+      required:
+        - file
+      title: FilePart
+      description: |-
+        Represents a file segment within a message or artifact. The file content can be
+        provided either directly as bytes or as a URI.
+    FileWithBytes:
+      properties:
+        bytes:
+          type: string
+          title: Bytes
+        mimeType:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Mimetype
+        name:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Name
+      type: object
+      required:
+        - bytes
+      title: FileWithBytes
+      description: Represents a file with its content provided directly as a base64-encoded string.
+    FileWithUri:
+      properties:
+        mimeType:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Mimetype
+        name:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Name
+        uri:
+          type: string
+          title: Uri
+      type: object
+      required:
+        - uri
+      title: FileWithUri
+      description: Represents a file with its content located at a specific URI.
+    FunctionCall:
+      properties:
+        name:
+          type: string
+          title: Name
+        arguments:
+          type: string
+          title: Arguments
+      additionalProperties: false
+      type: object
+      required:
+        - name
+        - arguments
+      title: FunctionCall
+      description: Name and arguments of a function call.
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
     HealthResponse:
       properties:
         status:
@@ -5293,6 +5699,114 @@ components:
       type: object
       title: MemoryDomainConfig
       description: Configuration for the Memory domain of the AgentOS
+    Message-Input:
+      properties:
+        contextId:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Contextid
+        extensions:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: 'null'
+          title: Extensions
+        kind:
+          type: string
+          const: message
+          title: Kind
+          default: message
+        messageId:
+          type: string
+          title: Messageid
+        metadata:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Metadata
+        parts:
+          items:
+            $ref: '#/components/schemas/Part-Input'
+          type: array
+          title: Parts
+        referenceTaskIds:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: 'null'
+          title: Referencetaskids
+        role:
+          $ref: '#/components/schemas/Role'
+        taskId:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Taskid
+      type: object
+      required:
+        - messageId
+        - parts
+        - role
+      title: Message
+      description: Represents a single message in the conversation between a user and an agent.
+    Message-Output:
+      properties:
+        contextId:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Contextid
+        extensions:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: 'null'
+          title: Extensions
+        kind:
+          type: string
+          const: message
+          title: Kind
+          default: message
+        messageId:
+          type: string
+          title: Messageid
+        metadata:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Metadata
+        parts:
+          items:
+            $ref: '#/components/schemas/Part-Output'
+          type: array
+          title: Parts
+        referenceTaskIds:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: 'null'
+          title: Referencetaskids
+        role:
+          $ref: '#/components/schemas/Role'
+        taskId:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Taskid
+      type: object
+      required:
+        - messageId
+        - parts
+        - role
+      title: Message
+      description: Represents a single message in the conversation between a user and an agent.
     Meta:
       properties:
         limit:
@@ -5545,6 +6059,18 @@ components:
           default: 0
       type: object
       title: PaginationInfo
+    Part-Input:
+      anyOf:
+        - $ref: '#/components/schemas/TextPart'
+        - $ref: '#/components/schemas/FilePart'
+        - $ref: '#/components/schemas/DataPart'
+      title: Part
+    Part-Output:
+      anyOf:
+        - $ref: '#/components/schemas/TextPart'
+        - $ref: '#/components/schemas/FilePart'
+        - $ref: '#/components/schemas/DataPart'
+      title: Part
     ReaderSchema:
       properties:
         id:
@@ -5571,6 +6097,65 @@ components:
       required:
         - id
       title: ReaderSchema
+    Role:
+      type: string
+      enum:
+        - agent
+        - user
+      title: Role
+      description: 'Identifies the sender of the message. `user` for the client, `agent` for the service.'
+    RunAgentInput:
+      properties:
+        threadId:
+          type: string
+          title: Threadid
+        runId:
+          type: string
+          title: Runid
+        state:
+          title: State
+        messages:
+          items:
+            oneOf:
+              - $ref: '#/components/schemas/DeveloperMessage'
+              - $ref: '#/components/schemas/SystemMessage'
+              - $ref: '#/components/schemas/AssistantMessage'
+              - $ref: '#/components/schemas/UserMessage'
+              - $ref: '#/components/schemas/ToolMessage'
+            discriminator:
+              propertyName: role
+              mapping:
+                assistant: '#/components/schemas/AssistantMessage'
+                developer: '#/components/schemas/DeveloperMessage'
+                system: '#/components/schemas/SystemMessage'
+                tool: '#/components/schemas/ToolMessage'
+                user: '#/components/schemas/UserMessage'
+          type: array
+          title: Messages
+        tools:
+          items:
+            $ref: '#/components/schemas/Tool'
+          type: array
+          title: Tools
+        context:
+          items:
+            $ref: '#/components/schemas/Context'
+          type: array
+          title: Context
+        forwardedProps:
+          title: Forwardedprops
+      additionalProperties: false
+      type: object
+      required:
+        - threadId
+        - runId
+        - state
+        - messages
+        - tools
+        - context
+        - forwardedProps
+      title: RunAgentInput
+      description: Input for running an agent.
     RunSchema:
       properties:
         run_id:
@@ -5692,6 +6277,29 @@ components:
         - references
         - reasoning_messages
       title: RunSchema
+    SendMessageSuccessResponse:
+      properties:
+        id:
+          anyOf:
+            - type: string
+            - type: integer
+            - type: 'null'
+          title: Id
+        jsonrpc:
+          type: string
+          const: '2.0'
+          title: Jsonrpc
+          default: '2.0'
+        result:
+          anyOf:
+            - $ref: '#/components/schemas/Task-Output'
+            - $ref: '#/components/schemas/Message-Output'
+          title: Result
+      type: object
+      required:
+        - result
+      title: SendMessageSuccessResponse
+      description: Represents a successful JSON-RPC response for the `message/send` method.
     SessionConfig-Input:
       properties:
         display_name:
@@ -5777,12 +6385,185 @@ components:
         - team
         - workflow
       title: SessionType
+    SlackEventResponse:
+      properties:
+        status:
+          type: string
+          title: Status
+          description: Processing status
+          default: ok
+      type: object
+      title: SlackEventResponse
+      description: Response model for Slack event processing
     SortOrder:
       type: string
       enum:
         - asc
         - desc
       title: SortOrder
+    SystemMessage:
+      properties:
+        id:
+          type: string
+          title: Id
+        role:
+          type: string
+          const: system
+          title: Role
+          default: system
+        content:
+          type: string
+          title: Content
+        name:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Name
+      additionalProperties: false
+      type: object
+      required:
+        - id
+        - content
+      title: SystemMessage
+      description: A system message.
+    Task-Input:
+      properties:
+        artifacts:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/Artifact-Input'
+              type: array
+            - type: 'null'
+          title: Artifacts
+        contextId:
+          type: string
+          title: Contextid
+        history:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/Message-Input'
+              type: array
+            - type: 'null'
+          title: History
+        id:
+          type: string
+          title: Id
+        kind:
+          type: string
+          const: task
+          title: Kind
+          default: task
+        metadata:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Metadata
+        status:
+          $ref: '#/components/schemas/TaskStatus-Input'
+      type: object
+      required:
+        - contextId
+        - id
+        - status
+      title: Task
+      description: 'Represents a single, stateful operation or conversation between a client and an agent.'
+    Task-Output:
+      properties:
+        artifacts:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/Artifact-Output'
+              type: array
+            - type: 'null'
+          title: Artifacts
+        contextId:
+          type: string
+          title: Contextid
+        history:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/Message-Output'
+              type: array
+            - type: 'null'
+          title: History
+        id:
+          type: string
+          title: Id
+        kind:
+          type: string
+          const: task
+          title: Kind
+          default: task
+        metadata:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Metadata
+        status:
+          $ref: '#/components/schemas/TaskStatus-Output'
+      type: object
+      required:
+        - contextId
+        - id
+        - status
+      title: Task
+      description: 'Represents a single, stateful operation or conversation between a client and an agent.'
+    TaskState:
+      type: string
+      enum:
+        - submitted
+        - working
+        - input-required
+        - completed
+        - canceled
+        - failed
+        - rejected
+        - auth-required
+        - unknown
+      title: TaskState
+      description: Defines the lifecycle states of a Task.
+    TaskStatus-Input:
+      properties:
+        message:
+          anyOf:
+            - $ref: '#/components/schemas/Message-Input'
+            - type: 'null'
+        state:
+          $ref: '#/components/schemas/TaskState'
+        timestamp:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Timestamp
+          examples:
+            - '2023-10-27T10:00:00Z'
+      type: object
+      required:
+        - state
+      title: TaskStatus
+      description: Represents the status of a task at a specific point in time.
+    TaskStatus-Output:
+      properties:
+        message:
+          anyOf:
+            - $ref: '#/components/schemas/Message-Output'
+            - type: 'null'
+        state:
+          $ref: '#/components/schemas/TaskState'
+        timestamp:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Timestamp
+          examples:
+            - '2023-10-27T10:00:00Z'
+      type: object
+      required:
+        - state
+      title: TaskStatus
+      description: Represents the status of a task at a specific point in time.
     TeamResponse:
       properties:
         id:
@@ -6101,6 +6882,93 @@ components:
           title: Db Id
       type: object
       title: TeamSummaryResponse
+    TextPart:
+      properties:
+        kind:
+          type: string
+          const: text
+          title: Kind
+          default: text
+        metadata:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Metadata
+        text:
+          type: string
+          title: Text
+      type: object
+      required:
+        - text
+      title: TextPart
+      description: Represents a text segment within a message or artifact.
+    Tool:
+      properties:
+        name:
+          type: string
+          title: Name
+        description:
+          type: string
+          title: Description
+        parameters:
+          title: Parameters
+      additionalProperties: false
+      type: object
+      required:
+        - name
+        - description
+        - parameters
+      title: Tool
+      description: A tool definition.
+    ToolCall:
+      properties:
+        id:
+          type: string
+          title: Id
+        type:
+          type: string
+          const: function
+          title: Type
+          default: function
+        function:
+          $ref: '#/components/schemas/FunctionCall'
+      additionalProperties: false
+      type: object
+      required:
+        - id
+        - function
+      title: ToolCall
+      description: 'A tool call, modelled after OpenAI tool calls.'
+    ToolMessage:
+      properties:
+        id:
+          type: string
+          title: Id
+        role:
+          type: string
+          const: tool
+          title: Role
+          default: tool
+        content:
+          type: string
+          title: Content
+        toolCallId:
+          type: string
+          title: Toolcallid
+        error:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Error
+      additionalProperties: false
+      type: object
+      required:
+        - id
+        - content
+        - toolCallId
+      title: ToolMessage
+      description: A tool result message.
     UnauthenticatedResponse:
       properties:
         detail:
@@ -6195,6 +7063,31 @@ components:
         - user_id
         - updated_at
       title: UserMemorySchema
+    UserMessage:
+      properties:
+        id:
+          type: string
+          title: Id
+        role:
+          type: string
+          const: user
+          title: Role
+          default: user
+        content:
+          type: string
+          title: Content
+        name:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Name
+      additionalProperties: false
+      type: object
+      required:
+        - id
+        - content
+      title: UserMessage
+      description: A user message.
     UserStatsSchema:
       properties:
         user_id:
@@ -6215,6 +7108,27 @@ components:
         - total_memories
       title: UserStatsSchema
       description: Schema for user memory statistics
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+              - type: string
+              - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+        - loc
+        - msg
+        - type
+      title: ValidationError
     ValidationErrorResponse:
       properties:
         detail:
