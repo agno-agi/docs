@@ -37,8 +37,11 @@ git push
 
 1. Run an `AgentOS` cookbook with the latest version of Agno
 2. Run `curl -o reference-api/openapi.json http://localhost:7777/openapi.json` to download the latest API reference
-3. Delete all files in the `reference-api/schema/` folder (the auto-generated files)
-4. Run `npx @mintlify/scraping@latest openapi-file reference-api/openapi.json -o reference-api/schema` to generate the new API reference
+3. Delete all files in the `reference-api/schema/` folder (the auto-generated files).
+4. Delete the `reference-api/openapi.yaml` file.
+5. Run `npx @mintlify/scraping@latest openapi-file reference-api/openapi.json -o reference-api/schema` to generate the new API reference
+6. Install `swagger-cli` if you don't have it. `npm install -g swagger-cli`. Then create the new `openapi.yaml` file. 
+   `swagger-cli bundle reference-api/openapi.json --outfile reference-api/openapi.yaml --type yaml`
 5. Run `mint dev` to see the changes
 
 ## Troubleshooting
