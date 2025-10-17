@@ -344,6 +344,46 @@ This will add the history of the conversation to the context, which can be used 
 
 See more details on [sessions](/concepts/agents/sessions#session-history).
 
+## Managing Tool Calls
+
+The `max_tool_calls_in_context` parameter can used to keep only the N most recent tool calls in context. 
+
+This helps manage context size and reduce token costs while still maintaining complete history in your database.
+
+```python
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIChat
+
+def get_weather(city: str) -> str:
+    return f"{city}: 22°C, Sunny"
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-5-mini"),
+    tools=[get_weather],
+    db=SqliteDb(db_file="tmp/agent.db"),
+    add_history_to_context=True,
+    max_tool_calls_in_context=3,  # Keep only last 3 tool calls in context
+)
+agent.print_response("What's the weather in Tokyo?")  
+agent.print_response("What's the weather in Paris?")  
+agent.print_response("What's the weather in London?")
+agent.print_response("What's the weather in Berlin?")  
+
+```
+
+In this example:
+- **Run 1-3:** Model sees tool calls [1], [1,2], [1,2,3]
+- **Run 4:** Model sees tool calls [2,3,4] (tool call 1 filtered out)
+- **Run 5:** Model sees tool calls [3,4,5] (tool calls 1-2 filtered out)
+
+
+<Note>
+**Important:** `max_tool_calls_in_context` filters tool calls from the runs loaded by `num_history_runs`. Your database always contains the complete history.
+</Note>
+
+See the [full example](/examples/concepts/agent/context_management/forget_tool_calls) for a complete demonstration.
+
 ## Few-shot learning with additional input
 
 You can add entire additional messages to your agent's context using the `additional_input` parameter.

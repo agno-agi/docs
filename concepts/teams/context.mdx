@@ -518,6 +518,50 @@ See more details on [sessions](/concepts/teams/sessions#session-history).
 
 <Note>All team member runs are added to the team session history.</Note>
 
+## Managing Tool Calls
+
+The `max_tool_calls_in_context` parameter can be used to keep only the N most recent tool calls in context. 
+
+This helps manage context size and reduce token costs while still maintaining complete history in your database.
+
+```python
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIChat
+from agno.team import Team
+from agno.tools.duckduckgo import DuckDuckGoTools
+
+web_agent = Agent(
+    name="Web Researcher",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    instructions="You are a web researcher. Search the web for comprehensive information on given topics.",
+    tools=[DuckDuckGoTools()],
+)
+
+team = Team(
+    members=[web_agent],
+    model=OpenAIChat(id="gpt-4o"),
+    db=SqliteDb(db_file="tmp/team.db"),
+    tools=[DuckDuckGoTools()],  # Team also has search tools
+    add_history_to_context=True,
+    max_tool_calls_in_context=5,  # Keep only last 5 tool calls in context
+    show_members_responses=True,
+)
+
+team.print_response("Search for AI news")
+team.print_response("Search for crypto trends")
+team.print_response("Search for tech stocks")
+# Older searches will be filtered from context
+team.print_response("Search for startups") 
+
+```
+
+<Note>
+**Important:** `max_tool_calls_in_context` filters tool calls from the runs loaded. Your database always contains the complete history.
+</Note>
+
+See the [full team example](/examples/concepts/teams/context_management/forget_tool_calls) for a detailed demonstration.
+
 ## Additional input
 
 You can add entire additional messages to your team's context using the `additional_input` parameter.
