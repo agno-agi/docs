@@ -1,0 +1,207 @@
+---
+title: "Human-in-the-Loop"
+sidebarTitle: "Human-in-the-Loop"
+description: "Implement human oversight and approval workflows in your AgentOS"
+---
+
+## Overview
+
+Human-in-the-Loop (HITL) enables you to pause agent execution and require human approval or input before critical operations proceed in your AgentOS production environment.
+
+<Note>
+  <strong>Prerequisites</strong>: Your AgentOS must be connected and active. HITL is currently supported for agents.
+</Note>
+
+## How It Works with AgentOS
+
+When an agent encounters a tool requiring confirmation or user input, the run automatically pauses with status `"paused"`. You can then:
+
+1. Review the tool call details via the API or control plane
+2. Approve/reject the operation or provide input
+3. Continue the run programmatically
+
+## Setting Up HITL in AgentOS
+
+### Basic Configuration
+
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+from agno.os import AgentOS
+from agno.tools import tool
+
+db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+@tool(requires_confirmation=True)
+def delete_records(table_name: str, count: int) -> str:
+    """Delete records from a database table."""
+    return f"Deleted {count} records from {table_name}"
+
+agent = Agent(
+    name="Data Manager",
+    id="data_manager",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    tools=[delete_records],
+    db=db,
+)
+
+agent_os = AgentOS(id="agentos-hitl", agents=[agent])
+app = agent_os.get_app()
+```
+
+## API Interactions
+
+### Detecting Paused Runs
+
+When a run is paused, the API response includes:
+
+```json
+{
+  "run_id": "run_abc123",
+  "status": "paused",
+  "tools": [
+    {
+      "tool_id": "tool_xyz",
+      "tool_name": "delete_records",
+      "tool_args": {"table_name": "users", "count": 100},
+      "requires_confirmation": true,
+      "confirmed": null
+    }
+  ]
+}
+```
+
+### Continuing a Paused Run
+
+```bash
+curl -X POST http://localhost:7777/agents/data_manager/runs/{run_id}/continue \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tools": "[{\"tool_id\": \"tool_xyz\", \"confirmed\": true}]"
+  }'
+```
+
+### User Input Collection
+
+For tools requiring user input:
+
+```python
+@tool(requires_user_input=True, user_input_fields=["recipient_email"])
+def send_report(report_type: str, recipient_email: str) -> str:
+    """Send a report to a user."""
+    return f"Sent {report_type} report to {recipient_email}"
+```
+
+The paused response includes `user_input_schema`:
+
+```json
+{
+  "tool_id": "tool_abc",
+  "requires_user_input": true,
+  "user_input_schema": [
+    {
+      "name": "recipient_email",
+      "field_type": "str",
+      "description": "Email address of recipient",
+      "value": null
+    }
+  ]
+}
+```
+
+Continue with filled values:
+
+```bash
+curl -X POST http://localhost:7777/agents/report_agent/runs/{run_id}/continue \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tools": "[{\"tool_id\": \"tool_abc\", \"user_input_schema\": [{\"name\": \"recipient_email\", \"value\": \"user@example.com\"}]}]"
+  }'
+```
+
+## Interface Integration
+
+### Discord
+
+The Discord interface automatically handles HITL with interactive buttons:
+
+```python
+from agno.integrations.discord import DiscordInterface
+
+discord_interface = DiscordInterface(agent=agent)
+agent_os = AgentOS(
+    id="discord-hitl",
+    agents=[agent],
+    interfaces=[discord_interface],
+)
+```
+
+When tools require confirmation, Discord sends approve/reject buttons and waits for user interaction.
+
+## Monitoring in Control Plane
+
+View paused runs in the AgentOS dashboard:
+
+1. Navigate to **Sessions**
+2. Filter by status: "Paused"
+3. View tool calls requiring approval
+4. Track time spent in paused state
+
+<Tip>
+  Set up notifications to alert you when runs require attention.
+</Tip>
+
+## Best Practices
+
+1. **Validate Input**: Always sanitize user-provided values
+2. **Set Timeouts**: Configure timeouts to prevent indefinite waiting
+3. **Audit Logging**: Track all confirmations for compliance (automatically logged when using `db`)
+
+```python
+agent = Agent(
+    name="Audited Agent",
+    tools=[sensitive_operation],
+    db=db,  # Automatically logs all tool calls and confirmations
+    run_timeout=300,  # 5 minute timeout
+)
+```
+
+## Privacy & Security
+
+- All HITL interactions are stored in your AgentOS database
+- No data transmitted to external services
+- You control retention policies for paused run data
+
+## Learn More
+
+<CardGroup cols={2}>
+  <Card
+    title="HITL Concepts"
+    icon="hand"
+    href="/concepts/hitl/overview"
+  >
+    Learn the fundamentals and all HITL patterns
+  </Card>
+  <Card
+    title="Session Tracking"
+    icon="clock"
+    href="/agent-os/features/session-tracking"
+  >
+    Monitor and manage agent runs
+  </Card>
+  <Card
+    title="AgentOS Security"
+    icon="shield-check"
+    href="/agent-os/security"
+  >
+    Understand security features
+  </Card>
+  <Card
+    title="Examples"
+    icon="code"
+    href="/examples/getting-started/12-human-in-the-loop"
+  >
+    View more HITL examples
+  </Card>
+</CardGroup>
