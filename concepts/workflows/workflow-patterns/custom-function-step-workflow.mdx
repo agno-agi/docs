@@ -97,6 +97,72 @@ def custom_content_planning_function(step_input: StepInput) -> StepOutput:
     return StepOutput(content=enhanced_content)
 ```
 
+## Class-based executor
+
+You can also use a class-based executor by defining a class that implements the `__call__` method.
+
+```python
+class CustomExecutor:
+    def __call__(self, step_input: StepInput) -> StepOutput:
+        # 1. Custom preprocessing
+        # 2. Call agents/teams as needed
+        # 3. Custom postprocessing
+        return StepOutput(content=enhanced_content)
+
+content_planning_step = Step(
+    name="Content Planning Step",
+    executor=CustomExecutor(),
+)
+```
+
+**When is this useful?:**
+- **Configuration at initialization**: Pass in settings, API keys, or behavior flags when creating the executor
+- **Stateful execution**: Maintain counters, caches, or track information across multiple workflow runs
+- **Reusable components**: Create configured executor instances that can be shared across multiple workflows
+
+```python
+class CustomExecutor:
+    def __init__(self, max_retries: int = 3, use_cache: bool = True):
+        # Configuration passed during instantiation
+        self.max_retries = max_retries
+        self.use_cache = use_cache
+        self.call_count = 0  # Stateful tracking
+        
+    def __call__(self, step_input: StepInput) -> StepOutput:
+        self.call_count += 1
+        
+        # Access instance configuration and state
+        if self.use_cache and self.call_count > 1:
+            return StepOutput(content="Using cached result")
+            
+        # Your custom logic with access to self.max_retries, etc.
+        return StepOutput(content=enhanced_content)
+
+# Instantiate with specific configuration
+content_planning_step = Step(
+    name="Content Planning Step",
+    executor=CustomExecutor(max_retries=5, use_cache=False),
+)
+```
+
+Also supports async execution by defining the `__call__` method to be an async function.
+
+```python
+class CustomExecutor:
+    async def __call__(self, step_input: StepInput) -> StepOutput:
+        # 1. Custom preprocessing
+        # 2. Call agents/teams as needed
+        # 3. Custom postprocessing
+        return StepOutput(content=enhanced_content)
+
+content_planning_step = Step(
+    name="Content Planning Step",
+    executor=CustomExecutor(),
+)
+```
+
+For a detailed example see [Class-based Executor](/examples/concepts/workflows/01-basic-workflows/class_based_executor).
+
 ## Streaming execution with custom function step on AgentOS:
 
 If you are running an agent or team within the custom function step, you can enable streaming on the [AgentOS chat page](/agent-os/introduction#chat-page) by setting `stream=True` and `stream_intermediate_steps=True` when calling `run()` or `arun()` and yielding the events.
@@ -181,6 +247,10 @@ async def custom_content_planning_function(
             success=False,
         )
 ```
+
+<Note>
+Streaming in case of a class-based executor also works the same way by defining the `__call__` method to yield the events.
+</Note>
 
 ## Developer Resources
 
