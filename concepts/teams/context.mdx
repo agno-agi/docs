@@ -520,7 +520,9 @@ See more details on [sessions](/concepts/teams/sessions#session-history).
 
 ## Managing Tool Calls
 
-To manage context size and token usage we can set `add_history_to_context`. This keeps only the last N tool calls in context.
+The `max_tool_calls_in_context` parameter can be used to keep only the N most recent tool calls in context. 
+
+This helps manage context size and reduce token costs while still maintaining complete history in your database.
 
 ```python
 from agno.agent import Agent
@@ -532,31 +534,31 @@ from agno.tools.duckduckgo import DuckDuckGoTools
 web_agent = Agent(
     name="Web Researcher",
     model=OpenAIChat(id="gpt-4o-mini"),
-    instructions="You are a web researcher. You are tasked with searching the web for information on a given topic. You are to find as much information as possible.",
+    instructions="You are a web researcher. Search the web for comprehensive information on given topics.",
     tools=[DuckDuckGoTools()],
 )
 
 team = Team(
     members=[web_agent],
-    model=OpenAIChat(id="gpt-5-mini"),
+    model=OpenAIChat(id="gpt-4o"),
     db=SqliteDb(db_file="tmp/team.db"),
     tools=[DuckDuckGoTools()],  # Team also has search tools
     add_history_to_context=True,
-    num_history_runs=8,  # limit the number of history responses to add to the context
-    max_tool_calls_in_context=5,  # Keep last 3 tool calls in context
+    max_tool_calls_in_context=5,  # Keep only last 5 tool calls in context
     show_members_responses=True,
-    debug_mode=True,
 )
 
 team.print_response("Search for AI news")
 team.print_response("Search for crypto trends")
 team.print_response("Search for tech stocks")
-team.print_response("Search for startups")  # First search is now filtered out
+# Older searches will be filtered from context
+team.print_response("Search for startups") 
+
 ```
 
-<Tip>
-  For teams, consider a slightly higher value (5-15) to account for multiple members making tool calls.
-</Tip>
+<Note>
+**Important:** `max_tool_calls_in_context` filters tool calls from the runs loaded. Your database always contains the complete history.
+</Note>
 
 See the [full team example](/examples/concepts/teams/context_management/forget_tool_calls) for a detailed demonstration.
 

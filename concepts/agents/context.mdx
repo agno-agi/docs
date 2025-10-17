@@ -346,7 +346,9 @@ See more details on [sessions](/concepts/agents/sessions#session-history).
 
 ## Managing Tool Calls
 
-To manage context size and token usage we can set `add_history_to_context`. This keeps only the last N tool calls in context.
+The `max_tool_calls_in_context` parameter can used to keep only the N most recent tool calls in context. 
+
+This helps manage context size and reduce token costs while still maintaining complete history in your database.
 
 ```python
 from agno.agent import Agent
@@ -361,20 +363,26 @@ agent = Agent(
     tools=[get_weather],
     db=SqliteDb(db_file="tmp/agent.db"),
     add_history_to_context=True,
-    max_tool_calls_in_context=3,  # Keep only last 3 tool calls
+    max_tool_calls_in_context=3,  # Keep only last 3 tool calls in context
 )
-
-agent.print_response("What's the weather in Tokyo?")
-agent.print_response("What's the weather in Paris?")
+agent.print_response("What's the weather in Tokyo?")  
+agent.print_response("What's the weather in Paris?")  
 agent.print_response("What's the weather in London?")
-agent.print_response("What's the weather in Berlin?")  # Tokyo is now filtered out
+agent.print_response("What's the weather in Berlin?")  
+
 ```
 
-<Tip>
-  A value of 3-10 is typically sufficient for most use cases.
-</Tip>
+In this example:
+- **Run 1-3:** Model sees tool calls [1], [1,2], [1,2,3]
+- **Run 4:** Model sees tool calls [2,3,4] (tool call 1 filtered out)
+- **Run 5:** Model sees tool calls [3,4,5] (tool calls 1-2 filtered out)
 
-See the [full example](/examples/concepts/agent/context_management/forget_tool_calls) for more details.
+
+<Note>
+**Important:** `max_tool_calls_in_context` filters tool calls from the runs loaded by `num_history_runs`. Your database always contains the complete history.
+</Note>
+
+See the [full example](/examples/concepts/agent/context_management/forget_tool_calls) for a complete demonstration.
 
 ## Few-shot learning with additional input
 

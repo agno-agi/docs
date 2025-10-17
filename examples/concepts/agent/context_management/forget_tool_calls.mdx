@@ -2,7 +2,9 @@
 title: Managing Tool Calls
 ---
 
-This example demonstrates how to use `max_tool_calls_in_context` to limit the number of tool calls kept in context
+This example demonstrates how to use `max_tool_calls_in_context` to limit the number of tool calls included in the agent's context.
+
+This helps manage context size and reduce token costs while still maintaining complete history in your database.
 
 ## Code
 
@@ -13,17 +15,20 @@ from agno.agent import Agent
 from agno.db.sqlite import SqliteDb
 from agno.models.openai import OpenAIChat
 
+
 def get_weather_for_city(city: str) -> str:
+    """Get weather for a city"""
     conditions = ["Sunny", "Cloudy", "Rainy", "Snowy", "Foggy", "Windy"]
     temperature = random.randint(-10, 35)
     condition = random.choice(conditions)
-
     return f"{city}: {temperature}°C, {condition}"
+
 
 agent = Agent(
     model=OpenAIChat(id="gpt-4o-mini"),
     tools=[get_weather_for_city],
     instructions="You are a weather assistant. Get the weather using the get_weather_for_city tool.",
+    # Only keep 3 most recent tool calls in context
     max_tool_calls_in_context=3,
     db=SqliteDb(db_file="tmp/weather_data.db"),
     add_history_to_context=True,
@@ -38,30 +43,18 @@ cities = [
     "Mumbai",
     "Beijing",
     "Cairo",
-    "Mexico City",
-    "Osaka",
-    "Karachi",
-    "Dhaka",
-    "Istanbul",
-    "Buenos Aires",
-    "Lagos",
-    "Manila",
-    "Rio de Janeiro",
-    "Guangzhou",
-    "Lahore",
-    "Moscow",
-    "Paris",
+    "London",
 ]
 
 print(
-    f"{'City':<20} | {'History':<8} | {'Current':<8} | {'Total in Context':<8} | {'Total in Session':<8}"
+    f"{'Run':<5} | {'City':<15} | {'History':<8} | {'Current':<8} | {'In Context':<11} | {'In DB':<8}"
 )
-print("-" * 70)
+print("-" * 90)
 
-for city in cities:
+for i, city in enumerate(cities, 1):
     run_response = agent.run(f"What's the weather in {city}?")
 
-    # Count tool calls from history vs current
+    # Count tool calls in context
     history_tool_calls = sum(
         len(msg.tool_calls)
         for msg in run_response.messages
@@ -70,6 +63,7 @@ for city in cities:
         and getattr(msg, "from_history", False)
     )
 
+    # Count tool calls from current run
     current_tool_calls = sum(
         len(msg.tool_calls)
         for msg in run_response.messages
@@ -78,9 +72,9 @@ for city in cities:
         and not getattr(msg, "from_history", False)
     )
 
-    total_in_response = history_tool_calls + current_tool_calls
+    total_in_context = history_tool_calls + current_tool_calls
 
-    # What's saved after filtering (get messages from session)
+    # Total tool calls stored in database (unfiltered)
     saved_messages = agent.get_messages_for_session()
     saved_tool_calls = (
         sum(
@@ -93,7 +87,7 @@ for city in cities:
     )
 
     print(
-        f"{city:<20} | {history_tool_calls:<8} | {current_tool_calls:<8} | {total_in_response:<8} | {saved_tool_calls:<8}"
+        f"{i:<5} | {city:<15} | {history_tool_calls:<8} | {current_tool_calls:<8} | {total_in_context:<11} | {saved_tool_calls:<8}"
     )
 ```
 
@@ -109,9 +103,7 @@ for city in cities:
   </Step>
 
   <Step title="Export your OpenAI API key">
-
     <CodeGroup>
-
     ```bash Mac/Linux
       export OPENAI_API_KEY="your_openai_api_key_here"
     ```
@@ -129,9 +121,9 @@ for city in cities:
     ```
   </Step>
 
-  <Step title="Run Agent">
+  <Step title="Run agent">
     <CodeGroup>
-    ```bash Mac
+    ```bash Mac/Linux
     python forget_tool_calls.py
     ```
     
