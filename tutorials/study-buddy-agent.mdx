@@ -1,0 +1,630 @@
+---
+title: Build a Study Buddy AI Agent with Agno, LanceDB, and DuckDuckGo
+description: Create an intelligent tutoring system that helps students learn effectively using Agno framework.
+---
+
+In this tutorial, we will build an AI-powered study assistant that helps students learn through personalized explanations, practice questions, and adaptive learning. This agent uses RAG (Retrieval Augmented Generation) to access a knowledge base and web search for current information.
+
+We will be using the following components:
+
+- **Agno** - The fastest framework for building agents.
+- **OpenAI GPT-4o** - Advanced reasoning model perfect for educational explanations and adaptive teaching
+- **LanceDB** - Vector database for storing and retrieving educational content with hybrid search
+- **DuckDuckGo Tools** - Provides web search for supplementary learning resources
+- **PostgreSQL** - Stores conversation history and learning progress
+
+This system will combine structured educational content with web search capabilities to provide comprehensive, personalized learning experiences that adapt to each student's pace and understanding.
+
+## What You'll Build
+
+Your Study Buddy agent will:
+
+- Answer student questions with clear, educational explanations adapted to their level
+- Search a knowledge base for relevant learning materials using RAG
+- Use web search to find supplementary resources and current information
+- Provide examples, analogies, and practice exercises
+- Maintain conversation history to track learning progress
+- Serve via [AgentOS](/agent-os/introduction) API for integration with learning platforms
+
+## Prerequisites and Setup
+
+Before we get started, we need to setup our environment:
+
+1. Install Python, Git and get your API key:
+
+- Install **Python >= 3.9** and **Git**
+- Get API key for:
+    - **OpenAI API** ([Get key](https://platform.openai.com/api-keys))
+
+2. Setup your Python environment:
+
+```bash
+mkdir study-buddy && cd study-buddy
+python3 -m venv venv
+source venv/bin/activate     # If you are on Windows, use: venv\Scripts\activate
+```
+
+3. Install our Python dependencies:
+
+```bash
+# Install dependencies
+pip install "agno[infra]" openai duckduckgo-search
+```
+
+4. Create a new project with [AgentOS](/agent-os/introduction):
+
+```bash
+ag infra create              # Choose: [1] agent-infra-docker (default)
+# Infra Name: study-buddy
+```
+
+5. Set your environment variable:
+
+```env
+export OPENAI_API_KEY=sk-your-openai-api-key-here
+```
+
+Our environment is now ready. Let's start building!
+
+# Building our Study Buddy Agent
+
+## Step 1: Choose Your AI Model
+
+**Which model should I use?**: You can choose any model from our supported providers. For educational applications, we need a model with strong reasoning and explanation capabilities. We'll use OpenAI's GPT-4o.
+
+**Why GPT-4o?**
+- **Strong reasoning**: Excellent at breaking down complex concepts
+- **Natural explanations**: Can adapt explanations to different levels
+- **Teaching ability**: Good at using analogies, examples, and the Socratic method
+- **Consistent quality**: Reliable performance across educational topics
+
+Let's first create the file where we will define our agent:
+
+```bash
+mkdir -p app
+touch app/study_buddy.py
+```
+
+Now let's add the basic imports and model setup:
+
+```python
+from pathlib import Path
+from dotenv import load_dotenv
+from agno.models.openai import OpenAIChat
+
+# Load infrastructure secrets
+load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / "infra" / "secrets" / ".env")
+
+# Choose the AI model for your agent
+model = OpenAIChat(id="gpt-4o")
+print(f"Model selected: {model.id}")
+```
+
+We can now test our model setup:
+
+```python
+# Quick test to verify model works
+if __name__ == "__main__":
+    test_response = model.invoke("Explain Python variables in one sentence.")
+    print(f"Model test: {test_response}")
+```
+
+This confirms your model is working before we add more complexity.
+
+## Step 2: Add Knowledge Base and Tools
+
+**Which tools should I use?** We need two key capabilities: access to educational content (knowledge base with RAG) and ability to search the web for current information.
+
+### 2a. Setup the Knowledge Base with RAG
+
+**What is RAG?** RAG (Retrieval Augmented Generation) allows your agent to access and retrieve relevant information from a knowledge base. This is crucial for educational content that needs to be accurate and consistent.
+
+First, let's setup the database and vector store:
+
+```python
+from agno.db.postgres import PostgresDb
+from agno.vectordb.lancedb import LanceDb, SearchType
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.knowledge.knowledge import Knowledge
+
+# Setup PostgreSQL for conversation history
+db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
+db = PostgresDb(db_url, id="study_buddy_db")
+
+# Setup vector database for knowledge retrieval
+vector_db = LanceDb(
+    uri="tmp/lancedb",
+    table_name="study_buddy_education",
+    search_type=SearchType.hybrid,  # Combines keyword and semantic search
+    embedder=OpenAIEmbedder(
+        id="text-embedding-3-small",
+        dimensions=1536
+    ),
+)
+
+print("Database and vector store configured")
+```
+
+**Why these specific choices?**
+- **PostgreSQL**: Reliable for storing conversation history
+- **Hybrid search**: Combines keyword matching with semantic similarity
+- **text-embedding-3-small**: Cost-effective embeddings with good quality
+
+Now let's create the knowledge base:
+
+```python
+# Create education knowledge base
+education_knowledge = Knowledge(
+    contents_db=db,
+    vector_db=vector_db,
+)
+
+print("Knowledge base created")
+```
+
+### 2b. Add Web Search Tool
+
+**Why DuckDuckGo?** Students often need current information or supplementary resources beyond your knowledge base.
+
+```python
+from agno.tools.duckduckgo import DuckDuckGoTools
+
+# Configure web search for supplementary resources
+web_search = DuckDuckGoTools()
+
+print("Web search tool configured")
+```
+
+## Step 3: Define Teaching Strategy
+
+**Why do we need instructions?** Instructions guide how your agent approaches teaching. Without clear instructions, the agent won't know how to adapt explanations or provide effective learning support.
+
+### 3a. Define Core Teaching Approach
+
+```python
+from textwrap import dedent
+
+# Define the agent's teaching approach
+teaching_approach = dedent("""
+    TEACHING APPROACH:
+    - Assess student's current understanding level and adapt explanations accordingly
+    - Use multiple teaching methods: examples, analogies, visual descriptions
+    - Break complex topics into digestible chunks
+    - Encourage active learning through questions and practice
+    - Provide hints before complete solutions
+    - Celebrate progress and use mistakes as learning opportunities
+""")
+
+print("Teaching approach defined")
+```
+
+### 3b. Define Knowledge and Response Strategy
+
+```python
+# Define how to use knowledge and communicate
+knowledge_response_strategy = dedent("""
+    KNOWLEDGE UTILIZATION:
+    - First, search the knowledge base for structured educational content
+    - Use web search for current examples or supplementary materials
+    - Cross-reference multiple sources to ensure accuracy
+    
+    EXPLANATION FRAMEWORK:
+    - Start with a simple, high-level overview
+    - Provide concrete examples from everyday life
+    - Use analogies to relate new concepts to familiar ones
+    - Break down complex ideas into step-by-step components
+    - End with a summary and check for understanding
+    
+    RESPONSE STYLE:
+    - Be encouraging and patient
+    - Use clear, accessible language
+    - Show enthusiasm for learning
+""")
+
+print("Knowledge and response strategy defined")
+```
+
+### 3c. Combine Into Complete Instructions
+
+```python
+# Combine all instruction components
+complete_instructions = f"""
+You are a friendly, knowledgeable Study Buddy AI tutor. Your goal is to help
+students learn effectively by providing clear explanations, encouraging practice,
+and adapting to their individual needs.
+
+{teaching_approach}
+
+{knowledge_response_strategy}
+
+Remember: Your goal is to help students truly understand concepts, not just
+memorize information.
+"""
+
+print(f"Complete instructions created: {len(complete_instructions)} characters")
+```
+
+## Step 4: Create the Complete Agent
+
+Now let's put all the pieces together - model, knowledge base, tools, and instructions - to create your complete Study Buddy agent.
+
+### 4a. Create the Agent
+
+```python
+from agno.agent import Agent
+
+# Combine model, knowledge, tools, and instructions
+study_buddy = Agent(
+    id="study-buddy",
+    name="Study Buddy",
+    model=model,                    # The GPT-4o model we chose
+    knowledge=education_knowledge,  # RAG knowledge base
+    tools=[web_search],            # Web search for supplementary info
+    db=db,                         # PostgreSQL for history
+    instructions=complete_instructions,
+    markdown=True,                 # Enable rich formatting
+    show_tool_calls=True,          # Show transparency in information retrieval
+    add_history_to_context=True,   # Remember conversation history
+    num_history_runs=10,           # Keep last 10 interactions in context
+    add_datetime_to_context=True,  # Add timestamps for temporal context
+)
+
+print(f"Agent created: {study_buddy.name}")
+```
+
+For detailed information about each Agent parameter, see the [Agent Reference Documentation](/reference/agents/agent).
+
+### 4b. Create Helper Functions
+
+```python
+def ask_question(question: str):
+    """Ask the Study Buddy a question."""
+    return study_buddy.print_response(question, stream=True)
+
+def start_lesson(topic: str, level: str = "beginner"):
+    """Start a structured lesson on a topic."""
+    lesson_prompt = f"""
+    I'd like to learn about {topic}. My current level is {level}.
+    
+    Please:
+    1. Give me an overview of the topic
+    2. Explain the key concepts with examples
+    3. Provide a simple practice exercise
+    4. Suggest what to learn next
+    """
+    return study_buddy.print_response(lesson_prompt, stream=True)
+
+print("Helper functions created")
+```
+
+### 4c. Create Knowledge Loading Function
+
+```python
+async def load_education_knowledge():
+    """Load educational content into the knowledge base"""
+    try:
+        print("\n📚 Loading educational resources into knowledge base...")
+        
+        # Educational content from the Agno cookbook
+        sample_education_content = """
+        Python Programming Fundamentals:
+
+        Variables and Data Types:
+        - Variables store data values (numbers, strings, lists)
+        - Use descriptive names (user_name, not x)
+        - Python is dynamically typed (no type declaration needed)
+
+        Control Flow:
+        - if/elif/else for conditional logic
+        - for loops iterate over sequences
+        - while loops continue until condition is False
+        - break exits loops early, continue skips iteration
+
+        Functions:
+        - Functions organize reusable code blocks
+        - Define with def function_name(parameters):
+        - Return values with return statement
+        - Functions can have default parameter values
+
+        Data Structures:
+        - Lists: Ordered, mutable sequences [1, 2, 3]
+        - Tuples: Ordered, immutable sequences (1, 2, 3)
+        - Dictionaries: Key-value pairs {"name": "John"}
+        - Sets: Unordered unique values {1, 2, 3}
+
+        Best Practices:
+        - Write clear, readable code with comments
+        - Follow PEP 8 style guidelines
+        - Handle errors with try/except blocks
+        - Test your code thoroughly
+        - Break complex problems into smaller functions
+
+        Common Beginner Mistakes:
+        - Forgetting colons after if/for/while/def statements
+        - Incorrect indentation (use 4 spaces)
+        - Modifying lists while iterating over them
+        - Not handling exceptions properly
+        """
+        
+        await education_knowledge.add_content_async(
+            name="Python Tutorial",
+            text_content=sample_education_content,
+            skip_if_exists=True,
+        )
+        
+        print("✅ Education knowledge base loaded successfully")
+    except Exception as e:
+        print(f"⚠️  Warning: Could not load education knowledge base: {e}")
+
+print("Knowledge loading function created")
+```
+
+### 4d. Complete Working Example
+
+Here's your complete `app/study_buddy.py` file:
+
+```python
+"""
+Study Buddy - AI Tutoring Agent with RAG
+Built with Agno framework
+"""
+from pathlib import Path
+from textwrap import dedent
+from dotenv import load_dotenv
+
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.knowledge.knowledge import Knowledge
+from agno.models.openai import OpenAIChat
+from agno.tools.duckduckgo import DuckDuckGoTools
+from agno.vectordb.lancedb import LanceDb, SearchType
+
+# Load infrastructure secrets
+load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / "infra" / "secrets" / ".env")
+
+# Step 1: Choose the AI model
+model = OpenAIChat(id="gpt-4o")
+
+# Step 2a: Setup database and vector store
+db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
+db = PostgresDb(db_url, id="study_buddy_db")
+
+vector_db = LanceDb(
+    uri="tmp/lancedb",
+    table_name="study_buddy_education",
+    search_type=SearchType.hybrid,
+    embedder=OpenAIEmbedder(
+        id="text-embedding-3-small",
+        dimensions=1536
+    ),
+)
+
+education_knowledge = Knowledge(
+    contents_db=db,
+    vector_db=vector_db,
+)
+
+# Step 2b: Configure web search
+web_search = DuckDuckGoTools()
+
+# Step 3: Define teaching instructions
+teaching_approach = dedent("""
+    TEACHING APPROACH:
+    - Assess student's current understanding level and adapt explanations accordingly
+    - Use multiple teaching methods: examples, analogies, visual descriptions
+    - Break complex topics into digestible chunks
+    - Encourage active learning through questions and practice
+    - Provide hints before complete solutions
+    - Celebrate progress and use mistakes as learning opportunities
+""")
+
+knowledge_response_strategy = dedent("""
+    KNOWLEDGE UTILIZATION:
+    - First, search the knowledge base for structured educational content
+    - Use web search for current examples or supplementary materials
+    - Cross-reference multiple sources to ensure accuracy
+    
+    EXPLANATION FRAMEWORK:
+    - Start with a simple, high-level overview
+    - Provide concrete examples from everyday life
+    - Use analogies to relate new concepts to familiar ones
+    - Break down complex ideas into step-by-step components
+    - End with a summary and check for understanding
+    
+    RESPONSE STYLE:
+    - Be encouraging and patient
+    - Use clear, accessible language
+    - Show enthusiasm for learning
+""")
+
+complete_instructions = f"""
+You are a friendly, knowledgeable Study Buddy AI tutor. Your goal is to help
+students learn effectively by providing clear explanations, encouraging practice,
+and adapting to their individual needs.
+
+{teaching_approach}
+
+{knowledge_response_strategy}
+
+Remember: Your goal is to help students truly understand concepts, not just
+memorize information.
+"""
+
+# Step 4: Create the complete agent
+study_buddy = Agent(
+    id="study-buddy",
+    name="Study Buddy",
+    model=model,
+    knowledge=education_knowledge,
+    tools=[web_search],
+    db=db,
+    instructions=complete_instructions,
+    markdown=True,
+    show_tool_calls=True,
+    add_history_to_context=True,
+    num_history_runs=10,
+    add_datetime_to_context=True,
+)
+
+def ask_question(question: str):
+    """Ask the Study Buddy a question"""
+    return study_buddy.print_response(question, stream=True)
+
+def start_lesson(topic: str, level: str = "beginner"):
+    """Start a structured lesson on a topic"""
+    lesson_prompt = f"""
+    I'd like to learn about {topic}. My current level is {level}.
+    
+    Please:
+    1. Give me an overview of the topic
+    2. Explain the key concepts with examples
+    3. Provide a simple practice exercise
+    4. Suggest what to learn next
+    """
+    return study_buddy.print_response(lesson_prompt, stream=True)
+
+async def load_education_knowledge():
+    """Load educational content into the knowledge base"""
+    try:
+        print("\n📚 Loading educational resources into knowledge base...")
+        
+        sample_education_content = """
+        Python Programming Fundamentals:
+
+        Variables and Data Types:
+        - Variables store data values (numbers, strings, lists)
+        - Use descriptive names (user_name, not x)
+        - Python is dynamically typed (no type declaration needed)
+
+        Control Flow:
+        - if/elif/else for conditional logic
+        - for loops iterate over sequences
+        - while loops continue until condition is False
+        - break exits loops early, continue skips iteration
+
+        Functions:
+        - Functions organize reusable code blocks
+        - Define with def function_name(parameters):
+        - Return values with return statement
+        - Functions can have default parameter values
+
+        Data Structures:
+        - Lists: Ordered, mutable sequences [1, 2, 3]
+        - Tuples: Ordered, immutable sequences (1, 2, 3)
+        - Dictionaries: Key-value pairs {"name": "John"}
+        - Sets: Unordered unique values {1, 2, 3}
+
+        Best Practices:
+        - Write clear, readable code with comments
+        - Follow PEP 8 style guidelines
+        - Handle errors with try/except blocks
+        - Test your code thoroughly
+        - Break complex problems into smaller functions
+
+        Common Beginner Mistakes:
+        - Forgetting colons after if/for/while/def statements
+        - Incorrect indentation (use 4 spaces)
+        - Modifying lists while iterating over them
+        - Not handling exceptions properly
+        """
+        
+        await education_knowledge.add_content_async(
+            name="Python Tutorial",
+            text_content=sample_education_content,
+            skip_if_exists=True,
+        )
+        
+        print("✅ Education knowledge base loaded successfully")
+    except Exception as e:
+        print(f"⚠️  Warning: Could not load education knowledge base: {e}")
+
+if __name__ == "__main__":
+    # Load knowledge first
+    import asyncio
+    asyncio.run(load_education_knowledge())
+    
+    # Test the agent
+    print("\n🎓 Study Buddy is ready! Try asking a question:\n")
+    start_lesson("Python variables", level="beginner")
+```
+
+### 4e. Spin-up the infrastructure for our project:
+
+Now that we have completed our agent, we can spin-up the infrastructure for our project:
+
+```bash
+ag infra up
+```
+
+Your [AgentOS](/agent-os/introduction) API is now running. We are ready to start learning!
+
+### 4f. Test Your Complete Agent
+
+```bash
+python app/study_buddy.py
+```
+
+You should see your agent:
+1. **Load the knowledge base** with educational content
+2. **Search the knowledge base** for relevant materials using RAG
+3. **Use web search** when needed for current information
+4. **Provide structured lessons** following your teaching framework
+5. **Adapt explanations** based on the conversation context
+
+## Step 5: Test and Experiment via AgentOS
+
+**Why API-first?** The AgentOS infrastructure automatically exposes your agent as a REST API, making it ready for integration with learning management systems, study apps, or custom educational interfaces without additional deployment work.
+
+Your agent is automatically available via the AgentOS API. Let's test it!
+
+**Find your API endpoint:**
+```bash
+# Your AgentOS API is running on localhost:7777
+curl http://localhost:7777/v1/agents
+```
+
+**Test with Postman or curl:**
+
+```bash
+curl -X POST http://localhost:7777/v1/agents/study-buddy/runs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Can you explain what Python dictionaries are and when to use them?",
+    "stream": false
+  }'
+```
+
+**Expected response structure:**
+```json
+{
+  "run_id": "run_abc123",
+  "content": "Great question! Let me explain Python dictionaries...",
+  "metrics": {
+    "tokens_used": 450,
+    "tools_called": ["search_knowledge"],
+    "response_time": "2.1s"
+  }
+}
+```
+
+## Next Steps
+
+Your Study Buddy agent is now live with a production-ready API! Consider these enhancements:
+
+- **Subject Specialization**: Create focused agents for math, science, languages, or coding topics
+- **Progress Tracking**: Add analytics to monitor student learning patterns over time
+- **Interactive Exercises**: Integrate with coding environments or quiz platforms
+- **Multi-Modal Learning**: Add image generation for visual explanations and diagrams
+
+## Conclusion
+
+You've built a comprehensive AI tutoring system that:
+
+- Combines structured knowledge base (RAG) with web search for comprehensive learning
+- Provides adaptive, personalized explanations tailored to student understanding level
+- Maintains conversation history for progressive learning experiences
+- Serves via production-ready AgentOS API for easy integration
+- Follows evidence-based teaching practices for effective knowledge transfer
+
+This demonstrates Agno's power in educational applications, where your AI agent becomes an accessible, scalable tutoring system that can help students learn effectively at their own pace.
