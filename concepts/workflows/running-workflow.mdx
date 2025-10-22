@@ -222,15 +222,13 @@ if __name__ == "__main__":
     pprint_run_response(response, markdown=True)
 ```
 
-### Streaming Intermediate Steps
+### Streaming all events
 
-<Note>
-  In the case where you put `stream_intermediate_steps=False` (or not set it at
-  all), we only yield `WorkflowStartedEvent`, `WorkflowCompletedEvent` along
-  with all the `Agent/Team` events.
-</Note>
+By default, when you stream a response, only the `WorkflowStartedEvent` and `WorkflowCompletedEvent` events will be streamed (together with all the Agent and Team events).
 
-For even more detailed streaming, you can enable intermediate steps by setting `stream_intermediate_steps=True`. This will provide real-time updates about each step of the workflow.
+You can also stream all events by setting `stream_events=True`.
+
+This will provide real-time updates about the workflow's internal processes:
 
 ```python
 from typing import Iterator
@@ -337,7 +335,7 @@ if __name__ == "__main__":
         response: Iterator[WorkflowRunOutputEvent] = basic_workflow.run(
             input="Recent breakthroughs in quantum computing",
             stream=True,
-            stream_intermediate_steps=True,
+            stream_events=True,
         )
         for event in response:
             if event.event == WorkflowRunEvent.condition_execution_started.value:
@@ -373,7 +371,7 @@ The following Workflow events will be streamed in all cases:
 - `WorkflowStarted`
 - `WorkflowCompleted`
 - `StepStarted`
-- `StepCompleted` 
+- `StepCompleted`
 
 See the following example:
 
@@ -408,7 +406,7 @@ print("filtering out internal agent/team events for cleaner output.\n")
 for event in workflow.run(
     "What is Python?",
     stream=True,
-    stream_intermediate_steps=True,
+    stream_events=True,
 ):
     event_name = event.event if hasattr(event, "event") else type(event).__name__
     print(f"  → {event_name}")
@@ -426,10 +424,10 @@ So for example, if you want to stream the response, you can do the following:
 
 async def main():
     try:
-        response: AsyncIterator[WorkflowRunOutputEvent] = await basic_workflow.arun(
-            input="Recent breakthroughs in quantum computing",
+        response: AsyncIterator[WorkflowRunOutputEvent] = basic_workflow.arun(
+            message="Recent breakthroughs in quantum computing",
             stream=True,
-            stream_intermediate_steps=True,
+            stream_events=True,
         )
         async for event in response:
             if event.event == WorkflowRunEvent.condition_execution_started.value:
@@ -458,6 +456,8 @@ async def main():
 if __name__ == "__main__":
     asyncio.run(main())
 ```
+
+See the [Async Streaming](/examples/concepts/workflows/01-basic-workflows/async_events_streaming) example for more details.
 
 ### Event Types
 
@@ -575,7 +575,7 @@ debug_workflow = Workflow(
 
 # store only important events
 production_workflow = Workflow(
-    name="Production Workflow", 
+    name="Production Workflow",
     store_events=True,
     events_to_skip=[
         WorkflowRunEvent.step_started,
@@ -588,7 +588,7 @@ production_workflow = Workflow(
 # No event storage
 fast_workflow = Workflow(
     name="Fast Workflow",
-    store_events=False,  
+    store_events=False,
     steps=[...]
 )
 ```

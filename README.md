@@ -51,7 +51,8 @@ git push
    
 3. Delete all files in the `reference-api/schema/` folder (the auto-generated files)
 4. Run `npx @mintlify/scraping@latest openapi-file reference-api/openapi.json -o reference-api/schema` to generate the new API reference
-5. Run `mint dev` to see the changes
+5. Update the `docs.json` file to include any new pages.
+6. Run `mint dev` to see the changes
 
 ## Troubleshooting
 
