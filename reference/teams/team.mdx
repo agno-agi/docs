@@ -47,10 +47,9 @@ sidebarTitle: Team
 | `add_knowledge_to_context` | `bool` | `False` | If True, add references to the user prompt |
 | `knowledge_retriever` | `Optional[Callable[..., Optional[List[Union[Dict, str]]]]]` | `None` | Retrieval function to get references |
 | `references_format` | `Literal["json", "yaml"]` | `"json"` | Format of the references |
-| `share_member_interactions` | `bool` | `False` | If True, send all previous member interactions to members |
+| `share_member_interactions` | `bool` | `False` | If True, send all member interactions (request/response) during the current run to members that have been delegated a task to |
 | `get_member_information_tool` | `bool` | `False` | If True, add a tool to get information about the team members |
 | `search_knowledge` | `bool` | `True` | Add a tool to search the knowledge base (aka Agentic RAG) |
-| `read_team_history` | `bool` | `False` | If True, read the team history |
 | `send_media_to_model` | `bool` | `True` | If False, media (images, videos, audio, files) is only available to tools and not sent to the LLM |
 | `store_media` | `bool` | `True` | If True, store media in the database |
 | `store_tool_messages` | `bool` | `True` | If True, store tool results in the database |
@@ -59,6 +58,8 @@ sidebarTitle: Team
 | `tool_choice` | `Optional[Union[str, Dict[str, Any]]]` | `None` | Controls which (if any) tool is called by the team model |
 | `tool_call_limit` | `Optional[int]` | `None` | Maximum number of tool calls allowed |
 | `tool_hooks` | `Optional[List[Callable]]` | `None` | A list of hooks to be called before and after the tool call |
+| `pre_hooks` | `Optional[Union[List[Callable[..., Any]], List[BaseGuardrail]]]` | `None` | Functions called right after team session is loaded, before processing starts |
+| `post_hooks` | `Optional[Union[List[Callable[..., Any]], List[BaseGuardrail]]]` | `None` | Functions called after output is generated but before the response is returned |
 | `input_schema` | `Optional[Type[BaseModel]]` | `None` | Input schema for validating input |
 | `output_schema` | `Optional[Type[BaseModel]]` | `None` | Output schema for the team response |
 | `parser_model` | `Optional[Model]` | `None` | Provide a secondary model to parse the response from the primary model |
@@ -73,8 +74,14 @@ sidebarTitle: Team
 | `enable_session_summaries` | `bool` | `False` | If True, the team creates/updates session summaries at the end of runs |
 | `session_summary_manager` | `Optional[SessionSummaryManager]` | `None` | Session summary manager |
 | `add_session_summary_to_context` | `Optional[bool]` | `None` | If True, the team adds session summaries to the context |
-| `add_history_to_context` | `bool` | `False` | Add messages from the chat history to the messages list sent to the Model |
+| `add_history_to_context` | `bool` | `False` | Add messages from the chat history to the messages list sent to the Model. This only applies to the team leader, not the members. |
 | `num_history_runs` | `int` | `3` | Number of historical runs to include in the messages |
+| `add_team_history_to_members` | `bool` | `False` | If True, send the team-level history to the members, not the agent-level history |
+| `num_team_history_runs` | `int` | `3` | Number of historical runs to include in the messages sent to the members |
+| `search_session_history` | `Optional[bool]` | `False` | If True, adds a tool to allow searching through previous sessions |
+| `num_history_sessions` | `Optional[int]` | `None` | Number of past sessions to include in the search |
+| `read_team_history` | `bool` | `False` | If True, adds a tool to allow the team to read the team history (deprecated and will be removed in a future version) |
+| `read_chat_history` | `bool` | `False` | If True, adds a tool to allow the team to read the chat history |
 | `metadata` | `Optional[Dict[str, Any]]` | `None` | Metadata stored with this team |
 | `reasoning` | `bool` | `False` | Enable reasoning for the team |
 | `reasoning_model` | `Optional[Model]` | `None` | Model to use for reasoning |
@@ -339,6 +346,14 @@ Get the session for the given session ID.
 ### `save_session`
 
 Save a session to the database.
+
+**Parameters:**
+
+- `session` (TeamSession): The session to save
+
+### `asave_session`
+
+Save a session to the database asynchronously.
 
 **Parameters:**
 
