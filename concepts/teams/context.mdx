@@ -493,9 +493,9 @@ See more details on [sessions](/concepts/teams/sessions#session-history).
 
 ## Managing Tool Calls
 
-The `max_tool_calls_from_history` parameter can be used to keep only the N most recent tool calls in context. 
+The `max_tool_calls_from_history` parameter can be used to add only the `n` most recent tool calls from history to the context. 
 
-This helps manage context size and reduce token costs while still maintaining complete history in your database.
+This helps manage context size and reduce token costs during team runs.
 
 ```python
 from agno.agent import Agent
@@ -506,7 +506,7 @@ from agno.tools.duckduckgo import DuckDuckGoTools
 
 web_agent = Agent(
     name="Web Researcher",
-    model=OpenAIChat(id="gpt-4o-mini"),
+    model=OpenAIChat(id="gpt-5-mini"),
     instructions="You are a web researcher. Search the web for comprehensive information on given topics.",
     tools=[DuckDuckGoTools()],
 )
@@ -514,7 +514,7 @@ web_agent = Agent(
 team = Team(
     members=[web_agent],
     model=OpenAIChat(id="gpt-4o"),
-    db=SqliteDb(db_file="tmp/team.db"),
+    db=SqliteDb(db_file="tmp/filter_history_tool_calls_team.db"),
     tools=[DuckDuckGoTools()],  # Team also has search tools
     add_history_to_context=True,
     max_tool_calls_from_history=5,  # Keep only last 5 tool calls in context
@@ -526,14 +526,20 @@ team.print_response("Search for crypto trends")
 team.print_response("Search for tech stocks")
 # Older searches will be filtered from context
 team.print_response("Search for startups") 
-
+team.print_response("Search for weather in Mumbai")
+team.print_response("Search for latest startup fundraises")
+team.print_response("What topics did I search for recently?")
 ```
+In this example:
+- **Run 1-3:** Team sees tool calls [1], [1,2], [1,2,3,4,5]
+- **Run 4:** Team sees tool calls from runs that fit within the last 5 tool calls (older tool calls filtered out)
+- **Run 5:** Team sees tool calls from runs that fit within the last 5 tool calls (earlier tool calls filtered out)
 
 <Note>
-**Important:** `max_tool_calls_from_history` filters tool calls from the runs loaded. Your database always contains the complete history.
+**Important:** `max_tool_calls_from_history` filters tool calls from the runs loaded by `num_history_runs`. Your database always contains the complete history.
 </Note>
 
-See the [full team example](/examples/concepts/teams/context_management/forget_tool_calls) for a detailed demonstration.
+See the [full example](/examples/concepts/teams/context_management/filter_tool_calls_from_history) for a complete demonstration.
 
 ## Additional input
 
