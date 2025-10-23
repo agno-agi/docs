@@ -1,7 +1,7 @@
 ---
 title: Team Sessions
 sidebarTitle: Team Sessions
-description: Learn about Team sessions.
+description: Learn about Team sessions and managing conversation history.
 ---
 
 When we call `Team.run()`, it creates a stateless, singular Team run.
@@ -20,75 +20,57 @@ Set a `user_id` to connect a user to their sessions with the Team.
 
 In the example below, we set a `session_id` to demo how to have multi-turn conversations with multiple users at the same time.
 
-<Steps>
-  <Step title="Multi-user, multi-session example">
-    ```python
-    from agno.team import Team
-    from agno.models.openai import OpenAIChat
-    from agno.db.sqlite import SqliteDb
+  ```python
+  from agno.team import Team
+  from agno.models.openai import OpenAIChat
+  from agno.db.sqlite import SqliteDb
 
-    db = SqliteDb(db_file="tmp/data.db")
+  db = SqliteDb(db_file="tmp/data.db")
 
-    team = Team(
-        model=OpenAIChat(id="gpt-5-mini"),
-        members=[
-            Agent(name="Agent 1", role="You answer questions in English"),
-            Agent(name="Agent 2", role="You answer questions in Chinese"),
-            Agent(name="Agent 3", role="You answer questions in French"),
-        ],
-        db=db,
-        respond_directly=True,
-    )
+  team = Team(
+      model=OpenAIChat(id="gpt-5-mini"),
+      members=[
+          Agent(name="Agent 1", role="You answer questions in English"),
+          Agent(name="Agent 2", role="You answer questions in Chinese"),
+          Agent(name="Agent 3", role="You answer questions in French"),
+      ],
+      db=db,
+      respond_directly=True,
+  )
 
-    user_1_id = "user_101"
-    user_2_id = "user_102"
+  user_1_id = "user_101"
+  user_2_id = "user_102"
 
-    user_1_session_id = "session_101"
-    user_2_session_id = "session_102"
+  user_1_session_id = "session_101"
+  user_2_session_id = "session_102"
 
-    # Start the session with user 1 (This means "how are you?" in French)
-    team.print_response(
-        "comment ça va?",
-        user_id=user_1_id,
-        session_id=user_1_session_id,
-    )
-    # Continue the session with user 1 (This means "tell me a joke" in French)
-    team.print_response("Raconte-moi une blague.", user_id=user_1_id, session_id=user_1_session_id)
+  # Start the session with user 1 (This means "how are you?" in French)
+  team.print_response(
+      "comment ça va?",
+      user_id=user_1_id,
+      session_id=user_1_session_id,
+  )
+  # Continue the session with user 1 (This means "tell me a joke" in French)
+  team.print_response("Raconte-moi une blague.", user_id=user_1_id, session_id=user_1_session_id)
 
-    # Start the session with user 2
-    team.print_response("Tell me about quantum physics.", user_id=user_2_id, session_id=user_2_session_id)
-    # Continue the session with user 2
-    team.print_response("What is the speed of light?", user_id=user_2_id, session_id=user_2_session_id)
+  # Start the session with user 2
+  team.print_response("Tell me about quantum physics.", user_id=user_2_id, session_id=user_2_session_id)
+  # Continue the session with user 2
+  team.print_response("What is the speed of light?", user_id=user_2_id, session_id=user_2_session_id)
 
-    # Ask the agent to give a summary of the conversation, this will use the history from the previous messages (but only for user 1)
-    team.print_response(
-        "Give me a summary of our conversation.",
-        user_id=user_2_id,
-        session_id=user_2_session_id,
-    )
-    ```
+  # Ask the agent to give a summary of the conversation, this will use the history from the previous messages (but only for user 1)
+  team.print_response(
+      "Give me a summary of our conversation.",
+      user_id=user_2_id,
+      session_id=user_2_session_id,
+  )
+  ```
 
-  </Step>
-  <Step title="Run the example">
-    Install libraries
+## Conversation history
 
-    ```shell
-    pip install agno openai
-    ```
+Teams with storage enabled automatically have access to the run history of the session (also called the "conversation history" or "chat history").
 
-    Export your key
-    ```shell
-    export OPENAI_API_KEY=xxx
-    ```
-
-    Run the example
-
-    ```shell
-    python multi_user_multi_session.py
-    ```
-
-  </Step>
-</Steps>
+To learn more, see the [Conversation History](/concepts/teams/chat_history) documentation.
 
 ## Session Summaries
 
@@ -96,69 +78,45 @@ The Team can store a condensed representations of the session, useful when chat 
 
 To enable session summaries, set `enable_session_summaries=True` on the `Team`.
 
-<Steps>
-  <Step title="Session summary example">
-    ```python session_summary.py
-    from agno.agent import Agent
-    from agno.team import Team
-    from agno.models.google.gemini import Gemini
-    from agno.db.sqlite import SqliteDb
+```python
+from agno.agent import Agent
+from agno.team import Team
+from agno.models.google.gemini import Gemini
+from agno.db.sqlite import SqliteDb
 
-    db = SqliteDb(db_file="tmp/data.db")
+db = SqliteDb(db_file="tmp/data.db")
 
-    user_id = "jon_hamm@example.com"
-    session_id = "1001"
+user_id = "jon_hamm@example.com"
+session_id = "1001"
 
-    team = Team(
-        model=Gemini(id="gemini-2.0-flash-001"),
-        members=[
-            Agent(name="Agent 1", role="You answer questions in English"),
-            Agent(name="Agent 2", role="You answer questions in Chinese"),
-        ],
-        db=db,
-        enable_session_summaries=True,
-    )
+team = Team(
+    model=Gemini(id="gemini-2.0-flash-001"),
+    members=[
+        Agent(name="Agent 1", role="You answer questions in English"),
+        Agent(name="Agent 2", role="You answer questions in Chinese"),
+    ],
+    db=db,
+    enable_session_summaries=True,
+)
 
-    team.print_response(
-        "What can you tell me about quantum computing?",
-        stream=True,
-        user_id=user_id,
-        session_id=session_id,
-    )
+team.print_response(
+    "What can you tell me about quantum computing?",
+    stream=True,
+    user_id=user_id,
+    session_id=session_id,
+)
 
-    team.print_response(
-        "I would also like to know about LLMs?",
-        stream=True,
-        user_id=user_id,
-        session_id=session_id
-    )
+team.print_response(
+    "I would also like to know about LLMs?",
+    stream=True,
+    user_id=user_id,
+    session_id=session_id
+)
 
-    session_summary = team.get_session_summary(session_id=session_id)
-    print(f"Session summary: {session_summary.summary}")
-    ```
+session_summary = team.get_session_summary(session_id=session_id)
+print(f"Session summary: {session_summary.summary}")
+```
 
-  </Step>
-
-  <Step title="Run the example">
-    Install libraries
-
-    ```shell
-    pip install google-genai agno
-    ```
-
-    Export your key
-    ```shell
-    export GOOGLE_API_KEY=xxx
-    ```
-
-    Run the example
-
-    ```shell
-    python session_summary.py
-    ```
-
-  </Step>
-</Steps>
 
 ### Customize Session Summaries
 
@@ -167,191 +125,37 @@ You can adjust the session summaries by providing a custom `session_summary_prom
 The `SessionSummaryManager` class is responsible for handling the model used to create and update session summaries.
 You can adjust it to personalize how summaries are created and updated:
 
-<Steps>
-  <Step title="Customize session summaries example">
-    ```python customize_session_summary.py
-    from agno.team import Team
-    from agno.session import SessionSummaryManager
-    from agno.models.openai import OpenAIChat
-    from agno.db.sqlite import SqliteDb
+```python
+from agno.team import Team
+from agno.session import SessionSummaryManager
+from agno.models.openai import OpenAIChat
+from agno.db.sqlite import SqliteDb
 
-    # Setup your database
-    db = SqliteDb(db_file="agno.db")
+# Setup your database
+db = SqliteDb(db_file="agno.db")
 
-    # Setup your Session Summary Manager, to adjust how summaries are created
-    session_summary_manager = SessionSummaryManager(
-        # Select the model used for session summary creation and updates. If not specified, the agent's model is used by default.
-        model=OpenAIChat(id="gpt-5-mini"),
-        # You can also overwrite the prompt used for session summary creation
-        session_summary_prompt="Create a very succinct summary of the following conversation:",
-    )
+# Setup your Session Summary Manager, to adjust how summaries are created
+session_summary_manager = SessionSummaryManager(
+    # Select the model used for session summary creation and updates. If not specified, the agent's model is used by default.
+    model=OpenAIChat(id="gpt-5-mini"),
+    # You can also overwrite the prompt used for session summary creation
+    session_summary_prompt="Create a very succinct summary of the following conversation:",
+)
 
-    # Now provide the adjusted Memory Manager to your Agent
-    team = Team(
-      members=[],
-      db=db,
-      session_summary_manager=session_summary_manager,
-      enable_session_summaries=True,
-    )
+# Now provide the adjusted Memory Manager to your Agent
+team = Team(
+  members=[],
+  db=db,
+  session_summary_manager=session_summary_manager,
+  enable_session_summaries=True,
+)
 
-    team.print_response("What is the speed of light?", stream=True)
+team.print_response("What is the speed of light?", stream=True)
 
-    session_summary = team.get_session_summary()
-    print(f"Session summary: {session_summary.summary}")
-    ```
-  </Step>
-  <Step title="Run the example">
-    Install libraries
+session_summary = team.get_session_summary()
+print(f"Session summary: {session_summary.summary}")
+```
 
-    ```shell
-    pip install openai agno
-    ```
-
-    Export your key
-    ```shell
-    export OPENAI_API_KEY=xxx
-    ```
-
-    Run the example
-
-    ```shell
-    python customize_session_summary.py
-    ```
-
-  </Step>
-</Steps>
-
-## Session history
-
-Teams with storage enabled automatically have access to the message and run history of the session.
-
-You can access these messages using:
-
-- `agent.get_messages_for_session()` -> Gets access to all the messages for the session, for the current agent.
-- `agent.get_chat_history()` -> Gets access to all the unique messages for the session.
-
-We can give the Agent access to the chat history in the following ways:
-
-- We can set `add_history_to_context=True` and `num_history_runs=5` to add the messages from the last 5 runs automatically to every message sent to the agent.
-- We can set `read_chat_history=True` to provide a `get_chat_history()` tool to your agent allowing it to read any message in the entire chat history.
-- **We recommend setting all 3: `add_history_to_context=True`, `num_history_runs=3` and `read_chat_history=True` for the best experience.**
-- We can also set `read_tool_call_history=True` to provide a `get_tool_call_history()` tool to your agent allowing it to read tool calls in reverse chronological order.
-
-Take a look at this example:
-
-<Steps>
-  <Step title="Session history example">
-    ```python session_history.py
-    from agno.agent import Agent
-    from agno.models.google.gemini import Gemini
-    from agno.db.sqlite import SqliteDb
-
-    agent = Agent(
-        model=Gemini(id="gemini-2.0-flash-exp"),
-        db=SqliteDb(db_file="tmp/data.db"),
-        add_history_to_context=True,
-        num_history_runs=3,
-        read_chat_history=True,
-        description="You are a helpful assistant that always responds in a polite, upbeat and positive manner.",
-    )
-
-    agent.print_response("Share a 2 sentence horror story", stream=True)
-
-    agent.print_response("What was my first message?", stream=True)
-    ```
-
-  </Step>
-  <Step title="Run the example">
-    Install libraries
-
-    ```shell
-    pip install google-genai agno
-    ```
-
-    Export your key
-    ```shell
-    export GOOGLE_API_KEY=xxx
-    ```
-
-    Run the example
-
-    ```shell
-    python session_history.py
-    ```
-
-  </Step>
-</Steps>
-
-### Search the session history
-
-In some scenarios, you might want to fetch messages from across multiple sessions to provide context or continuity in conversations.
-
-To enable fetching messages from the last N sessions, you need to use the following flags:
-
-- `search_session_history`: Set this to `True` to allow searching through previous sessions.
-- `num_history_sessions`: Specify the number of past sessions to include in the search. In the example below, it is set to `2` to include only the last 2 sessions.
-
-It's advisable to keep this number low (2 or 3), as a larger number might fill up the context length of the model, potentially leading to performance issues.
-
-Here's an example of searching through the last 2 sessions:
-
-<Steps>
-  <Step title="Session history search example">
-  ```python session_history_search.py
-  import os
-  from agno.agent import Agent
-  from agno.team import Team
-  from agno.models.openai import OpenAIChat
-  from agno.db.sqlite import SqliteDb
-
-  if os.path.exists("tmp/data.db"):
-     os.remove("tmp/data.db")
-
-  db = SqliteDb(db_file="tmp/data.db")
-
-  team = Team(
-      members=[],
-      model=OpenAIChat(id="gpt-5-mini"),
-      user_id="user_1",
-      db=db,
-      search_session_history=True,  # allow searching previous sessions
-      num_history_sessions=2,  # only include the last 2 sessions in the search to avoid context length issues
-  )
-
-  session_1_id = "session_1_id"
-  session_2_id = "session_2_id"
-  session_3_id = "session_3_id"
-  session_4_id = "session_4_id"
-  session_5_id = "session_5_id"
-
-  team.print_response("What is the capital of South Africa?", session_id=session_1_id)
-  team.print_response("What is the capital of China?", session_id=session_2_id)
-  team.print_response("What is the capital of France?", session_id=session_3_id)
-  team.print_response("What is the capital of Japan?", session_id=session_4_id)
-  team.print_response(
-      "What did I discuss in my previous conversations?", session_id=session_5_id
-  )  # It should only include information from the last 2 sessions
-  ```
-  </Step>
-  <Step title="Run the example">
-    Install libraries
-
-    ```shell
-    pip install openai agno
-    ```
-
-    Export your key
-    ```shell
-    export OPENAI_API_KEY=xxx
-    ```
-
-    Run the example
-
-    ```shell
-    python session_history_search.py
-    ```
-  </Step>
-</Steps>
 
 ## Control what gets stored in the session
 
@@ -371,6 +175,8 @@ This means:
 - Tools can access all data they need during execution
 - Only the database storage is optimized
 </Tip>
+
+
 
 ## Developer Resources
 

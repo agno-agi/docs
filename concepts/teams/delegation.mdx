@@ -1,25 +1,109 @@
 ---
-title: Delegation
-sidebarTitle: Delegate tasks to members
-description: Teams can delegate tasks to members in different ways.
+title: How team execution works
+sidebarTitle: Team Member Delegation
+description: How tasks are delegated to team members.
 ---
 
-A `Team` internally has a team-leader agent that delegates tasks to the members.  When you call `run` or `arun` on a team, the team leader agent uses a model to determine which member to delegate the task to.
+A `Team` internally has a team-leader "agent" that delegates tasks to the members.  When you call `run` or `arun` on a team, the team leader agent uses a model to determine which member to delegate the task to.
 
 The basic flow is:
 1. The team receives user input
 2. A Team Leader analyzes the input and decides how to break it down into subtasks
 3. The Team Leader delegates specific tasks to appropriate team members
 4. Team members complete their assigned tasks and return their results
-5. The Team Leader synthesizes all outputs into a final, cohesive response
+5. The Team Leader then either delegates to more team members, or synthesizes all outputs into a final, cohesive response to return to the user
+
+<Note>
+Delegating to members is done by the team leader doing deciding to use a **tool**, namely the `delegate_task_to_members` tool.
+
+This also means that when running the team asynchronously, i.e. when using `arun`, and the team leader decides to delegate to multiple members at once, these members will run concurrently.
+</Note>
+
+There are various ways to manipulate the execution of a team.
+Some common questions are:
+- **How do I return the response of members directly?** -> See the [Members respond directly](#members-respond-directly) section.
+- **How do I send my user input directly to the members?** -> See the [Determine input for members](#determine-input-for-members) section.
+- **How do I make sure the team leader delegates the task to all members?** -> See the [Delegate task to all members](#delegate-task-to-all-members) section.
 
 Below are some examples of how to change the behaviour of how tasks are delegated to the members.
 
-## Determine input for members
+## Members respond directly
+
+During normal team execution, the team leader will process the responses from the members and return a single response to the user.  This is the default behaviour.
+
+If instead you want to return the response of members directly, you can set `respond_directly` to `True`.
+
+<Tip>
+It can make sense to use this feature in combination with `determine_input_for_members=False`. This would effectively turn the team into a router that simply routes requests to the appropriate member, without the team leader processing the responses.
+</Tip>
+
+Below is an example of how to create a team that routes requests to the appropriate member based on the language of the user's input.
+
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.team.team import Team
+
+english_agent = Agent(
+    name="English Agent",
+    role="You can only answer in English",
+    model=OpenAIChat(id="gpt-5-mini"),
+    instructions=[
+        "You must only respond in English",
+    ],
+)
+
+japanese_agent = Agent(
+    name="Japanese Agent",
+    role="You can only answer in Japanese",
+    model=OpenAIChat(id="gpt-5-mini"),
+    instructions=[
+        "You must only respond in Japanese",
+    ],
+)
+multi_language_team = Team(
+    name="Multi Language Team",
+    model=OpenAIChat("gpt-4.5-preview"),
+    respond_directly=True,
+    members=[
+        english_agent,
+        japanese_agent,
+    ],
+    markdown=True,
+    instructions=[
+        "You are a language router that directs questions to the appropriate language agent.",
+        "If the user asks in a language whose agent is not a team member, respond in English with:",
+        "'I can only answer in the following languages: English and Japanese. Please ask your question in one of these languages.'",
+        "Always check the language of the user's input before routing to an agent.",
+        "For unsupported languages like Italian, respond in English with the above message.",
+    ],
+    show_members_responses=True,
+)
+
+
+# Ask "How are you?" in all supported languages
+multi_language_team.print_response(
+    "How are you?", stream=True  # English
+)
+
+multi_language_team.print_response(
+    "お元気ですか?", stream=True  # Japanese
+)
+```
+
+<Note>
+`respond_directly` is not compatible with `delegate_task_to_all_members`.
+</Note>
+
+<Note>
+When using `respond_directly` and the team leader decides to delegate the task to multiple members, the final content will be the results of all member responses concatenated together.
+</Note>
+
+## Send input directly to members
 
 When a team is run, by default the team leader will determine the "task" to give a specific member. This then becomes the `input` when that member is run.
 
-If you set `determine_input_for_members` to `False`, the team leader will send the user-provided input directly to the member agent(s).  The team leader still determines the appropriate member to delegate the task to.
+If you set `determine_input_for_members` to `False`, the team leader will send the user-provided input **directly** to the member agent(s).  The team leader still determines the appropriate member to delegate the task to.
 
 <Tip>
 This feature is particularly useful when you have specialized agents with distinct expertise areas and want to automatically direct queries to the right specialist.
@@ -27,331 +111,182 @@ This feature is particularly useful when you have specialized agents with distin
 
 In the example below, we want to send stuctured pydantic input directly to the member agent.  We don't want the team leader to ingest this input and determine a task to give to the member agent.
 
-<Steps>
-  <Step title="Create Team">
-    Create a file `determine_input_for_members.py`
+```python
+from typing import List
 
-    ```python determine_input_for_members.py
-    from typing import List
-
-    from agno.agent import Agent
-    from agno.models.openai import OpenAIChat
-    from agno.team.team import Team
-    from agno.tools.hackernews import HackerNewsTools
-    from pydantic import BaseModel, Field
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.team.team import Team
+from agno.tools.hackernews import HackerNewsTools
+from pydantic import BaseModel, Field
 
 
-    class ResearchTopic(BaseModel):
-        """Structured research topic with specific requirements."""
+class ResearchTopic(BaseModel):
+    """Structured research topic with specific requirements."""
 
-        topic: str = Field(description="The main research topic")
-        focus_areas: List[str] = Field(description="Specific areas to focus on")
-        target_audience: str = Field(description="Who this research is for")
-        sources_required: int = Field(description="Number of sources needed", default=5)
-
-
-    # Create specialized Hacker News research agent
-    hackernews_agent = Agent(
-        name="Hackernews Agent",
-        model=OpenAIChat(id="gpt-5-mini"),
-        tools=[HackerNewsTools()],
-        role="Extract key insights and content from Hackernews posts",
-        instructions=[
-            "Search Hacker News for relevant articles and discussions",
-            "Extract key insights and summarize findings",
-            "Focus on high-quality, well-discussed posts",
-        ],
-    )
-
-    # Create collaborative research team
-    team = Team(
-        name="Hackernews Research Team",
-        model=OpenAIChat(id="gpt-5-mini"),
-        members=[hackernews_agent],
-        determine_input_for_members=False,  # The member gets the input directly, without the team leader synthesizing it
-        instructions=[
-            "Conduct thorough research based on the structured input",
-            "Address all focus areas mentioned in the research topic",
-            "Tailor the research to the specified target audience",
-            "Provide the requested number of sources",
-        ],
-        show_members_responses=True,
-    )
-
-    # Use Pydantic model as structured input
-    research_request = ResearchTopic(
-        topic="AI Agent Frameworks",
-        focus_areas=["AI Agents", "Framework Design", "Developer Tools", "Open Source"],
-        target_audience="Software Developers and AI Engineers",
-        sources_required=7,
-    )
-    # Execute research with structured input
-    team.print_response(input=research_request)
-    ```
-    </Step>
-  <Step title="Run the team">
-    Install libraries
-
-    ```shell
-    pip install openai agno
-    ```
-
-    Run the team
-
-    ```shell
-    python determine_input_for_members.py
-    ```
-
-  </Step>
-</Steps>
-
-## Respond directly
-
-During normal team execution, the team leader will process the responses from the members and return a single response to the user.
-
-If instead you want to return the response of members directly, you can set `respond_directly` to `True`.
-
-<Tip>
-It can make sense to use this feature in combination with `determine_input_for_members=False`.
-</Tip>
-
-<Steps>
-  <Step title="Create Multi Language Team">
-    Create a file `multi_language_team.py`
-
-    ```python multi_language_team.py
-    from agno.agent import Agent
-    from agno.models.anthropic import Claude
-    from agno.models.deepseek import DeepSeek
-    from agno.models.openai import OpenAIChat
-    from agno.team.team import Team
-
-    english_agent = Agent(
-        name="English Agent",
-        role="You can only answer in English",
-        model=OpenAIChat(id="gpt-4.5-preview"),
-        instructions=[
-            "You must only respond in English",
-        ],
-    )
-
-    japanese_agent = Agent(
-        name="Japanese Agent",
-        role="You can only answer in Japanese",
-        model=DeepSeek(id="deepseek-chat"),
-        instructions=[
-            "You must only respond in Japanese",
-        ],
-    )
-    chinese_agent = Agent(
-        name="Chinese Agent",
-        role="You can only answer in Chinese",
-        model=DeepSeek(id="deepseek-chat"),
-        instructions=[
-            "You must only respond in Chinese",
-        ],
-    )
-    spanish_agent = Agent(
-        name="Spanish Agent",
-        role="You can only answer in Spanish",
-        model=OpenAIChat(id="gpt-4.5-preview"),
-        instructions=[
-            "You must only respond in Spanish",
-        ],
-    )
-
-    german_agent = Agent(
-        name="German Agent",
-        role="You can only answer in German",
-        model=Claude("claude-3-5-sonnet-20241022"),
-        instructions=[
-            "You must only respond in German",
-        ],
-    )
-    multi_language_team = Team(
-        name="Multi Language Team",
-        model=OpenAIChat("gpt-4.5-preview"),
-        respond_directly=True,
-        members=[
-            english_agent,
-            spanish_agent,
-            japanese_agent,
-            german_agent,
-            chinese_agent,
-        ],
-        markdown=True,
-        instructions=[
-            "You are a language router that directs questions to the appropriate language agent.",
-            "If the user asks in a language whose agent is not a team member, respond in English with:",
-            "'I can only answer in the following languages: English, Spanish, Japanese, and German. Please ask your question in one of these languages.'",
-            "Always check the language of the user's input before routing to an agent.",
-            "For unsupported languages like Italian, respond in English with the above message.",
-        ],
-        show_members_responses=True,
-    )
+    topic: str = Field(description="The main research topic")
+    focus_areas: List[str] = Field(description="Specific areas to focus on")
+    target_audience: str = Field(description="Who this research is for")
+    sources_required: int = Field(description="Number of sources needed", default=5)
 
 
-    # Ask "How are you?" in all supported languages
-    multi_language_team.print_response(
-        "How are you?", stream=True  # English
-    )
+# Create specialized Hacker News research agent
+hackernews_agent = Agent(
+    name="Hackernews Agent",
+    model=OpenAIChat(id="gpt-5-mini"),
+    tools=[HackerNewsTools()],
+    role="Extract key insights and content from Hackernews posts",
+    instructions=[
+        "Search Hacker News for relevant articles and discussions",
+        "Extract key insights and summarize findings",
+        "Focus on high-quality, well-discussed posts",
+    ],
+)
 
-    multi_language_team.print_response(
-        "你好吗？", stream=True  # Chinese
-    )
+# Create collaborative research team
+team = Team(
+    name="Hackernews Research Team",
+    model=OpenAIChat(id="gpt-5-mini"),
+    members=[hackernews_agent],
+    determine_input_for_members=False,  # The member gets the input directly, without the team leader synthesizing it
+    instructions=[
+        "Conduct thorough research based on the structured input",
+        "Address all focus areas mentioned in the research topic",
+        "Tailor the research to the specified target audience",
+        "Provide the requested number of sources",
+    ],
+    show_members_responses=True,
+)
 
-    multi_language_team.print_response(
-        "お元気ですか?", stream=True  # Japanese
-    )
-    ```
-
-  </Step>
-  <Step title="Run the team">
-    Install libraries
-
-    ```shell
-    pip install openai agno
-    ```
-
-    Run the team
-
-    ```shell
-    python multi_language_team.py
-    ```
-
-  </Step>
-</Steps>
-
-
-<Note>
-This is not compatible with `delegate_task_to_all_members`.
-</Note>
-
-## Delegate task to all members
-
-When you set `delegate_task_to_all_members` to `True`, the team leader will delegate the task to all members simultaneously, instead of one by one.  When running async (using `arun`) members will run concurrently.
-
-<Steps>
-  <Step title="Create a collaborative team">
-    Create a file `discussion_team.py`
-
-    ```python discussion_team.py
-    import asyncio
-    from textwrap import dedent
-
-    from agno.agent import Agent
-    from agno.models.openai import OpenAIChat
-    from agno.team.team import Team
-    from agno.tools.arxiv import ArxivTools
-    from agno.tools.duckduckgo import DuckDuckGoTools
-    from agno.tools.googlesearch import GoogleSearchTools
-    from agno.tools.hackernews import HackerNewsTools
-
-    reddit_researcher = Agent(
-        name="Reddit Researcher",
-        role="Research a topic on Reddit",
-        model=OpenAIChat(id="gpt-5-mini"),
-        tools=[DuckDuckGoTools()],
-        add_name_to_context=True,
-        instructions=dedent("""
-        You are a Reddit researcher.
-        You will be given a topic to research on Reddit.
-        You will need to find the most relevant posts on Reddit.
-        """),
-    )
-
-    hackernews_researcher = Agent(
-        name="HackerNews Researcher",
-        model=OpenAIChat("gpt-5-mini"),
-        role="Research a topic on HackerNews.",
-        tools=[HackerNewsTools()],
-        add_name_to_context=True,
-        instructions=dedent("""
-        You are a HackerNews researcher.
-        You will be given a topic to research on HackerNews.
-        You will need to find the most relevant posts on HackerNews.
-        """),
-    )
-
-    academic_paper_researcher = Agent(
-        name="Academic Paper Researcher",
-        model=OpenAIChat("gpt-5-mini"),
-        role="Research academic papers and scholarly content",
-        tools=[GoogleSearchTools(), ArxivTools()],
-        add_name_to_context=True,
-        instructions=dedent("""
-        You are a academic paper researcher.
-        You will be given a topic to research in academic literature.
-        You will need to find relevant scholarly articles, papers, and academic discussions.
-        Focus on peer-reviewed content and citations from reputable sources.
-        Provide brief summaries of key findings and methodologies.
-        """),
-    )
-
-    twitter_researcher = Agent(
-        name="Twitter Researcher",
-        model=OpenAIChat("gpt-5-mini"),
-        role="Research trending discussions and real-time updates",
-        tools=[DuckDuckGoTools()],
-        add_name_to_context=True,
-        instructions=dedent("""
-        You are a Twitter/X researcher.
-        You will be given a topic to research on Twitter/X.
-        You will need to find trending discussions, influential voices, and real-time updates.
-        Focus on verified accounts and credible sources when possible.
-        Track relevant hashtags and ongoing conversations.
-        """),
-    )
+# Use Pydantic model as structured input
+research_request = ResearchTopic(
+    topic="AI Agent Frameworks",
+    focus_areas=["AI Agents", "Framework Design", "Developer Tools", "Open Source"],
+    target_audience="Software Developers and AI Engineers",
+    sources_required=7,
+)
+# Execute research with structured input
+team.print_response(input=research_request)
+```
 
 
-    agent_team = Team(
-        name="Discussion Team",
-        model=OpenAIChat("gpt-5-mini"),
-        members=[
-            reddit_researcher,
-            hackernews_researcher,
-            academic_paper_researcher,
-            twitter_researcher,
-        ],
-        instructions=[
-            "You are a discussion master.",
-            "You have to stop the discussion when you think the team has reached a consensus.",
-        ],
-        delegate_task_to_all_members=True,
-        markdown=True,
-        show_members_responses=True,
-    )
+## Delegate tasks to all members simultaneously
 
-    if __name__ == "__main__":
-        asyncio.run(
-            agent_team.aprint_response(
-                message="Start the discussion on the topic: 'What is the best way to learn to code?'",
-                stream=True,
-                stream_intermediate_steps=True,
-            )
+When you set `delegate_task_to_all_members` to `True`, the team leader will delegate the task to all members simultaneously, instead of one by one.  
+When running asynchronously (using `arun`), members will be executed concurrently.
+
+```python
+import asyncio
+from textwrap import dedent
+
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.team.team import Team
+from agno.tools.arxiv import ArxivTools
+from agno.tools.duckduckgo import DuckDuckGoTools
+from agno.tools.googlesearch import GoogleSearchTools
+from agno.tools.hackernews import HackerNewsTools
+
+reddit_researcher = Agent(
+    name="Reddit Researcher",
+    role="Research a topic on Reddit",
+    model=OpenAIChat(id="gpt-5-mini"),
+    tools=[DuckDuckGoTools()],
+    add_name_to_context=True,
+    instructions=dedent("""
+    You are a Reddit researcher.
+    You will be given a topic to research on Reddit.
+    You will need to find the most relevant posts on Reddit.
+    """),
+)
+
+hackernews_researcher = Agent(
+    name="HackerNews Researcher",
+    model=OpenAIChat("gpt-5-mini"),
+    role="Research a topic on HackerNews.",
+    tools=[HackerNewsTools()],
+    add_name_to_context=True,
+    instructions=dedent("""
+    You are a HackerNews researcher.
+    You will be given a topic to research on HackerNews.
+    You will need to find the most relevant posts on HackerNews.
+    """),
+)
+
+academic_paper_researcher = Agent(
+    name="Academic Paper Researcher",
+    model=OpenAIChat("gpt-5-mini"),
+    role="Research academic papers and scholarly content",
+    tools=[GoogleSearchTools(), ArxivTools()],
+    add_name_to_context=True,
+    instructions=dedent("""
+    You are a academic paper researcher.
+    You will be given a topic to research in academic literature.
+    You will need to find relevant scholarly articles, papers, and academic discussions.
+    Focus on peer-reviewed content and citations from reputable sources.
+    Provide brief summaries of key findings and methodologies.
+    """),
+)
+
+twitter_researcher = Agent(
+    name="Twitter Researcher",
+    model=OpenAIChat("gpt-5-mini"),
+    role="Research trending discussions and real-time updates",
+    tools=[DuckDuckGoTools()],
+    add_name_to_context=True,
+    instructions=dedent("""
+    You are a Twitter/X researcher.
+    You will be given a topic to research on Twitter/X.
+    You will need to find trending discussions, influential voices, and real-time updates.
+    Focus on verified accounts and credible sources when possible.
+    Track relevant hashtags and ongoing conversations.
+    """),
+)
+
+
+agent_team = Team(
+    name="Discussion Team",
+    model=OpenAIChat("gpt-5-mini"),
+    members=[
+        reddit_researcher,
+        hackernews_researcher,
+        academic_paper_researcher,
+        twitter_researcher,
+    ],
+    instructions=[
+        "You are a discussion master.",
+        "You have to stop the discussion when you think the team has reached a consensus.",
+    ],
+    delegate_task_to_all_members=True,
+    markdown=True,
+    show_members_responses=True,
+)
+
+if __name__ == "__main__":
+    asyncio.run(
+        agent_team.aprint_response(
+            input="Start the discussion on the topic: 'What is the best way to learn to code?'",
+            stream=True,
+            stream_intermediate_steps=True,
         )
+    )
+```
 
-    ```
-  </Step>
+## More Examples
 
-  <Step title="Run the team">
-    Install libraries
-
-    ```shell
-    pip install openai ddgs arxiv pypdf googlesearch-python pycountry
-    ```
-
-    Run the team
-
-    ```shell
-    python discussion_team.py
-    ```
-  </Step>
-</Steps>
-
-
+<CardGroup cols={2}>
+  <Card title="Basic Coordination" icon="link" href="/examples/concepts/teams/basic/basic_coordination">
+    Basic team coordination pattern
+  </Card>
+  <Card title="Router Team" icon="link" href="/examples/concepts/teams/basic/respond_directly_router_team">
+    Router pattern with direct response
+  </Card>
+  <Card title="Cooperation Mode" icon="link" href="/examples/concepts/teams/basic/delegate_to_all_members_cooperation">
+    Delegate tasks to all members for collaboration
+  </Card>
+</CardGroup>
 
 ## Developer Resources
 
 - View the [Team reference](/reference/teams/team)
-- View [Cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/teams/README.md)
+- View [Cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/teams/basic_flows/README.md)
