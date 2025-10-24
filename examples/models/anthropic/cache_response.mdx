@@ -1,0 +1,142 @@
+---
+title: Response Caching
+description: Learn how to cache model responses to avoid redundant API calls and reduce costs.
+---
+
+Response caching allows you to cache model responses, which can significantly improve response times and reduce API costs during development and testing.
+
+<Note>
+This is different from Anthropic's prompt caching feature. Response caching caches the entire model response, while [prompt caching](/examples/models/anthropic/prompt_caching) caches the system prompt to reduce processing time.
+</Note>
+
+## Basic Usage
+
+Enable caching by setting `cache_response=True` when initializing the model. The first call will hit the API and cache the response, while subsequent identical calls will return the cached result.
+
+```python cookbook/agents/caching/cache_model_response.py
+import time
+
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+
+agent = Agent(model=OpenAIChat(id="gpt-4o", cache_response=True))
+
+# Run the same query twice to demonstrate caching
+for i in range(1, 3):
+    print(f"\n{'=' * 60}")
+    print(
+        f"Run {i}: {'Cache Miss (First Request)' if i == 1 else 'Cache Hit (Cached Response)'}"
+    )
+    print(f"{'=' * 60}\n")
+
+    response = agent.run(
+        "Write me a short story about a cat that can talk and solve problems."
+    )
+    print(response.content)
+    print(f"\n Elapsed time: {response.metrics.duration:.3f}s")
+
+    # Small delay between iterations for clarity
+    if i == 1:
+        time.sleep(0.5)
+```
+
+## Advanced Configuration
+
+You can configure cache expiration time and custom cache directory:
+
+```python
+from agno.agent import Agent
+from agno.models.anthropic import Claude
+
+agent = Agent(
+    model=Claude(
+        id="claude-sonnet-4-20250514",
+        cache_response=True,
+        cache_ttl=3600,  # Cache expires after 1 hour (3600 seconds)
+        cache_dir="/path/to/custom/cache"  # Custom cache directory
+    ),
+    markdown=True
+)
+
+response = agent.run("Explain quantum computing in simple terms")
+```
+
+## Streaming with Cache
+
+Caching also works with streaming responses:
+
+```python cookbook/agents/caching/cache_model_response_stream.py
+import time
+
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+
+agent = Agent(model=OpenAIChat(id="gpt-4o", cache_response=True))
+
+# Run the same query twice to demonstrate caching
+for i in range(1, 3):
+    print(f"\n{'=' * 60}")
+    print(
+        f"Run {i}: {'Cache Miss (First Request)' if i == 1 else 'Cache Hit (Cached Response)'}"
+    )
+    print(f"{'=' * 60}\n")
+
+    start_time = time.time()
+    agent.print_response(
+        "Write me a short story about a cat that can talk and solve problems.",
+        stream=True,
+    )
+    elapsed_time = time.time() - start_time
+
+    print()  # New line after streaming
+    print(f"\n Elapsed time: {elapsed_time:.3f}s")
+
+    # Small delay between iterations for clarity
+    if i == 1:
+        time.sleep(0.5)
+```
+
+## Use Cases
+
+- **Development**: Avoid repeated API calls during development and testing
+- **Testing**: Ensure consistent responses for test cases
+- **Cost Optimization**: Reduce API costs for repeated queries
+- **Performance**: Improve response times for frequently asked questions
+
+## Cache Behavior
+
+- Cache keys are automatically generated based on messages, response format, and tools
+- Identical requests will return cached responses
+- The cache respects the `cache_ttl` parameter - expired entries are automatically ignored
+- Works with both streaming and non-streaming responses
+- Cache is persisted to disk for reuse across sessions
+
+## Usage
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Set your API key">
+    ```bash
+    export ANTHROPIC_API_KEY=xxx
+    ```
+  </Step>
+
+  <Step title="Install libraries">
+    ```bash
+    pip install -U anthropic agno
+    ```
+  </Step>
+
+  <Step title="Run Agent">
+    <CodeGroup>
+    ```bash Mac
+      python cookbook/agents/caching/cache_model_response.py
+    ```
+
+    ```bash Windows
+      python cookbook/agents/caching/cache_model_response.py
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
