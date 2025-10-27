@@ -3,14 +3,22 @@ title: Conversational Workflows
 description: Learn about conversational workflows in Agno.
 ---
 
-**Conversational Workflows** enable your workflows to have intelligent conversations with users. 
+If your users interact directly with a Workflow, it is often useful to make it a **Conversational Workflow**. Users will then be able to chat with the Workflow, 
+in the same fashion as chatting with an Agent or with a LLM works.
 
 This feature allows you to add a `WorkflowAgent` to your workflow that intelligently decides whether to:
 1. **Answer directly** based on the current input and the workflow session history
 2. **Run the workflow** when new processing is needed
 
+<Note>
+What is a **WorkflowAgent**?
+
+`WorkflowAgent` is a restricted version of the `Agent` class specifically designed for workflow orchestration.
+</Note>
+
 ## Quick Start
 
+You can add a `WorkflowAgent` to your workflow like this:
 ```python
 from agno.workflow.agent import WorkflowAgent
 from agno.workflow.workflow import Workflow
@@ -24,6 +32,7 @@ workflow = Workflow(
     agent=workflow_agent,
 )
 ```
+
 ## Architecture
 
 <img 
@@ -39,11 +48,10 @@ workflow = Workflow(
   style={{ maxWidth: '500px', width: '100%', height: 'auto' }}
 />
 
+## Workflow History for Conversational Workflows:
 
-## Key Components
-
-### 1. `WorkflowAgent` Class
-A restricted Agent with limited configuration. See [`WorkflowAgent` Reference](/reference/workflows/workflow_agent) for more details.
+Similar to [workflow history for steps](/concepts/workflows/workflow_with_history), the `WorkflowAgent` has access to the full workflow history runs for that session.
+This makes it possible to answer questions about previous results, compare outputs from multiple runs, and understand conversation continuity.
 
 <Tip>
 Understanding `num_history_runs`
@@ -53,41 +61,20 @@ The `num_history_runs` parameter controls how many previous workflow runs the ag
 - **Context awareness**: The agent needs to see past runs to answer follow-up questions
 - **Memory limits**: Including too many runs can exceed model context limits
 - **Performance**: Fewer runs mean faster processing and lower costs
-
-**How it works:**
-
-When a new query arrives, the `WorkflowAgent` retrieves messages from the last `n` runs using:
-```python
-history = session.get_workflow_history_context(num_runs=num_history_runs)
-```
 </Tip>
 
-These messages are then added to the agent's context, allowing it to:
-- Answer questions about previous results
-- Compare outputs from multiple runs
-- Understand conversation continuity
+## Instructions for the WorkflowAgent:
 
-### 2. Workflow History Context
-Automatically built from previous runs in the session:
-```xml
-<workflow_history_context>
-[run-1]
-input: Tell me a story about a husky named Max
-response: Once upon a time, there was a...
+You can provide custom instructions to the `WorkflowAgent` to control its behavior. Although default instructions are provided which instruct the agent to answer directly from history 
+or to run the workflow when new processing is needed, you can override them by providing your own instructions.
 
-[run-2]
-input: Now tell me about a cat named Luna
-response: Luna was a curious cat who...
-</workflow_history_context>
+```python
+workflow_agent = WorkflowAgent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    num_history_runs=4,
+    instructions="You are a helpful assistant that can answer questions and run workflows when new processing is needed.",
+)
 ```
-
-Read more about [Workflow History](/concepts/workflows/workflow_with_history) for more details.
-
-### 3. Workflow Execution Tool
-Automatically created and provided to the agent:
-- **Name**: `run_workflow`
-- **Purpose**: Execute the complete workflow
-- **Effect**: Creates a normal workflow run in the session
 
 ## Usage Example
 
