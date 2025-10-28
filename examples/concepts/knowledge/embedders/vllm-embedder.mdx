@@ -4,38 +4,72 @@ title: vLLM Embedder
 
 ## Code
 
-```python cookbook/knowledge/embedders/vllm_embedder.py
-from agno.agent import Agent
-from agno.knowledge.pdf import PDFKnowledgeBase, PDFReader
+```python vllm_embedder.py
+import asyncio
+
 from agno.knowledge.embedder.vllm import VLLMEmbedder
-from agno.models.openai import OpenAIChat
+from agno.knowledge.knowledge import Knowledge
 from agno.vectordb.pgvector import PgVector
 
-# Create knowledge base with vLLM embedder (local mode)
-knowledge_base = PDFKnowledgeBase(
-    path="data/pdfs",
-    vector_db=PgVector(
-        table_name="vllm_documents",
-        db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
-        embedder=VLLMEmbedder(
-            id="intfloat/e5-mistral-7b-instruct",
-            dimensions=4096,
+
+def main():
+    # Basic usage - get embeddings directly
+    embeddings = VLLMEmbedder(
+        id="intfloat/e5-mistral-7b-instruct",
+        dimensions=4096,
+        enforce_eager=True,
+        vllm_kwargs={
+            "disable_sliding_window": True,
+            "max_model_len": 4096,
+        },
+    ).get_embedding("The quick brown fox jumps over the lazy dog.")
+
+    # Print the embeddings and their dimensions
+    print(f"Embeddings: {embeddings[:5]}")
+    print(f"Dimensions: {len(embeddings)}")
+
+    # Local Mode with Knowledge
+    knowledge = Knowledge(
+        vector_db=PgVector(
+            db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
+            table_name="vllm_embeddings",
+            embedder=VLLMEmbedder(
+                id="intfloat/e5-mistral-7b-instruct",
+                dimensions=4096,
+                enforce_eager=True,
+                vllm_kwargs={
+                    "disable_sliding_window": True,
+                    "max_model_len": 4096,
+                },
+            ),
         ),
-    ),
-    reader=PDFReader(chunk=True),
-)
-knowledge_base.load(recreate=False)
+        max_results=2,
+    )
 
-# Create agent with knowledge
-agent = Agent(
-    model=OpenAIChat(id="gpt-4o"),
-    knowledge=knowledge_base,
-    search_knowledge=True,
-    show_tool_calls=True,
-    markdown=True,
-)
+    # Remote mode with Knowledge
+    knowledge_remote = Knowledge(
+        vector_db=PgVector(
+            db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
+            table_name="vllm_embeddings_remote",
+            embedder=VLLMEmbedder(
+                id="intfloat/e5-mistral-7b-instruct",
+                dimensions=4096,
+                base_url="http://localhost:8000/v1",
+                api_key="your-api-key",  # Optional
+            ),
+        ),
+        max_results=2,
+    )
 
-agent.print_response("What is the main topic?", markdown=True)
+    asyncio.run(
+        knowledge.add_content_async(
+            path="cookbook/knowledge/testing_resources/cv_1.pdf",
+        )
+    )
+
+
+if __name__ == "__main__":
+    main()
 ```
 
 ## Usage
@@ -46,12 +80,6 @@ agent.print_response("What is the main topic?", markdown=True)
   <Step title="Install libraries">
     ```bash
     pip install -U agno vllm openai sqlalchemy psycopg[binary] pgvector pypdf
-    ```
-  </Step>
-
-  <Step title="Set environment variables">
-    ```bash
-    export OPENAI_API_KEY=xxx
     ```
   </Step>
 
@@ -69,16 +97,23 @@ agent.print_response("What is the main topic?", markdown=True)
     ```
   </Step>
 
-  <Step title="Run the agent">
-    ```bash
-    python cookbook/knowledge/embedders/vllm_embedder.py
+  <Step title="Run the example">
+    <CodeGroup>
+    ```bash Mac
+    python vllm_embedder.py
     ```
+
+    ```bash Windows
+    python vllm_embedder.py
+    ```
+    </CodeGroup>
   </Step>
 </Steps>
 
 ## Notes
 
 - This example uses **local mode** where vLLM loads the model directly (no server needed)
-- For **remote mode**, use `base_url` parameter: `VLLMEmbedder(base_url="http://localhost:8000/v1")`
+- For **remote mode**, the code includes `knowledge_remote` example with `base_url` parameter
 - GPU with ~14GB VRAM required for e5-mistral-7b-instruct model
 - For CPU-only or lower memory, use smaller models like `BAAI/bge-small-en-v1.5`
+- Models are automatically downloaded from HuggingFace on first use

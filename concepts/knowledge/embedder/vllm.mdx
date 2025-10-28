@@ -1,139 +1,89 @@
 ---
 title: vLLM Embedder
+sidebarTitle: vLLM
 ---
 
-vLLM Embedder supports both local and remote embedding model deployment with high-performance inference optimized for throughput and latency.
+The vLLM Embedder provides high-performance embedding inference with support for both local and remote deployment modes. All models are downloaded from HuggingFace.
 
-## Prerequisites
-
-vLLM requires Python 3.8+ and GPU support for optimal performance.
-
-Install vLLM:
-
-```bash
-pip install vllm
-```
-
-## Deployment Modes
-
-vLLM Embedder supports two deployment modes:
+## Usage
 
 ### Local Mode
 
 You can directly load local models using the vLLM library, without any need to host a model on a server.
 
-```python
+```python vllm_embedder.py
 from agno.knowledge.embedder.vllm import VLLMEmbedder
+from agno.knowledge.knowledge import Knowledge
+from agno.vectordb.pgvector import PgVector
 
-embedder = VLLMEmbedder(
+# Get embeddings directly
+embeddings = VLLMEmbedder(
     id="intfloat/e5-mistral-7b-instruct",
-    dimensions=4096
+    dimensions=4096,
+    enforce_eager=True,
+    vllm_kwargs={
+        "disable_sliding_window": True,
+        "max_model_len": 4096,
+    },
+).get_embedding("The quick brown fox jumps over the lazy dog.")
+
+print(f"Embeddings: {embeddings[:5]}")
+print(f"Dimensions: {len(embeddings)}")
+
+# Use with Knowledge
+knowledge = Knowledge(
+    vector_db=PgVector(
+        db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
+        table_name="vllm_embeddings",
+        embedder=VLLMEmbedder(
+            id="intfloat/e5-mistral-7b-instruct",
+            dimensions=4096,
+            enforce_eager=True,
+            vllm_kwargs={
+                "disable_sliding_window": True,
+                "max_model_len": 4096,
+            },
+        ),
+    ),
+    max_results=2,
 )
-
-# Get embeddings
-embedding = embedder.get_embedding("Hello world")
 ```
-
-**Use Cases:**
-- Development and testing
-- Single-machine deployment
-- GPU/CPU inference
-
-**Approximate GPU Requirements:**
-- e5-mistral-7b-instruct: ~14GB VRAM
-- BAAI/bge-large-en-v1.5: ~2GB VRAM
-- sentence-transformers/all-MiniLM-L6-v2: ~500MB VRAM
 
 ### Remote Mode
 
 You can connect to a running vLLM server via an OpenAI-compatible API.
 
-```python
-embedder = VLLMEmbedder(
-    base_url="http://localhost:8000/v1",
-    api_key="your-key"  # Optional
-)
-```
-
-**Use Cases:**
-- Production deployments
-- Shared infrastructure
-- Horizontal scaling
-- Load balancing
-
-## Recommended Models
-
-| Model | Dimensions | Parameters | VRAM | Use Case |
-|-------|------------|------------|------|----------|
-| `intfloat/e5-mistral-7b-instruct` | 4096 | 7B | ~14GB | High-quality embeddings |
-| `BAAI/bge-large-en-v1.5` | 1024 | 335M | ~2GB | Balanced performance |
-| `sentence-transformers/all-MiniLM-L6-v2` | 384 | 22M | ~500MB | Fast, lightweight |
-
-## Performance Optimization
-
-### Batching
-
-Enable batching for processing multiple texts efficiently:
-
-```python
-embedder = VLLMEmbedder(
-    id="intfloat/e5-mistral-7b-instruct",
-    enable_batch=True,
-    batch_size=32  # Adjust based on GPU memory
-)
-```
-
-### Async Processing
-
-Use async methods for concurrent operations:
-
-```python
-import asyncio
-
-async def get_embeddings():
-    embeddings = await embedder.async_get_embedding("Hello world")
-    return embeddings
-
-embeddings = asyncio.run(get_embeddings())
-```
-
-## Usage with Knowledge Base
-
-Integrate with Agno's knowledge system:
-
-```python
-from agno.knowledge.pdf import PDFKnowledgeBase
-from agno.vectordb.pgvector import PgVector
-
-knowledge_base = PDFKnowledgeBase(
-    path="data/pdfs",
+```python vllm_embedder_remote.py
+# Remote mode (for production deployments)
+knowledge_remote = Knowledge(
     vector_db=PgVector(
-        table_name="vllm_documents",
         db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
+        table_name="vllm_embeddings_remote",
         embedder=VLLMEmbedder(
             id="intfloat/e5-mistral-7b-instruct",
             dimensions=4096,
+            base_url="http://localhost:8000/v1",  # Example endpoint for local development
+            api_key="your-api-key",  # Optional
         ),
     ),
+    max_results=2,
 )
 ```
 
 ## Params
 
-<Snippet file="embedder-vllm-reference.mdx" />
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `id` | `str` | `"intfloat/e5-mistral-7b-instruct"` | Model identifier (HuggingFace model name) |
+| `dimensions` | `int` | `4096` | Embedding vector dimensions |
+| `base_url` | `Optional[str]` | `None` | Remote vLLM server URL (enables remote mode) |
+| `api_key` | `Optional[str]` | `getenv("VLLM_API_KEY")` | API key for remote server authentication |
+| `enable_batch` | `bool` | `False` | Enable batch processing for multiple texts |
+| `batch_size` | `int` | `10` | Number of texts to process per batch |
+| `enforce_eager` | `bool` | `True` | Use eager execution mode (local mode) |
+| `vllm_kwargs` | `Optional[Dict[str, Any]]` | `None` | Additional vLLM engine parameters (local mode) |
+| `request_params` | `Optional[Dict[str, Any]]` | `None` | Additional request parameters (remote mode) |
+| `client_params` | `Optional[Dict[str, Any]]` | `None` | OpenAI client configuration (remote mode) |
 
-## Troubleshooting
-
-### Out of Memory Error
-- Use a smaller model (e.g., `bge-small`, `MiniLM`)
-- Reduce batch size
-- Enable CPU offloading: `vllm_kwargs={"enforce_eager": False}`
-
-### Model Download Issues
-- Models are downloaded from HuggingFace on first use
-- Set `HF_HOME` environment variable to control cache location
-- Pre-download: `huggingface-cli download intfloat/e5-mistral-7b-instruct`
-
-### Import Errors
-- Ensure vLLM is installed: `pip install vllm`
-- For GPU support, verify CUDA installation
+## Developer Resources
+- View [Cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/knowledge/embedders/vllm_embedder.py)
