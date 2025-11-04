@@ -22,17 +22,21 @@ import json
 from agno.agent import Agent
 from agno.db.sqlite import SqliteDb
 from agno.models.openai import OpenAIChat
+from agno.run.base import run_context
 
 # In-memory database to store user shopping lists
 # Organized by user ID and session ID
 shopping_list = {}
 
 
-def add_item(session_state, item: str) -> str:
+def add_item(run_context: RunContext, item: str) -> str:
     """Add an item to the current user's shopping list."""
 
-    current_user_id = session_state["current_user_id"]
-    current_session_id = session_state["current_session_id"]
+    if not run_context.session_state:
+        run_context.session_state = {}
+
+    current_user_id = run_context.session_state["current_user_id"]
+    current_session_id = run_context.session_state["current_session_id"]
     shopping_list.setdefault(current_user_id, {}).setdefault(
         current_session_id, []
     ).append(item)
@@ -40,11 +44,14 @@ def add_item(session_state, item: str) -> str:
     return f"Item {item} added to the shopping list"
 
 
-def remove_item(session_state, item: str) -> str:
+def remove_item(run_context: RunContext, item: str) -> str:
     """Remove an item from the current user's shopping list."""
 
-    current_user_id = session_state["current_user_id"]
-    current_session_id = session_state["current_session_id"]
+    if not run_context.session_state:
+        run_context.session_state = {}
+
+    current_user_id = run_context.session_state["current_user_id"]
+    current_session_id = run_context.session_state["current_session_id"]
 
     if (
         current_user_id not in shopping_list
@@ -59,11 +66,14 @@ def remove_item(session_state, item: str) -> str:
     return f"Item {item} removed from the shopping list"
 
 
-def get_shopping_list(session_state) -> str:
+def get_shopping_list(run_context: RunContext) -> str:
     """Get the current user's shopping list."""
 
-    current_user_id = session_state["current_user_id"]
-    current_session_id = session_state["current_session_id"]
+    if not run_context.session_state:
+        run_context.session_state = {}
+
+    current_user_id = run_context.session_state["current_user_id"]
+    current_session_id = run_context.session_state["current_session_id"]
     return f"Shopping list for user {current_user_id} and session {current_session_id}: \n{json.dumps(shopping_list[current_user_id][current_session_id], indent=2)}"
 
 
@@ -156,7 +166,7 @@ print(f"Final shopping lists: \n{json.dumps(shopping_list, indent=2)}")
     ```bash Windows
       $Env:OPENAI_API_KEY="your_openai_api_key_here"
     ```
-    </CodeGroup> 
+    </CodeGroup>
   </Step>
 
   <Step title="Create a Python file">
@@ -171,7 +181,7 @@ print(f"Final shopping lists: \n{json.dumps(shopping_list, indent=2)}")
     ```bash Mac
     python session_state_multiple_users.py
     ```
-    
+
     ```bash Windows
     python session_state_multiple_users.py
     ```
