@@ -76,24 +76,30 @@ In this example, the `GoogleSearchTools` toolkit is added to the agent. This Too
 
 Agno automatically provides special parameters to your tools that give access to the agent's state. These parameters are injected automatically - you don't pass them when calling the tool.
 
-### Session State Parameter
+### Using the Run Context
 
-The built-in parameter `session_state` allows tools to access and modify persistent data across conversations.
+You can access values from the current run via the `run_context` parameter: `run_context.session_state`, `run_context.dependencies`, `run_context.knowledge_filters`, `run_context.metadata`. See the [RunContext schema](/reference/run/run_context) for more information.
+
+This allows tools to access and modify persistent data across conversations.
 
 This is useful in cases where a tool result is relevant for the next steps of the conversation.
 
-Add `session_state` as a parameter in your tool function to access the agent's persistent state:
+Add `run_context` as a parameter in your tool function to access the agent's persistent state:
 
 ```python
 from agno.agent import Agent
 from agno.db.sqlite import SqliteDb
 from agno.models.openai import OpenAIChat
+from agno.run import RunContext
 
 
-def add_item(session_state, item: str) -> str:
+def add_item(run_context: RunContext, item: str) -> str:
     """Add an item to the shopping list."""
-    session_state["shopping_list"].append(item)  # type: ignore
-    return f"The shopping list is now {session_state['shopping_list']}"  # type: ignore
+    if not run_context.session_state:
+        run_context.session_state = {}
+
+    run_context.session_state["shopping_list"].append(item)  # type: ignore
+    return f"The shopping list is now {run_context.session_state['shopping_list']}"  # type: ignore
 
 
 # Create an Agent that maintains state
@@ -120,7 +126,7 @@ See more in [Agent State](/concepts/agents/state).
 The built-in parameter `images`, `videos`, `audio`, and `files` allows tools to access and modify the input media to an agent.
 
 <Note>
-Using the `send_media_to_model` parameter, you can control whether the media is sent to the model or not and using `store_media` parameter, you can control whether the 
+Using the `send_media_to_model` parameter, you can control whether the media is sent to the model or not and using `store_media` parameter, you can control whether the
 media is stored in the `RunOutput` or not.
 </Note>
 
