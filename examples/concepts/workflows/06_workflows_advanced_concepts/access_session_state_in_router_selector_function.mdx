@@ -1,12 +1,12 @@
 ---
-title: Access Session State in Router Selector Function
-description: This example demonstrates how to access session state in the selector function of a router step
+title: Access Run Context and Session State in Router Selector Function
+description: This example demonstrates how to access the run context in the selector function of a router step
 ---
 
 This example shows:
-1. Using `session_state` in a Router selector function
+1. Using `run_context.session_state` in a Router selector function
 2. Making routing decisions based on session state data
-3. Accessing user preferences and history from session_state
+3. Accessing user preferences and history from `run_context.session_state`
 4. Dynamically selecting different agents based on user context
 
 ```python access_session_state_in_router_selector_function.py
@@ -15,32 +15,33 @@ from agno.models.openai import OpenAIChat
 from agno.workflow.router import Router
 from agno.workflow.step import Step, StepInput, StepOutput
 from agno.workflow.workflow import Workflow
+from agno.run import RunContext
 
 
-def route_based_on_user_preference(step_input: StepInput, session_state: dict) -> Step:
+def route_based_on_user_preference(step_input: StepInput, run_context: RunContext) -> Step:
     """
     Router selector that chooses an agent based on user preferences in session_state.
 
     Args:
         step_input: The input for this step (contains user query)
-        session_state: The shared session state dictionary
+        run_context: The run context object
 
     Returns:
         Step: The step to execute based on user preference
     """
     print("\n=== Routing Decision ===")
-    print(f"User ID: {session_state.get('current_user_id')}")
-    print(f"Session ID: {session_state.get('current_session_id')}")
+    print(f"User ID: {run_context.session_state.get('current_user_id')}")
+    print(f"Session ID: {run_context.session_state.get('current_session_id')}")
 
     # Get user preference from session state
-    user_preference = session_state.get("agent_preference", "general")
-    interaction_count = session_state.get("interaction_count", 0)
+    user_preference = run_context.session_state.get("agent_preference", "general")
+    interaction_count = run_context.session_state.get("interaction_count", 0)
 
     print(f"User Preference: {user_preference}")
     print(f"Interaction Count: {interaction_count}")
 
     # Update interaction count
-    session_state["interaction_count"] = interaction_count + 1
+    run_context.session_state["interaction_count"] = interaction_count + 1
 
     # Route based on preference
     if user_preference == "technical":
@@ -59,22 +60,22 @@ def route_based_on_user_preference(step_input: StepInput, session_state: dict) -
             return general_step
 
 
-def set_user_preference(step_input: StepInput, session_state: dict) -> StepOutput:
+def set_user_preference(step_input: StepInput, run_context: RunContext) -> StepOutput:
     """Custom function that sets user preference based on onboarding."""
     print("\n=== Setting User Preference ===")
 
     # In a real scenario, this would analyze the user's response
     # For demo purposes, we'll set it based on interaction count
-    interaction_count = session_state.get("interaction_count", 0)
+    interaction_count = run_context.session_state.get("interaction_count", 0)
 
     if interaction_count % 3 == 1:
-        session_state["agent_preference"] = "technical"
+        run_context.session_state["agent_preference"] = "technical"
         preference = "technical"
     elif interaction_count % 3 == 2:
-        session_state["agent_preference"] = "friendly"
+        run_context.session_state["agent_preference"] = "friendly"
         preference = "friendly"
     else:
-        session_state["agent_preference"] = "general"
+        run_context.session_state["agent_preference"] = "general"
         preference = "general"
 
     print(f"Set preference to: {preference}")
