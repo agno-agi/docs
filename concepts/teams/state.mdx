@@ -1,10 +1,10 @@
 ---
 title: Shared State
 sidebarTitle: Shared State
-description: Learn about the shared state of Agent Teams.
+description: Learn how to share state data between team members.
 ---
 
-Team Session State enables sophisticated state management across teams of agents. Teams often need to coordinate on shared information.
+Team Session State enables sharing and updating state data across teams of agents. Teams often need to coordinate on shared information.
 
 <Check>
 Shared state propagates through nested team structures as well
@@ -12,8 +12,10 @@ Shared state propagates through nested team structures as well
 
 ## How to use Shared State
 
-You can set the `session_state` parameter on `Team` to share state between the team leader and team members.
-This state is available to all team members and is synchronized between them.
+You can set the `session_state` parameter on `Team` to set initial session state data.
+This state data will be shared between the team leader and its members.
+
+This state will be available to all team members and is synchronized between them.
 
 For example:
 
@@ -24,12 +26,14 @@ team = Team(
 )
 ```
 
-Members can access the shared state using the `session_state` attribute in tools.
+Members can access the shared state using `run_context.session_state` in tools.
 
 For example:
 
 ```python
-def add_item(session_state, item: str) -> str:
+from agno.run import RunContext
+
+def add_item(run_context: RunContext, item: str) -> str:
     """Add an item to the shopping list and return confirmation.
 
     Args:
@@ -37,16 +41,18 @@ def add_item(session_state, item: str) -> str:
     """
     # Add the item if it's not already in the list
     if item.lower() not in [
-        i.lower() for i in session_state["shopping_list"]
+        i.lower() for i in run_context.session_state["shopping_list"]
     ]:
-        session_state["shopping_list"].append(item)
+        run_context.session_state["shopping_list"].append(item)
         return f"Added '{item}' to the shopping list"
     else:
         return f"'{item}' is already in the shopping list"
 ```
 
 <Note>
-The `session_state` variable is automatically passed to the tool as an argument.  Any updates to it is automatically reflected in the shared state.
+The `run_context` object is automatically passed to the tool as an argument. Use it to access the session state.
+Any updates to `run_context.session_state` will be automatically persisted in the database and reflected in the shared state.
+See the [RunContext schema](/reference/run/run_context) for more information.
 </Note>
 
 ### Example
@@ -58,25 +64,32 @@ Here's a simple example of a team managing a shared shopping list:
 from agno.models.openai import OpenAIChat
 from agno.agent import Agent
 from agno.team import Team
+from agno.run import RunContext
 
 
 # Define tools that work with shared team state
-def add_item(session_state, item: str) -> str:
+def add_item(run_context: RunContext, item: str) -> str:
     """Add an item to the shopping list."""
+    if not run_context.session_state:
+        run_context.session_state = {}
+
     if item.lower() not in [
-        i.lower() for i in session_state["shopping_list"]
+        i.lower() for i in run_context.session_state["shopping_list"]
     ]:
-        session_state["shopping_list"].append(item)
+        run_context.session_state["shopping_list"].append(item)
         return f"Added '{item}' to the shopping list"
     else:
         return f"'{item}' is already in the shopping list"
 
 
-def remove_item(session_state, item: str) -> str:
+def remove_item(run_context: RunContext, item: str) -> str:
     """Remove an item from the shopping list."""
-    for i, list_item in enumerate(session_state["shopping_list"]):
+    if not run_context.session_state:
+        run_context.session_state = {}
+
+    for i, list_item in enumerate(run_context.session_state["shopping_list"]):
         if list_item.lower() == item.lower():
-            session_state["shopping_list"].pop(i)
+            run_context.session_state["shopping_list"].pop(i)
             return f"Removed '{list_item}' from the shopping list"
 
     return f"'{item}' was not found in the shopping list"
@@ -92,10 +105,13 @@ shopping_agent = Agent(
 
 
 # Define team-level tools
-def list_items(session_state) -> str:
+def list_items(run_context: RunContext) -> str:
     """List all items in the shopping list."""
+    if not run_context.session_state:
+        run_context.session_state = {}
+
     # Access shared state (not private state)
-    shopping_list = session_state["shopping_list"]
+    shopping_list = run_context.session_state["shopping_list"]
 
     if not shopping_list:
         return "The shopping list is empty."
@@ -104,13 +120,16 @@ def list_items(session_state) -> str:
     return f"Current shopping list:\n{items_text}"
 
 
-def add_chore(session_state, chore: str) -> str:
+def add_chore(run_context: RunContext, chore: str) -> str:
     """Add a completed chore to the team's private log."""
-    # Access team's private state
-    if "chores" not in session_state:
-        session_state["chores"] = []
+    if not run_context.session_state:
+        run_context.session_state = {}
 
-    session_state["chores"].append(chore)
+    # Access team's private state
+    if "chores" not in run_context.session_state:
+        run_context.session_state["chores"] = []
+
+    run_context.session_state["chores"].append(chore)
     return f"Logged chore: {chore}"
 
 
@@ -140,7 +159,8 @@ print(f"Shared state: {shopping_team.get_session_state()}")
 ```
 
 <Tip>
-Notice how shared tools use `session_state`, which allows state to propagate and persist across the entire team — even for subteams within the team. This ensures consistent shared state for all members.
+Notice how shared tools can access and update `run_context.session_state`.
+This allows state data to propagate and persist across the entire team — even for subteams within the team.
 </Tip>
 
 See a full example [here](/examples/concepts/teams/state/team_with_nested_shared_state).
@@ -328,3 +348,9 @@ team = Team(
 
 team.print_response("How are LEDs made?")
 ```
+
+
+## Developer Resources
+
+- View the [Team schema](/reference/teams/team)
+- View the [RunContext schema](/reference/run/run_context)

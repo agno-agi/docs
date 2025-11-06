@@ -1,47 +1,52 @@
 ---
 title: Agent State
-description: Learn about state in agents.
+description: Learn how to share data between runs in a session.
 ---
 
-**State** is any kind of data that needs to be maintained throughout runs in a session.
+Your Agents often need to access certain data during a run/session. It could be a todo list, the user's profile, or anything else.
 
-A simple yet common use case for Agents is to manage lists, items and other "information" for a user. For example, a shopping list, a todo list, a wishlist, etc.
-This can be easily managed using the `session_state`. The Agent can access or update the `session_state` in tool calls and exposes them to the Model via the system message.
+When this data needs to remain accessible across runs, or needs to be updated during the session, you want to consider it **session state**.
 
-The session state is then persisted in the configured database and made available across runs within that session.
+Session state is accessible from tool calls, pre-hooks and post-hooks, and other functions that are part of the Agent run. You are also able to use it in the system message, to ultimately present it to the Model.
+
+Session state is also persisted in the database, if one is available to the Agent, and is automatically loaded when the session is continued.
 
 <Note>
-**Understanding Agent "Statelessness"**: Agents in Agno don't maintain working state between different sessions or runs, but they do provide state management capabilities:
+**Understanding Agent "Statelessness"**: Agents in Agno don't maintain working state directly on the `Agent` object in memory. Instead they provide state management capabilities:
 
-- The `session_state` parameter on `Agent` provides the default state template for new sessions
-- The `get_session_state()` method retrieves the session state of a particular session from the database  
+- The `session.get_session_state(session_id=session_id)` method retrieves the session state of a particular session from the database
+- The `session_state` parameter on `Agent` provides the **default** state data for new sessions
 - Working state is managed per run and persisted to the database per session
 - The agent instance (or attributes thereof) itself is not modified during runs
 </Note>
 
 ## State Management
 
-Agno provides a powerful and elegant state management system. Here's how it works:
+Now that we understand what session state is, let's see how it works:
 
-- You can set the Agent's `session_state` parameter with a dictionary of default state variables.
-- You update the `session_state` dictionary in tool calls or other functions.
-- You share the current `session_state` with the LLM via the system message by referencing state variables in `description` and `instructions`.
-- You can pass `session_state` to `agent.run()`, which takes precedence over the agent's default state.
-- The `session_state` is stored per session in your database and persists across runs within that session.
-- When switching sessions via `session_id` in `agent.run()`, the appropriate session state is loaded from the database.
+- You can set the Agent's `session_state` parameter with a dictionary of default state variables. This will be the initial state.
+- You can pass `session_state` to `agent.run()`. This will take precedence over the Agent's default state for that run.
+- You can access the session state in tool calls and other functions, via `run_context.session_state`.
+- The `session_state` will be stored in your database. Subsequent runs **within the same session** will load the state from the database. See the [guide](/concepts/agents/state#maintaining-state-across-multiple-runs-within-a-session) for more information.
+- You can use any data in your `session_state` in the system message, by referencing it in the `description` and `instructions` parameters. See the [guide](/concepts/agents/state#using-state-in-instructions) for more information.
+- You can have your Agent automatically update the session state by setting the `enable_agentic_state` parameter to `True`. See the [guide](/concepts/agents/state#agentic-session-state) for more information.
 
-Here's an example of an Agent managing a shopping list:
+Here's an example where an Agent is managing a shopping list:
 
 ```python session_state.py
 from agno.agent import Agent
 from agno.db.sqlite import SqliteDb
 from agno.models.openai import OpenAIChat
+from agno.run import RunContext
 
 # Define a tool that adds an item to the shopping list
-def add_item(session_state, item: str) -> str:
+def add_item(run_context: RunContext, item: str) -> str:
     """Add an item to the shopping list."""
-    session_state["shopping_list"].append(item)
-    return f"The shopping list is now {session_state['shopping_list']}"
+
+    # We access the session state via run_context.session_state
+    run_context.session_state["shopping_list"].append(item)
+
+    return f"The shopping list is now {run_context.session_state['shopping_list']}"
 
 
 # Create an Agent that maintains state
@@ -49,7 +54,7 @@ agent = Agent(
     model=OpenAIChat(id="gpt-5-mini"),
     # Database to store sessions and their state
     db=SqliteDb(db_file="tmp/agents.db"),
-    # Initialize the session state with an empty shopping list
+    # Initialize the session state with an empty shopping list. This will be the default state for all sessions.
     session_state={"shopping_list": []},
     tools=[add_item],
     # You can use variables from the session state in the instructions
@@ -63,21 +68,21 @@ print(f"Final session state: {agent.get_session_state()}")
 ```
 
 <Note>
-  The `session_state` variable is automatically passed to the tool as an
-  argument. Any updates to it is automatically reflected in the shared state.
+  The `RunContext` object is automatically passed to the tool as an argument. 
+  Any updates to `run_context.session_state` will automatically be persisted in the database and reflected in the session state.
+  See the [RunContext schema](/reference/run/run_context) for more information.
 </Note>
 
 <Check>
-  Session state is also shared between members of a team when using `Team`. See
-  [Teams](/concepts/teams/state) for more information.
+  Session state is also shared between members of a team when using `Team`. See [Teams](/concepts/teams/state) for more information.
 </Check>
 
-## Maintaining state across multiple runs within a session
+## Maintaining state across multiple runs
 
 A big advantage of **sessions** is the ability to maintain state across multiple runs within the same session. For example, let's say the agent is helping a user keep track of their shopping list.
 
 <Tip>
-  You have to configure your storage via the `db` parameter for state to be persisted across runs.
+  You have to configure your storage via the `db` parameter for state to be persisted across runs. See [Storage](/concepts/storage/overview) for more information.
 </Tip>
 
 
@@ -87,33 +92,34 @@ from textwrap import dedent
 from agno.agent import Agent
 from agno.db.sqlite import SqliteDb
 from agno.models.openai import OpenAIChat
+from agno.run import RunContext
 
 
 # Define tools to manage our shopping list
-def add_item(session_state, item: str) -> str:
+def add_item(run_context: RunContext, item: str) -> str:
     """Add an item to the shopping list and return confirmation."""
     # Add the item if it's not already in the list
-    if item.lower() not in [i.lower() for i in session_state["shopping_list"]]:
-        session_state["shopping_list"].append(item)  # type: ignore
+    if item.lower() not in [i.lower() for i in run_context.session_state["shopping_list"]]:
+        run_context.session_state["shopping_list"].append(item)  # type: ignore
         return f"Added '{item}' to the shopping list"
     else:
         return f"'{item}' is already in the shopping list"
 
 
-def remove_item(session_state, item: str) -> str:
+def remove_item(run_context: RunContext, item: str) -> str:
     """Remove an item from the shopping list by name."""
     # Case-insensitive search
-    for i, list_item in enumerate(session_state["shopping_list"]):
+    for i, list_item in enumerate(run_context.session_state["shopping_list"]):
         if list_item.lower() == item.lower():
-            session_state["shopping_list"].pop(i)
+            run_context.session_state["shopping_list"].pop(i)
             return f"Removed '{list_item}' from the shopping list"
 
     return f"'{item}' was not found in the shopping list"
 
 
-def list_items(session_state) -> str:
+def list_items(run_context: RunContext) -> str:
     """List all items in the shopping list."""
-    shopping_list = session_state["shopping_list"]
+    shopping_list = run_context.session_state["shopping_list"]
 
     if not shopping_list:
         return "The shopping list is empty."
@@ -163,7 +169,7 @@ print(f"Session state: {agent.get_session_state()}")
 
 ## Agentic Session State
 
-Agno provides a way to allow the agent to automatically update the session state.
+Agno provides a way to allow the Agent to automatically update the session state.
 
 Simply set the `enable_agentic_state` parameter to `True`.
 
@@ -221,7 +227,7 @@ agent.print_response("What is my name?", stream=True)
 
 ## Changing state on run
 
-When you pass `session_id` to the agent on `agent.run()`, it will switch to the session with the given `session_id` and load any state that was set on that session.
+When you pass `session_id` to the agent on `agent.run()`, the run will be part of the session with the given `session_id`. The state loaded from the database will be the state for that session.
 
 This is useful when you want to continue a session for a specific user.
 
@@ -265,7 +271,7 @@ agent = Agent(
     model=OpenAIChat(id="gpt-4o-mini"),
     db=SqliteDb(db_file="tmp/agents.db"),
     markdown=True,
-    # Set the default session_state. The values set here won't be overwritten.
+    # Set the default session_state. The values set here won't be overwritten - they are the initial state for all sessions.
     session_state={},
     # Adding the session_state to context for the agent to easily access it
     add_session_state_to_context=True,
@@ -293,4 +299,5 @@ print(f"Stored session state: {agent.get_session_state()}")
 ## Developer Resources
 
 - View the [Agent schema](/reference/agents/agent)
+- View the [RunContext schema](/reference/run/run_context)
 - View [Cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/agents/state/)
