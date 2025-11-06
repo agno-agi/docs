@@ -195,25 +195,34 @@ if __name__ == "__main__":
 
 See the [RunContext schema](/reference/run/run_context) for more information.
 
-### 3. `session_state` as a parameter for custom python functions step in workflow
+### 3. `run_context` as a parameter for custom python functions step in workflow
 
-You can use the `session_state` as a parameter for custom python functions step in workflow to access and modify the session state.
+You can add the `run_context` parameter to the Python functions you use as custom steps.
+
+The `run_context` object will be automatically injected when running the function.
+
+You can use it to read and modify the session state, via `run_context.session_state`.
 
 <Note>
 On the function of the custom python function step for a workflow
 ```python
-def custom_function_step(step_input: StepInput, session_state):
-    session_state["test"] = test_1 # updates the workflow session state
+from agno.run import RunContext
+
+def custom_function_step(step_input: StepInput, run_context: RunContext):
+    """Update the workflow session state"""
+    run_context.session_state["test"] = test_1
 ```
 </Note>
 
 See [examples](/examples/concepts/workflows/06_workflows_advanced_concepts/access_session_state_in_custom_python_function_step) for more details.
 
-The `session_state` is also available as a parameter in the evaluator and selector functions of the `Condition` and `Router` steps:
+The `run_context` is also available as a parameter in the evaluator and selector functions of the `Condition` and `Router` steps:
 
 ```python
-def evaluator_function(step_input: StepInput, session_state):
-    return session_state["test"] == "test_1"
+from agno.run import RunContext
+
+def evaluator_function(step_input: StepInput, run_context: RunContext):
+    return run_context.session_state["test"] == "test_1"
 
 condition_step = Condition(
     name="condition_step",
@@ -223,8 +232,10 @@ condition_step = Condition(
 ```
 
 ```python
-def selector_function(step_input: StepInput, session_state):
-    return session_state["test"] == "test_1"
+from agno.run import RunContext
+
+def selector_function(step_input: StepInput, run_context: RunContext):
+    return run_context.session_state["test"] == "test_1"
 
 router_step = Router(
     name="router_step",
@@ -257,7 +268,7 @@ and [Session State in Router Selector Function](/examples/concepts/workflows/06_
 - Access and modify state through standard Python operations
 
 <Note>
-  The `session_state` is automatically passed to all agents and teams within a
+  The `run_context` object, containing the session state, is automatically passed to all agents and teams within a
   workflow, enabling seamless collaboration and data sharing between different
   components without manual state management.
 </Note>
