@@ -37,7 +37,7 @@ These operators let you match against specific values:
 Match content where a metadata field equals a specific value.
 
 ```python
-from agno.knowledge.filters import EQ
+from agno.filters import EQ
 
 # Find only HR policy documents
 EQ("department", "hr")
@@ -50,7 +50,7 @@ EQ("year", 2024)
 Match content where a metadata field contains any of the specified values.
 
 ```python
-from agno.knowledge.filters import IN
+from agno.filters import IN
 
 # Find content from multiple regions
 IN("region", ["north_america", "europe", "asia"])
@@ -63,7 +63,7 @@ IN("document_type", ["policy", "guideline", "procedure"])
 Match content based on numeric comparisons.
 
 ```python
-from agno.knowledge.filters import GT, LT
+from agno.filters import GT, LT
 
 # Find recent documents
 GT("year", 2020)
@@ -83,7 +83,7 @@ Combine multiple conditions using logical operators:
 All conditions must be true.
 
 ```python
-from agno.knowledge.filters import AND, EQ
+from agno.filters import AND, EQ
 
 # Find sales documents from North America in 2024
 AND(
@@ -97,7 +97,7 @@ AND(
 At least one condition must be true.
 
 ```python
-from agno.knowledge.filters import OR, EQ
+from agno.filters import OR, EQ
 
 # Find either engineering or product documents
 OR(
@@ -110,7 +110,7 @@ OR(
 Exclude content that matches the condition.
 
 ```python
-from agno.knowledge.filters import NOT, EQ
+from agno.filters import NOT, EQ
 
 # Find everything except draft documents
 NOT(EQ("status", "draft"))
@@ -125,7 +125,7 @@ Here's how to apply filters when running agents with knowledge:
 
 ```python
 from agno.agent import Agent
-from agno.knowledge.filters import EQ, IN
+from agno.filters import EQ, IN, AND
 from agno.knowledge.knowledge import Knowledge
 from agno.vectordb.pgvector import PgVector
 
@@ -156,10 +156,10 @@ sales_agent = Agent(
     instructions="Always search knowledge before answering questions"
 )
 
-# Use filters in agent responses
+# Use filters in agent responses - NOTE: filters must be in a list!
 sales_agent.print_response(
     "What were our Q1 sales results?",
-    knowledge_filters=[
+    knowledge_filters=[  # ← Must be a list!
         AND(EQ("data_type", "sales"), EQ("quarter", "Q1"))
     ]
 )
@@ -168,7 +168,7 @@ sales_agent.print_response(
 ### Complex Filter Examples
 
 ```python
-from agno.knowledge.filters import AND, OR, NOT, EQ, IN, GT
+from agno.filters import AND, OR, NOT, EQ, IN, GT
 
 # Find recent sales data from specific regions, but exclude drafts
 complex_filter = AND(
@@ -189,7 +189,7 @@ feedback_filter = AND(
 
 agent.print_response(
     "What do our customers think about our new features?",
-    knowledge_filters=[feedback_filter]
+    knowledge_filters=[feedback_filter]  # ← List wrapper required
 )
 ```
 
@@ -200,7 +200,7 @@ Teams can also leverage filtered knowledge searches:
 ```python
 from agno.team.team import Team
 from agno.agent import Agent
-from agno.knowledge.filters import IN, AND, NOT
+from agno.filters import IN, AND, NOT, EQ
 
 # Setup team members
 research_agent = Agent(
@@ -220,7 +220,7 @@ hiring_team = Team(
 # Filter to specific candidates
 hiring_team.print_response(
     "Compare the experience of our top candidates",
-    knowledge_filters=[
+    knowledge_filters=[  # ← List wrapper required
         AND(
             EQ("document_type", "cv"),
             IN("user_id", ["jordan_mitchell", "taylor_brooks"]),
@@ -237,6 +237,8 @@ hiring_team.print_response(
 Filter content based on user access or preferences:
 
 ```python
+from agno.filters import OR, EQ
+
 def get_user_filter(user_id: str, user_department: str):
     """Create filters based on user context."""
     return OR(
@@ -249,7 +251,7 @@ def get_user_filter(user_id: str, user_department: str):
 user_filter = get_user_filter("john_doe", "engineering")
 agent.print_response(
     "Show me the latest project updates",
-    knowledge_filters=[user_filter]
+    knowledge_filters=[user_filter]  # ← List wrapper required
 )
 ```
 
@@ -259,7 +261,7 @@ Filter by recency or date ranges:
 
 ```python
 from datetime import datetime
-from agno.knowledge.filters import AND, NOT, EQ, GT
+from agno.filters import AND, NOT, EQ, GT
 
 current_year = datetime.now().year
 
@@ -271,6 +273,12 @@ active_filter = NOT(EQ("status", "archived"))
 
 # Combine for active, recent content
 current_content = AND(recent_filter, active_filter)
+
+# Use in agent - wrap in list
+agent.print_response(
+    "What's new?",
+    knowledge_filters=[current_content]
+)
 ```
 
 ### Progressive Filtering
@@ -278,13 +286,15 @@ current_content = AND(recent_filter, active_filter)
 Start broad, then narrow down based on results:
 
 ```python
+from agno.filters import AND, EQ, GT
+
 async def progressive_search(agent, query, base_filters=None):
     """Try broad search first, then narrow if too many results."""
     
     # First attempt: broad search
     broad_results = await agent.aget_relevant_docs_from_knowledge(
         query=query,
-        filters=base_filters,
+        filters=base_filters,  # Already a list
         num_documents=10
     )
     
@@ -297,7 +307,7 @@ async def progressive_search(agent, query, base_filters=None):
         
         return await agent.aget_relevant_docs_from_knowledge(
             query=query,
-            filters=[specific_filter],
+            filters=[specific_filter],  # ← Wrapped in list
             num_documents=5
         )
     
@@ -386,10 +396,10 @@ for file_path in document_files:
 def safe_filter_search(agent, query, filters):
     """Safely apply filters with fallback to unfiltered search."""
     try:
-        # Try filtered search first
+        # Try filtered search first (filters should already be a list)
         results = agent.get_relevant_docs_from_knowledge(
             query=query,
-            filters=filters,
+            filters=filters,  # Pass as-is if already a list
             num_documents=5
         )
         
@@ -408,49 +418,84 @@ def safe_filter_search(agent, query, filters):
         return agent.get_relevant_docs_from_knowledge(query=query)
 ```
 
-
-## Current Limitations
-
 ### Vector Database Support
 
-Advanced filter expressions are currently **only supported with PgVector**. If you're using other vector databases like ChromaDB, LanceDB, or Pinecone, filter expressions will not be applied.
+Advanced filter expressions (using `FilterExpr` like `EQ()`, `AND()`, etc.) have varying support across vector databases:
 
-**What happens with unsupported vector databases:**
-- Filter expressions are silently ignored
-- The system falls back to a broad, unfiltered search
-- You'll still get results, but they won't respect your filtering criteria
+| Vector DB | Dictionary Filters `{"key": "value"}` | FilterExpr `EQ()`, `AND()`, etc. |
+|-----------|--------------------------------------|----------------------------------|
+| **PgVector** | ✅ Full support | ✅ Full support (native) |
+| **LanceDB** | ✅ Post-search filtering | ⚠️ Not yet supported* |
+| **ChromaDB** | ✅ Full support | ⚠️ Not yet supported |
+| **Pinecone** | ✅ Full support | ⚠️ Not yet supported |
+| **Qdrant** | ✅ Full support | ⚠️ Not yet supported |
 
-**Supported:**
-- ✅ PgVector with PostgreSQL
+<Note>
+**What happens with unsupported FilterExpr:**
+
+When using `FilterExpr` with unsupported vector databases:
+- You'll see: `WARNING: Filter Expressions are not yet supported in [DatabaseName]. No filters will be applied.`
+- Search proceeds without filters (unfiltered results)
+- No errors thrown, but filtering is ignored
+
+**Workaround:** Use dictionary format instead:
+```python
+# Works with all vector databases
+knowledge_filters=[{"department": "hr", "year": 2024}]
+
+# Only works with PgVector currently
+knowledge_filters=[AND(EQ("department", "hr"), EQ("year", 2024))]
+```
+</Note>
 
 **Coming Soon:**
-- 🔄 ChromaDB support (planned)
-- 🔄 LanceDB support (planned)  
-- 🔄 Pinecone support (planned)
-- 🔄 Other popular vector databases
+- 🔄 LanceDB FilterExpr support (in development)
+- 🔄 ChromaDB FilterExpr support (planned)  
+- 🔄 Pinecone FilterExpr support (planned)
+- 🔄 Universal FilterExpr support across all vector databases
 
 ### Agentic Filtering Compatibility
 
-Advanced filter expressions are **not compatible with agentic filtering**, where agents dynamically decide what filters to apply during runtime based on the conversation context.
+Advanced filter expressions (`FilterExpr`) are **not compatible with agentic filtering**, where agents dynamically construct filters based on conversation context.
 
-**For agentic filtering, use the original dictionary format:**
+**For agentic filtering, use dictionary format:**
 
 ```python
-# ✅ Works with agentic filtering
+# ✅ Works with agentic filtering (agent decides filters dynamically)
 knowledge_filters = [{"department": "hr", "document_type": "policy"}]
 
-# ❌ Does not work with agentic filtering  
+# ❌ Does not work with agentic filtering (static, predefined logic)
 knowledge_filters = [AND(EQ("department", "hr"), EQ("document_type", "policy"))]
 ```
 
 **When to use each approach:**
 
-- **Dictionary format** (`{"key": "value"}`): Use when you want agents to dynamically decide filters based on conversation context
-- **Filter expressions** (`EQ()`, `AND()`, etc.): Use when you need complex, predetermined filtering logic with full control
+| Approach | Use Case | Example |
+|----------|----------|---------|
+| **Dictionary format** | Agent dynamically chooses filters based on conversation | User mentions "HR policies" → agent adds `{"department": "hr"}` |
+| **Filter expressions** | You need complex, predetermined logic with full control | Always exclude drafts AND filter by multiple regions with OR logic |
 
-<Note>
-If you need both agentic decision-making and complex filtering, consider implementing a hybrid approach where the agent chooses between predefined filter expression sets based on context.
-</Note>
+**Hybrid Approach:**
+
+If you need both agentic decision-making and complex filtering:
+
+```python
+from agno.filters import AND, EQ, GT, NOT
+
+# Define filter presets
+FILTER_PRESETS = {
+    "recent_hr": [AND(EQ("department", "hr"), GT("year", 2023))],
+    "active_engineering": [AND(EQ("department", "engineering"), NOT(EQ("status", "archived")))],
+    "all_public": [EQ("visibility", "public")]
+}
+
+# Agent chooses which preset to use based on context
+def get_filter_for_context(user_query: str):
+    if "recent" in user_query.lower() and "hr" in user_query.lower():
+        return FILTER_PRESETS["recent_hr"]
+    # ... more logic
+    return None
+```
 
 
 ## Next Steps
