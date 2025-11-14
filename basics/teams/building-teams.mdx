@@ -4,11 +4,11 @@ sidebarTitle: Building Teams
 description: Learn how to build Teams with Agno.
 ---
 
-To build effective teams, start simple -- just a model, members, and instructions. Once that works, layer in more functionality as needed.
+To build effective teams, start simple -- just a model, team members, and instructions. Once that works, add more functionality as needed.
 
-Here's the simplest possible team with specialized agents:
+Here's a minimal example of a team with specialized agents:
 
-```python news_weather_team.py lines
+```python news_weather_team.py
 from agno.team import Team
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
@@ -41,17 +41,17 @@ team.print_response("What's the latest news and weather in Tokyo?", stream=True)
 ```
 
 <Tip>
-  It is recommended to specify the `id`, `name` and the `role` fields of each team member, for better identification by the team leader.
+  It is recommended to specify the `id`, `name` and the `role` fields of each team member, for better identification by the team leader when delegating requests.
   The `id` is used to identify the team member in the team and in the team leader's context.
 </Tip>
 
 <Note>
-Team members inherit their `model` from their parent team if not specified. Members with an explicitly assigned `model` retain their own. In nested team structures, inheritance always happens from the direct parent.
+Team members inherit the `model` parameter from their parent `Team` if not specified. Members with an explicitly assigned `model` retain their own. In nested team structures, inheritance always happens from the direct parent.
 Teams without a defined model default to OpenAI `gpt-4o`.
 
 The `reasoning_model`, `parser_model`, and `output_model` must be explicitly defined for each team or team member.
 
-See the [model inheritance example](/examples/concepts/teams/basic/model_inheritance).
+See the [model inheritance example](/basics/teams/usage/basic-flows/model-inheritance).
 </Note>
 
 ## Run your Team
@@ -63,18 +63,20 @@ For example:
 team.print_response("What's the latest news and weather in Tokyo?")
 ```
 
-This is only for development purposes and not recommended for production use. In production, use the `Team.run()` or `Team.arun()` methods. For example:
+This is only for development purposes and not recommended for production use. In production, use the `Team.run()` or `Team.arun()` methods. 
+
+For example:
 
 ```python
 from typing import Iterator
 from agno.team import Team
 from agno.agent import Agent
-from agno.run.team import TeamRunOutputEvent
 from agno.models.openai import OpenAIChat
+from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.utils.pprint import pprint_run_response
 
-news_agent = Agent(name="News Agent", role="Get the latest news")
-weather_agent = Agent(name="Weather Agent", role="Get the weather for the next 7 days")
+news_agent = Agent(name="News Agent", role="Get the latest news", tools=[DuckDuckGoTools()])
+weather_agent = Agent(name="Weather Agent", role="Get the weather for the next 7 days", tools=[DuckDuckGoTools()])
 
 team = Team(
     name="News and Weather Team", 
@@ -88,13 +90,12 @@ response = team.run("What is the weather in Tokyo?")
 print(response.content)
 
 ################ STREAM RESPONSE #################
-stream: Iterator[TeamRunOutputEvent] = team.run("What is the weather in Tokyo?", stream=True)
+stream = team.run("What is the weather in Tokyo?", stream=True)
 for chunk in stream:
-    if chunk.event == "TeamRunContent":
-        print(chunk.content)
+    print(chunk.content, end="", flush=True)
 
 # ################ STREAM AND PRETTY PRINT #################
-stream: Iterator[TeamRunOutputEvent] = team.run("What is the weather in Tokyo?", stream=True)
+stream = team.run("What is the weather in Tokyo?", stream=True)
 pprint_run_response(stream, markdown=True)
 ```
 
@@ -102,17 +103,27 @@ pprint_run_response(stream, markdown=True)
 
 When using `print_response`, only the team tool calls (typically all of the delegation to members) are printed. If you want to print the responses from the members, you can use the `show_members_responses` parameter.
 ```python
-team.print_response("What is the weather in Tokyo?", show_members_responses=True)
+...
+
+team = Team(
+    name="News and Weather Team", 
+    members=[news_agent, weather_agent],
+    model=OpenAIChat(id="gpt-4o")
+    show_members_responses=True,
+)
+
+team.print_response("What is the weather in Tokyo?")
 ```
 
 ## Next Steps
 
 Next, continue building your team by adding functionality as needed. Common questions:
 
-- **How do I run my team?** -> See the [running teams](/concepts/teams/running-teams) documentation.
+- **How do I run my team?** -> See the [running teams](/basics/teams/running-teams) documentation.
+- **How do I add history to my team?** -> See the [chat history](/concepts/chat_history/team) documentation.
 - **How do I manage sessions?** -> See the [team sessions](/concepts/sessions/team) documentation.
 - **How do I manage input and capture output?** -> See the [input and output](/concepts/input_output/overview) documentation.
-- **How do I give the team context?** -> See the [context engineering](/concepts/context/team) documentation.
-- **How do I add knowledge?** -> See the [knowledge](/concepts/knowledge/team) documentation.
+- **How do I manage the team context?** -> See the [context engineering](/concepts/context/team) documentation.
+- **How do I add knowledge?** -> See the [knowledge](/concepts/knowledge/overview) documentation.
 - **How do I add guardrails?** -> See the [guardrails](/concepts/guardrails/overview) documentation.
 - **How do I cache responses during development?** -> See the [response caching](/basics/models/cache-response) documentation.

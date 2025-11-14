@@ -1,43 +1,53 @@
 ---
-title: How team execution works
-sidebarTitle: Team Member Delegation
+title: How team delegation works
+sidebarTitle: Delegating to Team Members
 description: How tasks are delegated to team members.
 ---
 
-A `Team` internally has a team-leader "agent" that delegates tasks to the members.  When you call `run` or `arun` on a team, the team leader agent uses a model to determine which member to delegate the task to.
+A `Team` internally has a team-leader "agent" that delegates tasks and requests to team members.  When you call `run` or `arun` on a team, the team leader uses a model to determine which member to delegate the task to.
+
+```mermaid
+flowchart LR
+    Input[User Input] --> Leader[Team Leader<br/>Analyzes & Decides]
+    Leader -->|Delegates| Member1[Member 1]
+    Leader -->|Delegates| Member2[Member 2]
+    Leader -->|Delegates| Member3[Member N]
+    Member1 --> Results[Collect Results]
+    Member2 --> Results
+    Member3 --> Results
+    Results -->|Synthesizes| Response[Final Response]
+    
+```
 
 The basic flow is:
 1. The team receives user input
-2. A Team Leader analyzes the input and decides how to break it down into subtasks
-3. The Team Leader delegates specific tasks to appropriate team members
+2. The team leader analyzes the input and decides how to break it down into subtasks
+3. The team leader delegates specific tasks to appropriate team members.
 4. Team members complete their assigned tasks and return their results
-5. The Team Leader then either delegates to more team members, or synthesizes all outputs into a final, cohesive response to return to the user
+5. The team leader then either delegates to more team members, or synthesizes all outputs into a final, cohesive response to return to the user
 
 <Note>
-Delegating to members is done by the team leader doing deciding to use a **tool**, namely the `delegate_task_to_members` tool.
+Delegating to members is done by the team leader deciding to use a **tool**, namely the `delegate_task_to_member` tool.
 
-This also means that when running the team asynchronously, i.e. when using `arun`, and the team leader decides to delegate to multiple members at once, these members will run concurrently.
+When running the team asynchronously (using `arun`), and the team leader decides to delegate to multiple members at once, these members will run **concurrently**. Behind the scenes this is just concurrent execution of the `delegate_task_to_member` tool.
 </Note>
 
-There are various ways to manipulate the execution of a team.
-Some common questions are:
-- **How do I return the response of members directly?** -> See the [Members respond directly](#members-respond-directly) section.
-- **How do I send my user input directly to the members?** -> See the [Determine input for members](#determine-input-for-members) section.
-- **How do I make sure the team leader delegates the task to all members?** -> See the [Delegate task to all members](#delegate-task-to-all-members) section.
-
-Below are some examples of how to change the behaviour of how tasks are delegated to the members.
+There are various ways to control how the team delegates tasks to members:
+- **How do I return the response of members directly?** → See [Members respond directly](#members-respond-directly)
+- **How do I send my user input directly to the members without the team leader synthesizing it?** → See [Send input directly to members](#send-input-directly-to-members)
+- **How do I make sure the team leader delegates the task to all members at the same time?** → See [Delegate tasks to all members](#delegate-tasks-to-all-members-simultaneously)
 
 ## Members respond directly
 
-During normal team execution, the team leader will process the responses from the members and return a single response to the user.  This is the default behaviour.
+By default, the team leader processes responses from members and synthesizes them into a single cohesive response.
 
-If instead you want to return the response of members directly, you can set `respond_directly` to `True`.
+Set `respond_directly=True` to return member responses directly without team leader synthesis.
 
 <Tip>
-It can make sense to use this feature in combination with `determine_input_for_members=False`. This would effectively turn the team into a router that simply routes requests to the appropriate member, without the team leader processing the responses.
+Use this feature with `determine_input_for_members=False` to create a **router pattern** — the team leader is effectively bypassed and all communication is directly with a team member.
 </Tip>
 
-Below is an example of how to create a team that routes requests to the appropriate member based on the language of the user's input.
+**Example:** Create a language router that directs questions to language-specific agents:
 
 ```python
 from agno.agent import Agent
@@ -96,20 +106,20 @@ multi_language_team.print_response(
 </Note>
 
 <Note>
-When using `respond_directly` and the team leader decides to delegate the task to multiple members, the final content will be the results of all member responses concatenated together.
+When using `respond_directly` and the team leader decides to delegate the task to multiple members at the same time, the final content will be the results of all member responses concatenated together.
 </Note>
 
 ## Send input directly to members
 
-When a team is run, by default the team leader will determine the "task" to give a specific member. This then becomes the `input` when that member is run.
+By default, the team leader determines what "task" to give each member based on the user input.
 
-If you set `determine_input_for_members` to `False`, the team leader will send the user-provided input **directly** to the member agent(s).  The team leader still determines the appropriate member to delegate the task to.
+Set `determine_input_for_members=False` to send the original user input **directly** to member agents. The team leader still selects which members to delegate to, but doesn't transform the input.
 
 <Tip>
-This feature is particularly useful when you have specialized agents with distinct expertise areas and want to automatically direct queries to the right specialist.
+This is useful for structured inputs (like Pydantic models) that you want members to receive unchanged, or when you have specialized agents and want queries routed automatically without modification.
 </Tip>
 
-In the example below, we want to send stuctured pydantic input directly to the member agent.  We don't want the team leader to ingest this input and determine a task to give to the member agent.
+**Example:** Send structured Pydantic input directly to a specialized research agent:
 
 ```python
 from typing import List
@@ -172,8 +182,11 @@ team.print_response(input=research_request)
 
 ## Delegate tasks to all members simultaneously
 
-When you set `delegate_task_to_all_members` to `True`, the team leader will delegate the task to all members simultaneously, instead of one by one.  
-When running asynchronously (using `arun`), members will be executed concurrently.
+Set `delegate_task_to_all_members=True` to delegate the task to **all members at once**, rather than selectively choosing members.
+
+When running asynchronously (using `arun`), all members execute **concurrently** for maximum parallelism.
+
+**Example:** Research team that gathers perspectives from multiple sources simultaneously:
 
 ```python
 import asyncio
@@ -275,13 +288,13 @@ if __name__ == "__main__":
 ## More Examples
 
 <CardGroup cols={3}>
-  <Card title="Basic Coordination" icon="link" href="/examples/concepts/teams/basic/basic_coordination">
+  <Card title="Basic Coordination" icon="link" href="/basics/teams/usage/basic-flows/basic-coordination">
     Basic team coordination pattern
   </Card>
-  <Card title="Router Team" icon="link" href="/examples/concepts/teams/basic/respond_directly_router_team">
+  <Card title="Router Team" icon="link" href="/basics/teams/usage/basic-flows/respond-directly">
     Router pattern with direct response
   </Card>
-  <Card title="Cooperation Mode" icon="link" href="/examples/concepts/teams/basic/delegate_to_all_members_cooperation">
+  <Card title="Cooperation Mode" icon="link" href="/basics/teams/usage/basic-flows/delegate-to-all-members">
     Delegate tasks to all members for collaboration
   </Card>
 </CardGroup>
