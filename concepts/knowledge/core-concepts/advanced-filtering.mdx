@@ -419,15 +419,7 @@ def safe_filter_search(agent, query, filters):
 
 ### Vector Database Support
 
-Advanced filter expressions (using `FilterExpr` like `EQ()`, `AND()`, etc.) have varying support across vector databases:
-
-| Vector DB | Dictionary Filters `{"key": "value"}` | FilterExpr `EQ()`, `AND()`, etc. |
-|-----------|--------------------------------------|----------------------------------|
-| **PgVector** | ✅ Full support | ✅ Full support (native) |
-| **LanceDB** | ✅ Post-search filtering | ⚠️ Not yet supported* |
-| **ChromaDB** | ✅ Full support | ⚠️ Not yet supported |
-| **Pinecone** | ✅ Full support | ⚠️ Not yet supported |
-| **Qdrant** | ✅ Full support | ⚠️ Not yet supported |
+Advanced filter expressions (using `FilterExpr` like `EQ()`, `AND()`, etc.) is currently only supported in PGVector.
 
 <Note>
 **What happens with unsupported FilterExpr:**
@@ -447,12 +439,6 @@ knowledge_filters=[AND(EQ("department", "hr"), EQ("year", 2024))]
 ```
 </Note>
 
-**Coming Soon:**
-- 🔄 LanceDB FilterExpr support (in development)
-- 🔄 ChromaDB FilterExpr support (planned)  
-- 🔄 Pinecone FilterExpr support (planned)
-- 🔄 Universal FilterExpr support across all vector databases
-
 ### Agentic Filtering Compatibility
 
 Advanced filter expressions (`FilterExpr`) are **not compatible with agentic filtering**, where agents dynamically construct filters based on conversation context.
@@ -460,10 +446,10 @@ Advanced filter expressions (`FilterExpr`) are **not compatible with agentic fil
 **For agentic filtering, use dictionary format:**
 
 ```python
-# ✅ Works with agentic filtering (agent decides filters dynamically)
+# Works with agentic filtering (agent decides filters dynamically)
 knowledge_filters = [{"department": "hr", "document_type": "policy"}]
 
-# ❌ Does not work with agentic filtering (static, predefined logic)
+# Does not work with agentic filtering (static, predefined logic)
 knowledge_filters = [AND(EQ("department", "hr"), EQ("document_type", "policy"))]
 ```
 
@@ -473,28 +459,6 @@ knowledge_filters = [AND(EQ("department", "hr"), EQ("document_type", "policy"))]
 |----------|----------|---------|
 | **Dictionary format** | Agent dynamically chooses filters based on conversation | User mentions "HR policies" → agent adds `{"department": "hr"}` |
 | **Filter expressions** | You need complex, predetermined logic with full control | Always exclude drafts AND filter by multiple regions with OR logic |
-
-**Hybrid Approach:**
-
-If you need both agentic decision-making and complex filtering:
-
-```python
-from agno.filters import AND, EQ, GT, NOT
-
-# Define filter presets
-FILTER_PRESETS = {
-    "recent_hr": [AND(EQ("department", "hr"), GT("year", 2023))],
-    "active_engineering": [AND(EQ("department", "engineering"), NOT(EQ("status", "archived")))],
-    "all_public": [EQ("visibility", "public")]
-}
-
-# Agent chooses which preset to use based on context
-def get_filter_for_context(user_query: str):
-    if "recent" in user_query.lower() and "hr" in user_query.lower():
-        return FILTER_PRESETS["recent_hr"]
-    # ... more logic
-    return None
-```
 
 
 ## Using Filters Through the API
