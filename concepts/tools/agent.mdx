@@ -2,13 +2,23 @@
 title: Agent Tools
 sidebarTitle: Overview
 description: Learn how to use tools in Agno to build AI agents.
+keywords: agent tools, toolkits, custom tools, function calling, web search, python functions
 ---
 
-**Agents use tools to take actions and interact with external systems**.
+**Agents use tools to autonomously take actions and interact with external systems**.
 
-Tools are functions that an Agent can run to achieve tasks. For example: searching the web, running SQL, sending an email or calling APIs. You can use any python function as a tool or use a pre-built Agno **toolkit**.
+When you give an agent a set of tools, the LLM decides which tools to call, when to call them, and what arguments to use based on the task at hand. This is what makes agents "agentic" - they have autonomy in tool usage.
 
-The general syntax is:
+<Tip>
+**Agent tools vs Team tools:** Use agent-level tools for single-agent applications where each agent has its own capabilities. For multi-agent systems where agents need to share tools, see [Tools with Teams](/concepts/tools/team).
+</Tip>
+
+For example, if you ask an agent "What's the stock price of AAPL and latest news?", an agent with financial and search tools will automatically:
+1. Call the stock price tool for AAPL
+2. Call the search tool for Apple news
+3. Synthesize the results into a coherent response
+
+You can use any Python function as a tool or use a pre-built Agno **toolkit**.
 
 ```python
 from agno.agent import Agent
@@ -28,9 +38,11 @@ Agno provides many pre-built **toolkits** that you can add to your Agents. For e
 </Tip>
 
 <Steps>
-  <Step title="Create Web Search Agent">
+  <Step title="Create a new file">
     Create a file `web_search.py`
+  </Step>
 
+  <Step title="Add code to file">
     ```python web_search.py
     from agno.agent import Agent
     from agno.tools.duckduckgo import DuckDuckGoTools
@@ -38,66 +50,86 @@ Agno provides many pre-built **toolkits** that you can add to your Agents. For e
     agent = Agent(tools=[DuckDuckGoTools()], markdown=True)
     agent.print_response("Whats happening in France?", stream=True)
     ```
-
   </Step>
-  <Step title="Run the agent">
-    Install libraries
 
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install libraries">
     ```shell
     pip install openai ddgs agno
     ```
+  </Step>
 
-    Run the agent
+  <Step title="Set OpenAI Key">
+    <Snippet file="set-openai-key.mdx" />
+  </Step>
 
+  <Step title="Run the agent">
     ```shell
     python web_search.py
     ```
-
   </Step>
 </Steps>
 
 ## Writing your own Tools
 
-For more control, write your own python functions and add them as tools to an Agent. For example, here's how to add a `get_top_hackernews_stories` tool to an Agent.
+For more control, write your own python functions and add them as tools to an Agent. For example, here's how to create a product inventory lookup tool:
 
-```python hn_agent.py
+```python inventory_agent.py
 import json
-import httpx
-
 from agno.agent import Agent
 
-def get_top_hackernews_stories(num_stories: int = 10) -> str:
-    """Use this function to get top stories from Hacker News.
+def check_inventory(product_id: str) -> str:
+    """Check the current inventory for a product.
 
     Args:
-        num_stories (int): Number of stories to return. Defaults to 10.
+        product_id (str): The product ID to check inventory for.
+
+    Returns:
+        str: JSON string with inventory information.
     """
+    # Simulate database lookup
+    inventory = {
+        "P001": {"name": "Laptop", "stock": 45, "price": 999.99, "warehouse": "West"},
+        "P002": {"name": "Mouse", "stock": 230, "price": 29.99, "warehouse": "East"},
+        "P003": {"name": "Keyboard", "stock": 0, "price": 79.99, "warehouse": "West"},
+    }
 
-    # Fetch top story IDs
-    response = httpx.get('https://hacker-news.firebaseio.com/v0/topstories.json')
-    story_ids = response.json()
+    product = inventory.get(product_id, {"error": "Product not found"})
+    return json.dumps(product)
 
-    # Fetch story details
-    stories = []
-    for story_id in story_ids[:num_stories]:
-        story_response = httpx.get(f'https://hacker-news.firebaseio.com/v0/item/{story_id}.json')
-        story = story_response.json()
-        if "text" in story:
-            story.pop("text", None)
-        stories.append(story)
-    return json.dumps(stories)
-
-agent = Agent(tools=[get_top_hackernews_stories], markdown=True)
-agent.print_response("Summarize the top 5 stories on hackernews?", stream=True)
+agent = Agent(tools=[check_inventory], markdown=True)
+agent.print_response("Check if product P001 is in stock and tell me the price", stream=True)
 ```
 
-Read more about:
+## Learn more
 
-- [Available toolkits](/concepts/tools/toolkits)
-- [Creating your own tools](/concepts/tools/creating-tools/overview)
+<CardGroup cols={3}>
+  <Card
+    title="Available Toolkits"
+    icon="box-open"
+    href="/concepts/tools/toolkits"
+  >
+    Explore 120+ pre-built toolkits for search, social, data, and more
+  </Card>
+  <Card
+    title="Creating Your Own Tools"
+    icon="code"
+    href="/concepts/tools/creating-tools/overview"
+  >
+    Learn how to create custom tools with Python functions and toolkits
+  </Card>
+  <Card
+    title="Advanced Features"
+    icon="sliders"
+    iconType="duotone"
+    href="/concepts/tools/hooks"
+  >
+    Explore tool hooks, caching, limits, and error handling
+  </Card>
+</CardGroup>
 
 ## Developer Resources
 
 - View the [Agent schema](/reference/agents/agent)
-- View the [Knowledge schema](/reference/knowledge/knowledge)
-- View [Cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/knowledge/)
+- View the [@tool decorator reference](/reference/tools/decorator)

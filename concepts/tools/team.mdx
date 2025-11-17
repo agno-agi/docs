@@ -2,6 +2,173 @@
 title: Team Tools
 sidebarTitle: Overview
 description: Learn how to use tools in Agno to build AI teams.
+keywords: team tools, toolkits, multi-agent tools, collaboration, shared tools
 ---
 
-TBD
+**Team tools are shared across all agents in a team, enabling coordinated multi-agent workflows**.
+
+Unlike [agent-level tools](/concepts/tools/agent) where each agent has its own set of tools, team tools are accessible by every member of the team. This is powerful for multi-agent systems where:
+
+- **Multiple agents need the same capabilities** - Configure once, all agents can use it
+- **You want consistent behavior** - Same tool configuration across all team members
+- **Agents need to collaborate** - Multiple agents can work with the same tools on shared tasks
+
+For example, in a research team with a Searcher agent and a Summarizer agent, both can access the same web search tool at the team level:
+
+```python
+from agno.team import Team
+
+team = Team(
+    members=[searcher, summarizer],  # Both can access team tools
+    tools=[...],  # Shared tools
+)
+```
+
+## How Team Tools Work
+
+When you add tools to a team:
+1. **All agents inherit access** - Every team member can call the team tools
+2. **Individual agents can have their own tools too** - Combine team-level and agent-level tools
+3. **Tools are called by whichever agent needs them** - The LLM decides which agent should use which tool
+
+This is different from adding the same tools to each agent individually - with team tools, you configure once and maintain in one place.
+
+## Using a Toolkit
+
+Agno provides many pre-built **toolkits** that you can add to your Teams. For example, let's use the DuckDuckGo toolkit to create a team that can search the web.
+
+<Tip>
+  You can find more toolkits in the [Toolkits](/concepts/tools/toolkits) guide.
+</Tip>
+
+<Steps>
+  <Step title="Create a new file">
+    Create a file `web_search_team.py`
+  </Step>
+
+  <Step title="Add code to file">
+    ```python web_search_team.py
+    from agno.agent import Agent
+    from agno.team import Team
+    from agno.tools.duckduckgo import DuckDuckGoTools
+
+    web_agent = Agent(
+        name="Web Searcher",
+        role="Search the web for information",
+    )
+
+    team = Team(
+        members=[web_agent],
+        tools=[DuckDuckGoTools()],
+        markdown=True,
+    )
+
+    team.print_response("What's happening in France?", stream=True)
+    ```
+  </Step>
+
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install libraries">
+    ```shell
+    pip install openai ddgs agno
+    ```
+  </Step>
+
+  <Step title="Set OpenAI Key">
+    <Snippet file="set-openai-key.mdx" />
+  </Step>
+
+  <Step title="Run the team">
+    ```shell
+    python web_search_team.py
+    ```
+  </Step>
+</Steps>
+
+## Writing your own Tools
+
+For more control, write your own Python functions and add them as tools to a Team. Here's an example showing how team tools enable collaboration between multiple agents:
+
+```python customer_support_team.py
+import json
+from agno.agent import Agent
+from agno.team import Team
+
+# Shared tool that both agents can use
+def get_customer_data(customer_id: str) -> str:
+    """Fetch customer information from the database.
+
+    Args:
+        customer_id (str): The customer ID to look up.
+    """
+    # Simulate database lookup
+    customers = {
+        "C001": {"name": "Alice Smith", "tier": "premium", "open_tickets": 2},
+        "C002": {"name": "Bob Johnson", "tier": "standard", "open_tickets": 0},
+    }
+    return json.dumps(customers.get(customer_id, {"error": "Customer not found"}))
+
+def send_email(recipient: str, subject: str, body: str) -> str:
+    """Send an email to a customer.
+
+    Args:
+        recipient (str): Customer email or ID
+        subject (str): Email subject
+        body (str): Email content
+    """
+    # Simulate sending email
+    return f"Email sent to {recipient}: {subject}"
+
+# Create specialized agents
+lookup_agent = Agent(
+    name="Customer Lookup Agent",
+    role="Look up customer information and ticket status",
+)
+
+response_agent = Agent(
+    name="Response Agent",
+    role="Draft and send customer responses based on their information",
+)
+
+# Both agents can access team tools
+team = Team(
+    members=[lookup_agent, response_agent],
+    tools=[get_customer_data, send_email],  # Shared across all agents
+    markdown=True,
+)
+
+team.print_response(
+    "Customer C001 is asking about their open tickets. Look them up and send them an update.",
+    stream=True,
+)
+```
+
+In this example:
+- **lookup_agent** uses `get_customer_data` to find customer info
+- **response_agent** uses the same customer data and calls `send_email`
+- Both agents collaborate using the shared team tools
+
+## Learn more
+
+<CardGroup cols={2}>
+  <Card
+    title="Available Toolkits"
+    icon="box-open"
+    href="/concepts/tools/toolkits"
+  >
+    Explore 120+ pre-built toolkits for search, social, data, and more
+  </Card>
+  <Card
+    title="Creating Your Own Tools"
+    icon="code"
+    href="/concepts/tools/creating-tools/overview"
+  >
+    Learn how to create custom tools with Python functions and toolkits
+  </Card>
+</CardGroup>
+
+## Developer Resources
+
+- View the [Team schema](/reference/teams/team)
+- View examples with [team tools](/examples/concepts/teams/tools/team_with_custom_tools)

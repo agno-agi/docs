@@ -2,91 +2,176 @@
 title: Custom Toolkits
 sidebarTitle: Custom Toolkits
 description: Learn how to write your own toolkits.
+keywords: custom toolkits, toolkit class, tool collections, shared state, toolkit creation
 ---
 
-Many advanced use-cases will require writing custom Toolkits. A Toolkit is a collection of functions that can be added to an Agent. The functions in a Toolkit are designed to work together, share internal state and provide a better development experience.
+A **Toolkit** is a collection of related tools that share state and configuration. Use toolkits when you have multiple tools that need to work together with shared resources like database connections, API clients, or working directories.
 
-Here's the general flow:
+## Why Use Toolkits?
 
-1. Create a class inheriting the `agno.tools.Toolkit` class.
-2. Add your functions to the class.
-3. Include all the functions in the `tools` argument to the `Toolkit` constructor.
+Toolkits provide several advantages over individual functions:
+- **Shared state** - Tools can access common configuration and resources
+- **Better organization** - Group related functionality together
+- **Reusability** - Easily add the entire toolkit to multiple agents
+- **Cleaner code** - Centralize setup and configuration
 
-For example:
+## Creating a Toolkit
 
-```python shell_toolkit.py
+Here's how to create a custom toolkit in three steps:
+
+1. **Create a class** that inherits from `agno.tools.Toolkit`
+2. **Add methods** for each tool you want to provide
+3. **Register tools** by passing them to the `Toolkit` constructor
+
+## Example: File System Toolkit
+
+Let's create a toolkit that provides file system operations with a shared working directory:
+
+```python file_system_toolkit.py
+import os
 from typing import List
 
 from agno.agent import Agent
 from agno.tools import Toolkit
 from agno.utils.log import logger
 
-class ShellTools(Toolkit):
-    def __init__(self, working_directory: str = "/", **kwargs):
-        self.working_directory = working_directory
 
-        tools = [
-            self.run_shell_command,
-        ]
-
-        super().__init__(name="shell_tools", tools=tools, **kwargs)
-    
-    def list_files(self, directory: str):
-        """
-        List the files in the given directory.
+class FileSystemTools(Toolkit):
+    def __init__(self, working_directory: str = ".", **kwargs):
+        """Initialize the file system toolkit.
 
         Args:
-            directory (str): The directory to list the files from.
-        Returns:
-            str: The list of files in the directory.
+            working_directory: Base directory for all file operations
         """
-        import os
+        self.working_directory = os.path.abspath(working_directory)
 
-        # List files relative to the toolkit's working_directory
+        # Register all tools with the toolkit
+        super().__init__(
+            name="file_system_tools",
+            tools=[self.list_files, self.run_command],
+            **kwargs
+        )
+
+    def list_files(self, directory: str = ".") -> str:
+        """List all files and directories in the specified path.
+
+        Args:
+            directory: Directory path relative to working directory. Defaults to current directory.
+
+        Returns:
+            str: Newline-separated list of files and directories.
+        """
         path = os.path.join(self.working_directory, directory)
         try:
             files = os.listdir(path)
-            return "\n".join(files)
+            return "\n".join(sorted(files))
         except Exception as e:
             logger.warning(f"Failed to list files in {path}: {e}")
             return f"Error: {e}"
-        return os.listdir(directory)
 
-    def run_shell_command(self, args: List[str], tail: int = 100) -> str:
-        """
-        Runs a shell command and returns the output or error.
+    def run_command(self, args: List[str], tail: int = 100) -> str:
+        """Execute a shell command in the working directory.
 
         Args:
-            args (List[str]): The command to run as a list of strings.
-            tail (int): The number of lines to return from the output.
+            args: Command and arguments as a list (e.g., ["ls", "-la"])
+            tail: Number of output lines to return (default: 100)
+
         Returns:
-            str: The output of the command.
+            str: Command output or error message.
         """
         import subprocess
 
-        logger.info(f"Running shell command: {args}")
+        logger.info(f"Running command: {' '.join(args)}")
         try:
-            logger.info(f"Running shell command: {args}")
-            result = subprocess.run(args, capture_output=True, text=True, cwd=self.working_directory)
-            logger.debug(f"Result: {result}")
-            logger.debug(f"Return code: {result.returncode}")
+            result = subprocess.run(
+                args,
+                capture_output=True,
+                text=True,
+                cwd=self.working_directory
+            )
+
             if result.returncode != 0:
                 return f"Error: {result.stderr}"
-            # return only the last n lines of the output
-            return "\n".join(result.stdout.split("\n")[-tail:])
+
+            # Return only the last N lines
+            lines = result.stdout.split("\n")
+            return "\n".join(lines[-tail:])
         except Exception as e:
-            logger.warning(f"Failed to run shell command: {e}")
+            logger.warning(f"Failed to run command: {e}")
             return f"Error: {e}"
 
-agent = Agent(tools=[ShellTools()], markdown=True)
-agent.print_response("List all the files in my home directory.")
 
+# Example: Create an agent with the file system toolkit
+agent = Agent(
+    tools=[FileSystemTools(working_directory=os.path.expanduser("~"))],
+    markdown=True
+)
+
+agent.print_response("List all the files in the current directory.")
 ```
 
-<Tip>
-Important Tips:
-- Fill in the docstrings for each function with detailed descriptions of the function and its arguments.
-- Remember that this function is provided to the LLM and is not used elsewhere in code, so the docstring should make sense to an LLM and the name of the functions need to be descriptive.
-</Tip>
+### Key Points
 
-See the [Toolkit Reference](/reference/tools/toolkit) for more details.
+**Shared State:**
+The `working_directory` is set once during initialization and shared by all tools in the toolkit. This demonstrates how toolkits can maintain state across multiple tool calls.
+
+**Tool Registration:**
+Notice how both `self.list_files` and `self.run_command` are passed to the `tools` parameter in the `super().__init__()` call. This registers them as callable tools for the agent.
+
+**Descriptive Docstrings:**
+Each tool has a clear docstring explaining what it does, its parameters, and return values. The LLM uses these docstrings to understand when and how to call each tool.
+
+<Note>
+**Best Practices:**
+- Use descriptive method names that clearly indicate what the tool does
+- Write detailed docstrings - the LLM uses these to understand your tools
+- Handle errors gracefully and return helpful error messages
+- Keep tools focused on a single responsibility
+</Note>
+
+## When to Use Toolkits vs Functions
+
+Use a **Toolkit** when:
+- You have 4+ related tools that work together
+- Tools need to share state (connections, configuration, etc.)
+- You want to reuse the same set of tools across multiple agents
+
+Use **Python Functions** when:
+- You have 1-3 simple, independent tools
+- Tools don't need to share any state
+- You want the quickest implementation
+
+See the [Python Functions vs Toolkits comparison](/concepts/tools/creating-tools/overview) for more details.
+
+<Card title="Toolkit Reference" icon="book" href="/reference/tools/toolkit">
+  View the complete Toolkit API reference
+</Card>
+
+## Learn more
+
+<CardGroup cols={3}>
+  <Card
+    title="Python Functions"
+    icon="function"
+    iconType="duotone"
+    href="/concepts/tools/creating-tools/python-functions"
+  >
+    Learn when to use functions vs toolkits
+  </Card>
+  <Card
+    title="Tool Hooks"
+    icon="webhook"
+    iconType="duotone"
+    href="/concepts/tools/hooks"
+  >
+    Add validation and logging to your toolkit tools
+  </Card>
+  <Card
+    title="Available Toolkits"
+    icon="box-open"
+    iconType="duotone"
+    href="/concepts/tools/toolkits"
+  >
+    Explore 120+ pre-built toolkits as examples
+  </Card>
+</CardGroup>
