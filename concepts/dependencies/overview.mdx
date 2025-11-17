@@ -2,10 +2,10 @@
 title: Dependencies
 sidebarTitle: Overview
 description: Learn how to use dependencies to add context to your agents and teams.
-keywords: [dependencies, context]
+keywords: [dependencies, context, dependency injection, context injection, dynamic context]
 ---
 
-**Dependencies** is a way to inject variables into your Agent or Team Context. `dependencies` is a dictionary that contains a set of functions (or static variables) that are resolved before the agent or team runs.
+**Dependencies** are a way to inject variables into your Agent or Team context. The `dependencies` parameter accepts a dictionary containing functions or static variables that are automatically resolved before the agent or team runs.
 
 <Note>
 You can use dependencies to inject memories, dynamic few-shot examples, "retrieved" documents, etc.
@@ -32,90 +32,36 @@ agent.print_response("Write a 5 second short story about {name}")
 You can set `dependencies` on `Agent`/`Team` initialization, or pass it to the `run()` and `arun()` methods.
 </Tip>
 
+## How dependencies work
 
-## Using functions as dependencies
+Dependencies are resolved at runtime, just before your agent or team executes. Here's the flow:
 
-You can specify a callable function as a dependency. The dependency will be automatically resolved by the agent/team at runtime.
-
-Take a look at the following example where we use a function to get the top stories from HackerNews:
-
-```python add_dependencies_to_context.py
-import json
-from textwrap import dedent
-
-import httpx
-from agno.agent import Agent
-from agno.models.openai import OpenAIChat
-
-
-def get_top_hackernews_stories() -> str:
-    """Fetch and return the top stories from HackerNews.
-
-    Args:
-        num_stories: Number of top stories to retrieve (default: 5)
-    Returns:
-        JSON string containing story details (title, url, score, etc.)
-    """
-    # Get top stories
-    stories = [
-        {
-            k: v
-            for k, v in httpx.get(
-                f"https://hacker-news.firebaseio.com/v0/item/{id}.json"
-            )
-            .json()
-            .items()
-            if k != "kids"  # Exclude discussion threads
-        }
-        for id in httpx.get(
-            "https://hacker-news.firebaseio.com/v0/topstories.json"
-        ).json()[:num_stories]
-    ]
-    return json.dumps(stories, indent=4)
-
-
-agent = Agent(
-    model=OpenAIChat(id="gpt-5-mini"),
-    # Each function in the dependencies is evaluated when the agent is run,
-    # think of it as dependency injection for Agents
-    dependencies={"top_hackernews_stories": get_top_hackernews_stories},
-    # Alternatively, you can manually add the context to the instructions
-    instructions=dedent("""\
-        You are an insightful tech trend observer! 📰
-
-        Here are the top stories on HackerNews:
-        {top_hackernews_stories}\
-    """),
-    markdown=True,
-)
-
-# Example usage
-agent.print_response(
-    "Summarize the top stories on HackerNews and identify any interesting trends.",
-    stream=True,
-)
-```
-
-<Check>
-Dependencies are automatically resolved when the agent is run.
-</Check>
+1. **Define dependencies**: Provide a dictionary of key-value pairs where values can be static data or callable functions
+2. **Resolution**: When the agent/team runs, Agno calls all callable dependencies and replaces them with their return values
+3. **Template substitution**: Resolved dependencies are available in your instructions using `{dependency_name}` syntax
+4. **Context injection**: When `add_dependencies_to_context=True`, dependencies are automatically added to the user message
 
 ## Learn more
 
-<CardGroup cols={3}>
-  <Card title="Dependencies with Agents" 
-  icon="robot" 
+<CardGroup cols={2}>
+  <Card title="Dependencies with Agents"
+  icon="robot"
   href="/concepts/dependencies/agent">
-    Learn how to use dependencies with agents.
+    Learn how to use dependencies with agents
   </Card>
-  <Card title="Dependencies with Teams" 
-  icon="users" 
+  <Card title="Dependencies with Teams"
+  icon="users"
   href="/concepts/dependencies/team">
-    Learn how to use dependencies with teams.
+    Learn how to use dependencies with teams
   </Card>
-  <Card title="Dependencies with AgentOS API" 
-  icon="code-branch" 
-  href="/agent-os/api#passing-agent-parameters">
-    See how to pass dependencies when using the AgentOS API.
+  <Card title="AgentOS API"
+  icon="code-branch"
+  href="/agent-os/api/usage">
+    Pass dependencies via the AgentOS API
+  </Card>
+  <Card title="Agent Schema"
+  icon="book"
+  href="/reference/agents/agent">
+    View the full Agent schema reference
   </Card>
 </CardGroup>
