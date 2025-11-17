@@ -1,23 +1,35 @@
 ---
 title: Company Description Workflow
-description: A workflow that generates comprehensive supplier profiles by gathering information from multiple sources and delivers them via email.
+mode: wide
 ---
 
-## Overview
+Build a comprehensive supplier profile generator that combines web crawling, search engines, Wikipedia, and competitor analysis. This workflow processes company information through specialized agents and delivers detailed markdown reports via email.
 
-This workflow combines web crawling, search engines, Wikipedia, and competitor analysis to create detailed supplier profiles. It processes company information through 4 specialized agents running in parallel, then generates a structured markdown report and sends it via email.
+## What You'll Learn
 
-The workflow uses workflow session state management to cache analysis results. If the same supplier is analyzed again, it returns cached results instead of re-running the expensive analysis pipeline.
+By building this workflow, you'll understand:
+- How to coordinate multiple agents running in parallel for data gathering
+- How to integrate diverse data sources (web crawling, search, Wikipedia)
+- How to implement workflow session state caching for expensive operations
+- How to automate report generation and email delivery with Resend
 
-## Getting Started
+## Use Cases
 
-### Prerequisites
-- OpenAI API key
-- Resend API key for emails [https://resend.com/api-keys]
-- Firecrawl API key for web crawling [https://www.firecrawl.dev/app/api-keys]
+Build supplier research platforms, company intelligence systems, vendor evaluation tools, or automated due diligence reports.
 
-### Quick Setup
-```bash
+## How It Works
+
+The workflow coordinates four specialized agents running in parallel:
+
+1. **Crawl**: Crawler agent uses Firecrawl to extract information from the company website
+2. **Search**: Search agent uses DuckDuckGo to find recent news and articles
+3. **Research**: Wikipedia agent gathers background and historical information
+4. **Analyze**: Competitor agent identifies and analyzes market competitors
+5. **Synthesize**: Profile agent combines all findings into a structured markdown report
+6. **Deliver**: Report is automatically sent via email using Resend
+
+The workflow caches analysis results in session state - subsequent requests for the same supplier return cached data.
+```
 export OPENAI_API_KEY="your-openai-key"
 export RESEND_API_KEY="your-resend-key"
 export FIRECRAWL_API_KEY="your-firecrawl-key"
@@ -59,31 +71,31 @@ class SupplierProfile(BaseModel):
 
 
 crawl_agent: Agent = Agent(
-    model=OpenAIChat(id="gpt-5-mini"),
+    model=OpenAIChat(id="gpt-4o"),
     tools=[FirecrawlTools(crawl=True, limit=5)],
     instructions=CRAWLER_INSTRUCTIONS,
 )
 
 search_agent: Agent = Agent(
-    model=OpenAIChat(id="gpt-5-mini"),
+    model=OpenAIChat(id="gpt-4o"),
     tools=[DuckDuckGoTools()],
     instructions=SEARCH_INSTRUCTIONS,
 )
 
 wikipedia_agent: Agent = Agent(
-    model=OpenAIChat(id="gpt-5-mini"),
+    model=OpenAIChat(id="gpt-4o"),
     tools=[WikipediaTools()],
     instructions=WIKIPEDIA_INSTRUCTIONS,
 )
 
 competitor_agent: Agent = Agent(
-    model=OpenAIChat(id="gpt-5-mini"),
+    model=OpenAIChat(id="gpt-4o"),
     tools=[DuckDuckGoTools()],
     instructions=COMPETITOR_INSTRUCTIONS,
 )
 
 profile_agent: Agent = Agent(
-    model=OpenAIChat(id="gpt-5-mini"),
+    model=OpenAIChat(id="gpt-4o"),
     instructions=SUPPLIER_PROFILE_INSTRUCTIONS_GENERAL,
 )
 ```
@@ -161,75 +173,75 @@ Key Offerings: [Brief summary of main products or services]
 Business Model: [Manufacturing, Wholesale, B2B/B2C, etc.]
 Notable Clients & Partnerships: [List known customers or business partners]
 Company Mission & Vision: [Summary of supplier's goals and commitments]""",
-    #     "2. Website Content Summary": """Extract key details from the supplier's official website:
-    # Website URL: [Supplier's official website link]
-    # Products & Services Overview:
-    #   - [List major product categories or services]
-    #   - [Highlight any specialized offerings]
-    # Certifications & Compliance: (e.g., ISO, FDA, CE, etc.)
-    # Manufacturing & Supply Chain Information:
-    #   - Factory locations, supply chain transparency, etc.
-    # Sustainability & Corporate Social Responsibility (CSR):
-    #   - Environmental impact, ethical sourcing, fair labor practices
-    # Customer Support & After-Sales Services:
-    #   - Warranty, return policies, support channels""",
-    #     "3. Search Engine Insights": """Summarize search results to provide additional context on the supplier's market standing:
-    # Latest News & Updates: [Any recent developments, funding rounds, expansions]
-    # Industry Mentions: [Publications, blogs, or analyst reviews mentioning the supplier]
-    # Regulatory Issues or Legal Disputes: [Any lawsuits, recalls, or compliance issues]
-    # Competitive Positioning: [How the supplier compares to competitors in the market]""",
-    #     "4. Key Contact Information": """Include publicly available contact details for business inquiries:
-    # Email: [Customer support, sales, or partnership email]
-    # Phone Number: [+XX-XXX-XXX-XXXX]
-    # Office Address: [Headquarters or regional office locations]
-    # LinkedIn Profile: [Supplier's LinkedIn page]
-    # Other Business Directories: [Crunchbase, Alibaba, etc.]""",
-    #     "5. Reputation & Reviews": """Analyze customer and partner feedback from multiple sources:
-    # Customer Reviews & Testimonials: [Summarized from Trustpilot, Google Reviews, etc.]
-    # Third-Party Ratings: [Any industry-recognized rankings or awards]
-    # Complaints & Risks: [Potential risks, delays, quality issues, or fraud warnings]
-    # Social Media Presence & Engagement: [Activity on LinkedIn, Twitter, etc.]""",
-    #     "6. Additional Insights": """Pricing Model: [Wholesale, subscription, per-unit pricing, etc.]
-    # MOQ (Minimum Order Quantity): [If applicable]
-    # Return & Refund Policies: [Key policies for buyers]
-    # Logistics & Shipping: [Lead times, global shipping capabilities]""",
-    #     "7. Supplier Insight": """Provide a deep-dive analysis into the supplier's market positioning and business strategy:
-    # Market Trends: [How current market trends impact the supplier]
-    # Strategic Advantages: [Unique selling points or competitive edge]
-    # Challenges & Risks: [Any operational or market-related challenges]
-    # Future Outlook: [Predicted growth or strategic initiatives]""",
-    #     "8. Supplier Profiles": """Create a comparative profile if multiple suppliers are being evaluated:
-    # Comparative Metrics: [Key differentiators among suppliers]
-    # Strengths & Weaknesses: [Side-by-side comparison details]
-    # Strategic Fit: [How each supplier aligns with potential buyer needs]""",
-    #     "9. Product Portfolio": """Detail the range and depth of the supplier's offerings:
-    # Major Product Lines: [Detailed listing of core products or services]
-    # Innovations & Specialized Solutions: [Highlight any innovative products or custom solutions]
-    # Market Segments: [Industries or consumer segments served by the products]""",
-    #     "10. Competitive Intelligence": """Summarize the supplier's competitive landscape:
-    # Industry Competitors: [List of main competitors]
-    # Market Share: [If available, indicate the supplier's market share]
-    # Competitive Strategies: [Pricing, marketing, distribution, etc.]
-    # Recent Competitor Moves: [Any recent competitive actions impacting the market]""",
-    #     "11. Supplier Quadrant": """Position the supplier within a competitive quadrant analysis:
-    # Quadrant Position: [Leader, Challenger, Niche Player, or Visionary]
-    # Analysis Criteria: [Innovativeness, operational efficiency, market impact, etc.]
-    # Visual Representation: [If applicable, describe or include a link to the quadrant chart]""",
-    #     "12. SWOT Analysis": """Perform a comprehensive SWOT analysis:
-    # Strengths: [Internal capabilities and competitive advantages]
-    # Weaknesses: [Areas for improvement or potential vulnerabilities]
-    # Opportunities: [External market opportunities or expansion potentials]
-    # Threats: [External risks, competitive pressures, or regulatory challenges]""",
-    #     "13. Financial Risk Summary": """Evaluate the financial stability and risk factors:
-    # Financial Health: [Overview of revenue, profitability, and growth metrics]
-    # Risk Factors: [Credit risk, market volatility, or liquidity issues]
-    # Investment Attractiveness: [Analysis for potential investors or partners]""",
-    #     "14. Financial Information": """Provide detailed financial data (where publicly available):
-    # Revenue Figures: [Latest annual revenue, growth trends]
-    # Profitability: [Net income, EBITDA, etc.]
-    # Funding & Investment: [Details of any funding rounds, investor names]
-    # Financial Reports: [Links or summaries of recent financial statements]
-    # Credit Ratings: [If available, include credit ratings or financial stability indicators]""",
+    "2. Website Content Summary": """Extract key details from the supplier's official website:
+Website URL: [Supplier's official website link]
+Products & Services Overview:
+  - [List major product categories or services]
+  - [Highlight any specialized offerings]
+Certifications & Compliance: (e.g., ISO, FDA, CE, etc.)
+Manufacturing & Supply Chain Information:
+  - Factory locations, supply chain transparency, etc.
+Sustainability & Corporate Social Responsibility (CSR):
+  - Environmental impact, ethical sourcing, fair labor practices
+Customer Support & After-Sales Services:
+  - Warranty, return policies, support channels""",
+    "3. Search Engine Insights": """Summarize search results to provide additional context on the supplier's market standing:
+Latest News & Updates: [Any recent developments, funding rounds, expansions]
+Industry Mentions: [Publications, blogs, or analyst reviews mentioning the supplier]
+Regulatory Issues or Legal Disputes: [Any lawsuits, recalls, or compliance issues]
+Competitive Positioning: [How the supplier compares to competitors in the market]""",
+    "4. Key Contact Information": """Include publicly available contact details for business inquiries:
+Email: [Customer support, sales, or partnership email]
+Phone Number: [+XX-XXX-XXX-XXXX]
+Office Address: [Headquarters or regional office locations]
+LinkedIn Profile: [Supplier's LinkedIn page]
+Other Business Directories: [Crunchbase, Alibaba, etc.]""",
+    "5. Reputation & Reviews": """Analyze customer and partner feedback from multiple sources:
+Customer Reviews & Testimonials: [Summarized from Trustpilot, Google Reviews, etc.]
+Third-Party Ratings: [Any industry-recognized rankings or awards]
+Complaints & Risks: [Potential risks, delays, quality issues, or fraud warnings]
+Social Media Presence & Engagement: [Activity on LinkedIn, Twitter, etc.]""",
+    "6. Additional Insights": """Pricing Model: [Wholesale, subscription, per-unit pricing, etc.]
+MOQ (Minimum Order Quantity): [If applicable]
+Return & Refund Policies: [Key policies for buyers]
+Logistics & Shipping: [Lead times, global shipping capabilities]""",
+    "7. Supplier Insight": """Provide a deep-dive analysis into the supplier's market positioning and business strategy:
+Market Trends: [How current market trends impact the supplier]
+Strategic Advantages: [Unique selling points or competitive edge]
+Challenges & Risks: [Any operational or market-related challenges]
+Future Outlook: [Predicted growth or strategic initiatives]""",
+    "8. Supplier Profiles": """Create a comparative profile if multiple suppliers are being evaluated:
+Comparative Metrics: [Key differentiators among suppliers]
+Strengths & Weaknesses: [Side-by-side comparison details]
+Strategic Fit: [How each supplier aligns with potential buyer needs]""",
+    "9. Product Portfolio": """Detail the range and depth of the supplier's offerings:
+Major Product Lines: [Detailed listing of core products or services]
+Innovations & Specialized Solutions: [Highlight any innovative products or custom solutions]
+Market Segments: [Industries or consumer segments served by the products]""",
+    "10. Competitive Intelligence": """Summarize the supplier's competitive landscape:
+Industry Competitors: [List of main competitors]
+Market Share: [If available, indicate the supplier's market share]
+Competitive Strategies: [Pricing, marketing, distribution, etc.]
+Recent Competitor Moves: [Any recent competitive actions impacting the market]""",
+    "11. Supplier Quadrant": """Position the supplier within a competitive quadrant analysis:
+Quadrant Position: [Leader, Challenger, Niche Player, or Visionary]
+Analysis Criteria: [Innovativeness, operational efficiency, market impact, etc.]
+Visual Representation: [If applicable, describe or include a link to the quadrant chart]""",
+    "12. SWOT Analysis": """Perform a comprehensive SWOT analysis:
+Strengths: [Internal capabilities and competitive advantages]
+Weaknesses: [Areas for improvement or potential vulnerabilities]
+Opportunities: [External market opportunities or expansion potentials]
+Threats: [External risks, competitive pressures, or regulatory challenges]""",
+    "13. Financial Risk Summary": """Evaluate the financial stability and risk factors:
+Financial Health: [Overview of revenue, profitability, and growth metrics]
+Risk Factors: [Credit risk, market volatility, or liquidity issues]
+Investment Attractiveness: [Analysis for potential investors or partners]""",
+    "14. Financial Information": """Provide detailed financial data (where publicly available):
+Revenue Figures: [Latest annual revenue, growth trends]
+Profitability: [Net income, EBITDA, etc.]
+Funding & Investment: [Details of any funding rounds, investor names]
+Financial Reports: [Links or summaries of recent financial statements]
+Credit Ratings: [If available, include credit ratings or financial stability indicators]""",
 }
 ```
 
@@ -306,7 +318,7 @@ def generate_supplier_profile(step_input: StepInput) -> StepOutput:
     html_content: str = ""
     for key, value in SUPPLIER_PROFILE_DICT.items():
         agent = Agent(
-            model=OpenAIChat(id="gpt-5-mini"),
+            model=OpenAIChat(id="gpt-4o"),
             instructions="Instructions: "
             + SUPPLIER_PROFILE_INSTRUCTIONS_GENERAL
             + "Format to adhere to: "
@@ -397,13 +409,13 @@ if __name__ == "__main__":
 
 ## Key Features
 
-- **🔄 Parallel Processing**: Four agents gather information simultaneously for maximum efficiency
-- **🌐 Multi-Source Data**: Combines web crawling, search engines, Wikipedia, and competitor analysis
-- **📧 Email Integration**: Automatically sends formatted reports via email using Resend
-- **📄 Markdown Formatting**: Generates structured, readable reports in HTML format
-- **🏗️ Modular Design**: Clean separation of agents, prompts, and workflow logic
-- **⚡ Efficient Execution**: Uses parallel steps to minimize execution time
-- **🎯 Type Safety**: Pydantic models for structured data validation
+- **Parallel Processing**: Four agents gather information simultaneously for maximum efficiency
+- **Multi-Source Data**: Combines web crawling, search engines, Wikipedia, and competitor analysis
+- **Email Integration**: Automatically sends formatted reports via email using Resend
+- **Markdown Formatting**: Generates structured, readable reports in HTML format
+- **Modular Design**: Clean separation of agents, prompts, and workflow logic
+- **Efficient Execution**: Uses parallel steps to minimize execution time
+- **Type Safety**: Pydantic models for structured data validation
 
 ## Usage Example
 
@@ -421,27 +433,47 @@ company_description_workflow.print_response(
 )
 ```
 
-## Expected Output
+## What to Expect
 
-The workflow will:
+The workflow will simultaneously gather information from multiple sources (website crawling, web search, Wikipedia, competitor analysis) then generate a comprehensive supplier profile. You'll see progress indicators for each agent's data collection.
 
-1. **Gather Information**: Simultaneously crawl the website, search the web, check Wikipedia, and find competitors
-2. **Generate Profile**: Create a comprehensive supplier profile with detailed sections
-3. **Send Email**: Deliver the formatted HTML report to the specified email address
+The final output is a structured markdown report delivered via email. The workflow caches all analysis results - if you request the same supplier again, it returns the cached profile instantly instead of re-running the expensive analysis pipeline.
 
-The generated supplier profile includes:
-- Company overview and basic information
-- Detailed analysis from multiple data sources  
-- Structured markdown formatting for readability
-- Professional email delivery with HTML formatting
+## Usage
 
-Run the workflow with:
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
 
-```bash
-python run_workflow.py
-```
+  <Step title="Set your API keys">
+    ```bash
+    export OPENAI_API_KEY=xxx
+    export RESEND_API_KEY=xxx
+    export FIRECRAWL_API_KEY=xxx
+    ```
+  </Step>
 
-**More Examples:**
-- [Company Analysis](https://github.com/agno-agi/agno/tree/main/cookbook/examples/workflows/company_analysis)
-- [Customer Support](https://github.com/agno-agi/agno/tree/main/cookbook/examples/workflows/customer_support)
-- [Investment Analyst](https://github.com/agno-agi/agno/tree/main/cookbook/examples/workflows/investment_analyst)
+  <Step title="Install libraries">
+    ```bash
+    pip install -U agno openai fastapi firecrawl-py resend markdown ddgs
+    ```
+  </Step>
+
+  <Step title="Run Workflow">
+    <CodeGroup>
+    ```bash Mac
+    python cookbook/examples/workflows/company_description/run_workflow.py
+    ```
+
+    ```bash Windows
+    python cookbook/examples/workflows/company_description/run_workflow.py
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+## Next Steps
+
+- Modify `supplier_request` to analyze different companies
+- Customize agent instructions in `prompts.py` to focus on specific analysis areas
+- Adjust the profile template in `SUPPLIER_PROFILE_INSTRUCTIONS_GENERAL` for different report formats
+- Explore [Workflows](/concepts/workflows/overview) for advanced workflow patterns
