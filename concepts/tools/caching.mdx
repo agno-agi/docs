@@ -1,14 +1,37 @@
 ---
 title: Tool Result Caching
+sidebarTitle: Caching
 description: Learn how to cache tool results in Agno.
+keywords: tool caching, cache results, performance optimization, rate limiting, development
 ---
 
-Tool result caching is designed to avoid unnecessary recomputation by storing the results of function calls on disk. 
-This is useful during development and testing to speed up the development process, avoid rate limiting, and reduce costs.
+Tool result caching stores the results of function calls on disk to avoid unnecessary recomputation. When a tool is called with the same arguments again, the cached result is returned instantly instead of re-executing the function.
+
+## When to Use Caching
+
+Caching is particularly useful for:
+- **Development and testing** - Speed up iterations by avoiding repeated API calls
+- **Rate-limited APIs** - Prevent hitting rate limits during development
+- **Expensive operations** - Cache results from slow database queries or computations
+- **Deterministic functions** - Functions that always return the same output for the same input
+
+**Don't use caching for:**
+- Non-deterministic functions (e.g., `get_current_time()`, `random_number()`)
+- Functions with side effects (e.g., `send_email()`, `create_record()`)
+- Real-time data that changes frequently
 
 <Check>
-This is supported for all Agno Toolkits
+Caching is supported for all Agno Toolkits and custom tools
 </Check>
+
+## How Caching Works
+
+When caching is enabled:
+1. **First call** - Function executes normally, result is stored in cache
+2. **Subsequent calls** - If arguments match, cached result is returned immediately
+3. **Cache key** - Generated from function name + arguments
+4. **Storage** - Results stored in `.agno/cache/` directory by default (configurable with `cache_dir`)
+5. **Expiration** - Cached results expire after TTL (time-to-live), default is 1 hour
 
 ## On Toolkit
 
@@ -50,3 +73,117 @@ def get_stock_price(ticker: str) -> str:
 
     return f"The current stock price of {ticker} is 100"
 ```
+
+## Cache Configuration
+
+You can customize cache behavior with these parameters:
+
+```python
+from agno.tools import tool
+
+@tool(
+    cache_results=True,
+    cache_dir="/tmp/my_cache",  # Custom cache directory
+    cache_ttl=7200,              # Cache TTL in seconds (2 hours)
+)
+def expensive_operation(query: str) -> str:
+    """An expensive operation that should be cached"""
+    # ...
+    return result
+```
+
+**Configuration options:**
+- `cache_results` (bool) - Enable/disable caching
+- `cache_dir` (str) - Directory to store cache files (default: `.agno/cache/`)
+- `cache_ttl` (int) - Time-to-live in seconds (default: 3600 = 1 hour)
+
+## Cache Management
+
+### Viewing Cached Results
+
+Cache files are stored as JSON in the cache directory:
+```bash
+ls .agno/cache/
+# get_stock_price_abc123.json
+# fetch_data_def456.json
+```
+
+### Clearing the Cache
+
+To invalidate all cached results:
+```bash
+rm -rf .agno/cache/
+```
+
+To clear cache for a specific tool, delete its cache files:
+```bash
+rm .agno/cache/get_stock_price_*.json
+```
+
+### Programmatic Cache Control
+
+You can clear cache programmatically using tool hooks:
+
+```python
+import os
+from pathlib import Path
+
+def clear_cache_hook(function_name: str, function_call: Callable, arguments: Dict[str, Any]):
+    """Clear cache before calling function if needed"""
+    if should_refresh_data():
+        cache_dir = Path(".agno/cache")
+        for cache_file in cache_dir.glob(f"{function_name}_*.json"):
+            cache_file.unlink()
+
+    return function_call(**arguments)
+```
+
+## Troubleshooting
+
+**Problem: Cache not working**
+- Verify `cache_results=True` is set
+- Check that the cache directory is writable
+- Ensure function arguments are serializable (strings, numbers, lists, dicts)
+
+**Problem: Getting stale data**
+- Reduce `cache_ttl` for more frequent updates
+- Clear cache manually when data changes
+- Consider not caching real-time data
+
+**Problem: Cache files growing too large**
+- Set shorter `cache_ttl` values
+- Regularly clean up old cache files
+- Use a dedicated cache directory that's cleaned on deployment
+
+<Tip>
+Set `AGNO_DEBUG=True` to see cache hits and misses in the logs
+</Tip>
+
+## Learn more
+
+<CardGroup cols={3}>
+  <Card
+    title="Python Functions"
+    icon="function"
+    iconType="duotone"
+    href="/concepts/tools/creating-tools/python-functions"
+  >
+    Learn about the @tool decorator and cache configuration
+  </Card>
+  <Card
+    title="Tool Hooks"
+    icon="webhook"
+    iconType="duotone"
+    href="/concepts/tools/hooks"
+  >
+    Add custom logic for cache invalidation
+  </Card>
+  <Card
+    title="Available Toolkits"
+    icon="box-open"
+    iconType="duotone"
+    href="/concepts/tools/toolkits"
+  >
+    See which toolkits support caching
+  </Card>
+</CardGroup>

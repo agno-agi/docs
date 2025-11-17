@@ -1,14 +1,34 @@
 ---
 title: Exceptions & Retries
+sidebarTitle: Exceptions & Retries
+description: Learn how to handle exceptions and retry agent runs with different instructions.
+keywords: exceptions, retries, RetryAgentRun, StopAgentRun, error handling, tool exceptions
 ---
 
-If after a tool call we need to "retry" the model with a different set of instructions or stop the agent, we can raise one of the following exceptions:
+Tool exceptions allow you to control agent behavior during tool execution. When raised inside a tool, these exceptions give you fine-grained control over the agent's execution flow.
 
-- `RetryAgentRun`: Use this exception when you want to retry the agent run with a different set of instructions.
-- `StopAgentRun`: Use this exception when you want to stop the agent run.
+## Available Exceptions
 
+### RetryAgentRun
+Use when you need the agent to retry with additional context or instructions. The agent will receive the new message and continue its reasoning process.
 
-This example shows how to use the `RetryAgentRun` exception to retry the agent with additional instructions.
+**Common use cases:**
+- Validation failures that require the agent to adjust its approach
+- Minimum/maximum constraints not met
+- Data quality issues that need agent correction
+
+### StopAgentRun
+Use when you need to immediately halt agent execution. The agent will stop and return the message you provide.
+
+**Common use cases:**
+- Security violations or unauthorized actions
+- Critical errors that can't be recovered
+- Maximum retry attempts exceeded
+- User cancellation
+
+## Using RetryAgentRun
+
+This example shows how to use `RetryAgentRun` to enforce a minimum constraint:
 
 ```python retry_in_tool_call.py
 from agno.agent import Agent
@@ -49,3 +69,152 @@ print(f"Final session state: {agent.get_session_state()}")
 <Tip>
 Make sure to set `AGNO_DEBUG=True` to see the debug logs.
 </Tip>
+
+## Using StopAgentRun
+
+This example shows how to use `StopAgentRun` to halt execution on security violations:
+
+```python stop_on_violation.py
+from agno.agent import Agent
+from agno.exceptions import StopAgentRun
+from agno.models.openai import OpenAIChat
+from agno.run import RunContext
+
+def delete_user_account(run_context: RunContext, user_id: str) -> str:
+    """Delete a user account.
+
+    Args:
+        user_id: The ID of the user to delete
+    """
+    # Security check
+    if not run_context.session_state:
+        run_context.session_state = {}
+
+    current_user = run_context.session_state.get("current_user_id")
+    is_admin = run_context.session_state.get("is_admin", False)
+
+    # Only allow users to delete their own account or admins to delete any
+    if user_id != current_user and not is_admin:
+        raise StopAgentRun(
+            "Security violation: Cannot delete another user's account without admin privileges."
+        )
+
+    # Proceed with deletion
+    return f"Account {user_id} has been deleted successfully."
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-5-mini"),
+    session_state={"current_user_id": "user123", "is_admin": False},
+    tools=[delete_user_account],
+)
+
+# This will stop with security violation
+agent.print_response("Delete user account user456", stream=True)
+```
+
+## Error Handling Patterns
+
+### Pattern 1: Graceful Degradation
+
+Instead of failing, guide the agent to alternative approaches:
+
+```python
+def fetch_premium_data(user_tier: str) -> str:
+    """Fetch premium data if user has access"""
+    if user_tier != "premium":
+        raise RetryAgentRun(
+            "User doesn't have premium access. Use the fetch_basic_data tool instead."
+        )
+    return "Premium data..."
+```
+
+### Pattern 2: Maximum Retry Limits
+
+Track retry attempts to prevent infinite loops:
+
+```python
+def process_with_retry(run_context: RunContext, data: str) -> str:
+    """Process data with automatic retries"""
+    if not run_context.session_state:
+        run_context.session_state = {"retry_count": 0}
+
+    run_context.session_state["retry_count"] += 1
+
+    if run_context.session_state["retry_count"] > 3:
+        raise StopAgentRun(
+            "Maximum retry attempts (3) exceeded. Unable to process data."
+        )
+
+    if not validate_data(data):
+        raise RetryAgentRun(
+            f"Data validation failed (attempt {run_context.session_state['retry_count']}/3). "
+            "Please provide valid data in the correct format."
+        )
+
+    return process(data)
+```
+
+### Pattern 3: Conditional Logic
+
+Use exceptions for flow control based on state:
+
+```python
+def execute_workflow(run_context: RunContext, step: int) -> str:
+    """Execute workflow step by step"""
+    completed_steps = run_context.session_state.get("completed_steps", [])
+
+    # Ensure steps are executed in order
+    if step > 1 and (step - 1) not in completed_steps:
+        raise RetryAgentRun(
+            f"Cannot execute step {step} before completing step {step - 1}. "
+            f"Execute steps in order: {list(range(1, step))}"
+        )
+
+    # Execute step
+    result = execute_step(step)
+    completed_steps.append(step)
+    run_context.session_state["completed_steps"] = completed_steps
+
+    return result
+```
+
+## Best Practices
+
+1. **Use descriptive messages** - Help the agent understand what went wrong and what to do next
+2. **Include context in RetryAgentRun** - Tell the agent why it failed and how to fix it
+3. **Reserve StopAgentRun for unrecoverable errors** - Use RetryAgentRun when the agent can correct the issue
+4. **Track state for retry limits** - Prevent infinite retry loops with counters
+5. **Log exception events** - Use `AGNO_DEBUG=True` to monitor exception behavior
+
+<Warning>
+Avoid raising regular Python exceptions in tools - they will be treated as tool failures. Use `RetryAgentRun` and `StopAgentRun` for controlled agent behavior.
+</Warning>
+
+## Learn more
+
+<CardGroup cols={3}>
+  <Card
+    title="Python Functions"
+    icon="function"
+    iconType="duotone"
+    href="/concepts/tools/creating-tools/python-functions"
+  >
+    Learn how to create tools with error handling
+  </Card>
+  <Card
+    title="Tool Hooks"
+    icon="webhook"
+    iconType="duotone"
+    href="/concepts/tools/hooks"
+  >
+    Add custom error handling logic with hooks
+  </Card>
+  <Card
+    title="Agent Reference"
+    icon="book"
+    iconType="duotone"
+    href="/reference/agents/agent"
+  >
+    Understand agent configuration and run behavior
+  </Card>
+</CardGroup>
