@@ -1,15 +1,47 @@
 ---
 title: State Management
 sidebarTitle: Overview
-description: Learn about state in agents, teams and workflows.
+description: Persist and share data across agent runs, team coordination, and workflow execution
+keywords: state management, session state, persistent data, shared state, stateful agents, session persistence
 ---
 
-**State** is any kind of data that needs to be maintained throughout runs in a session.
+**State** is data that persists across multiple runs within a session, enabling agents, teams, and workflows to maintain context and remember information.
 
-A simple yet common use case for Agents, Teams and Workflows is to manage lists, items and other "information" for a user. For example, a shopping list, a todo list, a wishlist, etc.
-This can be easily managed using the `session_state`. The Agent, Team or Workflow can access or update the `session_state` in tool calls and exposes them to the Model via the system context.
+Common use cases include managing user-specific data like shopping lists, todo lists, preferences, or any information that needs to persist across interactions. State is managed through `session_state`, which can be accessed and updated in tools, then automatically persisted to your database.
 
-The session state is then persisted in the configured database and made available across runs within that session.
+## How State Works
+
+State in Agno follows this pattern:
+
+1. **Initialize** - Set default `session_state` when creating agents, teams, or workflows
+2. **Access** - Tools access state via `run_context.session_state`
+3. **Update** - Modifications are automatically persisted to the database
+4. **Load** - Subsequent runs in the same session retrieve the stored state
+
+### Basic Example
+
+Here's a simple agent that maintains a shopping list:
+
+```python
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.run import RunContext
+
+def add_item(run_context: RunContext, item: str) -> str:
+    """Add an item to the shopping list."""
+    run_context.session_state["shopping_list"].append(item)
+    return f"Added {item}"
+
+agent = Agent(
+    db=SqliteDb(db_file="tmp/state.db"),
+    session_state={"shopping_list": []},  # Default state
+    tools=[add_item],
+    instructions="Shopping list: {shopping_list}",  # State in instructions
+)
+
+agent.print_response("Add milk and eggs")
+print(agent.get_session_state())  # {'shopping_list': ['milk', 'eggs']}
+```
 
 ## Learn more
 
@@ -39,3 +71,10 @@ The session state is then persisted in the configured database and made availabl
     Learn about state in workflows.
   </Card>
 </CardGroup>
+
+## Developer Resources
+
+- View the [Agent schema](/reference/agents/agent)
+- View the [Team schema](/reference/teams/team)
+- View the [Workflow schema](/reference/workflows/workflow)
+- View the [RunContext schema](/reference/run/run-context)
