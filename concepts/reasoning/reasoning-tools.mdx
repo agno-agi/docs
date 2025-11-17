@@ -16,6 +16,8 @@ Agno provides **four specialized reasoning toolkits**, each optimized for differ
 | **MemoryTools**    | Reasoning about user memory operations | `think()`, `get/add/update/delete_memory()`, `analyze()` |
 | **WorkflowTools**  | Reasoning about workflow execution     | `think()`, `run_workflow()`, `analyze()`                 |
 
+> **Note:** All reasoning toolkits register their `think()`/`analyze()` functions under the same names. When you combine toolkits, the agent keeps only the first implementation of each function name and silently drops duplicates. Disable `enable_think`/`enable_analyze` (or rename/customize functions) on the later toolkits if you still want them to expose their domain-specific actions without conflicting with the scratchpad tools.
+
 All four toolkits follow the same **Think → Act → Analyze** pattern but provide domain-specific actions tailored to their use case.
 
 This approach was first popularized by Anthropic in their ["Extended Thinking" blog post](https://www.anthropic.com/engineering/claude-think-tool), though many AI engineers (including our team) were using similar patterns long before.
@@ -239,9 +241,9 @@ All four toolkits follow the same reasoning cycle:
 1. **THINK** - Plan what to do, refine approach, brainstorm
 2. **ACT** (Domain-Specific)
    - ReasoningTools: Direct reasoning
-   - KnowledgeTools: search_knowledge()
-   - MemoryTools: get/add/update/delete_memory()
-   - WorkflowTools: run_workflow()
+   - KnowledgeTools: `search_knowledge()`
+   - MemoryTools: `get/add/update/delete_memory()`
+   - WorkflowTools: `run_workflow()`
 3. **ANALYZE** - Evaluate results, decide next action
 4. **REPEAT** - Loop back to THINK if needed, or provide answer
 
@@ -259,7 +261,7 @@ This mirrors how humans solve complex problems: we think before acting, evaluate
 
 ## Combining Multiple Reasoning Toolkits
 
-You can use multiple reasoning toolkits together for powerful multi-domain reasoning:
+You can use multiple reasoning toolkits together for powerful multi-domain reasoning. Just remember that tool names must stay unique, so disable overlapping `think`/`analyze` entries (or rename the later ones) to prevent silent overrides:
 
 ```python
 from agno.agent import Agent
@@ -273,12 +275,30 @@ agent = Agent(
     model=OpenAIChat(id="gpt-4o"),
     tools=[
         ReasoningTools(add_instructions=True),
-        KnowledgeTools(knowledge=my_knowledge, add_instructions=True),
-        MemoryTools(db=my_db, add_instructions=True),
+        KnowledgeTools(
+            knowledge=my_knowledge,
+            enable_think=False,
+            enable_analyze=False,
+            add_instructions=False,
+        ),
+        MemoryTools(
+            db=my_db,
+            enable_think=False,
+            enable_analyze=False,
+            add_instructions=False,
+        ),
     ],
     instructions="Use reasoning for planning, knowledge for facts, and memory for personalization",
 )
 ```
+
+With this setup:
+
+- `ReasoningTools` supplies the shared `think`/`analyze` scratchpad.
+- `KnowledgeTools` still exposes `search_knowledge()` (and any other unique methods) without trying to register duplicate scratchpad functions.
+- `MemoryTools` contributes the CRUD memory tools while inheriting the same central thinking loop.
+
+If you need separate scratchpads per domain, create custom wrappers around `think()`/`analyze()` so each toolkit registers uniquely named functions (e.g., `knowledge_think`, `memory_analyze`).
 
 ## Configuration Options
 
@@ -302,20 +322,16 @@ ReasoningTools()
 
 ### Add Instructions Automatically
 
-The `add_instructions` parameter automatically includes detailed reasoning guidelines in your agent's instructions:
+Many toolkits ship with pre-written guidance that explains how to use their tools. Setting `add_instructions=True` injects those instructions into the agent prompt (when the toolkit actually has any):
 
 ```python
 ReasoningTools(add_instructions=True)
 ```
 
-This adds comprehensive instructions explaining:
+- `ReasoningTools`, `KnowledgeTools`, `MemoryTools`, and `WorkflowTools` all include Agno-authored instructions (and optional few-shot examples) describing their Think → Act → Analyze workflow.
+- Other toolkits may not define default instructions; in that case `add_instructions=True` is a no-op unless you supply your own `instructions=...`.
 
-- When to use `think()` vs `analyze()`
-- The Think → Act → Analyze workflow
-- How to determine `next_action` values
-- Best practices for reasoning
-
-**When to use:** Almost always! This ensures the agent understands how to use the tools effectively.
+The built-in instructions cover when to use `think()` vs `analyze()`, how to iterate, and best practices for each domain. Turn them on unless you plan to provide custom guidance.
 
 ### Add Few-Shot Examples
 
@@ -403,5 +419,3 @@ Both approaches add reasoning to any model, but they differ in control and autom
 
 - Use **Reasoning Tools** when you want the agent to control its own reasoning process
 - Use **Reasoning Agents** when you want guaranteed systematic thinking for every request
-
-
