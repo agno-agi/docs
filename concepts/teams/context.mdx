@@ -1,6 +1,7 @@
 ---
 title: Context Engineering
 description: Learn how to write prompts and other context engineering techniques for your teams.
+keywords: [context, context engineering, system message, user message, prompts, prompt engineering]
 ---
 
 Context engineering is the process of designing and controlling the information (context) that is sent to language models to guide their behavior and outputs. 
@@ -324,33 +325,6 @@ team = Team(
 )
 ```
 
-#### Share member interactions
-
-All interactions with team members are automatically recorded. This includes the member name, the task that was given to the member, and the response from the member.
-
-You can pass this interaction history along with future requests to a member by setting `share_member_interactions=True`.
-
-```python
-
-team = Team(
-    members=[...],
-    share_member_interactions=True,
-)
-```
-
-This appends interaction details to the task sent to a team member, for example:
-```
-<member interactions>
-- Member: Web Researcher
-- Task: Find information about the web
-- Response: I found information about the web
-
-- Member: HackerNews Researcher
-- Task: Find information about the web
-- Response: I found information about the web
-</member interactions>
-```
-
 
 #### Tool Instructions
 
@@ -518,6 +492,55 @@ See more details on [sessions](/concepts/teams/sessions#session-history).
 
 <Note>All team member runs are added to the team session history.</Note>
 
+## Managing Tool Calls
+
+The `max_tool_calls_from_history` parameter can be used to add only the `n` most recent tool calls from history to the context. 
+
+This helps manage context size and reduce token costs during team runs.
+
+```python
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIChat
+from agno.team import Team
+from agno.tools.duckduckgo import DuckDuckGoTools
+
+web_agent = Agent(
+    name="Web Researcher",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    instructions="You are a web researcher. Search the web for comprehensive information on given topics.",
+    tools=[DuckDuckGoTools()],
+)
+
+team = Team(
+    members=[web_agent],
+    model=OpenAIChat(id="gpt-4o"),
+    db=SqliteDb(db_file="tmp/filter_history_tool_calls_team.db"),
+    add_history_to_context=True,
+    max_tool_calls_from_history=5,  # Keep only last 5 tool calls in context
+    show_members_responses=True,
+)
+
+team.print_response("Search for AI news")
+team.print_response("Search for crypto trends")
+team.print_response("Search for tech stocks")
+# Older searches will be filtered from context
+team.print_response("Search for startups") 
+team.print_response("Search for weather in Mumbai")
+team.print_response("Search for latest startup fundraises")
+team.print_response("What topics did I search for recently?")
+```
+In this example:
+- **Run 1-3:** Team sees tool calls [1], [1,2], [1,2,3,4,5]
+- **Run 4:** Team sees tool calls from runs that fit within the last 5 tool calls (older tool calls filtered out)
+- **Run 5:** Team sees tool calls from runs that fit within the last 5 tool calls (earlier tool calls filtered out)
+
+<Note>
+**Important:** `max_tool_calls_from_history` filters tool calls from the runs loaded by `num_history_runs`. Your database always contains the complete history.
+</Note>
+
+See the [full example](/examples/concepts/teams/context_management/filter_tool_calls_from_history) for a complete demonstration.
+
 ## Additional input
 
 You can add entire additional messages to your team's context using the `additional_input` parameter.
@@ -595,7 +618,7 @@ support_examples = [
 ]
 
 if __name__ == "__main__":
-    # Create agent with few-shot learning
+    # Create team with few-shot learning
     team = Team(
         members=[...],
         name="Customer Support Team",

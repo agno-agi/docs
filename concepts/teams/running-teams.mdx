@@ -8,7 +8,7 @@ Run your Team by calling `Team.run()` or `Team.arun()`. Here's how they work:
 
 1. The team leader builds the context to send to the model (system message, user message, chat history, user memories, session state and other relevant inputs).
 2. The team leader sends this context to the model.
-3. The model processes the input and decides whether to delegate to team members, call other tools, or respond directly.
+3. The model processes the input and decides whether to use the `delegate_task_to_members` tool to delegate to team members, call other tools, or respond directly.
 4. If delegation occurs, team members execute their tasks and return results to the team leader.
 5. The team leader processes the updated context and provides a final response.
 6. The team returns this final response to the caller.
@@ -24,14 +24,14 @@ from agno.models.openai import OpenAIChat
 from agno.utils.pprint import pprint_run_response
 
 news_agent = Agent(
-    name="News Agent", 
-    model=OpenAIChat(id="gpt-4o"), 
+    name="News Agent",
+    model=OpenAIChat(id="gpt-4o"),
     role="Get the latest news",
     tools=[DuckDuckGoTools()]
 )
 weather_agent = Agent(
-    name="Weather Agent", 
-    model=OpenAIChat(id="gpt-4o"), 
+    name="Weather Agent",
+    model=OpenAIChat(id="gpt-4o"),
     role="Get the weather for the next 7 days",
     tools=[DuckDuckGoTools()]
 )
@@ -77,6 +77,12 @@ The `Team.run()` function returns a `TeamRunOutput` object when not streaming. H
 - `model`: The model used for the run.
 - `member_responses`: The list of member responses. Optional to add when `store_member_responses=True` on the `Team`.
 
+<Note>
+Team members inherit the `model` from their parent team if no `model` is specified.
+The `reasoning_model`, `parser_model`, and `output_model` must be explicitly set for each team or team member.
+See the [model inheritance example](/examples/concepts/teams/basic/model_inheritance).
+</Note>
+
 See detailed documentation in the [TeamRunOutput](/reference/teams/team-response) documentation.
 
 ## Streaming
@@ -113,18 +119,20 @@ This means you will receive member events concurrently and the order of the even
 
 </Tip>
 
-### Streaming Intermediate Steps
+### Streaming all events
 
-Throughout the execution of a team, multiple events take place, and we provide these events in real-time for enhanced team transparency.
+By default, when you stream a response, only the `RunContent` events will be streamed.
 
-You can enable streaming of intermediate steps by setting `stream_intermediate_steps=True`.
+You can also stream all run events by setting `stream_events=True`.
+
+This will provide real-time updates about the team's internal processes, like tool calling or reasoning:
 
 ```python
-# Stream with intermediate steps
+# Stream all events
 response_stream = team.run(
     "What is the weather in Tokyo?",
     stream=True,
-    stream_intermediate_steps=True
+    stream_events=True
 )
 ```
 
@@ -133,7 +141,7 @@ response_stream = team.run(
 You can process events as they arrive by iterating over the response stream:
 
 ```python
-response_stream = team.run("Your prompt", stream=True, stream_intermediate_steps=True)
+response_stream = team.run("Your prompt", stream=True, stream_events=True)
 
 for event in response_stream:
     if event.event == "TeamRunContent":
@@ -171,7 +179,7 @@ team = Team(
     store_events=True
 )
 
-response = team.run("Tell me a 5 second short story about a lion", stream=True, stream_intermediate_steps=True)
+response = team.run("Tell me a 5 second short story about a lion", stream=True, stream_events=True)
 pprint_run_response(response)
 
 for event in response.events:
@@ -198,13 +206,15 @@ The following events are sent by the `Team.run()` and `Team.arun()` functions de
 
 #### Core Events
 
-| Event Type         | Description                                             |
-| ------------------ | ------------------------------------------------------- |
-| `TeamRunStarted`   | Indicates the start of a run                            |
-| `TeamRunContent`   | Contains the model's response text as individual chunks |
-| `TeamRunCompleted` | Signals successful completion of the run                |
-| `TeamRunError`     | Indicates an error occurred during the run              |
-| `TeamRunCancelled` | Signals that the run was cancelled                      |
+| Event Type                   | Description                                                                                                    |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `TeamRunStarted`             | Indicates the start of a run                                                                                   |
+| `TeamRunContent`             | Contains the model's response text as individual chunks                                                        |
+| `TeamRunContentCompleted`    | Signals completion of content streaming                                                                        |
+| `TeamRunIntermediateContent` | Contains the model's intermediate response text as individual chunks. This is used when `output_model` is set. |
+| `TeamRunCompleted`           | Signals successful completion of the run                                                                       |
+| `TeamRunError`               | Indicates an error occurred during the run                                                                     |
+| `TeamRunCancelled`           | Signals that the run was cancelled                                                                             |
 
 #### Tool Events
 
@@ -227,6 +237,27 @@ The following events are sent by the `Team.run()` and `Team.arun()` functions de
 | --------------------------- | ---------------------------------------------- |
 | `TeamMemoryUpdateStarted`   | Indicates that the team is updating its memory |
 | `TeamMemoryUpdateCompleted` | Signals completion of a memory update          |
+
+#### Session Summary Events
+
+| Event Type                     | Description                                       |
+| ------------------------------ | ------------------------------------------------- |
+| `TeamSessionSummaryStarted`    | Indicates the start of session summary generation |
+| `TeamSessionSummaryCompleted`  | Signals completion of session summary generation  |
+
+#### Pre-Hook Events
+
+| Event Type              | Description                                    |
+| ----------------------- | ---------------------------------------------- |
+| `TeamPreHookStarted`    | Indicates the start of a pre-run hook          |
+| `TeamPreHookCompleted`  | Signals completion of a pre-run hook execution |
+
+#### Post-Hook Events
+
+| Event Type               | Description                                     |
+| ------------------------ | ----------------------------------------------- |
+| `TeamPostHookStarted`    | Indicates the start of a post-run hook          |
+| `TeamPostHookCompleted`  | Signals completion of a post-run hook execution |
 
 #### Parser Model events
 
@@ -283,7 +314,7 @@ See the [full example](/examples/concepts/teams/events/custom_events) for more d
 
 ## Specify Run User and Session
 
-You can specify which user and session to use when running the team by passing the `user_id` and `session_id` parameters. 
+You can specify which user and session to use when running the team by passing the `user_id` and `session_id` parameters.
 This ensures the current run is associated with the correct user and session. For example:
 
 ```python

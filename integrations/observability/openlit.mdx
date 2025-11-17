@@ -1,0 +1,259 @@
+---
+title: OpenLIT
+description: Integrate Agno with OpenLIT for OpenTelemetry-native observability, tracing, and monitoring of your AI agents.
+---
+
+## Integrating Agno with OpenLIT
+
+[OpenLIT](https://github.com/openlit/openlit) is an open-source, self-hosted, OpenTelemetry-native platform for a continuous feedback loop for testing, tracing, and fixing AI agents. By integrating Agno with OpenLIT, you can automatically instrument your agents to gain full visibility into LLM calls, tool usage, costs, performance metrics, and errors.
+
+## Prerequisites
+
+1. **Install Dependencies**
+
+   Ensure you have the necessary packages installed:
+
+   ```bash
+   pip install agno openai openlit
+   ```
+
+2. **Deploy OpenLIT**
+
+   OpenLIT is open-source and self-hosted. Quick start with Docker:
+
+   ```bash
+   git clone https://github.com/openlit/openlit
+   cd openlit
+   docker-compose up -d
+   ```
+
+   Access the dashboard at `http://127.0.0.1:3000` with default credentials (username: `user@openlit.io`, password: `openlituser`).
+
+
+   **Other Deployment Options:**
+
+
+   For production deployments, Kubernetes with Helm, or other infrastructure setups, see the [OpenLIT Installation Guide](https://docs.openlit.io/latest/openlit/installation) for detailed instructions on:
+   - Kubernetes deployment with Helm charts
+   - Custom Docker configurations
+   - Reusing existing ClickHouse or OpenTelemetry Collector infrastructure
+   - OpenLIT Operator for zero-code instrumentation in Kubernetes
+
+
+3. **Set Environment Variables (Optional)**
+
+   Configure the OTLP endpoint based on your deployment:
+
+   ```bash
+   # Local deployment
+   export OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:4318"
+
+   # Self-hosted on your infrastructure
+   export OTEL_EXPORTER_OTLP_ENDPOINT="http://your-openlit-host:4318"
+   ```
+
+## Sending Traces to OpenLIT
+
+### Example: Basic Agent Setup
+
+This example demonstrates how to instrument your Agno agent with OpenLIT for automatic tracing.
+
+```python
+import openlit
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.tools.yfinance import YFinanceTools
+
+# Initialize OpenLIT instrumentation
+openlit.init(
+    otlp_endpoint="http://127.0.0.1:4318"  # Your OpenLIT OTLP endpoint
+)
+
+# Create and configure the agent
+agent = Agent(
+    name="Stock Price Agent",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    tools=[YFinanceTools(stock_price=True, analyst_recommendations=True)],
+    instructions="You are a stock price agent. Answer questions in the style of a stock analyst.",
+    show_tool_calls=True,
+)
+
+# Use the agent - all calls are automatically traced
+agent.print_response("What is the current price of Tesla and what do analysts recommend?")
+```
+
+### Example: Development Mode (Console Output)
+
+For local development without a collector, OpenLIT can output traces directly to the console:
+
+```python
+import openlit
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.tools.duckduckgo import DuckDuckGoTools
+
+# Initialize OpenLIT without OTLP endpoint for console output
+openlit.init()
+
+# Create and configure the agent
+agent = Agent(
+    name="Web Search Agent",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    tools=[DuckDuckGoTools()],
+    instructions="Search the web and provide comprehensive answers.",
+    markdown=True,
+)
+
+# Use the agent - traces will be printed to console
+agent.print_response("What are the latest developments in AI agents?")
+```
+
+### Example: Multi-Agent Team Tracing
+
+OpenLIT automatically traces complex multi-agent workflows:
+
+```python
+import openlit
+from agno.agent import Agent
+from agno.team import Team
+from agno.models.openai import OpenAIChat
+from agno.tools.duckduckgo import DuckDuckGoTools
+from agno.tools.yfinance import YFinanceTools
+
+# Initialize OpenLIT instrumentation
+openlit.init(otlp_endpoint="http://127.0.0.1:4318")
+
+# Research Agent
+research_agent = Agent(
+    name="Market Research Agent",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    tools=[DuckDuckGoTools()],
+    instructions="Research current market conditions and news",
+)
+
+# Financial Analysis Agent
+finance_agent = Agent(
+    name="Financial Analyst",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    tools=[YFinanceTools(stock_price=True, company_info=True)],
+    instructions="Perform quantitative financial analysis",
+)
+
+# Coordinated Team
+finance_team = Team(
+    name="Finance Research Team",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    members=[research_agent, finance_agent],
+    instructions=[
+        "Collaborate to provide comprehensive financial insights",
+        "Consider both fundamental analysis and market sentiment",
+    ],
+)
+
+# Execute team workflow - all agent interactions are traced
+finance_team.print_response("Analyze Apple (AAPL) investment potential")
+```
+
+### Example: Custom Tracer Configuration
+
+For advanced use cases with custom OpenTelemetry configuration:
+
+```python
+import openlit
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.tools.duckduckgo import DuckDuckGoTools
+
+# Configure custom tracer provider
+trace_provider = TracerProvider()
+trace_provider.add_span_processor(
+    SimpleSpanProcessor(
+        OTLPSpanExporter(endpoint="http://127.0.0.1:4318/v1/traces")
+    )
+)
+trace.set_tracer_provider(trace_provider)
+
+# Initialize OpenLIT with custom tracer
+openlit.init(
+    tracer=trace.get_tracer(__name__),
+    disable_batch=True
+)
+
+# Create and configure the agent
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    tools=[DuckDuckGoTools()],
+    markdown=True,
+)
+
+# Use the agent
+agent.print_response("What is currently trending on Twitter?")
+```
+
+## OpenLIT Dashboard Features
+
+Once your agents are instrumented, you can access the OpenLIT dashboard to:
+
+- **View Traces**: Visualize complete execution flows including agent runs, tool calls, and LLM requests
+- **Monitor Performance**: Track latency, token usage, and throughput metrics
+- **Analyze Costs**: Monitor API costs across different models and providers
+- **Track Errors**: Identify and debug exceptions with detailed stack traces
+- **Compare Models**: Evaluate different LLM providers based on performance and cost
+
+<Frame caption="OpenLIT Trace Details">
+  <video
+    autoPlay
+    muted
+    loop
+    controls
+    className="w-full aspect-video"
+    src="https://mintcdn.com/openlit/oP6rqLGiwYvXWG_M/images/trace-details.mp4?fit=max&auto=format&n=oP6rqLGiwYvXWG_M&q=85&s=80a9b4bf54862dd386284f175c71f714"
+  />
+</Frame>
+
+## Configuration Options
+
+The `openlit.init()` function accepts several parameters:
+
+```python
+openlit.init(
+    otlp_endpoint="http://127.0.0.1:4318",  # OTLP collector endpoint
+    tracer=None,  # Custom OpenTelemetry tracer
+    disable_batch=False,  # Disable batch span processing
+    environment="production",  # Environment name for filtering
+    application_name="my-agent",  # Application identifier
+)
+```
+
+## CLI-Based Instrumentation
+
+For true zero-code instrumentation, you can use the `openlit-instrument` CLI command to run your application without modifying any code:
+
+```bash
+openlit-instrument \
+  --service-name my-ai-app \
+  --environment production \
+  --otlp-endpoint http://127.0.0.1:4318 \
+  python your_app.py
+```
+
+This approach is particularly useful for:
+- Adding observability to existing applications without code changes
+- CI/CD pipelines where you want to instrument automatically
+- Testing observability before committing to code modifications
+
+## Notes
+
+- **Automatic Instrumentation**: OpenLIT automatically instruments supported LLM providers (OpenAI, Anthropic, etc.) and frameworks
+- **Zero Code Changes**: Use either `openlit.init()` in your code or the `openlit-instrument` CLI to trace all LLM calls without modifications
+- **OpenTelemetry Native**: OpenLIT uses standard OpenTelemetry protocols, ensuring compatibility with other observability tools
+- **Open-Source & Self-Hosted**: OpenLIT is fully open-source and runs on your own infrastructure for complete data privacy and control
+
+## Integration with Other Platforms
+
+[OpenLIT](https://openlit.io/) can export traces to other observability platforms like Grafana Cloud, New Relic and more. See the [Langfuse integration guide](/integrations/observability/langfuse) for an example of using OpenLIT with Langfuse.
+

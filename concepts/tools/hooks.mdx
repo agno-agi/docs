@@ -9,7 +9,7 @@ You can use tool hooks to perform validation, logging, or any other logic before
 A tool hook is a function that takes a function name, function call, and arguments. Optionally, you can access the `Agent` or `Team` object as well.  Inside the tool hook, you have to call the function call and return the result.
 
 <Note>
-It is important to use exact parameter names when defining a tool hook. `agent`, `team`, `function_name`, `function_call`, and `arguments` are available parameters.
+It is important to use exact parameter names when defining a tool hook. `agent`, `team`, `run_context`, `function_name`, `function_call`, and `arguments` are available parameters.
 </Note>
 
 For example:
@@ -23,17 +23,17 @@ def logger_hook(
 
     # Call the function
     result = function_call(**arguments)
-    
+
     end_time = time.time()
     duration = end_time - start_time
-    
+
     logger.info(f"Function {function_name} took {duration:.2f} seconds to execute")
 
     # Return the result
     return result
 ```
 
-or 
+or
 
 ```python
 def confirmation_hook(
@@ -57,17 +57,21 @@ agent = Agent(
 )
 ```
 
-You can also get access to the `Agent` or `Team` object in the tool hook.
+You can also get access to the `RunContext` object in the tool hook. Inside the run context, you will find the session state, dependencies, and metadata.
 
 ```python
+from agno.run import RunContext
 
 def grab_customer_profile_hook(
-    session_state: dict, function_name: str, function_call: Callable, arguments: Dict[str, Any]
+    run_context: RunContext, function_name: str, function_call: Callable, arguments: Dict[str, Any]
 ):
+    if not run_context.session_state:
+        run_context.session_state = {}
+
     cust_id = arguments.get("customer")
-    if cust_id not in session_state["customer_profiles"]:
+    if cust_id not in run_context.session_state["customer_profiles"]:
         raise ValueError(f"Customer profile for {cust_id} not found")
-    customer_profile = session_state["customer_profiles"][cust_id]
+    customer_profile = run_context.session_state["customer_profiles"][cust_id]
 
     # Replace the customer with the customer_profile for the function call
     arguments["customer"] = json.dumps(customer_profile)
@@ -254,7 +258,7 @@ This example shows how to:
                 "Tool call cancelled by user",
                 agent_message="Stopping execution as permission was not granted.",
             )
-        
+
         # Call the function
         result = function_call(**arguments)
 

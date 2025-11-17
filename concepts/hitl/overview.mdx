@@ -83,8 +83,8 @@ if run_response.is_paused:
         confirmed = input(f"Confirm? (y/n): ").lower() == "y"
         tool.confirmed = confirmed
 
-  # Continue execution
-  response = agent.continue_run(run_id=run_response.run_id, updated_tools=run_response.tools)
+    # Continue execution
+    response = agent.continue_run(run_response=run_response)
 ```
 
 You can also specify which tools in a toolkit require confirmation.
@@ -93,27 +93,39 @@ You can also specify which tools in a toolkit require confirmation.
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
 from agno.tools import tool
-from agno.tools.duckduckgo import DuckDuckGoTools
+from agno.tools.yfinance import YFinanceTools
 from agno.utils import pprint
+from rich.console import Console
+from rich.prompt import Prompt
+
+console = Console()
 
 agent = Agent(
-    model=OpenAIChat(id="gpt-5-mini"),
-    tools=[DuckDuckGoTools(requires_confirmation_tools=["duckduckgo_search"])],
+    model=OpenAIChat(id="gpt-4o-mini"),
+    tools=[YFinanceTools(requires_confirmation_tools=["get_current_stock_price"])],
+    markdown=True,
 )
 
-run_response = agent.run("What is the latest news on AI?")
-if run_response.is_paused:
-    for tool in run_response.tools_requiring_confirmation:
-        print(f"Tool {tool.tool_name}({tool.tool_args}) requires confirmation")
-        confirmed = input(f"Confirm? (y/n): ").lower() == "y"
+run_response = agent.run("What is the current stock price of Apple?")
+if run_response.is_paused:  # Or agent.run_response.is_paused
+    for tool in run_response.tools_requiring_confirmation:  # type: ignore
+        # Ask for confirmation
+        console.print(
+            f"Tool name [bold blue]{tool.tool_name}({tool.tool_args})[/] requires confirmation."
+        )
+        message = (
+            Prompt.ask("Do you want to continue?", choices=["y", "n"], default="y")
+            .strip()
+            .lower()
+        )
 
-        if confirmed == False:
+        if message == "n":
             tool.confirmed = False
         else:
             # We update the tools in place
             tool.confirmed = True
 
-    run_response = agent.continue_run(run_id=run_response.run_id, updated_tools=run_response.tools)
+    run_response = agent.continue_run(run_response=run_response)
     pprint.pprint_run_response(run_response)
 ```
 
@@ -129,46 +141,65 @@ In the example below, we require all the input for the `send_email` tool from th
 
 ```python
 from typing import List
+
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
+from agno.tools import tool
 from agno.tools.function import UserInputField
+from agno.utils import pprint
 
-# We still provide a docstring to the tool; This will be used to populate the `user_input_schema`
-@tool(requires_user_input=True)
-def send_email(to: str, subject: str, body: str) -> dict:
-    """Send an email to the user.
+
+# You can either specify the user_input_fields leave empty for all fields to be provided by the user
+@tool(requires_user_input=True, user_input_fields=["to_address"])
+def send_email(subject: str, body: str, to_address: str) -> str:
+    """
+    Send an email.
 
     Args:
-        to (str): The address to send the email to.
         subject (str): The subject of the email.
         body (str): The body of the email.
+        to_address (str): The address to send the email to.
     """
-    # Implementation here
-    return f"Email sent to {to} with subject {subject} and body {body}"
+    return f"Sent email to {to_address} with subject {subject} and body {body}"
+
 
 agent = Agent(
-    model=OpenAIChat(id="gpt-5-mini"),
+    model=OpenAIChat(id="gpt-4o-mini"),
     tools=[send_email],
+    markdown=True,
 )
 
-run_response = agent.run("Send an email please to my friend John, make up the subject and body")
+run_response = agent.run(
+    "Send an email with the subject 'Hello' and the body 'Hello, world!'"
+)
 if run_response.is_paused:
-    for tool in run_response.tools_requiring_user_input:
-        input_schema: List[UserInputField] = tool.user_input_schema
+    for tool in run_response.tools_requiring_user_input:  # type: ignore
+        input_schema: List[UserInputField] = tool.user_input_schema  # type: ignore
 
         for field in input_schema:
+            # Get user input for each field in the schema
+            field_type = field.field_type
+            field_description = field.description
+
             # Display field information to the user
-            print(f"\nField: {field.name} ({field.field_type.__name__}) -> {field.description}")
+            print(f"\nField: {field.name}")
+            print(f"Description: {field_description}")
+            print(f"Type: {field_type}")
 
             # Get user input
-            user_value = input(f"Please enter a value for {field.name}: ")
+            if field.value is None:
+                user_value = input(f"Please enter a value for {field.name}: ")
+            else:
+                print(f"Value: {field.value}")
+                user_value = field.value
 
             # Update the field value
             field.value = user_value
 
-    run_response = (
-        agent.continue_run(run_id=run_response.run_id, updated_tools=run_response.tools)
-    )
+    run_response = agent.continue_run(
+        run_response=run_response
+    )  # or agent.continue_run(run_response=run_response)
+    pprint.pprint_run_response(run_response)
 ```
 
 The `RunOutput` object has a list of tools. In the case of `requires_user_input`, the tools that require input will have `user_input_schema` populated.
@@ -220,7 +251,7 @@ if run_response.is_paused:
                 print(f"Value provided by the agent: {field.value}")
 
     run_response = (
-        agent.continue_run(run_id=run_response.run_id, updated_tools=run_response.tools)
+        agent.continue_run(run_response=run_response)
     )
 ```
 
@@ -234,9 +265,10 @@ This pattern provides the agent with tools to indicate when it needs user input.
 In the following example, we use a specialized tool to allow the agent to collect user feedback when it needs it.
 
 ```python
-from typing import Any, Dict
+from typing import List
 
 from agno.agent import Agent
+from agno.tools.function import UserInputField
 from agno.models.openai import OpenAIChat
 from agno.tools import tool
 from agno.tools.toolkit import Toolkit
@@ -287,7 +319,6 @@ agent = Agent(
     model=OpenAIChat(id="gpt-5-mini"),
     tools=[EmailTools(), UserControlFlowTools()],
     markdown=True,
-    debug_mode=True,
 )
 
 run_response = agent.run("Send an email with the body 'How is it going in Tokyo?'")
@@ -308,7 +339,7 @@ while run_response.is_paused:
             else:
                 print(f"Value provided by the agent: {field.value}")
 
-    run_response = agent.continue_run(run_id=run_response.run_id, updated_tools=run_response.tools)
+    run_response = agent.continue_run(run_response=run_response)
 
     # If the agent is not paused for input, we are done
     if not run_response.is_paused:
@@ -363,7 +394,7 @@ if run_response.is_paused:
             # We have to set the result on the tool execution object so that the agent can continue
             tool.result = result
 
-    run_response = agent.continue_run(run_id=run_response.run_id, updated_tools=run_response.tools)
+    run_response = agent.continue_run(run_response=run_response)
     pprint.pprint_run_response(run_response)
 ```
 

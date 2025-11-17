@@ -1,0 +1,152 @@
+---
+title: "Human-in-the-Loop Example"
+description: "AgentOS with tools requiring user confirmation"
+---
+
+This example shows how to implement Human-in-the-Loop in AgentOS. When an agent needs to execute a tool that requires confirmation, the run pauses and waits for user approval before proceeding.
+
+## Prerequisites
+
+- Python 3.10 or higher
+- PostgreSQL with pgvector (setup instructions below)
+- OpenAI API key
+
+## Code
+
+```python hitl_confirmation.py
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+from agno.os import AgentOS
+from agno.tools import tool
+
+# Database connection
+db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
+db = PostgresDb(db_url=db_url)
+
+
+@tool(requires_confirmation=True)
+def delete_records(table_name: str, count: int) -> str:
+    """Delete records from a database table.
+
+    Args:
+        table_name: Name of the table
+        count: Number of records to delete
+
+    Returns:
+        str: Confirmation message
+    """
+    return f"Deleted {count} records from {table_name}"
+
+
+@tool(requires_confirmation=True)
+def send_notification(recipient: str, message: str) -> str:
+    """Send a notification to a user.
+
+    Args:
+        recipient: Email or username of the recipient
+        message: Notification message
+
+    Returns:
+        str: Confirmation message
+    """
+    return f"Sent notification to {recipient}: {message}"
+
+
+# Create agent with HITL tools
+agent = Agent(
+    name="Data Manager",
+    id="data_manager",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    tools=[delete_records, send_notification],
+    instructions=["You help users manage data operations"],
+    db=db,
+    markdown=True,
+)
+
+# Create AgentOS
+agent_os = AgentOS(
+    id="agentos-hitl",
+    agents=[agent],
+)
+
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="hitl_confirmation:app", port=7777)
+```
+
+## Testing the Example
+
+Once the server is running, test the HITL flow:
+
+```bash
+# 1. Send a request that requires confirmation
+curl -X POST http://localhost:7777/agents/data_manager/runs \
+  -F "message=Delete 50 old records from the users table" \
+  -F "user_id=test_user" \
+  -F "session_id=test_session"
+
+# The response will have status: "paused" with tools awaiting confirmation
+
+# 2. Continue with approval (use the run_id and tool_call_id from response)
+curl -X POST http://localhost:7777/agents/data_manager/runs/{run_id}/continue \
+  -F "tools=[{\"tool_call_id\": \"{tool_call_id}\", \"confirmed\": true}]" \
+  -F "session_id=test_session" \
+  -F "stream=false"
+```
+
+## Usage
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Set Environment Variables">
+    ```bash
+    export OPENAI_API_KEY=your_openai_api_key
+    ```
+  </Step>
+
+  <Step title="Install libraries">
+    ```bash
+    pip install -U agno fastapi uvicorn sqlalchemy pgvector psycopg openai
+    ```
+  </Step>
+
+  <Step title="Setup PostgreSQL Database">
+    ```bash
+    docker run -d \
+      --name agno-postgres \
+      -e POSTGRES_DB=ai \
+      -e POSTGRES_USER=ai \
+      -e POSTGRES_PASSWORD=ai \
+      -p 5532:5432 \
+      pgvector/pgvector:pg17
+    ```
+  </Step>
+
+  <Step title="Run Example">
+    ```bash
+    python hitl_confirmation.py
+    ```
+  </Step>
+</Steps>
+
+## Learn More
+
+<CardGroup cols={2}>
+  <Card
+    title="HITL Getting Started"
+    icon="hand"
+    href="/examples/getting-started/12-human-in-the-loop"
+  >
+    Learn HITL basics with a simple example
+  </Card>
+  <Card
+    title="HITL Concepts"
+    icon="book"
+    href="/concepts/hitl/overview"
+  >
+    Understand HITL patterns and best practices
+  </Card>
+</CardGroup>

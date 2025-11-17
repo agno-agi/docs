@@ -1,7 +1,8 @@
 ---
 title: Agent Sessions
-sidebarTitle: Agent Sessions
-description: Learn how to manage Agent sessions.
+sidebarTitle: Chat History (Sessions)
+description: Learn about Agent sessions and managing conversation history.
+keywords: [sessions, chat history, history, agent sessions, multi-turn conversations]
 ---
 
 When we call `Agent.run()`, it creates a stateless, singular Agent run.
@@ -230,6 +231,8 @@ agent = Agent(
 )
 ```
 
+See the [Session Summary Manager](/reference/session/summary_manager) reference for more details.
+
 ## Session history
 
 Agents with storage enabled automatically have access to the message and run history of the session.
@@ -242,6 +245,7 @@ You can access these messages using:
 We can give the Agent access to the chat history in the following ways:
 
 - We can set `add_history_to_context=True` and `num_history_runs=5` to add the messages from the last 5 runs automatically to every message sent to the agent.
+- We can be more granular about how many messages to add to include in the list sent to the model, by setting `num_history_messages`.
 - We can set `read_chat_history=True` to provide a `get_chat_history()` tool to your agent allowing it to read any message in the entire chat history.
 - **We recommend setting all 3: `add_history_to_context=True`, `num_history_runs=3` and `read_chat_history=True` for the best experience.**
 - We can also set `read_tool_call_history=True` to provide a `get_tool_call_history()` tool to your agent allowing it to read tool calls in reverse chronological order.
@@ -338,6 +342,57 @@ agent.print_response(
     "What did I discuss in my previous conversations?", session_id=session_5_id
 )  # It should only include the last 2 sessions
 ```
+
+## Control what gets stored in the session
+
+As your sessions grow, you may want to decide what data exactly is persisted. Agno provides three flags to optimize storage while maintaining full functionality during execution:
+
+- **`store_media`** - Controls storage of images, videos, audio, and files
+- **`store_tool_messages`** - Controls storage of tool requests and their results
+- **`store_history_messages`** - Controls storage of history messages
+
+<Tip>
+### How it works
+
+These flags only affect what gets **persisted to the database**. During execution, all data remains available to your agent - media, tool results, and history are still accessible in the `RunOutput` object. The data is scrubbed right before saving to the database.
+
+This means:
+- Your agent functionality remains unchanged
+- Tools can access all data they need during execution
+- Only the database storage is optimized
+</Tip>
+
+<Warning>
+**Important considerations when using `store_tool_messages=False`:**
+
+- **Tool message pairs are removed together**: To maintain valid message sequences, when tool messages are removed from storage, the corresponding assistant messages that contains tool calls for that tool message are also removed. Most model providers require a strict "tool call pair"
+
+- **Metrics will still consider the tokens spent on the deleted messages**: Your run metrics will still reflect the **actual tokens used during execution**, including the tool calls and results.
+</Warning>
+
+### Usage example
+
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.tools.duckduckgo import DuckDuckGoTools
+from agno.db.sqlite import SqliteDb
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o"),
+    tools=[DuckDuckGoTools()],
+    db=SqliteDb(db_file="tmp/agents.db"),
+    add_history_to_context=True,
+    num_history_runs=5,
+    store_media=False,              # Don't store images/videos/audio/files
+    store_tool_messages=False,       # Don't store tool execution details
+    store_history_messages=False,   # Don't store history messages
+)
+
+agent.print_response("Search for the latest AI news and summarize it")
+```
+
+See more examples in [Disable Storing History Messages](/examples/concepts/agent/session/09_disable_storing_history_messages) and [Disable Storing Tool Messages](/examples/concepts/agent/session/10_disable_storing_tool_messages).
 
 ## Developer Resources
 

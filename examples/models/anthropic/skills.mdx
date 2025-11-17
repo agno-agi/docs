@@ -1,0 +1,589 @@
+---
+title: Claude Agent Skills
+description: Create PowerPoint presentations, Excel spreadsheets, Word documents, and analyze PDFs with Claude Agent Skills
+---
+
+[Claude Agent Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills/overview) provide capabilities beyond what can get done with prompts alone.
+
+With **Skills**, Claude will gain access to filesystem-based resources. These will be loaded on demand, removing the need to provide the same guidance multiple times as it happens with prompts.
+
+You can read more about how **Skills** work on [Anthropic docs](https://docs.claude.com/en/docs/agents-and-tools/agent-skills/overview#how-skills-work).
+
+## Available Skills
+
+- **PowerPoint (pptx)**: Create professional presentations with slides, layouts, and formatting
+- **Excel (xlsx)**: Generate spreadsheets with formulas, charts, and data analysis
+- **Word (docx)**: Create and edit documents with rich formatting
+- **PDF (pdf)**: Analyze and extract information from PDF documents
+
+You can also create custom skills for Claude to use. You can read more about that on [Anthropic docs](https://docs.claude.com/en/docs/agents-and-tools/agent-skills/overview#custom-skills-examples).
+
+## Prerequisites
+
+Before using Claude Agent Skills, ensure you have:
+
+1. **Python 3.8 or higher**
+2. **Anthropic API key** with access to Claude models
+3. **Beta access** to Claude Agent Skills
+
+## File Download Helper Setup
+
+<Warning>
+**Important:** Files created by Agent Skills are NOT automatically saved to your local filesystem. They are created in a sandboxed execution environment and must be downloaded using the Anthropic Files API.
+
+Before running any of the examples below, you must create the `file_download_helper.py` file in the same directory as your script.
+</Warning>
+
+### How File Download Works
+
+1. Claude creates the file in the sandbox
+2. Returns a **file ID** in the tool result
+3. You download the file using the helper function below
+
+### Create `file_download_helper.py`
+
+Save the following code as `file_download_helper.py` in your project directory:
+
+```python file_download_helper.py
+from typing import List
+import os
+import re
+
+
+def detect_file_extension(file_content: bytes) -> str:
+    """
+    Detect file type from magic bytes (file header).
+
+    Args:
+        file_content: First few bytes of the file
+
+    Returns:
+        File extension including dot (e.g., '.xlsx', '.docx', '.pptx')
+    """
+    # Check magic bytes for common Office file formats
+    if file_content.startswith(b"PK\x03\x04"):
+        # ZIP-based formats (Office 2007+)
+        if b"word/" in file_content[:2000]:
+            return ".docx"
+        elif b"xl/" in file_content[:2000]:
+            return ".xlsx"
+        elif b"ppt/" in file_content[:2000]:
+            return ".pptx"
+        else:
+            return ".zip"
+    elif file_content.startswith(b"%PDF"):
+        return ".pdf"
+    elif file_content.startswith(b"\xd0\xcf\x11\xe0"):
+        # Old Office format (97-2003)
+        return ".doc"
+    else:
+        return ".bin"
+
+
+def download_skill_files(
+    response, client, output_dir: str = ".", default_filename: str = None
+) -> List[str]:
+    """
+    Download files created by Claude Agent Skills from the API response.
+
+    Args:
+        response: The Anthropic API response object OR a dict with 'file_ids' key
+        client: Anthropic client instance
+        output_dir: Directory to save files (default: current directory)
+        default_filename: Default filename to use
+
+    Returns:
+        List of downloaded file paths
+    """
+    downloaded_files = []
+    seen_file_ids = set()
+
+    # Check if response is a dict with file_ids (from provider_data)
+    if isinstance(response, dict) and "file_ids" in response:
+        for file_id in response["file_ids"]:
+            if file_id in seen_file_ids:
+                continue
+            seen_file_ids.add(file_id)
+
+            print(f"Found file ID: {file_id}")
+
+            try:
+                # Download the file
+                file_content = client.beta.files.download(
+                    file_id=file_id, betas=["files-api-2025-04-14"]
+                )
+
+                # Read file content
+                file_data = file_content.read()
+
+                # Detect actual file type from content
+                detected_ext = detect_file_extension(file_data)
+
+                # Use default filename or generate one
+                filename = (
+                    default_filename
+                    if default_filename
+                    else f"skill_output_{file_id[-8:]}{detected_ext}"
+                )
+                filepath = os.path.join(output_dir, filename)
+
+                # Save to disk
+                with open(filepath, "wb") as f:
+                    f.write(file_data)
+
+                downloaded_files.append(filepath)
+                print(f"Downloaded: {filepath}")
+
+            except Exception as e:
+                print(f"Failed to download file {file_id}: {e}")
+
+        return downloaded_files
+
+    # Original logic: Iterate through response content blocks
+    if not hasattr(response, "content"):
+        return downloaded_files
+
+    for block in response.content:
+        if block.type == "bash_code_execution_tool_result":
+            if hasattr(block, "content") and hasattr(block.content, "content"):
+                if isinstance(block.content.content, list):
+                    for output_block in block.content.content:
+                        if hasattr(output_block, "file_id"):
+                            file_id = output_block.file_id
+
+                            if file_id in seen_file_ids:
+                                continue
+                            seen_file_ids.add(file_id)
+
+                            print(f"Found file ID: {file_id}")
+
+                            try:
+                                file_content = client.beta.files.download(
+                                    file_id=file_id, betas=["files-api-2025-04-14"]
+                                )
+
+                                file_data = file_content.read()
+                                detected_ext = detect_file_extension(file_data)
+
+                                filename = default_filename
+
+                                if (
+                                    not filename
+                                    and hasattr(block.content, "stdout")
+                                    and block.content.stdout
+                                ):
+                                    match = re.search(
+                                        r"[\w\-]+\.(pptx|xlsx|docx|pdf)",
+                                        block.content.stdout,
+                                    )
+                                    if match:
+                                        extracted_filename = match.group(0)
+                                        extracted_ext = os.path.splitext(
+                                            extracted_filename
+                                        )[1]
+                                        if extracted_ext == detected_ext:
+                                            filename = extracted_filename
+                                        else:
+                                            basename = os.path.splitext(
+                                                extracted_filename
+                                            )[0]
+                                            filename = f"{basename}{detected_ext}"
+
+                                if not filename:
+                                    filename = (
+                                        f"skill_output_{file_id[-8:]}{detected_ext}"
+                                    )
+
+                                filepath = os.path.join(output_dir, filename)
+
+                                with open(filepath, "wb") as f:
+                                    f.write(file_data)
+
+                                downloaded_files.append(filepath)
+                                print(f"Downloaded: {filepath}")
+
+                            except Exception as e:
+                                print(f"Failed to download file {file_id}: {e}")
+
+    return downloaded_files
+```
+
+Once you've created this file, you can import it in your scripts:
+
+```python
+from file_download_helper import download_skill_files
+```
+
+## Basic Usage
+
+Enable skills by passing them to the Claude model configuration:
+
+```python
+from agno.agent import Agent
+from agno.models.anthropic import Claude
+
+agent = Agent(
+    model=Claude(
+        id="claude-sonnet-4-5-20250929",
+        skills=[
+            {"type": "anthropic", "skill_id": "pptx", "version": "latest"}
+        ]
+    ),
+    instructions=["You are a presentation specialist."],
+    markdown=True
+)
+
+agent.print_response("Create a 3-slide presentation about AI trends")
+```
+
+The framework automatically:
+- Configures the required betas (`code-execution-2025-08-25`, `skills-2025-10-02`)
+- Adds the code execution tool
+- Uses the beta API client
+- Sets up the container with skill configurations
+
+You can enable multiple skills at once:
+
+```python
+model=Claude(
+    id="claude-sonnet-4-5-20250929",
+    skills=[
+        {"type": "anthropic", "skill_id": "pptx", "version": "latest"},
+        {"type": "anthropic", "skill_id": "xlsx", "version": "latest"},
+        {"type": "anthropic", "skill_id": "docx", "version": "latest"},
+    ]
+)
+```
+
+## PowerPoint Skills
+
+Create professional presentations with slides, layouts, and formatting.
+
+### Example: Q4 Business Review Presentation
+
+```python
+import os
+from agno.agent import Agent
+from agno.models.anthropic import Claude
+from anthropic import Anthropic
+from file_download_helper import download_skill_files
+
+# Create agent with PowerPoint skills
+powerpoint_agent = Agent(
+    name="PowerPoint Creator",
+    model=Claude(
+        id="claude-sonnet-4-5-20250929",
+        skills=[
+            {"type": "anthropic", "skill_id": "pptx", "version": "latest"}
+        ],
+    ),
+    instructions=[
+        "You are a professional presentation creator with access to PowerPoint skills.",
+        "Create well-structured presentations with clear slides and professional design.",
+        "Keep text concise - no more than 6 bullet points per slide.",
+    ],
+    markdown=True,
+)
+
+# Create presentation
+prompt = (
+    "Create a Q4 business review presentation with 5 slides:\n"
+    "1. Title slide: 'Q4 2025 Business Review'\n"
+    "2. Key metrics: Revenue $2.5M (↑25% YoY), 850 customers\n"
+    "3. Major achievements: Product launch, new markets, team growth\n"
+    "4. Challenges: Market competition, customer retention\n"
+    "5. Q1 2026 goals: $3M revenue, 1000 customers, new features\n"
+    "Save as 'q4_review.pptx'"
+)
+
+response = powerpoint_agent.run(prompt)
+print(response.content)
+
+# Download files
+client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+if response.messages:
+    for msg in response.messages:
+        if hasattr(msg, "provider_data") and msg.provider_data:
+            files = download_skill_files(
+                msg.provider_data, client, default_filename="q4_review.pptx"
+            )
+            if files:
+                print(f"Downloaded {len(files)} file(s):")
+                for file in files:
+                    print(f"  - {file}")
+                break
+```
+
+## Excel Skills
+
+Generate spreadsheets with formulas, charts, and data analysis.
+
+### Example: Sales Dashboard
+
+```python
+import os
+from agno.agent import Agent
+from agno.models.anthropic import Claude
+from anthropic import Anthropic
+from file_download_helper import download_skill_files
+
+# Create agent with Excel skills
+excel_agent = Agent(
+    name="Excel Creator",
+    model=Claude(
+        id="claude-sonnet-4-5-20250929",
+        skills=[
+            {"type": "anthropic", "skill_id": "xlsx", "version": "latest"}
+        ],
+    ),
+    instructions=[
+        "You are a data analysis specialist with access to Excel skills.",
+        "Create professional spreadsheets with well-formatted tables and accurate formulas.",
+        "Use charts and visualizations to make data insights clear.",
+    ],
+    markdown=True,
+)
+
+# Create sales dashboard
+prompt = (
+    "Create a sales dashboard for January 2026 with:\n"
+    "Sales data for 5 reps:\n"
+    "- Alice: 24 deals, $385K revenue, 65% close rate\n"
+    "- Bob: 19 deals, $298K revenue, 58% close rate\n"
+    "- Carol: 31 deals, $467K revenue, 72% close rate\n"
+    "- David: 22 deals, $356K revenue, 61% close rate\n"
+    "- Emma: 27 deals, $412K revenue, 68% close rate\n\n"
+    "Include:\n"
+    "1. Table with all metrics\n"
+    "2. Total revenue calculation\n"
+    "3. Bar chart showing revenue by rep\n"
+    "4. Quota attainment (quota: $350K per rep)\n"
+    "5. Conditional formatting (green if above quota, red if below)\n"
+    "Save as 'sales_dashboard.xlsx'"
+)
+
+response = excel_agent.run(prompt)
+print(response.content)
+
+# Download files
+client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+if response.messages:
+    for msg in response.messages:
+        if hasattr(msg, "provider_data") and msg.provider_data:
+            files = download_skill_files(
+                msg.provider_data, client, default_filename="sales_dashboard.xlsx"
+            )
+            if files:
+                print(f"Downloaded {len(files)} file(s):")
+                for file in files:
+                    print(f"  - {file}")
+                break
+```
+
+## Word Document Skills
+
+Create and edit documents with rich formatting.
+
+### Example: Project Proposal
+
+```python
+import os
+from agno.agent import Agent
+from agno.models.anthropic import Claude
+from anthropic import Anthropic
+from file_download_helper import download_skill_files
+
+# Create agent with Word skills
+document_agent = Agent(
+    name="Document Creator",
+    model=Claude(
+        id="claude-sonnet-4-5-20250929",
+        skills=[
+            {"type": "anthropic", "skill_id": "docx", "version": "latest"}
+        ],
+    ),
+    instructions=[
+        "You are a professional document writer with access to Word document skills.",
+        "Create well-structured documents with clear sections and professional formatting.",
+        "Use headings, lists, and tables where appropriate.",
+    ],
+    markdown=True,
+)
+
+# Create project proposal
+prompt = (
+    "Create a project proposal document for 'Mobile App Development':\n\n"
+    "Title: Mobile App Development Proposal\n\n"
+    "1. Executive Summary:\n"
+    "   Project to build a task management mobile app\n"
+    "   Timeline: 12 weeks, Budget: $120K\n\n"
+    "2. Project Overview:\n"
+    "   - Native iOS and Android app\n"
+    "   - Key features: Task lists, reminders, team collaboration\n"
+    "   - Target users: Small business teams\n\n"
+    "3. Scope of Work:\n"
+    "   - Requirements gathering (Week 1-2)\n"
+    "   - Design and prototyping (Week 3-4)\n"
+    "   - Development (Week 5-10)\n"
+    "   - Testing and launch (Week 11-12)\n\n"
+    "4. Team:\n"
+    "   - 2 developers, 1 designer, 1 project manager\n\n"
+    "5. Budget Breakdown:\n"
+    "   - Development: $80K\n"
+    "   - Design: $25K\n"
+    "   - Testing: $10K\n"
+    "   - Contingency: $5K\n\n"
+    "6. Success Metrics:\n"
+    "   - 1000 users in first month\n"
+    "   - 4.5+ star rating\n"
+    "   - 70% user retention\n\n"
+    "Save as 'mobile_app_proposal.docx'"
+)
+
+response = document_agent.run(prompt)
+print(response.content)
+
+# Download files
+client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+if response.messages:
+    for msg in response.messages:
+        if hasattr(msg, "provider_data") and msg.provider_data:
+            files = download_skill_files(
+                msg.provider_data, client, default_filename="mobile_app_proposal.docx"
+            )
+            if files:
+                print(f"Downloaded {len(files)} file(s):")
+                for file in files:
+                    print(f"  - {file}")
+                break
+```
+
+## Multi-Skill Workflows
+
+Combine multiple skills for comprehensive document packages.
+
+### Example: Multi-Document Package
+
+```python
+import os
+from agno.agent import Agent
+from agno.models.anthropic import Claude
+from anthropic import Anthropic
+from file_download_helper import download_skill_files
+
+# Create agent with multiple skills
+multi_skill_agent = Agent(
+    name="Multi-Skill Document Creator",
+    model=Claude(
+        id="claude-sonnet-4-5-20250929",
+        skills=[
+            {"type": "anthropic", "skill_id": "pptx", "version": "latest"},
+            {"type": "anthropic", "skill_id": "xlsx", "version": "latest"},
+            {"type": "anthropic", "skill_id": "docx", "version": "latest"},
+        ],
+    ),
+    instructions=[
+        "You are a comprehensive business document creator.",
+        "You have access to PowerPoint, Excel, and Word document skills.",
+        "Create professional document packages with consistent information across all files.",
+    ],
+    markdown=True,
+)
+
+# Create document package
+prompt = (
+    "Create a sales report package with 2 documents:\n\n"
+    "1. EXCEL SPREADSHEET (sales_report.xlsx):\n"
+    "   - Q4 sales data: Oct $450K, Nov $520K, Dec $610K\n"
+    "   - Include a total formula\n"
+    "   - Add a simple bar chart\n\n"
+    "2. WORD DOCUMENT (sales_summary.docx):\n"
+    "   - Brief Q4 sales summary\n"
+    "   - Total sales: $1.58M\n"
+    "   - Growth trend: Strong December performance\n"
+)
+
+response = multi_skill_agent.run(prompt)
+print(response.content)
+
+# Download files
+client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+if response.messages:
+    for msg in response.messages:
+        if hasattr(msg, "provider_data") and msg.provider_data:
+            files = download_skill_files(msg.provider_data, client)
+            if files:
+                print(f"Downloaded {len(files)} file(s):")
+                for file in files:
+                    print(f"  - {file}")
+                break
+```
+
+## Usage
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Set your API key">
+    ```bash
+    export ANTHROPIC_API_KEY=xxx
+    ```
+  </Step>
+
+  <Step title="Install libraries">
+    ```bash
+    pip install -U anthropic agno
+    ```
+  </Step>
+
+  <Step title="Create file download helper">
+    Create `file_download_helper.py` using the code provided in the [File Download Helper Setup](#file-download-helper-setup) section above.
+  </Step>
+
+  <Step title="Run Example">
+    Create a Python file with any of the examples above and run:
+
+    <CodeGroup>
+    ```bash Mac
+    python your_script.py
+    ```
+
+    ```bash Windows
+    python your_script.py
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+## Configuration
+
+### Model Requirements
+
+- **Recommended**: `claude-sonnet-4-5-20250929` or later
+- **Minimum**: `claude-3-5-sonnet-20241022`
+- Skills require models with code execution capability
+
+### Beta Version
+
+Skills require the following beta flags:
+- `code-execution-2025-08-25`
+- `skills-2025-10-02`
+
+### Skill Configuration
+
+Specify skills in the model configuration:
+
+```python
+skills=[
+    {"type": "anthropic", "skill_id": "pptx", "version": "latest"},
+    {"type": "anthropic", "skill_id": "xlsx", "version": "latest"},
+    {"type": "anthropic", "skill_id": "docx", "version": "latest"},
+    {"type": "anthropic", "skill_id": "pdf", "version": "latest"},
+]
+```
+
+## Additional Resources
+
+- [Claude Agent Skills Documentation](https://docs.anthropic.com/en/docs/agents-and-tools/agent-skills/quickstart)
+- [Anthropic API Reference](https://docs.anthropic.com/en/api)
+- [Anthropic Files API](https://docs.anthropic.com/en/docs/build-with-claude/files)
