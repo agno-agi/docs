@@ -1,23 +1,33 @@
 ---
 title: Company Description Workflow
-description: A workflow that generates comprehensive supplier profiles by gathering information from multiple sources and delivers them via email.
 ---
 
-## Overview
+Build a comprehensive supplier profile generator that combines web crawling, search engines, Wikipedia, and competitor analysis. This workflow processes company information through specialized agents and delivers detailed markdown reports via email.
 
-This workflow combines web crawling, search engines, Wikipedia, and competitor analysis to create detailed supplier profiles. It processes company information through 4 specialized agents running in parallel, then generates a structured markdown report and sends it via email.
+## What You'll Learn
 
-The workflow uses workflow session state management to cache analysis results. If the same supplier is analyzed again, it returns cached results instead of re-running the expensive analysis pipeline.
+By building this workflow, you'll understand:
+- How to coordinate multiple agents running in parallel for data gathering
+- How to integrate diverse data sources (web crawling, search, Wikipedia)
+- How to implement workflow session state caching for expensive operations
+- How to automate report generation and email delivery with Resend
 
-## Getting Started
+## Use Cases
 
-### Prerequisites
-- OpenAI API key
-- Resend API key for emails [https://resend.com/api-keys]
-- Firecrawl API key for web crawling [https://www.firecrawl.dev/app/api-keys]
+Build supplier research platforms, company intelligence systems, vendor evaluation tools, or automated due diligence reports.
 
-### Quick Setup
-```bash
+## How It Works
+
+The workflow coordinates four specialized agents running in parallel:
+
+1. **Crawl**: Crawler agent uses Firecrawl to extract information from the company website
+2. **Search**: Search agent uses DuckDuckGo to find recent news and articles
+3. **Research**: Wikipedia agent gathers background and historical information
+4. **Analyze**: Competitor agent identifies and analyzes market competitors
+5. **Synthesize**: Profile agent combines all findings into a structured markdown report
+6. **Deliver**: Report is automatically sent via email using Resend
+
+The workflow caches analysis results in session state - subsequent requests for the same supplier return cached data.
 export OPENAI_API_KEY="your-openai-key"
 export RESEND_API_KEY="your-resend-key"
 export FIRECRAWL_API_KEY="your-firecrawl-key"
@@ -59,31 +69,31 @@ class SupplierProfile(BaseModel):
 
 
 crawl_agent: Agent = Agent(
-    model=OpenAIChat(id="gpt-5-mini"),
+    model=OpenAIChat(id="gpt-4o"),
     tools=[FirecrawlTools(crawl=True, limit=5)],
     instructions=CRAWLER_INSTRUCTIONS,
 )
 
 search_agent: Agent = Agent(
-    model=OpenAIChat(id="gpt-5-mini"),
+    model=OpenAIChat(id="gpt-4o"),
     tools=[DuckDuckGoTools()],
     instructions=SEARCH_INSTRUCTIONS,
 )
 
 wikipedia_agent: Agent = Agent(
-    model=OpenAIChat(id="gpt-5-mini"),
+    model=OpenAIChat(id="gpt-4o"),
     tools=[WikipediaTools()],
     instructions=WIKIPEDIA_INSTRUCTIONS,
 )
 
 competitor_agent: Agent = Agent(
-    model=OpenAIChat(id="gpt-5-mini"),
+    model=OpenAIChat(id="gpt-4o"),
     tools=[DuckDuckGoTools()],
     instructions=COMPETITOR_INSTRUCTIONS,
 )
 
 profile_agent: Agent = Agent(
-    model=OpenAIChat(id="gpt-5-mini"),
+    model=OpenAIChat(id="gpt-4o"),
     instructions=SUPPLIER_PROFILE_INSTRUCTIONS_GENERAL,
 )
 ```
@@ -306,7 +316,7 @@ def generate_supplier_profile(step_input: StepInput) -> StepOutput:
     html_content: str = ""
     for key, value in SUPPLIER_PROFILE_DICT.items():
         agent = Agent(
-            model=OpenAIChat(id="gpt-5-mini"),
+            model=OpenAIChat(id="gpt-4o"),
             instructions="Instructions: "
             + SUPPLIER_PROFILE_INSTRUCTIONS_GENERAL
             + "Format to adhere to: "
@@ -421,27 +431,47 @@ company_description_workflow.print_response(
 )
 ```
 
-## Expected Output
+## What to Expect
 
-The workflow will:
+The workflow will simultaneously gather information from multiple sources (website crawling, web search, Wikipedia, competitor analysis) then generate a comprehensive supplier profile. You'll see progress indicators for each agent's data collection.
 
-1. **Gather Information**: Simultaneously crawl the website, search the web, check Wikipedia, and find competitors
-2. **Generate Profile**: Create a comprehensive supplier profile with detailed sections
-3. **Send Email**: Deliver the formatted HTML report to the specified email address
+The final output is a structured markdown report delivered via email. The workflow caches all analysis results - if you request the same supplier again, it returns the cached profile instantly instead of re-running the expensive analysis pipeline.
 
-The generated supplier profile includes:
-- Company overview and basic information
-- Detailed analysis from multiple data sources  
-- Structured markdown formatting for readability
-- Professional email delivery with HTML formatting
+## Usage
 
-Run the workflow with:
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
 
-```bash
-python run_workflow.py
-```
+  <Step title="Set your API keys">
+    ```bash
+    export OPENAI_API_KEY=xxx
+    export RESEND_API_KEY=xxx
+    export FIRECRAWL_API_KEY=xxx
+    ```
+  </Step>
 
-**More Examples:**
-- [Company Analysis](https://github.com/agno-agi/agno/tree/main/cookbook/examples/workflows/company_analysis)
-- [Customer Support](https://github.com/agno-agi/agno/tree/main/cookbook/examples/workflows/customer_support)
-- [Investment Analyst](https://github.com/agno-agi/agno/tree/main/cookbook/examples/workflows/investment_analyst)
+  <Step title="Install libraries">
+    ```bash
+    pip install -U agno openai fastapi firecrawl-py resend markdown ddgs
+    ```
+  </Step>
+
+  <Step title="Run Workflow">
+    <CodeGroup>
+    ```bash Mac
+    python cookbook/examples/workflows/company_description/run_workflow.py
+    ```
+
+    ```bash Windows
+    python cookbook/examples/workflows/company_description/run_workflow.py
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+## Next Steps
+
+- Modify `supplier_request` to analyze different companies
+- Customize agent instructions in `prompts.py` to focus on specific analysis areas
+- Adjust the profile template in `SUPPLIER_PROFILE_INSTRUCTIONS_GENERAL` for different report formats
+- Explore [Workflows](/concepts/workflows/overview) for advanced workflow patterns
