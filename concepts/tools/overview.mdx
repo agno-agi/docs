@@ -4,12 +4,11 @@ sidebarTitle: Overview
 description: Tools are functions your Agno Agents can use to get things done.
 ---
 
-Tools are what make Agents capable of real-world action. While using LLMs directly you can only generate text, Agents equipped with tools can interact with external systems and perform practical actions.
+Tools are what make Agents and Teams capable of real-world action. While using LLMs directly you can only generate text responses, Agents and Teams equipped with tools can interact with external systems and perform practical actions.
 
-They are used to enable Agents to interact with external systems, and perform actions like searching the web, running SQL, sending an email or calling APIs.
+Some examples of actions that can be performed with tools are: searching the web, running SQL, sending an email or calling APIs.
 
 Agno comes with 120+ pre-built toolkits, which you can use to give your Agents all kind of abilities. You can also write your own tools, to give your Agents even more capabilities. The general syntax is:
-
 
 ```python
 import random
@@ -18,10 +17,12 @@ from agno.agent import Agent
 from agno.models.openai import OpenAIChat
 from agno.tools import tool
 
-# This is our tool, marked by the @tool decorator
-@tool(stop_after_tool_call=True)
 def get_weather(city: str) -> str:
-    """Get the weather for the given city."""
+    """Get the weather for the given city.
+    
+    Args:
+        city (str): The city to get the weather for.
+    """
 
     # In a real implementation, this would call a weather API
     weather_conditions = ["sunny", "cloudy", "rainy", "snowy", "windy"]
@@ -42,16 +43,208 @@ agent.print_response("What is the weather in San Francisco?", stream=True)
 
 <Tip>
 In the example above, the `get_weather` function is a tool. When called, the tool result is shown in the output.
-
-Then, the Agent will stop after the tool call (without waiting for the model to respond) because we set `stop_after_tool_call=True`.
-
 </Tip>
 
-### Using the Toolkit Class
 
-The `Toolkit` class provides a way to manage multiple tools with additional control over their execution.
+## How do tools work?
 
-You can specify which tools should stop the agent after execution and which should have their results shown.
+The heart of Agent execution is the LLM loop. The typical execution flow of the LLM loop is:
+1. The agent sends the run context (system message, user message, chat history, etc) and tool definitions to the model.
+2. The model responds with a message or a tool call.
+3. If the model makes a tool call, the tool is executed and the result is returned to the model.
+4. The model processes the updated context, repeating this loop until it produces a final message without any tool calls.
+5. The agent returns this final response to the caller.
+
+### Tool definitions
+
+Agno automatically converts your tool functions into the required tool definition format for the model. Typically this is a JSON schema that describes the parameters and return type of the tool.
+
+For example:
+
+```python
+def get_weather(city: str) -> str:
+    """
+    Get the weather for a given city.
+
+    Args:
+        city (str): The city to get the weather for.
+    """
+    return f"The weather in {city} is sunny."
+```
+
+This will be converted into the following tool definition:
+
+```json
+{
+    "type": "function",
+    "function": {
+        "name": "get_weather",
+        "description": "Get the weather for a given city.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "city": {
+                    "type": "string",
+                    "description": "The city to get the weather for."
+                }
+            },
+            "required": ["city"]
+        }
+    }
+}
+```
+
+This tool definition is then sent to the model so that it knows how to call the tool when it is requested. 
+You'll notice as well that the `Args` section is automatically stripped from the definition, parsed and used to populate the definitions of individualproperties.
+
+When using a Pydantic model in an argument of a tool function, Agno will automatically convert the model into the required tool definition format.
+
+For example:
+
+```python
+
+from pydantic import BaseModel, Field
+
+class GetWeatherRequest(BaseModel):
+    city: str = Field(description="The city to get the weather for")
+
+def get_weather(request: GetWeatherRequest) -> str:
+    """
+    Get the weather for a given city.
+
+    Args:
+        request (GetWeatherRequest): The request object containing the city to get the weather for.
+
+    """
+    return f"The weather in {request.city} is sunny."
+```
+
+This will be converted into the following tool definition:
+
+```json
+{
+    "type": "function",
+    "function": {
+        "name": "get_weather",
+        "description": "Get the weather for a given city.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+              "request": {
+                "type": "object",
+                "properties": {
+                  "city": {
+                    "type": "string",
+                    "description": "The city to get the weather for."
+                  }
+                },
+                "required": ["city"]
+              }
+            },
+            "required": ["request"]
+        }
+    }
+}
+```
+
+<Tip>
+ - Always create a docstring for your tool functions. Make sure to include the `Args` section and cover each of the arguments of the function.
+ - Use sensible names for your tool functions. Remember this is directly used by the model to call the tool when it is requested.
+</Tip>
+
+### Tool Execution
+
+When the model requests a tool call, the tool is executed and the result is returned to the model.
+
+- A model can request multiple tool calls in a single response.
+- When using `arun` to execute the agent or team, and the model requested multiple tool calls, the tools will be executed concurrently.
+
+Agno Agents can execute multiple tools concurrently, allowing you to process function calls that the model makes efficiently. This is especially valuable when the functions involve time-consuming operations. It improves responsiveness and reduces overall execution time.
+
+<Check>
+When you call `arun` or `aprint_response`, your tools will execute concurrently. If you provide synchronous functions as tools, they will execute concurrently on separate threads.
+</Check>
+
+<Note>
+  Concurrent execution of tools requires a model that supports parallel function
+  calling. For example, OpenAI models have a `parallel_tool_calls` parameter
+  (enabled by default) that allows multiple tool calls to be requested and
+  executed simultaneously.
+</Note>
+
+<Accordion title="Async Execution Example">
+
+```python async_tools.py
+import asyncio
+import time
+
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.utils.log import logger
+
+async def atask1(delay: int):
+    """Simulate a task that takes a random amount of time to complete
+    Args:
+        delay (int): The amount of time to delay the task
+    """
+    logger.info("Task 1 has started")
+    for _ in range(delay):
+        await asyncio.sleep(1)
+        logger.info("Task 1 has slept for 1s")
+    logger.info("Task 1 has completed")
+    return f"Task 1 completed in {delay:.2f}s"
+
+
+async def atask2(delay: int):
+    """Simulate a task that takes a random amount of time to complete
+    Args:
+        delay (int): The amount of time to delay the task
+    """
+    logger.info("Task 2 has started")
+    for _ in range(delay):
+        await asyncio.sleep(1)
+        logger.info("Task 2 has slept for 1s")
+    logger.info("Task 2 has completed")
+    return f"Task 2 completed in {delay:.2f}s"
+
+
+async def atask3(delay: int):
+    """Simulate a task that takes a random amount of time to complete
+    Args:
+        delay (int): The amount of time to delay the task
+    """
+    logger.info("Task 3 has started")
+    for _ in range(delay):
+        await asyncio.sleep(1)
+        logger.info("Task 3 has slept for 1s")
+    logger.info("Task 3 has completed")
+    return f"Task 3 completed in {delay:.2f}s"
+
+
+async_agent = Agent(
+    model=OpenAIChat(id="gpt-5-mini"),
+    tools=[atask2, atask1, atask3],
+    markdown=True,
+)
+
+asyncio.run(
+    async_agent.aprint_response("Please run all tasks with a delay of 3s", stream=True)
+)
+```
+
+In this example, `gpt-5-mini` makes three simultaneous tool calls to `atask1`, `atask2` and `atask3`. Normally these tool calls would execute sequentially, but using the `aprint_response` function, they run concurrently, improving execution time.
+
+<img
+  height="200"
+  src="/images/async-tools.png"
+  style={{ borderRadius: "8px" }}
+/>
+
+</Accordion>
+
+## Using a Toolkit
+
+An Agno Toolkit provides a way to manage multiple tools with additional control over their execution.
 
 ```python
 from agno.agent import Agent
@@ -74,11 +267,11 @@ In this example, the `GoogleSearchTools` toolkit is added to the agent. This Too
 
 ## Tool Built-in Parameters
 
-Agno automatically provides special parameters to your tools that give access to the agent's state. These parameters are injected automatically - you don't pass them when calling the tool.
+Agno automatically provides special parameters to your tools that give access to the agent's parameters, state and other variables. These parameters are injected automatically - the agent doesn't need to know about them.
 
 ### Using the Run Context
 
-You can access values from the current run via the `run_context` parameter: `run_context.session_state`, `run_context.dependencies`, `run_context.knowledge_filters`, `run_context.metadata`. See the [RunContext schema](/reference/run/run_context) for more information.
+You can access values from the current run via the `run_context` parameter: `run_context.session_state`, `run_context.dependencies`, `run_context.knowledge_filters`, `run_context.metadata`. See the [RunContext schema](/reference/run/run-context) for more information.
 
 This allows tools to access and modify persistent data across conversations.
 
@@ -119,7 +312,7 @@ agent.print_response("Add milk, eggs, and bread to the shopping list", stream=Tr
 print(f"Final session state: {agent.get_session_state()}")
 ```
 
-See more in [Agent State](/concepts/agents/state).
+See more in [Agent State](/concepts/state/agent).
 
 ### Media Parameters
 
@@ -199,9 +392,21 @@ def generate_image(prompt: str) -> ToolResult:
 
 This would **make generated media available** to the LLM model.
 
-## Guides
+## Learn more
 
-<CardGroup cols={2}>
+<CardGroup cols={3}>
+  <Card href="/concepts/tools/agent"
+  icon="robot"
+  iconType="duotone"
+  >
+    Learn how to use tools with agents
+  </Card>
+  <Card href="/concepts/tools/team"
+  icon="users"
+  iconType="duotone"
+  >
+    Learn how to use tools with teams
+  </Card>
   <Card
     title="Available Toolkits"
     icon="box-open"
@@ -226,7 +431,7 @@ This would **make generated media available** to the LLM model.
   <Card
     title="Creating your own tools"
     icon="code"
-    href="/concepts/tools/custom-tools"
+    href="/concepts/tools/creating-tools/overview"
   >
     Learn how to create your own tools
   </Card>

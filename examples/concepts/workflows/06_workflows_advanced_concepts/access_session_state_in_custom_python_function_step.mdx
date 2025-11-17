@@ -1,6 +1,6 @@
 ---
-title: Access Session State in Custom Python Function Step
-description: This example demonstrates how to access session state in a custom python function step
+title: Access Run Context and Session State in Custom Python Function Step
+description: This example demonstrates how to access the run context in a custom python function step
 ---
 
 ```python access_session_state_in_custom_python_function_step.py
@@ -12,6 +12,7 @@ from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.tools.hackernews import HackerNewsTools
 from agno.workflow.step import Step, StepInput, StepOutput
 from agno.workflow.workflow import Workflow
+from agno.run import RunContext
 
 # Define agents
 hackernews_agent = Agent(
@@ -47,7 +48,7 @@ content_planner = Agent(
 
 
 def custom_content_planning_function(
-    step_input: StepInput, session_state: dict
+    step_input: StepInput, run_context: RunContext
 ) -> StepOutput:
     """
     Custom function that does intelligent content planning with context awareness
@@ -57,15 +58,15 @@ def custom_content_planning_function(
     previous_step_content = step_input.previous_step_content
 
     # Initialize content history if not present
-    if "content_plans" not in session_state:
-        session_state["content_plans"] = []
+    if "content_plans" not in run_context.session_state:
+        run_context.session_state["content_plans"] = []
 
-    if "plan_counter" not in session_state:
-        session_state["plan_counter"] = 0
+    if "plan_counter" not in run_context.session_state:
+        run_context.session_state["plan_counter"] = 0
 
     # Increment plan counter
-    session_state["plan_counter"] += 1
-    current_plan_id = session_state["plan_counter"]
+    run_context.session_state["plan_counter"] += 1
+    current_plan_id = run_context.session_state["plan_counter"]
 
     # Create intelligent planning prompt
     planning_prompt = f"""
@@ -76,7 +77,7 @@ def custom_content_planning_function(
 
         Research Results: {previous_step_content[:500] if previous_step_content else "No research results"}
 
-        Previous Plans Count: {len(session_state["content_plans"])}
+        Previous Plans Count: {len(run_context.session_state["content_plans"])}
 
         Planning Requirements:
         1. Create a comprehensive content strategy based on the research
@@ -99,7 +100,7 @@ def custom_content_planning_function(
             "timestamp": f"Plan #{current_plan_id}",
             "has_research": bool(previous_step_content),
         }
-        session_state["content_plans"].append(plan_data)
+        run_context.session_state["content_plans"].append(plan_data)
 
         enhanced_content = f"""
             ## Strategic Content Plan #{current_plan_id}
@@ -107,7 +108,7 @@ def custom_content_planning_function(
             **Planning Topic:** {message}
 
             **Research Integration:** {"✓ Research-based" if previous_step_content else "✗ No research foundation"}
-            **Total Plans Created:** {len(session_state["content_plans"])}
+            **Total Plans Created:** {len(run_context.session_state["content_plans"])}
 
             **Content Strategy:**
             {response.content}
@@ -116,8 +117,8 @@ def custom_content_planning_function(
             - Research Integration: {"High" if previous_step_content else "Baseline"}
             - Strategic Alignment: Optimized for multi-channel distribution
             - Execution Ready: Detailed action items included
-            - Session History: {len(session_state["content_plans"])} plans stored
-            
+            - Session History: {len(run_context.session_state["content_plans"])} plans stored
+
             **Plan ID:** #{current_plan_id}
         """.strip()
 
@@ -130,38 +131,38 @@ def custom_content_planning_function(
         )
 
 
-def content_summary_function(step_input: StepInput, session_state: dict) -> StepOutput:
+def content_summary_function(step_input: StepInput, run_context: RunContext) -> StepOutput:
     """
     Custom function that summarizes all content plans created in the session
     """
-    if "content_plans" not in session_state or not session_state["content_plans"]:
+    if run_context.session_state is None or run_context.session_state.get("content_plans") is None:
         return StepOutput(
             content="No content plans found in session state.", success=False
         )
 
-    plans = session_state["content_plans"]
+    plans = run_context.session_state["content_plans"]
     summary = f"""
         ## Content Planning Session Summary
-        
+
         **Total Plans Created:** {len(plans)}
         **Session Statistics:**
         - Plans with research: {len([p for p in plans if p["has_research"]])}
         - Plans without research: {len([p for p in plans if not p["has_research"]])}
-        
+
         **Plan Overview:**
     """
 
     for plan in plans:
         summary += f"""
-        
+
         ### Plan #{plan["id"]} - {plan["topic"]}
         - Research Available: {"✓" if plan["has_research"] else "✗"}
         - Status: Completed
         """
 
     # Update session state with summary info
-    session_state["session_summarized"] = True
-    session_state["total_plans_summarized"] = len(plans)
+    run_context.session_state["session_summarized"] = True
+    run_context.session_state["total_plans_summarized"] = len(plans)
 
     return StepOutput(content=summary.strip())
 

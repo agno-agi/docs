@@ -1,12 +1,36 @@
 ---
-title: "HackerNews Team"
+title: HackerNews Team
+mode: wide
 ---
 
-This example shows how to create a HackerNews team that can aggregate, curate, and discuss trending topics from HackerNews.
+Build a team that aggregates, curates, and analyzes trending HackerNews stories. This example combines multiple specialized agents to research topics, read articles, and generate comprehensive summaries with structured output.
+
+## What You'll Learn
+
+By building this team, you'll understand:
+- How to integrate multiple data sources (HackerNews API, web search, article readers)
+- How to define structured output schemas using Pydantic models
+- How to coordinate agents with specific instructions for complex workflows
+- How to combine real-time data with web research for comprehensive analysis
+
+## Use Cases
+
+Build news aggregation platforms, trend analysis systems, content curation tools, or automated newsletter generators.
+
+## How It Works
+
+The team coordinates three specialized agents to create detailed articles:
+
+1. **Discover**: HackerNews researcher finds trending stories from HackerNews
+2. **Read**: Article reader extracts full content from story URLs
+3. **Research**: Web searcher finds additional context and related information
+4. **Synthesize**: Team combines all findings into structured articles with summaries and references
+
+The team outputs structured data following a defined schema with title, summary, and reference links.
 
 ## Code
 
-```python cookbook/examples/teams/coordinate_mode/hackernews_team.py
+```python hackernews_team.py
 from typing import List
 
 from agno.agent import Agent
@@ -26,14 +50,14 @@ class Article(BaseModel):
 
 hn_researcher = Agent(
     name="HackerNews Researcher",
-    model=OpenAIChat("gpt-5-mini"),
+    model=OpenAIChat(id="gpt-4o"),
     role="Gets top stories from hackernews.",
     tools=[HackerNewsTools()],
 )
 
 web_searcher = Agent(
     name="Web Searcher",
-    model=OpenAIChat("gpt-5-mini"),
+    model=OpenAIChat(id="gpt-4o"),
     role="Searches the web for information on a topic",
     tools=[DuckDuckGoTools()],
     add_datetime_to_context=True,
@@ -45,10 +69,9 @@ article_reader = Agent(
     tools=[Newspaper4kTools()],
 )
 
-
 hn_team = Team(
     name="HackerNews Team",
-    model=OpenAIChat("gpt-5-mini"),
+    model=OpenAIChat(id="gpt-4o"),
     members=[hn_researcher, web_searcher, article_reader],
     instructions=[
         "First, search hackernews for what the user is asking about.",
@@ -65,30 +88,46 @@ hn_team = Team(
 hn_team.print_response("Write an article about the top 2 stories on hackernews")
 ```
 
+## What to Expect
+
+The team will research HackerNews stories, read the full articles, and search for additional context. Each agent contributes their specialized capability: finding stories, extracting article content, and web research.
+
+The output is a structured Article object with a title, comprehensive summary, and reference links. You'll see responses from all team members showing how they collaborate to gather and synthesize information.
 
 ## Usage
 
 <Steps>
+  <Snippet file="create-venv-step.mdx" />
 
-    <Snippet file="create-venv-step.mdx" />
+  <Step title="Set your API key">
+    ```bash
+    export OPENAI_API_KEY=xxx
+    ```
+  </Step>
 
-    <Step title="Install required libraries">
-        ```bash
-        pip install agno ddgs newspaper4k lxml_html_clean
-        ```
-    </Step>
+  <Step title="Install libraries">
+    ```bash
+    pip install -U agno openai ddgs newspaper4k lxml_html_clean
+    ```
+  </Step>
 
-    <Step title="Set environment variables">
-        ```bash
-        export OPENAI_API_KEY=****
-        ```
-    </Step>
+  <Step title="Run Team">
+    <CodeGroup>
+    ```bash Mac
+    python hackernews_team.py
+    ```
 
-    <Step title="Run the agent">
-        ```bash
-        python cookbook/examples/teams/hackernews_team.py
-        ```
-    </Step>
-
+    ```bash Windows
+    python hackernews_team.py
+    ```
+    </CodeGroup>
+  </Step>
 </Steps>
+
+## Next Steps
+
+- Modify the query to track specific topics or keywords on HackerNews
+- Adjust the `Article` schema to include additional fields like categories or sentiment
+- Change the number of stories analyzed in the prompt
+- Explore [Input & Output](/concepts/input_output/overview) for custom data schemas
 

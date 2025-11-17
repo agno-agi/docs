@@ -44,7 +44,7 @@ git push
    ```bash
    curl -o reference-api/openapi.json http://localhost:7777/openapi.json
    ```      
-   Using swagger-cli: 
+   Using swagger-cli to create openapi.yaml counterpart: 
    ```bash
    swagger-cli bundle reference-api/openapi.json --outfile reference-api/openapi.yaml --type yaml
    ```
