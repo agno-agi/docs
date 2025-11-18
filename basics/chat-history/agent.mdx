@@ -7,13 +7,9 @@ keywords: [chat history, history, agent history, multi-turn conversations]
 
 Agents with storage enabled automatically have access to the run history of the session (also called the "conversation history" or "chat history").
 
-<Note>
-For all forms of session history, you need to have a database assigned to the agent. See [Storage](/basics/storage/overview) for more details.
-</Note>
-
 We can give the Agent access to the chat history in the following ways:
 
-- **Agent-Level History**:
+**Agent-Level History**:
   - You can set `add_history_to_context=True` and `num_history_runs=5` to add the inputs and responses from the last 5 runs automatically to every request sent to the agent.
   - You can be more granular about how many messages to add to include in the list sent to the model, by setting `num_history_messages`.
   - You can set `read_chat_history=True` to provide a `get_chat_history()` tool to your agent allowing it to read any message in the entire chat history.
@@ -79,21 +75,7 @@ You can change the number of runs by setting `num_history_runs=n` where `n` is t
 
 You can either set `add_history_to_context=True` on the `Agent` or on the `run()` method directly.
 
-Take a look at this example:
-
-```python
-from agno.agent import Agent
-from agno.models.openai import OpenAIChat
-from agno.db.sqlite import SqliteDb
-
-agent = Agent(model=OpenAIChat(id="gpt-5-mini"), db=SqliteDb(db_file="tmp/agent.db"), add_history_to_context=True)
-
-agent.print_response("Hi, I'm John. Nice to meet you?")
-
-agent.print_response("What is my name?")
-```
-
-Learn more in the [Context Engineering](/basics/context/overview) documentation.
+See the [Persistent Session with History](/examples/basics/agent/session/persistent-session-history) example for a complete implementation.
 
 
 ## Read the chat history
@@ -101,23 +83,7 @@ Learn more in the [Context Engineering](/basics/context/overview) documentation.
 To read the chat history, you can set `read_chat_history=True`.
 This will provide a `get_chat_history()` tool to your agent allowing it to read any message in the entire chat history.
 
-
-```python
-from agno.agent import Agent
-from agno.models.google.gemini import Gemini
-from agno.db.sqlite import SqliteDb
-
-agent = Agent(
-    model=Gemini(id="gemini-2.0-flash-001"),
-    db=SqliteDb(db_file="tmp/agent.db"),
-    read_chat_history=True,
-    description="You are a helpful assistant that always responds in a polite, upbeat and positive manner.",
-)
-
-# Send lots of messages...
-
-agent.print_response("What was my first message?", stream=True)
-```
+See the [Chat History Management](/examples/basics/agent/session/chat-history) example for a complete implementation.
 
 ## Search the session history
 
@@ -126,49 +92,29 @@ In some scenarios, you might want to fetch messages from across multiple session
 To enable fetching messages from the last N sessions, you need to use the following flags:
 
 - `search_session_history`: Set this to `True` to allow searching through previous sessions.
-- `num_history_sessions`: Specify the number of past sessions to include in the search. In the example below, it is set to `2` to include only the last 2 sessions.
+- `num_history_sessions`: Specify the number of past sessions to include in the search.
 
-It's advisable to keep this number low (2 or 3), as a larger number might fill up the context length of the model, potentially leading to performance issues.
-
-Here's an example of searching through the last 2 sessions:
-
-```python
-# Remove the tmp db file before running the script
-import os
-
-from agno.agent import Agent
-from agno.models.openai import OpenAIChat
-from agno.db.sqlite import SqliteDb
-
-os.remove("tmp/data.db")
-
-db = SqliteDb(db_file="tmp/data.db")
-
-agent = Agent(
-    model=OpenAIChat(id="gpt-5-mini"),
-    user_id="user_1",
-    db=db,
-    search_session_history=True,  # allow searching previous sessions
-    num_history_sessions=2,  # only include the last 2 sessions in the search to avoid context length issues
-)
-
-session_1_id = "session_1_id"
-session_2_id = "session_2_id"
-session_3_id = "session_3_id"
-session_4_id = "session_4_id"
-session_5_id = "session_5_id"
-
-agent.print_response("What is the capital of South Africa?", session_id=session_1_id)
-agent.print_response("What is the capital of China?", session_id=session_2_id)
-agent.print_response("What is the capital of France?", session_id=session_3_id)
-agent.print_response("What is the capital of Japan?", session_id=session_4_id)
-agent.print_response(
-    "What did I discuss in my previous conversations?", session_id=session_5_id
-)  # It should only include the last 2 sessions
-```
+<Tip>
+Keep `num_history_sessions` low (2 or 3) to avoid filling up the context length of the model, which can lead to performance issues.
+</Tip>
 
 ## Developer Resources
 
-- View the [Agent schema](/reference/agents/agent)
-- View the [Session schema](/reference/agents/session)
-- View [Cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/agents/session/)
+<CardGroup cols={2}>
+  <Card
+    title="Chat History Example"
+    icon="message"
+    iconType="duotone"
+    href="/examples/basics/agent/session/chat-history"
+  >
+    Learn how to manage and retrieve chat history in agent conversations.
+  </Card>
+  <Card
+    title="Persistent Session with History"
+    icon="database"
+    iconType="duotone"
+    href="/examples/basics/agent/session/persistent-session-history"
+  >
+    Control how much conversation history is included using num_history_runs.
+  </Card>
+</CardGroup>
