@@ -1,0 +1,195 @@
+---
+title: AgentUI
+sidebarTitle: AgentUI
+description: An Open Source AgentUI for your AgentOS
+keywords: [agent ui, agentui, agent interface, self-hosted ui, agno ui]
+---
+
+<Frame>
+  <img
+    height="200"
+    src="/images/agent-ui.png"
+    style={{ borderRadius: '8px' }}
+  />
+</Frame>
+
+Agno provides a beautiful UI for interacting with your agents, completely open source, free to use and build on top of. It's a simple interface that allows you to chat with your agents, view their memory, knowledge, and more.
+
+<Note>
+The AgentOS only uses data in your database. No data is sent to Agno.
+</Note>
+
+Built with Next.js and TypeScript, the Open Source Agent UI was developed in response to community requests for a self-hosted alternative following the success of [AgentOS](https://github.com/agent-os/introduction).
+
+## Get Started with Agent UI
+
+To clone the Agent UI, run the following command in your terminal:
+
+```bash
+npx create-agent-ui@latest
+```
+
+Enter `y` to create a new project, install dependencies, then run the agent-ui using:
+
+```bash
+cd agent-ui && npm run dev
+```
+
+Open http://localhost:3000 to view the Agent UI, but remember to connect to your local agents.
+
+<Frame>
+  <img
+    height="200"
+    src="/images/agent-ui-homepage.png"
+    style={{ borderRadius: '8px' }}
+  />
+</Frame>
+
+<br />
+
+<Accordion title="Clone the repository manually" icon="github">
+
+You can also clone the repository manually
+
+```bash
+git clone https://github.com/agno-agi/agent-ui.git
+```
+
+And run the agent-ui using
+
+```bash
+cd agent-ui && pnpm install && pnpm dev
+```
+
+</Accordion>
+
+## Connect your AgentOS
+
+The Agent UI needs to connect to a AgentOS server, which you can run locally or on any cloud provider.
+
+Let's start with a local AgentOS server. Create a file `agentos.py`
+
+```python agentos.py
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.os import AgentOS
+from agno.db.sqlite import SqliteDb
+from agno.tools.duckduckgo import DuckDuckGoTools
+from agno.tools.yfinance import YFinanceTools
+
+agent_storage: str = "tmp/agents.db"
+
+web_agent = Agent(
+    name="Web Agent",
+    model=OpenAIChat(id="gpt-5-mini"),
+    tools=[DuckDuckGoTools()],
+    instructions=["Always include sources"],
+    # Store the agent sessions in a sqlite database
+    db=SqliteDb(db_file=agent_storage),
+    # Adds the current date and time to the context
+    add_datetime_to_context=True,
+    # Adds the history of the conversation to the messages
+    add_history_to_context=True,
+    # Number of history responses to add to the messages
+    num_history_runs=5,
+    # Adds markdown formatting to the messages
+    markdown=True,
+)
+
+finance_agent = Agent(
+    name="Finance Agent",
+    model=OpenAIChat(id="gpt-5-mini"),
+    tools=[YFinanceTools()],
+    instructions=["Always use tables to display data"],
+    db=SqliteDb(db_file=agent_storage),
+    add_datetime_to_context=True,
+    add_history_to_context=True,
+    num_history_runs=5,
+    markdown=True,
+)
+
+agent_os = AgentOS(agents=[web_agent, finance_agent])
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve("agentos:app", reload=True)
+```
+
+In another terminal, run the AgentOS server:
+
+<Steps>
+  <Step title="Setup your virtual environment">
+
+    <CodeGroup>
+    ```bash Mac
+    python3 -m venv .venv
+    source .venv/bin/activate
+    ```
+
+    ```bash Windows
+    python3 -m venv aienv
+    aienv/scripts/activate
+    ```
+    </CodeGroup>
+
+  </Step>
+  <Step title="Install dependencies">
+
+    <CodeGroup>
+    ```bash Mac
+    pip install -U openai ddgs yfinance sqlalchemy 'fastapi[standard]' agno
+    ```
+
+    ```bash Windows
+    pip install -U openai ddgs yfinance sqlalchemy 'fastapi[standard]' agno
+    ```
+    </CodeGroup>
+
+  </Step>
+  <Step title="Export your OpenAI key">
+
+    <CodeGroup>
+    ```bash Mac
+    export OPENAI_API_KEY=sk-***
+    ```
+
+    ```bash Windows
+    setx OPENAI_API_KEY sk-***
+    ```
+    </CodeGroup>
+
+  </Step>
+  <Step title="Run the AgentOS">
+
+    ```shell
+    python agentos.py
+    ```
+
+  </Step>
+</Steps>
+
+<Tip>Make sure the module path in `agent_os.serve()` matches your filename (e.g., `"agentos:app"` for `agentos.py`).</Tip>
+
+## View the AgentUI
+
+- Open http://localhost:3000 to view the Agent UI
+- Enter the `localhost:7777` endpoint on the left sidebar and start chatting with your agents and teams!
+
+<video
+  autoPlay
+  muted
+  controls
+  className="w-full aspect-video"
+  src="/videos/agent-ui-demo.mp4"
+></video>
+
+## Learn more
+
+<CardGroup cols={2}>
+  <Card title="AgentOS Introduction" icon="server" href="/agent-os/introduction">
+    Learn about AgentOS
+  </Card>
+  <Card title="Building Agents" icon="robot" href="/basics/agents/building-agents">
+    Build your own agents
+  </Card>
+</CardGroup>

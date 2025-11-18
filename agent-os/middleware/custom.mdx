@@ -1,46 +1,26 @@
 ---
 title: Custom Middleware
-description: Create and add your own middleware to AgentOS applications
+sidebarTitle: Custom
+description: Create custom middleware for rate limiting, logging, security, and monitoring in AgentOS
+keywords: [custom middleware, fastapi middleware, starlette middleware, rate limiting, request logging, security headers, middleware patterns, basehttpmiddleware, request monitoring, response headers, error handling, request id, cors middleware]
 ---
 
-AgentOS supports any FastAPI/Starlette middleware. You can create custom middleware for logging, rate limiting, monitoring, security, and more.
+Each middleware wraps your application to intercept requests and responses, enabling you to implement cross-cutting concerns like authentication, logging, and rate limiting. 
+
+AgentOS supports any [FastAPI/Starlette middleware](https://fastapi.tiangolo.com/tutorial/middleware/). You can create custom middleware for logging, rate limiting, monitoring, security, and more.
 
 ## Creating Custom Middleware
 
-Custom middleware in AgentOS follows the FastAPI/Starlette middleware pattern using `BaseHTTPMiddleware`:
 
-```python
-from starlette.middleware.base import BaseHTTPMiddleware
-from fastapi import Request, Response
+Middleware in AgentOS follows the FastAPI/Starlette pattern using `BaseHTTPMiddleware`. 
 
-class CustomMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, param1: str = "default"):
-        super().__init__(app)
-        self.param1 = param1
-
-    async def dispatch(self, request: Request, call_next) -> Response:
-        # Before request processing
-        start_time = time.time()
-        
-        # Process request
-        response = await call_next(request)
-        
-        # After request processing  
-        process_time = time.time() - start_time
-        response.headers["X-Process-Time"] = str(process_time)
-        
-        return response
-```
-
-## Common Use Cases
-
-These are some examples demonstrating how to add some common custom middlewares:
-
+See the following common middleware examples:
 <CodeGroup>
     ```python Rate Limiting
     """ Rate limiting middleware that limits requests per IP address """
     import time
     from collections import defaultdict, deque
+    from fastapi import Request
     from fastapi.responses import JSONResponse
     from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -75,7 +55,6 @@ These are some examples demonstrating how to add some common custom middlewares:
     import logging
     import time
     from fastapi import Request
-    from fastapi.responses import JSONResponse
     from starlette.middleware.base import BaseHTTPMiddleware
 
     class LoggingMiddleware(BaseHTTPMiddleware):
@@ -155,6 +134,41 @@ These are some examples demonstrating how to add some common custom middlewares:
     ```
 </CodeGroup>
 
+
+## Error Handling
+
+Handle exceptions in middleware:
+
+```python
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+class ErrorHandlingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        try:
+            response = await call_next(request)
+            return response
+        except Exception as e:
+            # Log the error
+            logger.error(f"Request failed: {e}")
+            
+            # Return error response as JSONResponse
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "Internal server error"}
+            )
+```
+
+<Note>
+Error responses must be returned as `JSONResponse` objects to ensure proper serialization and HTTP status codes.
+</Note>
+
+
 ## Adding Middleware to AgentOS
 
 <Steps>
@@ -201,46 +215,30 @@ These are some examples demonstrating how to add some common custom middlewares:
         agent_os.serve(app="custom_middleware:app", reload=True)
     ```
   </Step>
-    
 </Steps>
-
-See the following full examples:
-- [Custom Middleware](/examples/agent-os/middleware/custom-middleware)
-- [Custom FastAPI + JWT](/examples/agent-os/middleware/custom-fastapi-jwt)
-
-
-## Error Handling
-
-Handle exceptions in middleware:
-
-```python
-from fastapi import Request
-from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
-
-import logging
-
-logger = logging.getLogger(__name__)
-
-class ErrorHandlingMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        try:
-            response = await call_next(request)
-            return response
-        except Exception as e:
-            # Log the error
-            logger.error(f"Request failed: {e}")
-            
-            # Return error response as JSONResponse
-            return JSONResponse(
-                status_code=500,
-                content={"detail": "Internal server error"}
-            )
-```
-
-It is important to note that the error response should be a `JSONResponse`.
 
 ## Developer Resources
 
-- [Custom Middleware Example](/examples/agent-os/middleware/custom-middleware)
-- [FastAPI Middleware Documentation](https://fastapi.tiangolo.com/tutorial/middleware/)
+<CardGroup cols={3}>
+  <Card
+    title="Custom Middleware"
+    icon="gear"
+    href="/examples/agent-os/middleware/custom-middleware"
+  >
+    Rate limiting and request logging middleware implementation.
+  </Card>
+  <Card
+    title="Custom FastAPI + JWT"
+    icon="code"
+    href="/examples/agent-os/middleware/custom-fastapi-jwt"
+  >
+    Custom FastAPI app with JWT middleware and AgentOS integration.
+  </Card>
+  <Card
+    title="FastAPI Middleware"
+    icon="book"
+    href="https://fastapi.tiangolo.com/tutorial/middleware/"
+  >
+    Official FastAPI middleware documentation and examples.
+  </Card>
+</CardGroup>

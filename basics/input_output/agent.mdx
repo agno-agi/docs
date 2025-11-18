@@ -1,0 +1,337 @@
+---
+title: Input & Output with Agents
+sidebarTitle: Overview
+description: Learn how to use structured input and output with Agents for reliable, production-ready systems.
+---
+
+Agno Agents supports various forms of input and output, from simple string-based interactions to structured data validation using Pydantic models.
+
+The most standard pattern is to use `str` input and `str` output:
+
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-5-mini"),
+    description="You write movie scripts.",
+)
+
+response = agent.run("Write movie script about a girl living in New York")
+print(response.content)
+```
+
+<Note>
+For more advanced patterns, see:
+- [Images / Audio / Video / Files as Input](/examples/basics/multimodal)
+- [List as Input](/examples/basics/agent/input_and_output/input_as_list)
+</Note>
+
+
+## Structured Output
+
+One of our favorite features is using Agents to generate structured data (i.e. a pydantic model). This is generally called "Structured Output". Use this feature to extract features, classify data, produce fake data etc. The best part is that they work with function calls, knowledge bases and all other features.
+
+Structured output makes agents reliable for production systems that need consistent, predictable response formats instead of unstructured text.
+
+Let's create a Movie Agent to write a `MovieScript` for us.
+
+```python movie_agent.py
+from typing import List
+from rich.pretty import pprint
+from pydantic import BaseModel, Field
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+
+class MovieScript(BaseModel):
+    setting: str = Field(..., description="Provide a nice setting for a blockbuster movie.")
+    ending: str = Field(..., description="Ending of the movie. If not available, provide a happy ending.")
+    genre: str = Field(
+        ..., description="Genre of the movie. If not available, select action, thriller or romantic comedy."
+    )
+    name: str = Field(..., description="Give a name to this movie")
+    characters: List[str] = Field(..., description="Name of characters for this movie.")
+    storyline: str = Field(..., description="3 sentence storyline for the movie. Make it exciting!")
+
+# Agent that uses structured outputs
+structured_output_agent = Agent(
+    model=OpenAIChat(id="gpt-5-mini"),
+    description="You write movie scripts.",
+    output_schema=MovieScript,
+)
+
+structured_output_agent.print_response("New York")
+```
+
+The output is an object of the `MovieScript` class, here's how it looks:
+
+```python
+MovieScript(
+│   setting='In the bustling streets and iconic skyline of New York City.',
+│   ending='Isabella and Alex, having narrowly escaped the clutches of the Syndicate, find themselves standing at the top of the Empire State Building. As the glow of the setting sun bathes the city, they share a victorious kiss. Newly emboldened and as an unstoppable duo, they vow to keep NYC safe from any future threats.',
+│   genre='Action Thriller',
+│   name='The NYC Chronicles',
+│   characters=['Isabella Grant', 'Alex Chen', 'Marcus Kane', 'Detective Ellie Monroe', 'Victor Sinclair'],
+│   storyline='Isabella Grant, a fearless investigative journalist, uncovers a massive conspiracy involving a powerful syndicate plotting to control New York City. Teaming up with renegade cop Alex Chen, they must race against time to expose the culprits before the city descends into chaos. Dodging danger at every turn, they fight to protect the city they love from imminent destruction.'
+)
+```
+
+<Tip>
+  Some LLMs are not able to generate structured output. Agno has an option to tell the model to respond as JSON. Although this is typically not as accurate as structured output, it can be useful in some cases.
+
+  If you want to use JSON mode, you can set `use_json_mode=True` on the Agent.
+
+  ```python
+  agent = Agent(
+    model=OpenAIChat(id="gpt-5-mini"),
+    description="You write movie scripts.",
+    output_schema=MovieScript,
+    use_json_mode=True,
+  )
+  ```
+</Tip>
+
+### Streaming Structured Output
+
+Streaming can be used in combination with `output_schema`. This returns the structured output as a single `RunContent` event in the stream of events.
+
+```python streaming_agent.py
+import asyncio
+from typing import Dict, List
+
+from agno.agent import Agent
+from agno.models.openai.chat import OpenAIChat
+from pydantic import BaseModel, Field
+
+
+class MovieScript(BaseModel):
+    setting: str = Field(
+        ..., description="Provide a nice setting for a blockbuster movie."
+    )
+    ending: str = Field(
+        ...,
+        description="Ending of the movie. If not available, provide a happy ending.",
+    )
+    genre: str = Field(
+        ...,
+        description="Genre of the movie. If not available, select action, thriller or romantic comedy.",
+    )
+    name: str = Field(..., description="Give a name to this movie")
+    characters: List[str] = Field(..., description="Name of characters for this movie.")
+    storyline: str = Field(
+        ..., description="3 sentence storyline for the movie. Make it exciting!"
+    )
+    rating: Dict[str, int] = Field(
+        ...,
+        description="Your own rating of the movie. 1-10. Return a dictionary with the keys 'story' and 'acting'.",
+    )
+
+
+# Agent that uses structured outputs with streaming
+structured_output_agent = Agent(
+    model=OpenAIChat(id="gpt-5-mini"),
+    description="You write movie scripts.",
+    output_schema=MovieScript,
+)
+
+structured_output_agent.print_response(
+    "New York", stream=True, stream_events=True
+)
+```
+
+## Structured Input
+
+An agent can be provided with structured input (i.e a pydantic model or a `TypedDict`) by passing it in the `Agent.run()` or `Agent.print_response()` as the `input` parameter.
+
+```python
+from typing import List
+
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.tools.hackernews import HackerNewsTools
+from pydantic import BaseModel, Field
+
+
+class ResearchTopic(BaseModel):
+    """Structured research topic with specific requirements"""
+
+    topic: str
+    focus_areas: List[str] = Field(description="Specific areas to focus on")
+    target_audience: str = Field(description="Who this research is for")
+    sources_required: int = Field(description="Number of sources needed", default=5)
+
+hackernews_agent = Agent(
+    name="Hackernews Agent",
+    model=OpenAIChat(id="gpt-5-mini"),
+    tools=[HackerNewsTools()],
+    role="Extract key insights and content from Hackernews posts",
+)
+
+hackernews_agent.print_response(
+    input=ResearchTopic(
+        topic="AI",
+        focus_areas=["AI", "Machine Learning"],
+        target_audience="Developers",
+        sources_required=5,
+    )
+)
+```
+
+### Validating the input
+
+You can set `input_schema` on the Agent to validate the input. If you then pass the input as a dictionary, it will be automatically validated against the schema.
+
+```python validating_input_agent.py
+from typing import List
+
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.tools.hackernews import HackerNewsTools
+from pydantic import BaseModel, Field
+
+
+class ResearchTopic(BaseModel):
+    """Structured research topic with specific requirements"""
+
+    topic: str
+    focus_areas: List[str] = Field(description="Specific areas to focus on")
+    target_audience: str = Field(description="Who this research is for")
+    sources_required: int = Field(description="Number of sources needed", default=5)
+
+
+# Define agents
+hackernews_agent = Agent(
+    name="Hackernews Agent",
+    model=OpenAIChat(id="gpt-5-mini"),
+    tools=[HackerNewsTools()],
+    role="Extract key insights and content from Hackernews posts",
+    input_schema=ResearchTopic,
+)
+
+# Pass a dict that matches the input schema
+hackernews_agent.print_response(
+    input={
+        "topic": "AI",
+        "focus_areas": ["AI", "Machine Learning"],
+        "target_audience": "Developers",
+        "sources_required": "5",
+    }
+)
+```
+
+## Typesafe Agents
+
+When you combine both `input_schema` and `output_schema`, you create a **typesafe agent** with end-to-end type safety - a fully validated data pipeline from input to output.
+
+### Example:Complete Typesafe Research Agent
+
+Here's a comprehensive example showing a fully typesafe agent for research tasks:
+
+```python typesafe_research_agent.py
+from typing import List
+
+from agno.agent import Agent
+from agno.models.anthropic import Claude
+from agno.tools.hackernews import HackerNewsTools
+from pydantic import BaseModel, Field
+from rich.pretty import pprint
+
+
+# Define your input schema
+class ResearchTopic(BaseModel):
+    topic: str
+    sources_required: int = Field(description="Number of sources", default=5)
+
+
+# Define your output schema
+class ResearchOutput(BaseModel):
+    summary: str = Field(..., description="Executive summary of the research")
+    insights: List[str] = Field(..., description="Key insights from posts")
+    top_stories: List[str] = Field(
+        ..., description="Most relevant and popular stories found"
+    )
+    technologies: List[str] = Field(
+        ..., description="Technologies mentioned"
+    )
+    sources: List[str] = Field(..., description="Links to the most relevant posts")
+
+
+# Define your agent
+hn_researcher_agent = Agent(
+    # Model to use
+    model=Claude(id="claude-sonnet-4-0"),
+    # Tools to use
+    tools=[HackerNewsTools()],
+    instructions="Research hackernews posts for a given topic",
+    # Add your input schema
+    input_schema=ResearchTopic,
+    # Add your output schema
+    output_schema=ResearchOutput,
+)
+
+# Run the Agent
+response = hn_researcher_agent.run(
+    input=ResearchTopic(topic="AI", sources_required=5)
+)
+
+# Print the response
+pprint(response.content)
+```
+
+The output is a structured `ResearchOutput` object:
+
+```python
+ResearchOutput(
+    summary='AI development is accelerating with new breakthroughs in...',
+    insights=['LLMs are becoming more efficient', 'Open source models gaining traction'],
+    top_stories=['GPT-5 rumors surface', 'New Claude model released'],
+    technologies=['GPT-4', 'Claude', 'Transformers'],
+    sources=['https://news.ycombinator.com/item?id=123', '...']
+)
+```
+
+## Using a Parser Model
+
+You can use a different model to parse and structure the output from your primary model.
+This approach is particularly effective when the primary model is optimized for reasoning tasks, as such models may not consistently produce detailed structured responses.
+
+```python
+agent = Agent(
+    model=Claude(id="claude-sonnet-4-20250514"),  # The main processing model
+    description="You write movie scripts.",
+    output_schema=MovieScript,
+    parser_model=OpenAIChat(id="gpt-5-mini"),  # Only used to parse the output
+)
+```
+
+<Tip>
+  Using a parser model can improve output reliability and reduce costs since you can use a smaller, faster model for formatting while keeping a powerful model for the actual response.
+</Tip>
+
+You can also provide a custom `parser_model_prompt` to your Parser Model to customize the model's instructions.
+
+## Using an Output Model
+
+You can use a different model to produce the run output of the agent.
+This is useful when the primary model is optimized for image analysis, for example, but you want a different model to produce a structured output response.
+
+```python
+agent = Agent(
+    model=Claude(id="claude-sonnet-4-20250514"),  # The main processing model
+    description="You write movie scripts.",
+    output_schema=MovieScript,
+    output_model=OpenAIChat(id="gpt-5-mini"),  # Only used to parse the output
+)
+```
+
+You can also provide a custom `output_model_prompt` to your Output Model to customize the model's instructions.
+
+<Tip>
+  Gemini models often reject requests to use tools and produce structured output
+  at the same time. Using an Output Model is an effective workaround for this.
+</Tip>
+
+## Developer Resources
+
+- View the [Agent schema](/reference/agents/agent)
+- View [Cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/agents/input_and_output/)
