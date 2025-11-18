@@ -6,59 +6,114 @@ description: "How to take your AgentOS to production"
 
 ## Overview
 
-You can build, test, and improve your AgentOS locally, but to run it in production you’ll need to deploy it to your own infrastructure. Because it’s pure Python code, you’re free to deploy AgentOS anywhere. To make things easier, we’ve also put together a set of ready to use templates - standardized codebases you can use to quickly deploy AgentOS to your own infrastructure.
+Once you have built and configured your AgentOS locally, the next step is taking it to production. AgentOS exposes a FastAPI application under the hood, which means you are free to deploy it to any infrastructure you prefer such as Docker platforms, container services, serverless containers, Kubernetes, or a simple virtual machine.
 
-Currently supported templates:
+The most reliable and portable way to deploy a FastAPI application is with Docker. To make this easy, we provide ready-to-use templates for popular platforms including AWS ECS, Google Cloud Run, and Railway. If you prefer complete control, you can also turn your AgentOS into a minimal production repository with just a few files.
 
-Docker: [agent-infra-docker](https://github.com/agno-agi/agent-infra-docker)
+This guide walks you through the entire process: starting from a plain Python codebase, converting it into a production-ready FastAPI service, containerizing it with Docker, and deploying it to the platform of your choice.
 
-AWS: [agent-infra-aws](https://github.com/agno-agi/agent-infra-aws)
+## What you get out of the box
 
-Coming soon:
+When you create an AgentOS locally, you automatically get a FastAPI application that exposes:
 
-- Modal
-- Railway
-- Render
-- GCP
+- an endpoint for running agents, teams and workflows
+- endpoints for managing sessions, memories, knowledge and evals
+- automatic OpenAPI and Swagger documentation
+- CORS configuration
+- request and error logging
+- support for streaming responses
+- support for multimodal inputs such as JSON or file uploads
 
-## What is A Template?
+## Preparing your Python project for deployment
 
-A template is a standardized codebase for a production AgentOS. It contains:
+A minimal AgentOS project usually looks like this:
 
-- An AgentOS instance using FastAPI.
-- A Database for storing Sessions, Memories, Knowledge and Evals.
+```my-agentos
+├── agents/
+├── scripts/
+├── entrypoint.sh
+├── pyproject.toml
+├── requirements.txt
+├── Dockerfile
+└── app/main.py # Houses your AgentOS app
+```
 
-They are setup to run locally using docker and on cloud providers. They're a fantastic starting point and exactly what we use for our customers. You'll definitely need to customize them to fit your specific needs, but they'll get you started much faster.
+Your agents, teams and workflows are automatically mounted and ready to serve.
 
-## Here's How They Work
+## Adding a production ready Dockerfile
 
-**Step 1**: Create your codebase using: `ag infra create` and choose a template.
+Here is a minimal Dockerfile for deploying AgentOS:
 
-This will clone one of our templates and give you a starting point.
+```docker
+FROM agnohq/python:3.12
 
-**Step 2**: `cd` into your codebase and run locally using docker: `ag infra up`
+ENV PYTHONUNBUFFERED=1
+PYTHONDONTWRITEBYTECODE=1
+PIP_NO_CACHE_DIR=1
+PIP_DISABLE_PIP_VERSION_CHECK=1
+UV_CACHE_DIR=/tmp/uv-cache
+UV_HTTP_TIMEOUT=120
 
-This will start your AgentOS instance and PostgreSQL database locally using docker.
+WORKDIR /app
 
-**Step 3 (For AWS template)**: Run on AWS: `ag infra up prd:aws`
+COPY requirements.txt pyproject.toml ./
 
-This will start your AgentOS instance and PostgreSQL database on AWS.
+RUN uv pip sync requirements.txt --system
+ && uv cache clean
 
-We recommend starting with the `agent-infra-docker` template and taking it from there.
+COPY . .
 
-<CardGroup cols={3}>
-  <Card
-    title="Agent Infra Docker "
-    icon="server"
-    href="/templates/agent-infra-docker/introduction"
-  >
-    An AgentOS template with Docker compose file.
-  </Card>
-  <Card
-    title="Agent Infra AWS"
-    icon="server"
-    href="/templates/agent-infra-aws/introduction"
-  >
-    An AgentOS template with AWS infrastructure.
-  </Card>
-</CardGroup>
+EXPOSE 8000
+
+ENTRYPOINT ["/app/scripts/entrypoint.sh"]
+CMD ["chill"]
+```
+
+This creates a clean, production-friendly container image.
+
+## Testing locally
+
+Build and run the container using the following commands from the root of your project:
+
+Prerequisites:
+
+- Docker installed
+- Python 3.12 installed
+- Agno installed
+
+```bash
+docker build -t my-agentos .
+```
+
+```bash
+docker run -p 8000:8000 my-agentos
+```
+
+Visit `http://localhost:8000/docs` to see your AgentOS documentation. Here you can see the endpoints for your AgentOS.
+
+## Deployment options
+
+You can deploy AgentOS anywhere that supports Docker containers. The most common choices are listed below.
+
+### AWS ECS
+
+Recommended for production deployments. Our templates provide:
+
+• multi architecture Docker builds  
+• an ECR registry  
+• a Fargate service for your container  
+• a load balancer with HTTPS enabled  
+• integration with RDS or any managed PostgreSQL service  
+• logs, health checks, and VPC networking
+
+### Railway
+
+A simple and fast deployment method. Railway builds your Dockerfile, provides environment variables, and gives you a public domain with HTTPS automatically.
+
+### Fly, Render, DigitalOcean
+
+Great for smaller or simpler deployments. These platforms accept a Dockerfile, build it, and provide hosting with minimal configuration.
+
+## Next steps
+
+Here, we went over how to start from scratch and build a production-ready AgentOS. But we encourage you to use one of our templates to get started faster. You can find more information about our templates [here](/deploy/templates).
