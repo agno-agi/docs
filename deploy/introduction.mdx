@@ -8,9 +8,9 @@ description: "How to take your AgentOS to production"
 
 Once you have built and configured your AgentOS locally, the next step is taking it to production. AgentOS exposes a FastAPI application under the hood, which means you are free to deploy it to any infrastructure you prefer such as Docker platforms, container services, serverless containers, Kubernetes, or a simple virtual machine.
 
-The most reliable and portable way to deploy a FastAPI application is with Docker. To make this easy, we provide ready-to-use templates for popular platforms including AWS ECS and Railway with more coming soon. If you prefer complete control, you can also turn your AgentOS into a minimal production repository with just a few files.
+The most reliable and convenient way to deploy a FastAPI application to production is with Docker. To make this easy, we provide ready-to-use templates for popular platforms including AWS ECS and Railway with more coming soon. If you prefer complete control, you can also turn your AgentOS into a minimal production repository with just a few files.
 
-This guide walks you through the entire process: starting from a plain Python codebase, converting it into a production-ready FastAPI service, containerizing it with Docker, and deploying it to the platform of your choice.
+Here, we'll walk you through the entire process: starting from a plain Python codebase, converting it into a production-ready FastAPI service, containerizing it with Docker, and deploying it to the platform of your choice.
 
 ## What you get out of the box
 
@@ -31,14 +31,13 @@ A minimal AgentOS project usually looks like this:
 ```my-agentos
 ├── agents/
 ├── scripts/
-├── entrypoint.sh
 ├── pyproject.toml
 ├── requirements.txt
 ├── Dockerfile
 └── app/main.py # Houses your AgentOS app
 ```
 
-Your agents, teams and workflows are automatically mounted and ready to serve.
+Your agents, teams and workflows are automatically mounted and ready to serve. As long as they are added to your AgentOS instance.
 
 ## Adding a production ready Dockerfile
 
@@ -47,26 +46,19 @@ Here is a minimal Dockerfile for deploying AgentOS:
 ```docker
 FROM agnohq/python:3.12
 
-ENV PYTHONUNBUFFERED=1
-PYTHONDONTWRITEBYTECODE=1
-PIP_NO_CACHE_DIR=1
-PIP_DISABLE_PIP_VERSION_CHECK=1
-UV_CACHE_DIR=/tmp/uv-cache
-UV_HTTP_TIMEOUT=120
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
 
 WORKDIR /app
 
 COPY requirements.txt pyproject.toml ./
-
 RUN uv pip sync requirements.txt --system
- && uv cache clean
 
 COPY . .
 
 EXPOSE 8000
 
-ENTRYPOINT ["/app/scripts/entrypoint.sh"]
-CMD ["chill"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
 This creates a clean, production-friendly container image.
