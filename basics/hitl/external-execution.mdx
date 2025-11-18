@@ -66,7 +66,7 @@ if run_response.is_paused:
             # Set the result on the tool execution object so that the agent can continue
             tool.result = result
 
-    run_response = agent.continue_run(run_response=run_response)
+    run_response = agent.continue_run(run_id=run_response.run_id, updated_tools=run_response.tools)
     pprint.pprint_run_response(run_response)
 ```
 
@@ -96,7 +96,7 @@ if run_response.is_paused:
         tool.result = result
     
     # Continue the run with the updated tools
-    response = agent.continue_run(run_response=run_response)
+    response = agent.continue_run(run_id=run_response.run_id, updated_tools=run_response.tools)
 ```
 
 <Note>
@@ -143,7 +143,7 @@ if run_response.is_paused:
             result = ShellTools().list_dir(**tool.tool_args)
             tool.result = result
     
-    run_response = agent.continue_run(run_response=run_response)
+    run_response = agent.continue_run(run_id=run_response.run_id, updated_tools=run_response.tools)
 ```
 
 This lets you mix external and internal tools in the same toolkit—perfect when you only need special handling for specific operations.
@@ -180,33 +180,8 @@ if response.is_paused:
             result = execute_safe_db_query(tool.tool_args["query"])
             tool.result = result
     
-    response = agent.continue_run(response)
+    response = agent.continue_run(run_id=response.run_id, updated_tools=response.tools)
 ```
-
-## Continuing with `run_id`
-
-Just like with other HITL patterns, you can continue the run later using the `run_id` and `updated_tools`:
-
-```python
-run_response = agent.run("List my files")
-
-if run_response.is_paused:
-    # Store these for later
-    run_id = run_response.run_id
-    tools = run_response.tools
-    
-    # ... do other work ...
-    
-    # Execute the tools later
-    for tool in tools:
-        if tool.external_execution_required:
-            tool.result = execute_tool_externally(tool)
-    
-    # Continue with the stored run_id
-    response = agent.continue_run(run_id=run_id, updated_tools=tools)
-```
-
-This is useful when you need to queue external execution tasks or when execution might take a long time.
 
 ## Async Support
 
@@ -235,7 +210,7 @@ async def main():
             result = await my_async_external_service(tool.tool_args)
             tool.result = result
         
-        response = await agent.acontinue_run(run_response=run_response)
+        response = await agent.acontinue_run(run_id=run_response.run_id, updated_tools=run_response.tools)
         print(response.content)
 
 asyncio.run(main())

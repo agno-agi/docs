@@ -25,7 +25,7 @@ This gives you complete control over which tools execute and when, making it per
 
 ## Basic Example
 
-The following example shows how to implement user confirmation:
+The following example shows how to implement user confirmation with a custom tool:
 
 ```python
 from agno.tools import tool
@@ -55,7 +55,7 @@ if run_response.is_paused:
         tool.confirmed = confirmed
 
     # Continue execution
-    response = agent.continue_run(run_response=run_response)
+    response = agent.continue_run(run_id=run_response.run_id, updated_tools=run_response.tools)
 ```
 
 ## Toolkit-Level Confirmation
@@ -66,7 +66,7 @@ You can also specify which specific tools in a toolkit require confirmation usin
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
 from agno.tools import tool
-from agno.tools.yfinance import YFinanceTools
+from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.utils import pprint
 from rich.console import Console
 from rich.prompt import Prompt
@@ -75,11 +75,11 @@ console = Console()
 
 agent = Agent(
     model=OpenAIChat(id="gpt-4o-mini"),
-    tools=[YFinanceTools(requires_confirmation_tools=["get_current_stock_price"])],
+    tools=[DuckDuckGoTools(requires_confirmation_tools=["duckduckgo_search"])],
     markdown=True,
 )
 
-run_response = agent.run("What is the current stock price of Apple?")
+run_response = agent.run("Search for the latest news on Apple?")
 if run_response.is_paused:
     for tool in run_response.tools_requiring_confirmation:  # type: ignore
         # Ask for confirmation
@@ -98,7 +98,7 @@ if run_response.is_paused:
             # Update the tools in place
             tool.confirmed = True
 
-    run_response = agent.continue_run(run_response=run_response)
+    run_response = agent.continue_run(run_id=run_response.run_id, updated_tools=run_response.tools)
     pprint.pprint_run_response(run_response)
 ```
 
@@ -118,7 +118,7 @@ if run_response.is_paused:
             tool.confirmed = False
             tool.confirmation_note = "This operation was rejected because it targets the wrong resource. Please use the alternative method."
 
-    response = agent.continue_run(run_response=run_response)
+    response = agent.continue_run(run_id=run_response.run_id, updated_tools=run_response.tools)
 ```
 
 ## Mixed Tool Scenarios
@@ -152,30 +152,7 @@ if run_response.is_paused:
         # Handle confirmation...
         tool.confirmed = True
     
-    response = agent.continue_run(run_response=run_response)
-```
-
-## Continuing with run_id
-
-If you need to continue a run from a different context (like a different process or after storing the state), you can use the `run_id` approach:
-
-```python
-run_response = agent.run("Perform sensitive operation")
-
-if run_response.is_paused:
-    # Mark tools as confirmed
-    for tool in run_response.tools_requiring_confirmation:
-        tool.confirmed = True
-    
-    # Store these for later
-    run_id = run_response.run_id
-    updated_tools = run_response.tools
-    
-    # Later, even in a different agent instance...
-    response = agent.continue_run(
-        run_id=run_id,
-        updated_tools=updated_tools
-    )
+    response = agent.continue_run(run_id=run_response.run_id, updated_tools=run_response.tools)
 ```
 
 ## Async Support
