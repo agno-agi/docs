@@ -1,18 +1,21 @@
 ---
 title: AgentOS Configuration
-description: Learn how to check and adjust your AgentOS configuration
+sidebarTitle: Configuration
+description: Customize your AgentOS instance with custom configuration
+keywords: [agentos configuration, agentOS config, yaml configuration, quick prompts, display names, configuration file, database config]
 ---
 
-For most cases, your AgentOS is configured with a default set of settings. However, you can configure your AgentOS to your liking.
+AgentOS configuration allows you to customize your instance for different environments and deployment scenarios. 
 
-## Configuring your AgentOS
+You can control which AI models are available globally and per-domain (for Evals), set custom display names for UI pages, define "quick prompts" for the chat interface, and configure per-database settings. This is particularly useful when managing multiple databases, deploying across different environments (development, staging, production), or building multi-tenant systems where each client needs distinct configurations.
 
-What can be configured?
+<Note>
+Configuring "Quick Prompts" can be particularly useful for improving the chat experience for users of your AgentOS.
 
-- **Display names**: You can specify the display name for your AgentOS pages (Sessions, Memory, etc). This is very useful when using multiple databases, to clearly communicate to users which data is being displayed.
-- **Quick prompts**: You can provide one to three quick prompts for each one of your agents, teams and workflows. These are the prompts that display on the Chat Page when you create a new session.
+It changes the available options when your user creates a new session on the Chat Page.
+</Note>
 
-### Setting your configuration
+## Setting your configuration
 
 You can provide your AgentOS configuration in two different ways: with a configuration YAML file, or using the `AgentOSConfig` class.
 
@@ -20,25 +23,59 @@ You can provide your AgentOS configuration in two different ways: with a configu
 See the full reference for the `AgentOSConfig` class [here](/reference/agent-os/configuration).
 </Tip>
 
-### Configuration YAML File
+## Configuration YAML File
 
 1. Create a YAML file with your configuration. For example:
 
 ```yaml
+# Configure quick prompts for the Chat interface (per agent)
 chat:
   quick_prompts:
     marketing-agent:
       - "What can you do?"
       - "How is our latest post working?"
       - "Tell me about our active marketing campaigns"
+
+# Configure Memory page with custom display names
 memory:
+  display_name: "User Memory Store"
   dbs:
     - db_id: db-0001
+      tables: ["custom_memory_table"]  # Optional: specify custom table names
       domain_config:
         display_name: Main app user memories
     - db_id: db-0002
       domain_config:
         display_name: Support flow user memories
+
+# Configure Knowledge page
+knowledge:
+  display_name: "Knowledge Base"
+  dbs:
+    - db_id: db-0001
+      domain_config:
+        display_name: Product documentation
+
+# Configure Session tracking
+session:
+  display_name: "User Sessions"
+  dbs:
+    - db_id: db-0001
+      domain_config:
+        display_name: Production sessions
+
+# Configure Evals page (supports both global and per-database available models)
+evals:
+  display_name: "Evaluations"
+  available_models:
+    - "openai:gpt-4"
+    - "anthropic:claude-sonnet-4"
+  dbs:
+    - db_id: db-0001
+      domain_config:
+        display_name: Production evals
+        available_models:
+          - "openai:gpt-4o-mini"
 ```
 
 2. Pass the configuration to your AgentOS using the `config` parameter:
@@ -47,12 +84,13 @@ memory:
 from agno.os import AgentOS
 
 agent_os = AgentOS(
-    ...
-    config=<path_to_your_config_file>
+    name="My AgentOS",
+    ...,
+    config="path/to/configuration.yaml"
 )
 ```
 
-### `AgentOSConfig` Class
+## `AgentOSConfig` Class
 
 You can also provide your configuration using the `AgentOSConfig` class:
 
@@ -62,12 +100,18 @@ from agno.os.config import (
     AgentOSConfig,
     ChatConfig,
     DatabaseConfig,
+    EvalsConfig,
+    EvalsDomainConfig,
+    KnowledgeConfig,
+    KnowledgeDomainConfig,
     MemoryConfig,
     MemoryDomainConfig,
+    SessionConfig,
+    SessionDomainConfig,
 )
 
 agent_os = AgentOS(
-    ...
+    ...,
     config=AgentOSConfig(
         chat=ChatConfig(
             quick_prompts={
@@ -79,6 +123,7 @@ agent_os = AgentOS(
             }
         ),
         memory=MemoryConfig(
+            display_name="User Memory Store",
             dbs=[
                 DatabaseConfig(
                     db_id=marketing_db.id,
@@ -100,9 +145,9 @@ agent_os = AgentOS(
 
 ## The /config endpoint
 
-You can use the `/config` endpoint to inspect your AgentOS configuration that is served to the AgentOS Control Plane.
+The `/config` endpoint returns your complete AgentOS configuration as JSON. You could use this to inspect your AgentOS configuration that is served to the AgentOS Control Plane.
 
-This is the information you will find there:
+The response includes:
 
 - **OS ID**: The ID of your AgentOS (automatically generated if not set)
 - **Description**: The description of your AgentOS
@@ -123,11 +168,16 @@ You will receive a JSON response with your configuration. Using the previous exa
 ```json
 {
 	"os_id": "0001",
+	"name": "My AgentOS",
 	"description": "Your AgentOS",
+	"available_models": [
+		"openai:gpt-4",
+	],
 	"databases": [
 		"db-0001",
 		"db-0002"
 	],
+	"agents": [],
 	"chat": {
 		"quick_prompts": {
 			"marketing-agent": [
@@ -153,7 +203,7 @@ You will receive a JSON response with your configuration. Using the previous exa
 			}
 		]
 	},
-    ...
+	...
 }
 ```
 

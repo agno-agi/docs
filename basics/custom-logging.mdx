@@ -1,0 +1,192 @@
+---
+title: Custom Logging
+sidebarTitle: Custom Logging
+description: Learn how to use custom logging in your Agno setup.
+keywords: [custom logging, logging, python logging, log configuration]
+---
+
+You can provide your own logging configuration to Agno, to be used instead of the default ones.
+
+This can be useful if you need your system to log in any specific format.
+
+## Specifying a custom logging configuration
+
+You can configure Agno to use your own logging configuration by using the `configure_agno_logging` function.
+
+```python
+import logging
+
+from agno.agent import Agent
+from agno.utils.log import configure_agno_logging, log_info
+
+# Set up a custom logger
+custom_logger = logging.getLogger("custom_logger")
+handler = logging.StreamHandler()
+formatter = logging.Formatter("[CUSTOM_LOGGER] %(levelname)s: %(message)s")
+handler.setFormatter(formatter)
+custom_logger.addHandler(handler)
+custom_logger.setLevel(logging.INFO)
+custom_logger.propagate = False
+
+# Configure Agno to use the custom logger
+configure_agno_logging(custom_default_logger=custom_logger)
+
+# All logging will now use the custom logger
+log_info("This is using our custom logger!")
+
+agent = Agent()
+agent.print_response("What is 2+2?")
+```
+
+## Logging to a File
+
+You can configure Agno to log to a file instead of the console:
+
+```python
+import logging
+from pathlib import Path
+
+from agno.agent import Agent
+from agno.utils.log import configure_agno_logging, log_info
+
+# Create a custom logger that writes to a file
+custom_logger = logging.getLogger("file_logger")
+
+# Ensure tmp directory exists
+log_file_path = Path("tmp/log.txt")
+log_file_path.parent.mkdir(parents=True, exist_ok=True)
+
+# Use FileHandler to write to file
+handler = logging.FileHandler(log_file_path)
+formatter = logging.Formatter("%(levelname)s: %(message)s")
+handler.setFormatter(formatter)
+custom_logger.addHandler(handler)
+custom_logger.setLevel(logging.INFO)
+custom_logger.propagate = False
+
+# Configure Agno to use the file logger
+configure_agno_logging(custom_default_logger=custom_logger)
+
+# All logs will be written to tmp/log.txt
+log_info("This is using our file logger!")
+
+agent = Agent()
+agent.print_response("Tell me a fun fact")
+```
+
+## Multiple Loggers
+
+You can configure different loggers for your Agents, Teams and Workflows:
+
+```python
+import logging
+
+from agno.agent import Agent
+from agno.team import Team
+from agno.workflow import Workflow
+from agno.workflow.step import Step
+from agno.utils.log import configure_agno_logging, log_info
+
+# Create custom loggers for different components
+custom_agent_logger = logging.getLogger("agent_logger")
+custom_team_logger = logging.getLogger("team_logger")
+custom_workflow_logger = logging.getLogger("workflow_logger")
+
+# Configure handlers and formatters for each
+for logger in [custom_agent_logger, custom_team_logger, custom_workflow_logger]:
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("[%(name)s] %(levelname)s: %(message)s"))
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+
+# Workflow logs at DEBUG level when debug_mode is enabled
+# Set workflow logger to DEBUG to see these logs
+custom_workflow_logger.setLevel(logging.DEBUG)
+
+# Apply the configuration
+configure_agno_logging(
+    custom_default_logger=custom_agent_logger,
+    custom_agent_logger=custom_agent_logger,
+    custom_team_logger=custom_team_logger,
+    custom_workflow_logger=custom_workflow_logger,
+)
+
+# All logging will now use the custom agent logger by default
+log_info("Using custom loggers!")
+
+# Create agent and team
+agent = Agent()
+team = Team(members=[agent])
+
+# Agent will use custom_agent_logger
+agent.print_response("What is 2+2?")
+
+# Team will use custom_team_logger
+team.print_response("Tell me a short joke")
+
+# Workflow will use custom_workflow_logger
+workflow = Workflow(
+    debug_mode=True,
+    steps=[Step(name="step1", agent=agent)]
+)
+workflow.print_response("Tell me a fun fact")
+```
+
+## Using Named Loggers
+
+As it's conventional in Python, you can also provide custom loggers just by setting loggers with specific names. This is useful if you want to set them up using configuration files.
+
+Agno automatically recognizes and uses these logger names:
+
+- `agno` will be used for all Agent logs
+- `agno-team` will be used for all Team logs
+- `agno-workflow` will be used for all Workflow logs
+
+```python
+import logging
+from agno.agent import Agent
+from agno.team import Team
+from agno.workflow import Workflow
+from agno.workflow.step import Step
+
+# Set up named loggers BEFORE creating agents/teams/workflows
+logger_configs = [
+    ("agno", "agent.log"),
+    ("agno-team", "team.log"),
+    ("agno-workflow", "workflow.log"),
+]
+
+for logger_name, log_file in logger_configs:
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(logging.INFO)
+    handler = logging.FileHandler(log_file)
+    handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+    logger.addHandler(handler)
+    logger.propagate = False
+
+# Agno will automatically detect and use these loggers
+agent = Agent()
+agent.print_response("Hello from agent!")  # Agent logs will go to agent.log
+
+team = Team(members=[agent])
+team.print_response("Hello from team!")  # Team logs will go to team.log
+
+# Workflow requires debug mode to use the workflow logger
+workflow = Workflow(
+    debug_mode=True,
+    steps=[Step(name="step1", agent=agent)]
+)
+workflow.run("Hello from workflow!")  # Workflow logs will go to workflow.log
+```
+
+## Learn more
+
+<CardGroup cols={2}>
+  <Card title="Telemetry" icon="chart-line" href="/basics/telemetry">
+    Learn about Agno telemetry
+  </Card>
+  <Card title="Debugging Agents" icon="bug" href="/basics/agents/debugging-agents">
+    Debug your agents effectively
+  </Card>
+</CardGroup>
