@@ -1,21 +1,24 @@
 ---
-title: "Team with Parser Model"
+title: Parser Model for Structured Output
+sidebarTitle: Parser Model
+keywords: [parser model, structured output, claude, openai, pydantic]
+description: This example demonstrates how to use a different parser model for structured output generation, combining Claude for content generation with OpenAI for parsing into structured formats.
+mode: wide
 ---
 
-This example demonstrates using a parser model with teams to generate structured output, creating detailed national park adventure guides with validated Pydantic schemas.
+This example demonstrates how to use a different parser model for structured output generation, combining Claude for content generation with OpenAI for parsing into structured formats.
 
 ## Code
 
-```python cookbook/examples/teams/structured_input_output/02_team_with_parser_model.py
+```python parser_model.py
 import random
-from typing import Iterator, List  # noqa
+from typing import List
 
-from agno.agent import Agent, RunOutput, RunOutputEvent  # noqa
+from agno.agent import Agent, RunOutput  # noqa
 from agno.models.anthropic import Claude
 from agno.models.openai import OpenAIChat
-from agno.team import Team
 from pydantic import BaseModel, Field
-from rich.pretty import pprint
+from rich.pretty import pprint  # noqa
 
 
 class NationalParkAdventure(BaseModel):
@@ -66,24 +69,13 @@ class NationalParkAdventure(BaseModel):
     )
 
 
-itinerary_planner = Agent(
-    name="Itinerary Planner",
+agent = Agent(
     model=Claude(id="claude-sonnet-4-20250514"),
     description="You help people plan amazing national park adventures and provide detailed park guides.",
-)
-
-weather_expert = Agent(
-    name="Weather Expert",
-    model=Claude(id="claude-sonnet-4-20250514"),
-    description="You are a weather expert and can provide detailed weather information for a given location.",
-)
-
-national_park_expert = Team(
-    model=OpenAIChat(id="gpt-5-mini"),
-    members=[itinerary_planner, weather_expert],
     output_schema=NationalParkAdventure,
     parser_model=OpenAIChat(id="gpt-5-mini"),
 )
+
 
 # Get the response in a variable
 national_parks = [
@@ -99,40 +91,59 @@ national_parks = [
     "Rocky National Park",
 ]
 # Get the response in a variable
-run: RunOutput = national_park_expert.run(
-    f"What is the best season to visit {national_parks[random.randint(0, len(national_parks) - 1)]}? Please provide a detailed one week itinerary for a visit to the park."
-)
+run: RunOutput = agent.run(national_parks[random.randint(0, len(national_parks) - 1)])
 pprint(run.content)
-
-# Stream the response
-# run_events: Iterator[RunOutputEvent] = national_park_expert.run(f"What is the best season to visit {national_parks[random.randint(0, len(national_parks) - 1)]}? Please provide a detailed one week itinerary for a visit to the park.", stream=True)
-# for event in run_events:
-#     pprint(event)
 ```
 
 ## Usage
 
 <Steps>
+  <Snippet file="create-venv-step.mdx" />
 
-    <Snippet file="create-venv-step.mdx" />
+  <Step title="Install libraries">
+    ```bash
+    pip install -U agno anthropic openai pydantic rich
+    ```
+  </Step>
 
-    <Step title="Install required libraries">
-        ```bash
-        pip install agno pydantic rich
-        ```
-    </Step>
+    <Step title="Export your ANTHROPIC API  key">
 
-    <Step title="Set environment variables">
-        ```bash
-        export OPENAI_API_KEY=****
-        export ANTHROPIC_API_KEY=****
-        ```
-    </Step>
+    <CodeGroup>
 
-    <Step title="Run the agent">
-        ```bash
-        python cookbook/examples/teams/structured_input_output/02_team_with_parser_model.py
-        ```
-    </Step>
+    ```bash Mac/Linux
+      export ANTHROPIC_API_KEY="your_anthropic_api_key_here"
+    ```
 
+    ```bash Windows
+      $Env:ANTHROPIC_API_KEY="your_anthropic_api_key_here"
+    ```
+    </CodeGroup> 
+  </Step>
+
+  <Step title="Create a Python file">
+    Create a Python file and add the above code.
+    ```bash
+    touch parser_model.py
+    ```
+  </Step>
+
+  <Step title="Run Agent">
+    <CodeGroup>
+    ```bash Mac
+    python parser_model.py
+    ```
+    
+    ```bash Windows
+    python parser_model.py
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Find All Cookbooks">
+    Explore all the available cookbooks in the Agno repository. Click the link below to view the code on GitHub:
+
+    <Link href="https://github.com/agno-agi/agno/tree/main/cookbook/agents/input_and_output" target="_blank">
+      Agno Cookbooks on GitHub
+    </Link>
+  </Step>
 </Steps>
