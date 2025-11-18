@@ -1,0 +1,233 @@
+---
+title: Session Summaries
+sidebarTitle: Session Summaries
+description: Automatically condense long conversations into concise summaries
+keywords: [sessions, session summaries, conversation summaries, memory management]
+---
+
+As conversations grow longer, passing the entire chat history to your LLM becomes expensive and slow. Session summaries solve this by automatically condensing your conversation into a concise summary that captures the key points.
+
+Think of it like taking notes during a long meeting - you don't need a transcript of everything said, just the important bits.
+
+<Note>
+Session summaries work identically for Agents and Teams. This page shows examples for both.
+</Note>
+
+## Enabling Session Summaries
+
+Simply set `enable_session_summaries=True` to enable automatic summary generation:
+
+<Tabs>
+  <Tab title="Agent">
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.db.sqlite import SqliteDb
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=SqliteDb(db_file="tmp/data.db"),
+    enable_session_summaries=True,  # Auto-generate summaries
+)
+```
+  </Tab>
+  
+  <Tab title="Team">
+```python
+from agno.team import Team
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.db.sqlite import SqliteDb
+
+team = Team(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    members=[Agent(name="Helper")],
+    db=SqliteDb(db_file="tmp/data.db"),
+    enable_session_summaries=True,  # Auto-generate summaries
+)
+```
+  </Tab>
+</Tabs>
+
+Agno will automatically create and update summaries as the conversation progresses.
+
+## Retrieving Summaries
+
+Once enabled, you can access summaries programmatically using `get_session_summary()`:
+
+<Tabs>
+  <Tab title="Agent">
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.db.sqlite import SqliteDb
+
+db = SqliteDb(db_file="tmp/data.db")
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=db,
+    enable_session_summaries=True,
+)
+
+# Have a conversation
+agent.print_response(
+    "What can you tell me about quantum computing?",
+    session_id="session_123",
+)
+
+agent.print_response(
+    "I would also like to know about LLMs.",
+    session_id="session_123",
+)
+
+# Get the summary
+session_summary = agent.get_session_summary(session_id="session_123")
+print(f"Summary: {session_summary.summary}")      # Condensed conversation summary
+print(f"Topics: {session_summary.topics}")        # List of topics discussed (optional)
+```
+  </Tab>
+  
+  <Tab title="Team">
+```python
+from agno.team import Team
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.db.sqlite import SqliteDb
+
+db = SqliteDb(db_file="tmp/data.db")
+
+team = Team(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    members=[Agent(name="Helper")],
+    db=db,
+    enable_session_summaries=True,
+)
+
+# Have a conversation
+team.print_response(
+    "What can you tell me about quantum computing?",
+    session_id="session_123",
+)
+
+team.print_response(
+    "I would also like to know about LLMs.",
+    session_id="session_123",
+)
+
+# Get the summary
+session_summary = team.get_session_summary(session_id="session_123")
+print(f"Summary: {session_summary.summary}")      # Condensed conversation summary
+print(f"Topics: {session_summary.topics}")        # List of topics discussed (optional)
+```
+  </Tab>
+</Tabs>
+
+### Summary Object Structure
+
+The summary object contains:
+- **`summary`** (str): A concise summary of the conversation
+- **`topics`** (list, optional): Key topics discussed during the session
+- **`updated_at`** (datetime, optional): When the summary was last updated
+
+## Customizing Summaries
+
+Want more control over how summaries are generated? Use the `SessionSummaryManager` to customize the model and prompts:
+
+<Tabs>
+  <Tab title="Agent">
+```python
+from agno.agent import Agent
+from agno.session import SessionSummaryManager
+from agno.models.openai import OpenAIChat
+from agno.db.sqlite import SqliteDb
+
+db = SqliteDb(db_file="agno.db")
+
+# Customize how summaries are generated
+session_summary_manager = SessionSummaryManager(
+    model=OpenAIChat(id="gpt-4o-mini"),  # Use a specific model for summaries
+    session_summary_prompt="Create a brief, bullet-point summary focusing on key decisions and action items:",
+    # Or use summary_request_message to modify the user message instead:
+    # summary_request_message="Write the summary in Spanish.",
+)
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o"),  # Agent uses gpt-4o
+    db=db,
+    session_summary_manager=session_summary_manager,  # But summaries use gpt-4o-mini
+)
+```
+  </Tab>
+  
+  <Tab title="Team">
+```python
+from agno.team import Team
+from agno.agent import Agent
+from agno.session import SessionSummaryManager
+from agno.models.openai import OpenAIChat
+from agno.db.sqlite import SqliteDb
+
+db = SqliteDb(db_file="agno.db")
+
+# Customize how summaries are generated
+session_summary_manager = SessionSummaryManager(
+    model=OpenAIChat(id="gpt-4o-mini"),  # Use a specific model for summaries
+    session_summary_prompt="Create a brief, bullet-point summary focusing on key decisions and action items:",
+    # Or use summary_request_message to modify the user message instead:
+    # summary_request_message="Write the summary in Spanish.",
+)
+
+team = Team(
+    model=OpenAIChat(id="gpt-4o"),  # Team uses gpt-4o
+    members=[Agent(name="Helper")],
+    db=db,
+    session_summary_manager=session_summary_manager,  # But summaries use gpt-4o-mini
+)
+```
+  </Tab>
+</Tabs>
+
+### Customization Options
+
+- **`model`**: Use a different (often cheaper/faster) model for generating summaries
+- **`session_summary_prompt`**: Override the entire system prompt that instructs how to create summaries
+- **`summary_request_message`**: Customize the user message sent to request the summary (e.g., to change language or format)
+
+This is useful when you want to use a cheaper/faster model for summaries while keeping your main agent or team on a more powerful model.
+
+<Tip>
+Using a smaller model like `gpt-4o-mini` for summaries can significantly reduce costs while maintaining good summary quality.
+</Tip>
+
+## Usage Examples
+
+<CardGroup cols={2}>
+  <Card
+    title="Agent Session Summary"
+    icon="robot"
+    href="/examples/basics/agent/session/03_session_summary"
+  >
+    Complete example with agents
+  </Card>
+  <Card
+    title="Team Session Summary"
+    icon="users"
+    href="/examples/basics/team/session/03_session_summary"
+  >
+    Complete example with teams
+  </Card>
+  <Card
+    title="Custom Summary Instructions"
+    icon="wand-magic-sparkles"
+    href="/examples/basics/agent/session/11_custom_session_summary_instructions"
+  >
+    Customize summary generation
+  </Card>
+</CardGroup>
+
+## Learn More
+
+- [Session Summary Manager Reference](/reference/session/summary_manager)
+- [Sessions Overview](/basics/sessions/overview)
+

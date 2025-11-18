@@ -1,0 +1,157 @@
+---
+title: Storage Control
+sidebarTitle: Storage Control
+description: Control what session data gets persisted to your database
+keywords: [sessions, storage, database, optimization, store_media, store_tool_messages, store_history_messages]
+---
+
+As sessions accumulate data, your database can grow quickly. Agno gives you fine-grained control over what gets persisted with three storage flags:
+
+- **`store_media`** - Images, videos, audio, and file uploads
+- **`store_tool_messages`** - Tool calls and their results
+- **`store_history_messages`** - Historical messages from previous runs
+
+<Note>
+Storage control works identically for Agents and Teams. This page shows examples for both.
+</Note>
+
+## How Storage Control Works
+
+Here's the key insight: **these flags only affect database persistence, not runtime behavior**. 
+
+During execution, your agent or team has access to everything - media, tool results, history. The data only gets filtered out when saving to the database after the run completes. This means:
+
+✅ Your functionality is unchanged  
+✅ Tools get all the data they need  
+✅ Only storage is optimized  
+✅ Token metrics still reflect actual usage
+
+<Warning>
+**Important: `store_tool_messages=False` removes message pairs**
+
+When you disable tool message storage, Agno removes both the tool result *and* the assistant message containing the tool call. This is required to maintain valid message sequences that model providers expect.
+
+Your metrics will still show the actual tokens used, including the removed tool messages.
+</Warning>
+
+## Minimal Storage Example
+
+Here's how to minimize storage while keeping your agent or team fully functional:
+
+<Tabs>
+  <Tab title="Agent">
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.tools.duckduckgo import DuckDuckGoTools
+from agno.db.sqlite import SqliteDb
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o"),
+    tools=[DuckDuckGoTools()],
+    db=SqliteDb(db_file="tmp/agents.db"),
+    add_history_to_context=True,
+    num_history_runs=5,
+    store_media=False,           # Don't persist uploaded files
+    store_tool_messages=False,   # Don't persist tool call details
+    store_history_messages=False,# Don't persist old history
+)
+
+# The agent works normally, tools execute, history is available during the run
+# Only the database storage is reduced
+agent.print_response("Search for the latest AI news and summarize it")
+```
+  </Tab>
+  
+  <Tab title="Team">
+```python
+from agno.team import Team
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.tools.duckduckgo import DuckDuckGoTools
+from agno.db.sqlite import SqliteDb
+
+team = Team(
+    model=OpenAIChat(id="gpt-4o"),
+    members=[Agent(name="Researcher", tools=[DuckDuckGoTools()])],
+    db=SqliteDb(db_file="tmp/teams.db"),
+    add_history_to_context=True,
+    num_history_runs=5,
+    store_media=False,           # Don't persist uploaded files
+    store_tool_messages=False,   # Don't persist tool call details
+    store_history_messages=False,# Don't persist old history
+)
+
+# The team works normally, tools execute, history is available during the run
+# Only the database storage is reduced
+team.print_response("Search for the latest AI news and summarize it")
+```
+  </Tab>
+</Tabs>
+
+This configuration is useful for high-volume production systems where you want to minimize storage costs while maintaining full capabilities.
+
+## Selective Storage
+
+You can also enable storage selectively based on your needs:
+
+<Tabs>
+  <Tab title="Agent">
+```python
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    tools=[ShellTools()],
+    db=SqliteDb(db_file="tmp/agents.db"),
+    store_media=True,            # Store media uploads
+    store_tool_messages=False,   # Don't store tool calls (save space)
+    store_history_messages=True, # Store history for analysis
+)
+```
+  </Tab>
+  
+  <Tab title="Team">
+```python
+team = Team(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    members=[Agent(name="Helper", tools=[ShellTools()])],
+    db=SqliteDb(db_file="tmp/teams.db"),
+    store_media=True,            # Store media uploads
+    store_tool_messages=False,   # Don't store tool calls (save space)
+    store_history_messages=True, # Store history for analysis
+)
+```
+  </Tab>
+</Tabs>
+
+## Storage Flags Reference
+
+| Flag | Default | What It Controls | Impact When Disabled |
+|------|---------|------------------|---------------------|
+| `store_media` | `True` | Images, videos, audio, files uploaded by users | Media not persisted to database |
+| `store_tool_messages` | `True` | Tool calls and their results (also removes corresponding assistant messages) | Tool execution details not stored, saves significant space |
+| `store_history_messages` | `True` | Historical messages from previous runs | Old history not stored, only current run persisted |
+
+## Usage Examples
+
+<CardGroup cols={2}>
+  <Card
+    title="Disable Storing History Messages"
+    icon="clock-rotate-left"
+    href="/examples/basics/agent/session/09_disable_storing_history_messages"
+  >
+    Agent example for history storage control
+  </Card>
+  <Card
+    title="Disable Storing Tool Messages"
+    icon="wrench"
+    href="/examples/basics/agent/session/10_disable_storing_tool_messages"
+  >
+    Agent example for tool message storage control
+  </Card>
+</CardGroup>
+
+## Learn More
+
+- [Sessions Overview](/basics/sessions/overview)
+- [Session Storage](/basics/storage/overview)
+

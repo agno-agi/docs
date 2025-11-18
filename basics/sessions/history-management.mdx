@@ -1,0 +1,246 @@
+---
+title: History Management
+sidebarTitle: History Management
+description: Control how conversation history is accessed and used
+keywords: [sessions, history, conversation history, chat history, context management]
+---
+
+Agents and Teams with a database configured automatically track message and run history. You have multiple ways to access and use this history to give your AI "memory" of past conversations.
+
+<Note>
+History management works identically for Agents and Teams. This page shows examples for both.
+</Note>
+
+<Note>
+All history features require a database. See the [Sessions Overview](/basics/sessions/overview#multi-user-conversations) for how to set up session storage.
+</Note>
+
+## Adding History to Context
+
+The most common pattern is to automatically include recent history as context for each new message. This is what gives your agent or team "memory" of the conversation - without it, every message would be treated as a fresh start.
+
+Use `add_history_to_context=True` and `num_history_runs` to control how much history is included:
+
+<Tabs>
+  <Tab title="Agent">
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.db.sqlite import SqliteDb
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=SqliteDb(db_file="tmp/data.db"),
+    add_history_to_context=True,  # Include history automatically
+    num_history_runs=3,             # Last 3 runs
+)
+
+# First message
+agent.print_response("My name is Alice")
+
+# Agent remembers the previous message
+agent.print_response("What's my name?")
+# → "Your name is Alice"
+```
+  </Tab>
+  
+  <Tab title="Team">
+```python
+from agno.team import Team
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.db.sqlite import SqliteDb
+
+team = Team(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    members=[Agent(name="Helper")],
+    db=SqliteDb(db_file="tmp/data.db"),
+    add_history_to_context=True,  # Include history automatically
+    num_history_runs=3,             # Last 3 runs
+)
+
+# First message
+team.print_response("My name is Alice")
+
+# Team remembers the previous message
+team.print_response("What's my name?")
+# → "Your name is Alice"
+```
+  </Tab>
+</Tabs>
+
+### Controlling History by Messages
+
+You can be even more granular by controlling the number of *messages* rather than *runs*:
+
+<Tabs>
+  <Tab title="Agent">
+```python
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=db,
+    add_history_to_context=True,
+    num_history_messages=10,  # Last 10 messages (regardless of runs)
+)
+```
+  </Tab>
+  
+  <Tab title="Team">
+```python
+team = Team(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    members=[Agent(name="Helper")],
+    db=db,
+    add_history_to_context=True,
+    num_history_messages=10,  # Last 10 messages (regardless of runs)
+)
+```
+  </Tab>
+</Tabs>
+
+## Letting Agents/Teams Access History
+
+Instead of always including history in context, you can give your agent or team a *tool* to read history when it needs it:
+
+<Tabs>
+  <Tab title="Agent">
+```python
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=db,
+    read_chat_history=True,  # Adds a get_chat_history() tool
+)
+```
+
+The agent can now call `get_chat_history()` to retrieve any message from the conversation when it needs to reference something specific.
+  </Tab>
+  
+  <Tab title="Team">
+```python
+team = Team(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    members=[Agent(name="Helper")],
+    db=db,
+    read_team_history=True,  # Adds a get_team_history() tool
+)
+```
+
+The team can now call `get_team_history()` to retrieve any message from the conversation when it needs to reference something specific.
+  </Tab>
+</Tabs>
+
+## Reading History Programmatically
+
+You can also access history directly in your code:
+
+<Tabs>
+  <Tab title="Agent">
+```python
+# Get all messages for this agent in the current session
+messages = agent.get_messages_for_session()
+
+# Get all unique messages across the session (deduplicated)
+chat_history = agent.get_chat_history()
+```
+  </Tab>
+  
+  <Tab title="Team">
+```python
+# Get all messages for this team in the current session
+messages = team.get_messages_for_session()
+
+# Get all unique messages across the session (deduplicated)
+chat_history = team.get_chat_history()
+```
+  </Tab>
+</Tabs>
+
+## Tool Call History
+
+For debugging or auditing, you can also give access to tool call history:
+
+<Tabs>
+  <Tab title="Agent">
+```python
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=db,
+    read_tool_call_history=True,  # Adds a get_tool_call_history() tool
+)
+```
+  </Tab>
+  
+  <Tab title="Team">
+```python
+team = Team(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    members=[Agent(name="Helper")],
+    db=db,
+    read_tool_call_history=True,  # Adds a get_tool_call_history() tool
+)
+```
+  </Tab>
+</Tabs>
+
+## Recommended Configuration
+
+<Check>
+For the best experience, we recommend combining these three parameters:
+
+<Tabs>
+  <Tab title="Agent">
+```python
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=db,
+    add_history_to_context=True,  # Always include recent history
+    num_history_runs=3,             # Last 3 runs as baseline
+    read_chat_history=True,         # Let agent access older history when needed
+)
+```
+
+This gives the agent recent context by default while allowing it to look further back when necessary.
+  </Tab>
+  
+  <Tab title="Team">
+```python
+team = Team(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    members=[Agent(name="Helper")],
+    db=db,
+    add_history_to_context=True,  # Always include recent history
+    num_history_runs=3,             # Last 3 runs as baseline
+    read_team_history=True,         # Let team access older history when needed
+)
+```
+
+This gives the team recent context by default while allowing it to look further back when necessary.
+  </Tab>
+</Tabs>
+</Check>
+
+## Usage Examples
+
+<CardGroup cols={2}>
+  <Card
+    title="Agent Session History"
+    icon="robot"
+    href="/examples/basics/agent/session/02_persistent_session_history"
+  >
+    Complete example with agents
+  </Card>
+  <Card
+    title="Team Session History"
+    icon="users"
+    href="/examples/basics/team/session/02_persistent_session_history"
+  >
+    Complete example with teams
+  </Card>
+</CardGroup>
+
+## Learn More
+
+- [Sessions Overview](/basics/sessions/overview)
+- [Chat History Documentation](/basics/chat_history/overview)
+- [Context Engineering](/basics/context/overview)
+

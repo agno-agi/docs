@@ -5,135 +5,173 @@ description: Learn about Agno Sessions and how they work.
 mode: wide
 ---
 
-When we call `Agent.run()`, it creates a stateless, singular Agent run.
+When you call `Agent.run()`, it creates a single, stateless interaction. The agent responds to your message and that's it - no memory of what just happened.
 
-But what if we want to continue this conversation i.e. have a multi-turn conversation? That's where "Sessions" come in. A session is collection of consecutive runs.
+But most real applications need **conversations**, not just one-off exchanges. That's where sessions come in.
 
-In practice, a session is a multi-turn conversation between a user and an Agent/Team/Workflow. Using a `session_id`, we can connect the conversation history and state across multiple runs.
+## What's a Session?
 
-Here are the core concepts:
+Think of a session as a conversation thread. It's a collection of back-and-forth interactions (called "runs") between a user and your Agent, Team, or Workflow. Each session gets a unique `session_id` that ties together all the runs, chat history, state, and metrics for that conversation.
 
-- **Session:** A session is collection of consecutive runs like a multi-turn conversation between a user and an Agent/Team/Workflow. Sessions are identified by a `session_id` and house all runs, metrics, state and other data that belong to the session.
-- **Run:** Every interaction (i.e. chat or turn) with an Agent/Team/Workflow is called a **run**. Runs are identified by a `run_id` and `Agent.run()`, `Team.run()` or `Workflow.run()` creates a new `run_id` when called.
+Here's the breakdown:
 
-See [Session Storage](/basics/storage/overview) for more details on how sessions are stored.
+- **Session**: A multi-turn conversation identified by a `session_id`. Contains all the runs, history, state, and metrics for that conversation thread.
+- **Run**: A single interaction within a session. Every time you call `Agent.run()`, `Team.run()`, or `Workflow.run()`, a new `run_id` is created. Think of it as one message-and-response pair in the conversation.
+
+<Note>
+Sessions require a database to store history and state. See [Session Storage](/basics/storage/overview) for setup details.
+</Note>
 
 
-## Single session
+## Single-Run Example
 
-Here we have an example where a single run is created with an Agent. 
-A `run_id` is automatically generated, as well as a `session_id` (because we didn't provide one to continue the conversation).
+When you run an agent without specifying a `session_id`, Agno automatically generates both a `run_id` and a `session_id` for you:
 
 ```python
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
 
-agent = Agent(model=OpenAIChat(id="gpt-5-mini"))
+agent = Agent(model=OpenAIChat(id="gpt-4o-mini"))
 
-# Run agent and return the response as a variable
+# Run the agent - Agno auto-generates session_id and run_id
 response = agent.run("Tell me a 5 second short story about a robot")
 print(response.content)
-print(response.run_id)
-print(response.session_id)
+print(f"Run ID: {response.run_id}")        # Auto-generated UUID
+print(f"Session ID: {response.session_id}") # Auto-generated UUID
 ```
 
-## Multi-user, multi-turn Sessions
+This creates a new session with a single run. But here's the catch: without a database configured, there's no persistence. The `session_id` exists for this single run, but you can't continue the conversation later because nothing is saved. To actually use sessions for multi-turn conversations, you need to configure a database (even an `InMemoryDb` works).
 
-Each user that is interacting with an Agent/Team/Workflow gets a unique set of sessions and you can have multiple users interacting with the same Agent/Team/Workflow at the same time.
+## Multi-User Conversations
 
-Set a `user_id` to connect a user to their sessions.
+In production, you'll typically have multiple users talking to the same agent simultaneously. Each user should have their own isolated conversation threads.
 
-In the example below, we set a `session_id` to demo how to have multi-turn conversations with multiple users at the same time.
+Here's how Agno handles this:
+
+- Use `user_id` to identify different users
+- Use `session_id` to identify different conversation threads for each user
+- One user can have multiple sessions (like having multiple chat windows open)
+- Configure a database to persist these conversations
+- Set `add_history_to_context=True` so the agent remembers what was said earlier
+
+Let's see this in action with two users having separate conversations:
 
 ```python
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
 from agno.db.sqlite import SqliteDb
 
+# Set up a database to persist sessions
 db = SqliteDb(db_file="tmp/data.db")
 
 agent = Agent(
-    model=OpenAIChat(id="gpt-5-mini"),
+    model=OpenAIChat(id="gpt-4o-mini"),
     db=db,
-    add_history_to_context=True,
-    num_history_runs=3,
+    add_history_to_context=True,  # Remember conversation history
+    num_history_runs=3,             # Include last 3 messages as context
 )
 
+# Define user and session identifiers
 user_1_id = "user_101"
 user_2_id = "user_102"
 
 user_1_session_id = "session_101"
 user_2_session_id = "session_102"
 
-# Start the session with user 1
+# User 1 starts a conversation
 agent.print_response(
     "Tell me a 5 second short story about a robot.",
     user_id=user_1_id,
     session_id=user_1_session_id,
 )
-# Continue the session with user 1
-agent.print_response("Now tell me a joke.", user_id=user_1_id, session_id=user_1_session_id)
 
-# Start the session with user 2
-agent.print_response("Tell me about quantum physics.", user_id=user_2_id, session_id=user_2_session_id)
+# User 1 continues their conversation
+agent.print_response(
+    "Now tell me a joke.", 
+    user_id=user_1_id, 
+    session_id=user_1_session_id
+)
 
-# Continue the session with user 2
-agent.print_response("What is the speed of light?", user_id=user_2_id, session_id=user_2_session_id)
+# Meanwhile, User 2 starts a completely different conversation
+agent.print_response(
+    "Tell me about quantum physics.", 
+    user_id=user_2_id, 
+    session_id=user_2_session_id
+)
 
-# Ask the agent to give a summary of the conversation, this will use the history from the previous messages (but only for user 1)
+# User 2 continues their own conversation
+agent.print_response(
+    "What is the speed of light?", 
+    user_id=user_2_id, 
+    session_id=user_2_session_id
+)
+
+# User 1 can reference their conversation history (not User 2's!)
 agent.print_response(
     "Give me a summary of our conversation.",
     user_id=user_1_id,
     session_id=user_1_session_id,
 )
+# The agent will summarize the robot story and joke - it won't mention quantum physics
 ```
-<Note>
-  For session history and management, you need to have a database assigned to
-  the agent. See [Storage](/basics/storage/overview) for more details.
-</Note>
+
+Notice how each user's conversation is completely isolated. User 1's summary only includes their robot story and joke, not User 2's quantum physics discussion. This is the power of sessions - they keep conversations organized and private.
 
 <Check>
-You might have noticed that we set `add_history_to_context=True` and `num_history_runs=3` on the Agent. 
-This is to add the history of the conversation to the context, so the Agent can use it to generate a response.
+The `add_history_to_context=True` and `num_history_runs=3` parameters are what give the agent "memory". Without these, each message would be treated as a brand new conversation.
 
-Learn more in the [Chat History](/basics/chat_history/overview) documentation.
+Learn more about managing conversation history in the [Chat History](/basics/chat_history/overview) documentation.
 </Check>
 
 
 ## Session Summaries
 
-An Agent or Team can store a condensed representations of the session, useful when chat histories gets too long. This is called a "Session Summary" in Agno.
+As conversations grow longer, passing the entire chat history to your LLM becomes expensive and slow. Session summaries solve this by automatically condensing your conversation into a concise summary that captures the key points.
 
-See the details:
+Think of it like taking notes during a long meeting - you don't need a transcript of everything said, just the important bits.
+
+To enable session summaries, simply set `enable_session_summaries=True`:
+
+```python
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=db,
+    enable_session_summaries=True,  # Auto-generate summaries
+)
+```
+
+Agno will automatically create and update summaries as the conversation progresses. You can then use these summaries instead of the full chat history to save tokens and improve response times.
+
+**Learn more:**
 - [Session Summaries with Agents](/basics/sessions/agent#session-summaries)
 - [Session Summaries with Teams](/basics/sessions/team#session-summaries)
 
 
-## Session table schema
+## Session Storage Schema
 
-If you have a `db` configured for your team, the sessions will be stored in the sessions table in your database.
-
-The schema for the sessions table is as follows:
+When you configure a database, Agno stores sessions in a structured format. Here's what gets saved for each session:
 
 | Field           | Type   | Description                                      |
 | --------------- | ------ | ------------------------------------------------ |
-| `session_id`    | `str`  | The unique identifier for the session.           |
-| `session_type`  | `str`  | The type of the session.                         |
-| `agent_id`      | `str`  | The agent ID of the session.                     |
-| `team_id`       | `str`  | The team ID of the session.                      |
-| `workflow_id`   | `str`  | The workflow ID of the session.                  |
-| `user_id`       | `str`  | The user ID of the session.                      |
-| `session_data`  | `dict` | The data of the session.                         |
-| `agent_data`    | `dict` | The data of the agent.                           |
-| `team_data`     | `dict` | The data of the team.                            |
-| `workflow_data` | `dict` | The data of the workflow.                        |
-| `metadata`      | `dict` | The metadata of the session.                     |
-| `runs`          | `list` | The runs of the session.                         |
-| `summary`       | `dict` | The summary of the session.                      |
-| `created_at`    | `int`  | The timestamp when the session was created.      |
-| `updated_at`    | `int`  | The timestamp when the session was last updated. |
+| `session_id`    | `str`  | Unique identifier for this conversation thread   |
+| `session_type`  | `str`  | Type of session (agent, team, or workflow)       |
+| `agent_id`      | `str`  | The agent ID (if this is an agent session)       |
+| `team_id`       | `str`  | The team ID (if this is a team session)          |
+| `workflow_id`   | `str`  | The workflow ID (if this is a workflow session)  |
+| `user_id`       | `str`  | The user this session belongs to                 |
+| `session_data`  | `dict` | Session-specific data and state                  |
+| `agent_data`    | `dict` | Agent configuration and metadata                 |
+| `team_data`     | `dict` | Team configuration and metadata                  |
+| `workflow_data` | `dict` | Workflow configuration and metadata              |
+| `metadata`      | `dict` | Additional custom metadata                       |
+| `runs`          | `list` | All the runs (interactions) in this session      |
+| `summary`       | `dict` | The session summary (if enabled)                 |
+| `created_at`    | `int`  | Unix timestamp when session was created          |
+| `updated_at`    | `int`  | Unix timestamp of last update                    |
 
-This data is best displayed on the [sessions page of the AgentOS UI](https://os.agno.com/sessions).
+<Tip>
+Want to visualize your sessions? Check out the [AgentOS UI sessions page](https://os.agno.com/sessions) for a beautiful interface to view and manage all your conversation threads.
+</Tip>
 
 
 ## Learn more

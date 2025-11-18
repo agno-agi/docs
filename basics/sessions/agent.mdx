@@ -1,160 +1,62 @@
 ---
 title: Agent Sessions
-sidebarTitle: Overview
-description: Learn about agent sessions and managing conversation history.
-keywords: [sessions, agent sessions, multi-turn conversations]
+sidebarTitle: Agent
+description: Agent-specific session features and history management.
+keywords: [sessions, agent sessions, conversation history, session summaries]
 ---
 
-When we call `Agent.run()`, it creates a stateless, singular Agent run.
-
-But what if we want to continue this conversation i.e. have a multi-turn conversation? That's where "Sessions" come in. A session is collection of consecutive runs.
-
-In practice, a session is a multi-turn conversation between a user and an Agent. Using a `session_id`, we can connect the conversation history and state across multiple runs.
-
-Here are the core concepts:
-
-- **Session:** A session is collection of consecutive runs like a multi-turn conversation between a user and an Agent. Sessions are identified by a `session_id` and house all runs, metrics, state and other data that belong to the session.
-- **Run:** Every interaction (i.e. chat or turn) with an Agent is called a **run**. Runs are identified by a `run_id` and `Agent.run()` creates a new `run_id` when called.
-- **Messages:** are the individual messages sent between the model and the Agent. Messages are the communication protocol between the Agent and model.
-
-See [Session Storage](/basics/storage/overview) for more details on how sessions are stored.
-
-## Single session
-
-Here we have an example where a single run is created with an Agent. A `run_id` is automatically generated, as well as a `session_id`.
-
-```python
-from agno.agent import Agent
-from agno.models.openai import OpenAIChat
-
-agent = Agent(model=OpenAIChat(id="gpt-5-mini"))
-
-# Run agent and return the response as a variable
-response = agent.run("Tell me a 5 second short story about a robot")
-print(response.content)
-print(response.run_id)
-print(response.session_id)
-```
-
-## Multi-Turn Sessions
-
-Each user that is interacting with an Agent gets a unique set of sessions and you can have multiple users interacting with the same Agent at the same time.
-
-Set a `user_id` to connect a user to their sessions with the Agent.
-
-In the example below, we set a `session_id` to demo how to have multi-turn conversations with multiple users at the same time.
-
-```python
-from agno.agent import Agent
-from agno.models.openai import OpenAIChat
-from agno.db.sqlite import SqliteDb
-
-db = SqliteDb(db_file="tmp/data.db")
-
-agent = Agent(
-    model=OpenAIChat(id="gpt-5-mini"),
-    db=db,
-    add_history_to_context=True,
-    num_history_runs=3,
-)
-
-user_1_id = "user_101"
-user_2_id = "user_102"
-
-user_1_session_id = "session_101"
-user_2_session_id = "session_102"
-
-# Start the session with user 1
-agent.print_response(
-    "Tell me a 5 second short story about a robot.",
-    user_id=user_1_id,
-    session_id=user_1_session_id,
-)
-# Continue the session with user 1
-agent.print_response("Now tell me a joke.", user_id=user_1_id, session_id=user_1_session_id)
-
-# Start the session with user 2
-agent.print_response("Tell me about quantum physics.", user_id=user_2_id, session_id=user_2_session_id)
-
-# Continue the session with user 2
-agent.print_response("What is the speed of light?", user_id=user_2_id, session_id=user_2_session_id)
-
-# Ask the agent to give a summary of the conversation, this will use the history from the previous messages (but only for user 1)
-agent.print_response(
-    "Give me a summary of our conversation.",
-    user_id=user_1_id,
-    session_id=user_1_session_id,
-)
-```
 <Note>
-  For session history and management, you need to have a database assigned to
-  the agent. See [Storage](/basics/storage/overview) for more details.
+New to sessions? Start with the [Sessions Overview](/basics/sessions/overview) to learn the basics of how sessions work in Agno.
 </Note>
 
-### History in Context
-
-As in the example above, we can add the history of the conversation to the context using `add_history_to_context`. You can specify this parameter on the `Agent` or on the `run()` method.
-
-```python
-from agno.agent import Agent
-from agno.models.openai import OpenAIChat
-from agno.db.in_memory import InMemoryDb
-
-agent = Agent(model=OpenAIChat(id="gpt-5-mini"), db=InMemoryDb())
-
-agent.print_response("Hi, I'm John. Nice to meet you!")
-
-agent.print_response("What is my name?", add_history_to_context=True)
-```
-
-Learn more in the [Context Engineering](/basics/context/overview) documentation.
+Agents have several powerful features for managing conversation history and session data. This page covers agent-specific capabilities like customizing session summaries, accessing chat history, and controlling what gets stored.
 
 ## Session Summaries
 
-The Agent can store a condensed representations of the session, useful when chat histories gets too long. This is called a "Session Summary" in Agno.
+As covered in the [Sessions Overview](/basics/sessions/overview#session-summaries), session summaries help manage long conversations by condensing them into concise summaries. For agents, you have additional control over how these summaries are generated and retrieved.
 
-To enable session summaries, set `enable_session_summaries=True` on the `Agent`.
+### Retrieving Summaries
 
-```python session_summary.py
+Once you've enabled session summaries (`enable_session_summaries=True`), you can access them programmatically:
+
+```python
 from agno.agent import Agent
-from agno.models.google.gemini import Gemini
+from agno.models.openai import OpenAIChat
 from agno.db.sqlite import SqliteDb
 
 db = SqliteDb(db_file="tmp/data.db")
 
-user_id = "jon_hamm@example.com"
-session_id = "1001"
-
 agent = Agent(
-    model=Gemini(id="gemini-2.0-flash-exp"),
+    model=OpenAIChat(id="gpt-4o-mini"),
     db=db,
     enable_session_summaries=True,
 )
 
+# Have a conversation
 agent.print_response(
     "What can you tell me about quantum computing?",
-    stream=True,
-    user_id=user_id,
-    session_id=session_id,
+    session_id="session_123",
 )
 
 agent.print_response(
-    "I would also like to know about LLMs?",
-    stream=True,
-    user_id=user_id,
-    session_id=session_id
+    "I would also like to know about LLMs.",
+    session_id="session_123",
 )
 
-session_summary = agent.get_session_summary(session_id=session_id)
-print(f"Session summary: {session_summary.summary}")
+# Get the summary
+session_summary = agent.get_session_summary(session_id="session_123")
+print(f"Summary: {session_summary.summary}")      # Condensed conversation summary
+print(f"Topics: {session_summary.topics}")        # List of topics discussed (optional)
 ```
 
-### Customize Session Summaries
+The summary object contains:
+- **`summary`** (str): A concise summary of the conversation
+- **`topics`** (list, optional): Key topics discussed during the session
+- **`updated_at`** (datetime, optional): When the summary was last updated
 
-You can adjust the session summaries by providing a custom `session_summary_prompt` to the `Agent`.
+### Customizing Summaries
 
-The `SessionSummaryManager` class is responsible for handling the model used to create and update session summaries.
-You can adjust it to personalize how summaries are created and updated:
+Want more control over how summaries are generated? Use the `SessionSummaryManager` to customize the model and prompts:
 
 ```python
 from agno.agent import Agent
@@ -162,92 +64,173 @@ from agno.session import SessionSummaryManager
 from agno.models.openai import OpenAIChat
 from agno.db.sqlite import SqliteDb
 
-# Setup your database
 db = SqliteDb(db_file="agno.db")
 
-# Setup your Session Summary Manager, to adjust how summaries are created
+# Customize how summaries are generated
 session_summary_manager = SessionSummaryManager(
-    # Select the model used for session summary creation and updates. If not specified, the agent's model is used by default.
-    model=OpenAIChat(id="gpt-5-mini"),
-    # You can also overwrite the prompt used for session summary creation
-    session_summary_prompt="Create a very succinct summary of the following conversation:",
+    model=OpenAIChat(id="gpt-4o-mini"),  # Use a specific model for summaries
+    session_summary_prompt="Create a brief, bullet-point summary focusing on key decisions and action items:",
+    # Or use summary_request_message to modify the user message instead:
+    # summary_request_message="Write the summary in Spanish.",
 )
 
-# Now provide the adjusted Memory Manager to your Agent
 agent = Agent(
+    model=OpenAIChat(id="gpt-4o"),  # Agent uses gpt-4o
     db=db,
-    session_summary_manager=session_summary_manager,
-    enable_session_summaries=True,
+    session_summary_manager=session_summary_manager,  # But summaries use gpt-4o-mini
 )
 ```
+
+**Customization options:**
+- **`model`**: Use a different (often cheaper/faster) model for generating summaries
+- **`session_summary_prompt`**: Override the entire system prompt that instructs how to create summaries
+- **`summary_request_message`**: Customize the user message sent to request the summary (e.g., to change language or format)
+
+This is useful when you want to use a cheaper/faster model for summaries while keeping your main agent on a more powerful model.
 
 See the [Session Summary Manager](/reference/session/summary_manager) reference for more details.
 
-## Session history
+## Accessing Session History
 
-Agents with storage enabled automatically have access to the message and run history of the session.
+Agents with a database configured automatically track message and run history. You have multiple ways to access and use this history:
 
-You can access these messages using:
+<Note>
+All history features require a database. See the [Sessions Overview](/basics/sessions/overview#multi-user-conversations) for how to set up session storage.
+</Note>
 
-- `agent.get_messages_for_session()` -> Gets access to all the messages for the session, for the current agent.
-- `agent.get_chat_history()` -> Gets access to all the unique messages for the session.
+### Reading History Programmatically
 
-We can give the Agent access to the chat history in the following ways:
+```python
+# Get all messages for this agent in the current session
+messages = agent.get_messages_for_session()
 
-- We can set `add_history_to_context=True` and `num_history_runs=5` to add the messages from the last 5 runs automatically to every message sent to the agent.
-- We can be more granular about how many messages to add to include in the list sent to the model, by setting `num_history_messages`.
-- We can set `read_chat_history=True` to provide a `get_chat_history()` tool to your agent allowing it to read any message in the entire chat history.
-- **We recommend setting all 3: `add_history_to_context=True`, `num_history_runs=3` and `read_chat_history=True` for the best experience.**
-- We can also set `read_tool_call_history=True` to provide a `get_tool_call_history()` tool to your agent allowing it to read tool calls in reverse chronological order.
+# Get all unique messages across the session (deduplicated)
+chat_history = agent.get_chat_history()
+```
 
-Take a look at this example:
+### Adding History to Context
 
-```python session_history.py
+The most common pattern is to automatically include recent history as context for each new message. This is what gives your agent "memory" of the conversation - without it, every message would be treated as a fresh start.
+
+As covered in the [Sessions Overview](/basics/sessions/overview#multi-user-conversations), use `add_history_to_context=True` and `num_history_runs` to control how much history is included:
+
+```python
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=db,
+    add_history_to_context=True,  # Include history automatically
+    num_history_runs=3,             # Last 3 runs
+)
+```
+
+You can be even more granular by controlling the number of *messages* rather than *runs*:
+
+```python
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=db,
+    add_history_to_context=True,
+    num_history_messages=10,  # Last 10 messages (regardless of runs)
+)
+```
+
+### Letting the Agent Access History
+
+Instead of always including history in context, you can give the agent a *tool* to read history when it needs it:
+
+```python
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=db,
+    read_chat_history=True,  # Adds a get_chat_history() tool
+)
+```
+
+The agent can now call `get_chat_history()` to retrieve any message from the conversation when it needs to reference something specific.
+
+### Tool Call History
+
+For debugging or auditing, you can also give the agent access to its tool call history:
+
+```python
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=db,
+    read_tool_call_history=True,  # Adds a get_tool_call_history() tool
+)
+```
+
+<Check>
+**Recommended Configuration**
+
+For the best experience, we recommend combining these three parameters:
+
+```python
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=db,
+    add_history_to_context=True,  # Always include recent history
+    num_history_runs=3,             # Last 3 runs as baseline
+    read_chat_history=True,         # Let agent access older history when needed
+)
+```
+
+This gives the agent recent context by default while allowing it to look further back when necessary.
+</Check>
+
+Here's a complete example showing history in action:
+
+```python
 from agno.agent import Agent
-from agno.models.google.gemini import Gemini
+from agno.models.openai import OpenAIChat
 from agno.db.sqlite import SqliteDb
 
 agent = Agent(
-    model=Gemini(id="gemini-2.0-flash-001"),
+    model=OpenAIChat(id="gpt-4o-mini"),
     db=SqliteDb(db_file="tmp/data.db"),
-    add_history_to_context=True,
+    add_history_to_context=True,  # Include last 3 runs automatically
     num_history_runs=3,
-    read_chat_history=True,
-    description="You are a helpful assistant that always responds in a polite, upbeat and positive manner.",
+    read_chat_history=True,  # Let agent access full history via tool
 )
 
+# First interaction
 agent.print_response("Share a 2 sentence horror story", stream=True)
 
+# Agent can reference the history automatically
 agent.print_response("What was my first message?", stream=True)
+# The agent will answer correctly because history is in context
 ```
 
-## Control what gets stored in the session
+## Controlling What Gets Stored
 
-As your sessions grow, you may want to decide what data exactly is persisted. Agno provides three flags to optimize storage while maintaining full functionality during execution:
+As sessions accumulate data, your database can grow quickly. Agno gives you fine-grained control over what gets persisted with three storage flags:
 
-- **`store_media`** - Controls storage of images, videos, audio, and files
-- **`store_tool_messages`** - Controls storage of tool requests and their results
-- **`store_history_messages`** - Controls storage of history messages
+- **`store_media`** - Images, videos, audio, and file uploads
+- **`store_tool_messages`** - Tool calls and their results
+- **`store_history_messages`** - Historical messages from previous runs
 
+### How Storage Control Works
 
-### How it works
+Here's the key insight: **these flags only affect database persistence, not runtime behavior**. 
 
-These flags only affect what gets **persisted to the database**. During execution, all data remains available to your agent - media, tool results, and history are still accessible in the `RunOutput` object. The data is scrubbed right before saving to the database.
+During execution, your agent has access to everything - media, tool results, history. The data only gets filtered out when saving to the database after the run completes. This means:
 
-This means:
-- Your agent functionality remains unchanged
-- Tools can access all data they need during execution
-- Only the database storage is optimized
+✅ Your agent functionality is unchanged  
+✅ Tools get all the data they need  
+✅ Only storage is optimized  
+✅ Token metrics still reflect actual usage
 
 <Warning>
-**Important considerations when using `store_tool_messages=False`:**
+**Important: `store_tool_messages=False` removes message pairs**
 
-- **Tool message pairs are removed together**: To maintain valid message sequences, when tool messages are removed from storage, the corresponding assistant messages that contains tool calls for that tool message are also removed. Most model providers require a strict "tool call pair"
+When you disable tool message storage, Agno removes both the tool result *and* the assistant message containing the tool call. This is required to maintain valid message sequences that model providers expect.
 
-- **Metrics will still consider the tokens spent on the deleted messages**: Your run metrics will still reflect the **actual tokens used during execution**, including the tool calls and results.
+Your metrics will still show the actual tokens used, including the removed tool messages.
 </Warning>
 
-### Usage example
+### Example Usage
+
+Here's how to minimize storage while keeping your agent fully functional:
 
 ```python
 from agno.agent import Agent
@@ -261,15 +244,21 @@ agent = Agent(
     db=SqliteDb(db_file="tmp/agents.db"),
     add_history_to_context=True,
     num_history_runs=5,
-    store_media=False,              # Don't store images/videos/audio/files
-    store_tool_messages=False,       # Don't store tool execution details
-    store_history_messages=False,   # Don't store history messages
+    store_media=False,           # Don't persist uploaded files
+    store_tool_messages=False,   # Don't persist tool call details
+    store_history_messages=False,# Don't persist old history
 )
 
+# The agent works normally, tools execute, history is available during the run
+# Only the database storage is reduced
 agent.print_response("Search for the latest AI news and summarize it")
 ```
 
-See more examples in [Disable Storing History Messages](/examples/basics/agent/session/09_disable_storing_history_messages) and [Disable Storing Tool Messages](/examples/basics/agent/session/10_disable_storing_tool_messages).
+This configuration is useful for high-volume production systems where you want to minimize storage costs while maintaining full agent capabilities.
+
+**Learn more:**
+- [Disable Storing History Messages](/examples/basics/agent/session/09_disable_storing_history_messages)
+- [Disable Storing Tool Messages](/examples/basics/agent/session/10_disable_storing_tool_messages)
 
 ## Developer Resources
 
