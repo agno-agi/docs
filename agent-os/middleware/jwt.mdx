@@ -1,17 +1,18 @@
 ---
 title: JWT Middleware
-description: Add JWT authentication and parameter injection to your AgentOS application
+sidebarTitle: JWT
+description: Secure your AgentOS application with JWT token validation
+keywords: [jwt middleware, jwt authentication, token validation, parameter injection, authorization, bearer token, jwt claims, http only cookies, token verification, jwt secret, user authentication, session management, jwt tokens, pyjwt, token security]
 ---
 
-AgentOS provides built-in JWT middleware for authentication, parameter injection, and automatic claims extraction. This middleware can extract JWT tokens from Authorization headers or cookies and automatically inject values into the AgentOS endpoints.
-
-## Quick Start
+Authenticate and authorize requests to your AgentOS application using JWT tokens. The middleware extracts tokens from Authorization headers or cookies, validates them, and automatically injects user_id, session_id, and custom claims into your endpoints.
 
 The JWT middleware provides two main features:
 1. **Token Validation**: Validates JWT tokens and handles authentication
 2. **Parameter Injection**: Automatically injects user_id, session_id, and custom claims into endpoint parameters
 
-```python
+
+```python jwt_middleware_setup.py
 from agno.os.middleware import JWTMiddleware
 from agno.os.middleware.jwt import TokenSource
 
@@ -26,22 +27,7 @@ app.add_middleware(
 )
 ```
 
-## Configuration Options
 
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `secret_key` | Secret key for JWT verification | Optional, will use `JWT_SECRET_KEY` environment variable if not provided |
-| `algorithm` | JWT algorithm (HS256, RS256, etc.) | "HS256" |
-| `token_source` | Where to extract token from. `HEADER`, `COOKIE`, or `BOTH`. | `TokenSource.HEADER` |
-| `token_header_key` | Key to use for the Authorization header (only used when token_source is `HEADER` or `BOTH`) | "Authorization" |
-| `cookie_name` | Cookie name when using cookies (only used when token_source is `COOKIE` or `BOTH`) | "access_token" |
-| `validate` | Enable token validation | `True` |
-| `excluded_route_paths` | Routes to skip middleware (useful for health checks, etc.) | `[]` |
-| `scopes_claim` | JWT claim for scopes | `None` |
-| `user_id_claim` | JWT claim for user ID | "sub" |
-| `session_id_claim` | JWT claim for session ID | "session_id" |
-| `dependencies_claims` | List of additional claims to extract for `dependencies` parameter | `[]` |
-| `session_state_claims` | List of additional claims to extract for `session_state` parameter | `[]` |
 
 ## Token Sources
 
@@ -71,7 +57,7 @@ The middleware supports three token sources:
         JWTMiddleware,
         secret_key="your-secret",
         token_source=TokenSource.COOKIE,
-        cookie_name="auth_token",  # Default
+        cookie_name="access_token",  # Default
     )
     ```
   </Tab>
@@ -84,7 +70,7 @@ The middleware supports three token sources:
         JWTMiddleware,
         secret_key="your-secret",
         token_source=TokenSource.BOTH,
-        cookie_name="auth_token",  # Default
+        cookie_name="access_token",  # Default
         token_header_key="Authorization",  # Default
     )
     ```
@@ -93,26 +79,26 @@ The middleware supports three token sources:
 
 ## Parameter Injection
 
-The middleware automatically injects JWT claims into the request object flowing across your FastAPI state. This is a great way to resolve data from your token into parameters received by your endpoints.
+The middleware automatically injects JWT claims into AgentOS endpoints. The following parameters are extracted from tokens and injected into requests:
 
-These are the parameters automatically injected by our JWT middleware into your endpoints:
-- `user_id`
-- `session_id`
-- `dependencies`
-- `session_state`
-For example, in `/agents/{agent_id}/runs`, the `user_id`, `session_id`, `dependencies` and `session_state` are automatically used if they were extracted from the JWT token.
+- `user_id` - User identifier from token claims
+- `session_id` - Session identifier from token claims
+- `dependencies` - Custom claims for agent tools
+- `session_state` - Custom claims for session management
+
+For example, the `/agents/{agent_id}/runs` endpoint automatically uses `user_id`, `session_id`, `dependencies`, and `session_state` from the JWT token when available.
 
 This is useful for:
 - Automatically using the `user_id` and `session_id` from your JWT token when running an agent
 - Automatically filtering sessions retrieved from `/sessions` endpoints by `user_id` (where applicable)
 - Automatically injecting `dependencies` from claims in your JWT token into the agent run, which then is available on tools called by your agent
 
-See the [full example](/examples/agent-os/middleware/jwt-middleware) for more details.
+View the [full example](/examples/agent-os/middleware/jwt-middleware) for more details.
 
 ## Security Features
 
 <Note>
-Remember to always use strong secret keys, don't hardcode them anywhere in your code and enable validation in production.
+Use strong secret keys, store them securely (not in code), and enable validation in production.
 </Note>
 
 **Token Validation**: When `validate=True`, the middleware:
@@ -132,7 +118,7 @@ Remember to always use strong secret keys, don't hardcode them anywhere in your 
 
 Skip middleware for specific routes:
 
-```python
+```python jwt_excluded_routes.py
 app.add_middleware(
     JWTMiddleware,
     secret_key="your-secret",
@@ -144,10 +130,58 @@ app.add_middleware(
     ]
 )
 ```
+## Configuration Options
 
-## Developer Resources
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `secret_key` | Secret key for JWT verification | Optional, will use `JWT_SECRET_KEY` environment variable if not provided |
+| `algorithm` | JWT algorithm (HS256, RS256, etc.) | "HS256" |
+| `token_source` | Where to extract token from. `HEADER`, `COOKIE`, or `BOTH`. | `TokenSource.HEADER` |
+| `token_header_key` | Key to use for the Authorization header (only used when token_source is `HEADER` or `BOTH`) | "Authorization" |
+| `cookie_name` | Cookie name when using cookies (only used when token_source is `COOKIE` or `BOTH`) | "access_token" |
+| `validate` | Enable token validation | `True` |
+| `excluded_route_paths` | Routes to skip middleware (useful for health checks, etc.) | `None` |
+| `scopes_claim` | JWT claim for scopes | `None` |
+| `user_id_claim` | JWT claim for user ID | "sub" |
+| `session_id_claim` | JWT claim for session ID | "session_id" |
+| `dependencies_claims` | List of additional claims to extract for `dependencies` parameter | `[]` |
+| `session_state_claims` | List of additional claims to extract for `session_state` parameter | `[]` |
 
-- [JWT Middleware with Headers Example](/examples/agent-os/middleware/jwt-middleware)
-- [JWT Middleware with Cookies Example](/examples/agent-os/middleware/jwt-cookies)
-- [Custom FastAPI with JWT Example](/examples/agent-os/middleware/custom-fastapi-jwt)
-- [PyJWT Documentation](https://pyjwt.readthedocs.io/)
+
+### Examples
+
+<CardGroup cols={2}>
+  <Card
+    title="JWT with Headers"
+    icon="shield"
+    href="/examples/agent-os/middleware/jwt-middleware"
+  >
+    JWT authentication using Authorization headers for API clients.
+  </Card>
+  <Card
+    title="JWT with Cookies"
+    icon="cookie"
+    href="/examples/agent-os/middleware/jwt-cookies"
+  >
+    JWT authentication using HTTP-only cookies for web applications.
+  </Card>
+  <Card
+    title="Custom FastAPI + JWT"
+    icon="code"
+    href="/examples/agent-os/middleware/custom-fastapi-jwt"
+  >
+    Custom FastAPI app with JWT middleware and AgentOS integration.
+  </Card>
+</CardGroup>
+
+### External Resources
+
+<CardGroup cols={2}>
+  <Card
+    title="PyJWT Documentation"
+    icon="book"
+    href="https://pyjwt.readthedocs.io/"
+  >
+    Official PyJWT library documentation for JWT encoding and decoding.
+  </Card>
+</CardGroup>

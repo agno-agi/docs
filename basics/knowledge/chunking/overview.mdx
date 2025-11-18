@@ -1,0 +1,103 @@
+---
+title: What is Chunking?
+sidebarTitle: Overview
+description: Chunking is the process of breaking down large documents into smaller pieces for effective vector search and retrieval.
+keywords: [chunking, chunking strategies, chunker]
+---
+
+Chunking is the process of dividing content into manageable pieces before converting them into embeddings and storing them in vector databases. The chunking strategy you choose directly impacts search quality and retrieval accuracy.
+
+Different chunking strategies serve different purposes. For example, when processing a recipe book, different strategies produce different results:
+
+- **Fixed Size**: Splits text every 500 characters (which may break recipes mid-instruction)
+- **Semantic**: Keeps complete recipes together based on meaning
+- **Document**: Each page becomes a chunk
+
+The strategy affects whether you get complete, relevant results or fragmented pieces.
+
+## Available Chunking Strategies
+
+<CardGroup cols={3}>
+  <Card title="Fixed Size Chunking" icon="ruler" href="/basics/knowledge/chunking/fixed-size-chunking">
+    Split content into uniform chunks with specified size and overlap.
+  </Card>
+  <Card title="Semantic Chunking" icon="brain" href="/basics/knowledge/chunking/semantic-chunking">
+    Use semantic similarity to identify natural breakpoints in content.
+  </Card>
+  <Card title="Recursive Chunking" icon="sitemap" href="/basics/knowledge/chunking/recursive-chunking">
+    Recursively split content using multiple separators for hierarchical processing.
+  </Card>
+  <Card title="Document Chunking" icon="file-lines" href="/basics/knowledge/chunking/document-chunking">
+    Preserve document structure by treating sections as individual chunks.
+  </Card>
+  <Card title="CSV Row Chunking" icon="table" href="/basics/knowledge/chunking/csv-row-chunking">
+    Splits CSV files by treating each row as an individual chunk. Only compatible with CSVs.
+  </Card>
+  <Card title="Markdown Chunking" icon="markdown" href="/basics/knowledge/chunking/markdown-chunking">
+    Split markdown content while preserving heading structure and hierarchy. Only compatible with Markdown files.
+  </Card>
+  <Card title="Agentic Chunking" icon="robot" href="/basics/knowledge/chunking/agentic-chunking">
+    Use AI to intelligently determine optimal chunk boundaries.
+  </Card>
+  <Card title="Custom Chunking" icon="code" href="/basics/knowledge/chunking/custom-chunking">
+    Build your own chunking strategy for specialized use cases.
+  </Card>
+</CardGroup>
+
+## Using Chunking Strategies
+
+Chunking strategies are configured when setting up readers for your knowledge base:
+
+```python
+from agno.knowledge.chunking.semantic import SemanticChunking
+from agno.knowledge.reader.pdf_reader import PDFReader
+from agno.knowledge.knowledge import Knowledge
+from agno.vectordb.pgvector import PgVector
+from agno.db.postgres import PostgresDb
+
+# Configure chunking strategy with a reader
+reader = PDFReader(
+    chunking_strategy=SemanticChunking(similarity_threshold=0.7)
+)
+
+# Set up ContentsDB - tracks content metadata
+contents_db = PostgresDb(
+    db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
+    knowledge_table="knowledge_contents"
+)
+
+# Set up vector database - stores embeddings
+vector_db = PgVector(
+    table_name="documents",
+    db_url="postgresql+psycopg://ai:ai@localhost:5532/ai"
+)
+
+# Create Knowledge with both databases
+knowledge = Knowledge(
+    name="Chunking Knowledge Base",
+    vector_db=vector_db,
+    contents_db=contents_db
+)
+
+# Add content with chunking applied
+knowledge.add_content(
+    path="documents/cookbook.pdf",
+    reader=reader,
+)
+```
+
+## Choosing a Strategy
+
+The choice of chunking strategy depends on your content type and use case:
+
+- **Text documents**: Semantic chunking maintains context and meaning
+- **Structured documents**: Document or Markdown chunking preserves hierarchy  
+- **Tabular data**: CSV Row chunking treats each row as a separate entity
+- **Mixed content**: Recursive chunking provides flexibility with multiple separators
+- **Uniform processing**: Fixed Size chunking ensures consistent chunk dimensions
+
+Each reader has a default chunking strategy that works well for its content type, but you can override it by specifying a `chunking_strategy` parameter when configuring the reader.
+
+<Note>
+Consider your specific use case and performance requirements when choosing a chunking strategy, since different strategies vary in processing time and memory usage.
+</Note>
