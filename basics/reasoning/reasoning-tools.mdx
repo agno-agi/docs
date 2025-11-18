@@ -1,0 +1,168 @@
+---
+title: Reasoning Tools
+sidebarTitle: Overview
+description: Reasoning tools help models think in structured steps, like using scratchpads or planning formats, which significantly enhances their reasoning capabilities.
+keywords: [reasoning tools, reasoning, chain of thought, chain of thought tools, chain of thought reasoning]
+---
+
+
+For example, by giving a model **reasoning tools**, we can greatly improve its reasoning capabilities by providing a dedicated space for working through the problem. This is a simple, yet effective approach to add reasoning to non-reasoning models.
+
+
+## Reasoning Tools
+
+The first version of the Reasoning Tools, previously known as Thinking tools, was published by Anthropic in [this blog post](https://www.anthropic.com/engineering/claude-think-tool).
+
+```python claude_reasoning_tools.py
+from agno.agent import Agent
+from agno.models.anthropic import Claude
+from agno.tools.reasoning import ReasoningTools
+from agno.tools.duckduckgo import DuckDuckGoTools
+
+# Setup our Agent with the reasoning tools
+reasoning_agent = Agent(
+    model=Claude(id="claude-3-7-sonnet-latest"),
+    tools=[
+        ReasoningTools(add_instructions=True),
+        DuckDuckGoTools(),
+    ],
+    instructions="Use tables where possible",
+    markdown=True,
+)
+
+# Run the Agent
+reasoning_agent.print_response(
+    "What are the fastest cars in the market? Only the report, no other text.",
+    stream=True,
+    show_full_reasoning=True,
+    stream_events=True,
+)
+```
+
+See the [Reasoning Tools](/basics/tools/reasoning_tools/reasoning-tools) documentation for more details.
+
+## Knowledge Tools
+
+The Knowledge Tools take the Reasoning Tools one step further by allowing the Agent to **search** a knowledge base and **analyze** the results of their actions.
+
+**KnowledgeTools = `think` + `search` + `analyze`**
+
+```python knowledge_tools.py
+import os
+from agno.agent import Agent
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.knowledge.knowledge import Knowledge
+from agno.models.openai import OpenAIChat
+from agno.tools.knowledge import KnowledgeTools
+from agno.vectordb.lancedb import LanceDb, SearchType
+
+
+agno_docs = Knowledge(
+    vector_db=LanceDb(
+        uri="tmp/lancedb",
+        table_name="agno_docs",
+        search_type=SearchType.hybrid,
+        embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+    ),
+)
+
+
+knowledge_tools = KnowledgeTools(
+    knowledge=agno_docs,
+    think=True,
+    search=True,
+    analyze=True,
+    add_few_shot=True,
+)
+
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-5-mini"),
+    tools=[knowledge_tools],
+    markdown=True,
+)
+
+
+agno_docs.add_content(
+    url="https://docs.agno.com/llms-full.txt"
+)
+
+
+agent.print_response("How do I build multi-agent teams with Agno?", stream=True)
+```
+
+See the [Knowledge Tools](/basics/tools/reasoning_tools/knowledge-tools) documentation for more details.
+
+## Memory Tools
+
+The Memory Tools allow the Agent to use memories to reason about the question and work through it step by step.
+
+```python memory_tools.py
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIChat
+from agno.tools.memory import MemoryTools
+
+# Create a database connection
+db = SqliteDb(
+    db_file="tmp/memory.db"
+)
+
+memory_tools = MemoryTools(
+    db=db,
+)
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-5-mini"),
+    tools=[memory_tools],
+    markdown=True,
+)
+
+agent.print_response(
+    "My name is John Doe and I like to hike in the mountains on weekends. "
+    "I like to travel to new places and experience different cultures. "
+    "I am planning to travel to Africa in December. ",
+    user_id="john_doe@example.com",
+    stream=True
+)
+
+# This won't use the session history, but instead will use the memory tools to get the memories
+agent.print_response("What have you remembered about me?", stream=True, user_id="john_doe@example.com")
+```
+
+See the [Memory Tools](/basics/tools/reasoning_tools/memory-tools) documentation for more details.
+
+## Workflow Tools
+
+
+The Workflow Tools allow the Agent to execute a workflow and reason about the results.
+
+```python workflow_tools.py
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.tools.workflow import WorkflowTools
+
+# Create your workflow
+# ...
+
+workflow_tools = WorkflowTools(
+    workflow=blog_post_workflow,
+)
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-5-mini"),
+    tools=[workflow_tools],
+    markdown=True,
+)
+
+agent.print_response("Create a blog post on the topic: AI trends in 2024", stream=True)
+```
+
+See the [Workflow Tools](/basics/tools/reasoning_tools/workflow-tools) documentation for more details.
+
+## Developer Resources
+
+- View [Agents with Reasoning Tools Examples](/examples/basics/reasoning/tools)
+- View [Agents with Reasoning Tools Cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/reasoning/tools)
+- View [Teams with Reasoning Tools Examples](/examples/basics/reasoning/tools/reasoning-finance-team)
+- View [Teams with Reasoning Tools Cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/reasoning/teams)
