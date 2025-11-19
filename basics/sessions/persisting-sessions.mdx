@@ -7,187 +7,35 @@ keywords: [sessions, database, persistence, PostgreSQL, SQLite]
 
 To enable sessions across multiple runs, you need to configure a database. Once configured, Agno automatically stores conversation history, session state, and run metadata.
 
+<Note>
+Database selection, connection strings, credentials management, and operational guidance live in the [Storage overview](/basics/storage/overview). Reuse that setup here—this page only adds the session-specific considerations.
+</Note>
+
 ## Quick Start
 
-<Tabs>
-<Tab title="Agent">
+Once you have a `db` object (Postgres, SQLite, DynamoDB, …) configured per the storage docs, persistence is enabled simply by passing it to your Agent, Team, or Workflow:
 
 ```python
-from agno.agent import Agent
-from agno.db.postgres import PostgresDb
-from agno.models.openai import OpenAIChat
-
-# Configure database
-db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+db = PostgresDb(db_url="postgresql+psycopg://...")
 
 agent = Agent(
     model=OpenAIChat(id="gpt-4o-mini"),
-    db=db,  # Enable persistence
-    session_id="user_123",  # Same ID = same conversation
+    db=db,                 # Enables persistence
+    session_id="user_123", # Same ID = same conversation
 )
-
-agent.print_response("Hello!")
 ```
 
-</Tab>
-
-<Tab title="Team">
-
-```python
-from agno.agent import Agent
-from agno.team import Team
-from agno.db.postgres import PostgresDb
-from agno.models.openai import OpenAIChat
-
-# Configure database
-db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
-
-team = Team(
-    model=OpenAIChat(id="gpt-4o-mini"),
-    members=[Agent(model=OpenAIChat(id="gpt-4o-mini"))],
-    db=db,  # Enable persistence
-    session_id="user_123",  # Same ID = same conversation
-)
-
-team.print_response("Hello!")
-```
-
-</Tab>
-
-<Tab title="Workflow">
-
-```python
-from agno.workflow import Workflow
-from agno.workflow.step import Step
-from agno.agent import Agent
-from agno.db.postgres import PostgresDb
-from agno.models.openai import OpenAIChat
-
-# Configure database
-db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
-
-workflow = Workflow(
-    name="Research Pipeline",
-    db=db,  # Enable persistence
-    session_id="user_123",  # Same ID = same workflow session
-    steps=[
-        Step(name="Research", agent=Agent(model=OpenAIChat(id="gpt-4o-mini"))),
-    ],
-)
-
-workflow.print_response("Research AI trends")
-```
-
-</Tab>
-</Tabs>
+The same constructor arguments work for `Team` and `Workflow`. For a full runnable script (including environment setup) see `/examples/basics/agent/session/01_persistent_session.mdx` and `/examples/basics/teams/session/01_persistent_session.mdx`.
 
 ## Supported Databases
 
-### PostgreSQL (Recommended)
+Nothing new lives here—simply reuse the database drivers and guidance from `/basics/storage`:
 
-<Tabs>
-<Tab title="Agent">
+- **PostgreSQL** (recommended) – Production-grade, supports custom `session_table` names for isolating workloads.
+- **SQLite** – Great for local development; swap the file path just as you would elsewhere.
+- **InMemoryDb** – Useful for tests or demos only. Data disappears when the process exits.
 
-```python
-from agno.db.postgres import PostgresDb
-
-db = PostgresDb(
-    db_url="postgresql+psycopg://user:pass@localhost:5432/dbname",
-    session_table="agent_sessions"  # Optional: custom table name
-)
-```
-
-</Tab>
-
-<Tab title="Team">
-
-```python
-from agno.db.postgres import PostgresDb
-
-db = PostgresDb(
-    db_url="postgresql+psycopg://user:pass@localhost:5432/dbname",
-    session_table="team_sessions"  # Optional: custom table name
-)
-```
-
-</Tab>
-
-<Tab title="Workflow">
-
-```python
-from agno.db.postgres import PostgresDb
-
-db = PostgresDb(
-    db_url="postgresql+psycopg://user:pass@localhost:5432/dbname",
-    session_table="workflow_sessions"  # Optional: custom table name
-)
-```
-
-</Tab>
-</Tabs>
-
-### SQLite
-
-Perfect for development and testing:
-
-<Tabs>
-<Tab title="Agent">
-
-```python
-from agno.db.sqlite import SqliteDb
-
-db = SqliteDb(
-    db_file="tmp/agents.db",
-    session_table="agent_sessions"  # Optional: custom table name
-)
-```
-
-</Tab>
-
-<Tab title="Team">
-
-```python
-from agno.db.sqlite import SqliteDb
-
-db = SqliteDb(
-    db_file="tmp/teams.db",
-    session_table="team_sessions"  # Optional: custom table name
-)
-```
-
-</Tab>
-
-<Tab title="Workflow">
-
-```python
-from agno.db.sqlite import SqliteDb
-
-db = SqliteDb(
-    db_file="tmp/workflows.db",
-    session_table="workflow_sessions"  # Optional: custom table name
-)
-```
-
-</Tab>
-</Tabs>
-
-### In-Memory Database
-
-For testing without persistent storage:
-
-```python
-from agno.db.in_memory import InMemoryDb
-
-db = InMemoryDb()
-```
-
-<Note>
-In-memory databases work the same for agents, teams, and workflows.
-</Note>
-
-<Warning>
-In-memory databases lose all data when the process ends. Use only for development/testing.
-</Warning>
+If you need to tune indexing, retention, or connection pools, do that in the shared storage layer so every feature (sessions, memories, knowledge, etc.) benefits from the same configuration.
 
 ## Session IDs
 
@@ -212,6 +60,8 @@ agent = Agent(
 agent.run("What's my name?")  # Agent remembers "Alice"
 ```
 
+Need custom naming conventions, caching, or UI-friendly labels? Continue with the [Session Management](/basics/sessions/session-management) guide.
+
 ## What Gets Stored
 
 When you configure a database, Agno automatically stores:
@@ -222,7 +72,7 @@ When you configure a database, Agno automatically stores:
 - ✅ **Tool calls** - Tool usage and results (optional)
 - ✅ **Media** - Images, audio, files (optional)
 
-See [Storage Control](/basics/sessions/storage-control/overview) to customize what gets saved.
+See [Storage Control](/basics/sessions/storage-control) to customize what gets saved.
 
 ## Multi-User Sessions
 
@@ -244,13 +94,4 @@ agent = Agent(
 - **Session ID**: Same `session_id` = same conversation thread
 - **Production**: Use PostgreSQL for production workloads
 - **Development**: SQLite or in-memory work great for local development
-
-## Next Steps
-
-Now that you have persistence configured, explore what you can do with sessions:
-
-- [History Management](/basics/sessions/history-management/overview) - Control conversation history
-- [Session Summaries](/basics/sessions/session-summaries/overview) - Condense long conversations
-- [Storage Control](/basics/sessions/storage-control/overview) - Optimize what gets saved
-- [Session Management](/basics/sessions/session-management/overview) - Naming, caching, and more
 

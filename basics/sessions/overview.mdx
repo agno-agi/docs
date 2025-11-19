@@ -48,107 +48,20 @@ This creates a new session with a single run. But here's the catch: without a da
 
 ## Multi-User Conversations
 
-In production, you'll typically have multiple users talking to the same agent simultaneously. Each user should have their own isolated conversation threads.
+In production, multiple users often talk to the same agent or team simultaneously. Sessions keep those threads isolated:
 
-Here's how Agno handles this:
+- `user_id` distinguishes the person using your product.
+- `session_id` distinguishes conversation threads for that user (think "chat tabs").
+- Conversation history only flows into the run when you enable it via [`add_history_to_context`](/basics/chat-history/agent/overview#add-history-to-the-agent-context).
 
-- Use `user_id` to identify different users
-- Use `session_id` to identify different conversation threads for each user
-- One user can have multiple sessions (like having multiple chat windows open)
-- Configure a database to persist these conversations
-- Set `add_history_to_context=True` so the agent remembers what was said earlier
-
-Let's see this in action with two users having separate conversations:
-
-```python
-from agno.agent import Agent
-from agno.models.openai import OpenAIChat
-from agno.db.sqlite import SqliteDb
-
-# Set up a database to persist sessions
-db = SqliteDb(db_file="tmp/data.db")
-
-agent = Agent(
-    model=OpenAIChat(id="gpt-4o-mini"),
-    db=db,
-    add_history_to_context=True,  # Remember conversation history
-    num_history_runs=3,             # Include last 3 messages as context
-)
-
-# Define user and session identifiers
-user_1_id = "user_101"
-user_2_id = "user_102"
-
-user_1_session_id = "session_101"
-user_2_session_id = "session_102"
-
-# User 1 starts a conversation
-agent.print_response(
-    "Tell me a 5 second short story about a robot.",
-    user_id=user_1_id,
-    session_id=user_1_session_id,
-)
-
-# User 1 continues their conversation
-agent.print_response(
-    "Now tell me a joke.", 
-    user_id=user_1_id, 
-    session_id=user_1_session_id
-)
-
-# Meanwhile, User 2 starts a completely different conversation
-agent.print_response(
-    "Tell me about quantum physics.", 
-    user_id=user_2_id, 
-    session_id=user_2_session_id
-)
-
-# User 2 continues their own conversation
-agent.print_response(
-    "What is the speed of light?", 
-    user_id=user_2_id, 
-    session_id=user_2_session_id
-)
-
-# User 1 can reference their conversation history (not User 2's!)
-agent.print_response(
-    "Give me a summary of our conversation.",
-    user_id=user_1_id,
-    session_id=user_1_session_id,
-)
-# The agent will summarize the robot story and joke - it won't mention quantum physics
-```
-
-Notice how each user's conversation is completely isolated. User 1's summary only includes their robot story and joke, not User 2's quantum physics discussion. This is the power of sessions - they keep conversations organized and private.
-
-<Check>
-The `add_history_to_context=True` and `num_history_runs=3` parameters are what give the agent "memory". Without these, each message would be treated as a brand new conversation.
-
-Learn more about managing conversation history in the [Chat History](/basics/chat_history/overview) documentation.
-</Check>
+For a full walkthrough that includes persistence, history, and per-user session IDs, follow the [Persisting Sessions guide](/basics/sessions/persisting-sessions#multi-user-sessions) or the [Chat History cookbook example](/examples/basics/agent/session/05_chat_history).
 
 
 ## Session Summaries
 
-As conversations grow longer, passing the entire chat history to your LLM becomes expensive and slow. Session summaries solve this by automatically condensing your conversation into a concise summary that captures the key points.
+When a thread grows beyond a few turns, pass a condensed summary instead of the entire transcript. Agno can generate and maintain those summaries for you—just enable `enable_session_summaries` on the Agent/Team.
 
-Think of it like taking notes during a long meeting - you don't need a transcript of everything said, just the important bits.
-
-To enable session summaries, simply set `enable_session_summaries=True`:
-
-```python
-agent = Agent(
-    model=OpenAIChat(id="gpt-4o-mini"),
-    db=db,
-    enable_session_summaries=True,  # Auto-generate summaries
-)
-```
-
-Agno will automatically create and update summaries as the conversation progresses. You can then use these summaries instead of the full chat history to save tokens and improve response times.
-
-**Learn more:**
-- [Session Summaries with Agents](/basics/sessions/agent#session-summaries)
-- [Session Summaries with Teams](/basics/sessions/team#session-summaries)
+See [Session Summaries](/basics/sessions/session-summaries) for a complete guide on automatic conversation condensing, including how to enable summaries and use them in context.
 
 
 ## Session Storage Schema
