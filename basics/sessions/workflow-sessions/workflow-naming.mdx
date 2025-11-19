@@ -1,0 +1,459 @@
+---
+title: Workflow Session Naming
+sidebarTitle: Session Naming
+description: Organize and identify your workflow sessions with meaningful names
+---
+
+## What is Session Naming?
+
+Session naming lets you give human-readable names to your workflow sessions instead of just using the auto-generated session IDs. This makes it easier to identify sessions in logs, databases, and user interfaces.
+
+Unlike agent/team sessions which generate names from conversation content, workflow sessions use timestamp-based naming since they represent executions rather than conversations.
+
+## How Workflow Naming Differs
+
+| Feature | Agent/Team Sessions | Workflow Sessions |
+|---------|-------------------|------------------|
+| **Auto-generation** | Uses first 6 messages (max 5 words) | Uses timestamp + description |
+| **Basis** | Content-based | Time-based |
+| **When to generate** | After 2-3 conversation turns | Anytime after session creation |
+| **Example** | "Python Best Practices" | "Research Pipeline - 2024-11-19 14:30" |
+
+## Setting Session Names
+
+### Manual Naming
+
+Set a custom name for your workflow session:
+
+```python
+from agno.workflow import Workflow
+from agno.db.sqlite import SqliteDb
+
+workflow = Workflow(
+    name="Research Pipeline",
+    db=SqliteDb(db_file="workflows.db"),
+    steps=[...],
+)
+
+# Run the workflow
+workflow.run(input="Analyze AI trends")
+
+# Set a descriptive name
+workflow.set_session_name(session_name="AI Trends Analysis Q4 2024")
+```
+
+### Auto-Generated Names
+
+Let Agno generate a timestamp-based name:
+
+```python
+# Without description
+workflow = Workflow(
+    name="Research Pipeline",
+    db=SqliteDb(db_file="workflows.db"),
+    steps=[...],
+)
+
+workflow.run(input="Research topic")
+workflow.set_session_name(autogenerate=True)
+# Result: "Workflow Session - 2024-11-19 14:30"
+```
+
+```python
+# With description (recommended)
+workflow = Workflow(
+    name="Research Pipeline",
+    description="Automated research and analysis pipeline",
+    db=SqliteDb(db_file="workflows.db"),
+    steps=[...],
+)
+
+workflow.run(input="Research topic")
+workflow.set_session_name(autogenerate=True)
+# Result: "Automated research and analysis pipel - 2024-11-19 14:30"
+```
+
+<Note>
+When auto-generating with a description, Agno truncates it to 40 characters to keep names manageable.
+</Note>
+
+### Naming Specific Sessions
+
+You can name specific sessions when working with multiple sessions:
+
+```python
+# User 1's session
+workflow.run(input="Task 1", session_id="user-1-session")
+workflow.set_session_name(
+    session_id="user-1-session",
+    session_name="User 1 - Research Project"
+)
+
+# User 2's session
+workflow.run(input="Task 2", session_id="user-2-session")
+workflow.set_session_name(
+    session_id="user-2-session",
+    session_name="User 2 - Data Analysis"
+)
+```
+
+### Async Support
+
+Workflow naming works with async workflows too:
+
+```python
+# Async version
+await workflow.aset_session_name(
+    session_name="Async Research Session",
+    session_id="async-session-1"
+)
+
+# Async auto-generation
+await workflow.aset_session_name(
+    autogenerate=True,
+    session_id="async-session-2"
+)
+```
+
+## Name Format Details
+
+### Auto-Generated Format
+
+When you use `autogenerate=True`, the naming format is:
+
+**Without description:**
+```
+"Workflow Session - YYYY-MM-DD HH:MM"
+```
+
+**With description:**
+```
+"{description} - YYYY-MM-DD HH:MM"
+```
+
+If the description is longer than 40 characters, it's truncated:
+```
+"This is a very long workflow description... - 2024-11-19 14:30"
+# Becomes:
+"This is a very long workflow descrip - 2024-11-19 14:30"
+```
+
+### Timestamp Format
+
+The timestamp uses your local server time in 24-hour format:
+- **Format:** `YYYY-MM-DD HH:MM`
+- **Example:** `2024-11-19 14:30`
+- **Timezone:** Server local time (not UTC)
+
+## Common Patterns
+
+### User-Based Naming
+
+Name sessions by user and purpose:
+
+```python
+def create_user_session(user_id: str, purpose: str):
+    workflow = Workflow(
+        name="User Workflow",
+        db=SqliteDb(db_file="users.db"),
+        session_id=f"user-{user_id}",
+        steps=[...],
+    )
+    
+    workflow.run(input="Initialize")
+    workflow.set_session_name(
+        session_name=f"User {user_id} - {purpose}"
+    )
+    return workflow
+
+# Usage
+create_user_session("123", "Content Generation")
+# Name: "User 123 - Content Generation"
+```
+
+### Project-Based Naming
+
+Organize sessions by project:
+
+```python
+def start_project_workflow(project_name: str, task: str):
+    workflow = Workflow(
+        name="Project Pipeline",
+        db=SqliteDb(db_file="projects.db"),
+        description=f"Project: {project_name}",
+        steps=[...],
+    )
+    
+    workflow.run(input=task)
+    workflow.set_session_name(
+        session_name=f"{project_name} - {task}"
+    )
+    return workflow
+
+# Usage
+start_project_workflow("Website Redesign", "Initial Research")
+# Name: "Website Redesign - Initial Research"
+```
+
+### Date-Based Naming
+
+Add dates for time-series tracking:
+
+```python
+from datetime import datetime
+
+def daily_workflow_run():
+    today = datetime.now().strftime("%Y-%m-%d")
+    
+    workflow = Workflow(
+        name="Daily Report",
+        db=SqliteDb(db_file="reports.db"),
+        steps=[...],
+    )
+    
+    workflow.run(input="Generate report")
+    workflow.set_session_name(
+        session_name=f"Daily Report - {today}"
+    )
+    return workflow
+
+# Usage
+daily_workflow_run()
+# Name: "Daily Report - 2024-11-19"
+```
+
+### Sequential Naming
+
+Add sequence numbers for tracking:
+
+```python
+class WorkflowRunner:
+    def __init__(self):
+        self.run_count = 0
+        self.workflow = Workflow(
+            name="Sequential Processor",
+            db=SqliteDb(db_file="sequential.db"),
+            steps=[...],
+        )
+    
+    def run_next(self, input_data):
+        self.run_count += 1
+        self.workflow.run(input=input_data)
+        self.workflow.set_session_name(
+            session_name=f"Run #{self.run_count} - {input_data[:30]}"
+        )
+
+# Usage
+runner = WorkflowRunner()
+runner.run_next("Process batch 1")  # Name: "Run #1 - Process batch 1"
+runner.run_next("Process batch 2")  # Name: "Run #2 - Process batch 2"
+```
+
+## Best Practices
+
+### Be Descriptive
+
+```python
+# Good: Clear purpose
+workflow.set_session_name(
+    session_name="Customer Support - Ticket #12345"
+)
+
+# Avoid: Too vague
+workflow.set_session_name(
+    session_name="Session 1"
+)
+```
+
+### Include Context
+
+```python
+# Good: Includes relevant context
+workflow.set_session_name(
+    session_name="Q4 2024 Sales Analysis - EMEA Region"
+)
+
+# Avoid: Missing important details
+workflow.set_session_name(
+    session_name="Sales"
+)
+```
+
+### Use Consistent Naming Schemes
+
+```python
+# Good: Consistent format across sessions
+"Project Alpha - Research Phase"
+"Project Alpha - Implementation Phase"
+"Project Beta - Research Phase"
+
+# Avoid: Inconsistent formats
+"Project Alpha Research"
+"Implementation for Project Alpha"
+"Beta: Research"
+```
+
+### Keep Names Reasonable Length
+
+```python
+# Good: Concise but descriptive
+"User Research Project - Initial Survey - 2024-11-19"
+
+# Avoid: Unnecessarily long
+"This is the user research project where we conduct surveys about product features and gather feedback from customers in the EMEA region during Q4 2024"
+```
+
+## When to Name Sessions
+
+### During Setup
+
+Name sessions as part of workflow initialization:
+
+```python
+def setup_workflow(user_id: str):
+    workflow = Workflow(
+        name="Onboarding",
+        db=SqliteDb(db_file="onboarding.db"),
+        session_id=f"onboarding-{user_id}",
+        steps=[...],
+    )
+    
+    workflow.run(input="Start onboarding")
+    
+    # Name immediately after first run
+    workflow.set_session_name(
+        session_name=f"Onboarding - User {user_id}"
+    )
+    
+    return workflow
+```
+
+### After Significant Milestones
+
+Update names when workflow state changes:
+
+```python
+# Initial run
+workflow.run(input="Start project")
+workflow.set_session_name(session_name="Project X - In Progress")
+
+# ... later, after completion ...
+workflow.run(input="Finalize")
+workflow.set_session_name(session_name="Project X - Completed")
+```
+
+### For Organization and Retrieval
+
+Name sessions when you need to find them later:
+
+```python
+# Generate reports for multiple clients
+for client in clients:
+    workflow = Workflow(
+        name="Report Generator",
+        db=SqliteDb(db_file="reports.db"),
+        steps=[...],
+    )
+    
+    workflow.run(input=f"Generate report for {client.name}")
+    workflow.set_session_name(
+        session_name=f"{client.name} - Monthly Report"
+    )
+```
+
+## Retrieving Named Sessions
+
+Once you've named your sessions, you can identify them in your database or UI:
+
+```python
+# Get session by ID
+session = workflow.get_session(session_id="user-123")
+
+# The name is stored in session_data
+session_name = session.session_data.get("session_name")
+print(f"Session Name: {session_name}")
+```
+
+## Naming vs Descriptions
+
+Don't confuse workflow descriptions with session names:
+
+```python
+workflow = Workflow(
+    name="Research Pipeline",
+    description="This workflow researches topics",  # ← Workflow description
+    db=SqliteDb(db_file="research.db"),
+    steps=[...],
+)
+
+# Workflow description is used in auto-generated names
+workflow.set_session_name(autogenerate=True)
+# Creates: "This workflow researches topics - 2024-11-19 14:30"
+
+# But you can override with a custom name
+workflow.set_session_name(session_name="AI Research - Q4")
+# Now: "AI Research - Q4"
+```
+
+## Troubleshooting
+
+### Name Not Persisting
+
+If your session name isn't being saved:
+
+1. **Check database is set:** Names require `db` parameter on workflow
+2. **Verify session exists:** Run workflow at least once before naming
+3. **Check session ID:** Ensure you're naming the right session
+
+```python
+# Correct order
+workflow.run(input="Task")  # ✅ Creates session first
+workflow.set_session_name(session_name="My Session")  # ✅ Then name it
+
+# Incorrect order
+workflow.set_session_name(session_name="My Session")  # ❌ No session yet
+workflow.run(input="Task")
+```
+
+### Auto-Generation Not Working
+
+If auto-generation fails:
+
+```python
+try:
+    workflow.set_session_name(autogenerate=True)
+except Exception as e:
+    print(f"Naming failed: {e}")
+    # Check: Is session_id set?
+    # Check: Does session exist in database?
+```
+
+### Timestamp is Wrong
+
+If timestamp shows unexpected time:
+
+- Timestamps use server local time, not UTC
+- Check your server's timezone configuration
+- Consider including timezone in custom names if needed:
+
+```python
+from datetime import datetime
+import pytz
+
+utc_time = datetime.now(pytz.UTC)
+workflow.set_session_name(
+    session_name=f"Report - {utc_time.strftime('%Y-%m-%d %H:%M UTC')}"
+)
+```
+
+## Next Steps
+
+- **[Workflow Agents](/basics/sessions/workflow-sessions/workflow-agents)** - Use agents that decide when to run workflows
+- **[Metrics](/basics/sessions/workflow-sessions/metrics)** - Track workflow performance
+- **[Overview](/basics/sessions/workflow-sessions/overview)** - Back to workflow sessions basics
+
+## Developer Resources
+
+- See the [Workflow API](/reference/workflows/workflow)
+- View the [WorkflowSession schema](/reference/workflows/session)
+

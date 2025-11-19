@@ -1,0 +1,525 @@
+---
+title: Workflow Session Metrics
+sidebarTitle: Metrics
+description: Track and analyze workflow performance across runs
+---
+
+## What are Workflow Session Metrics?
+
+Workflow session metrics track the performance of your workflow across multiple runs. Agno automatically collects and aggregates metrics like token usage, execution time, and costs for each workflow session.
+
+Unlike individual run metrics (which track a single execution), session metrics give you the cumulative picture of all runs in a session.
+
+## Metrics Collected
+
+For each workflow session, Agno tracks:
+
+- **Token usage:** Input tokens, output tokens, and total tokens
+- **Time:** Duration of each run
+- **Costs:** Estimated costs based on model pricing
+- **Run count:** Number of workflow executions
+
+These metrics aggregate across all steps in your workflow and across all runs in the session.
+
+## Accessing Session Metrics
+
+### Get Current Session Metrics
+
+```python
+from agno.workflow import Workflow
+from agno.db.sqlite import SqliteDb
+
+workflow = Workflow(
+    name="Research Pipeline",
+    db=SqliteDb(db_file="workflows.db"),
+    steps=[...],
+)
+
+# Run the workflow a few times
+workflow.run(input="Task 1")
+workflow.run(input="Task 2")
+workflow.run(input="Task 3")
+
+# Get aggregated metrics
+metrics = workflow.get_session_metrics()
+
+print(f"Total tokens: {metrics.total_tokens}")
+print(f"Input tokens: {metrics.input_tokens}")
+print(f"Output tokens: {metrics.output_tokens}")
+print(f"Total cost: ${metrics.total_cost}")
+```
+
+### Get Metrics for Specific Session
+
+```python
+# Get metrics for a different session
+metrics = workflow.get_session_metrics(session_id="user-123-session")
+```
+
+### Async Support
+
+```python
+# Async version
+metrics = await workflow.aget_session_metrics(session_id="async-session")
+```
+
+## Metrics Structure
+
+The `Metrics` object contains:
+
+```python
+@dataclass
+class Metrics:
+    # Token counts
+    input_tokens: int | None
+    output_tokens: int | None
+    total_tokens: int | None
+    
+    # Costs
+    input_cost: float | None
+    output_cost: float | None
+    total_cost: float | None
+    
+    # Time
+    time_to_first_token: float | None  # Not used for session metrics
+    
+    # Model info
+    model_name: str | None
+    model_provider: str | None
+```
+
+<Note>
+`time_to_first_token` is set to `None` for session metrics since it only applies to individual runs.
+</Note>
+
+## How Metrics Aggregate
+
+### Across Steps in a Run
+
+When a workflow runs, metrics from all steps are aggregated:
+
+```python
+workflow = Workflow(
+    name="Three Step Pipeline",
+    db=SqliteDb(db_file="pipeline.db"),
+    steps=[
+        Step(name="Research", agent=researcher),    # Uses 100 tokens
+        Step(name="Analyze", agent=analyzer),       # Uses 150 tokens
+        Step(name="Summarize", agent=summarizer),   # Uses 80 tokens
+    ],
+)
+
+result = workflow.run(input="Process data")
+
+# Run metrics = sum of all step metrics
+print(result.metrics.total_tokens)  # 330 tokens (100 + 150 + 80)
+```
+
+### Across Multiple Runs
+
+Session metrics accumulate across all runs in the same session:
+
+```python
+workflow = Workflow(
+    name="Data Processor",
+    db=SqliteDb(db_file="processor.db"),
+    steps=[...],
+)
+
+# First run uses 100 tokens
+workflow.run(input="Task 1")
+metrics = workflow.get_session_metrics()
+print(f"After run 1: {metrics.total_tokens} tokens")  # 100
+
+# Second run uses 150 tokens
+workflow.run(input="Task 2")
+metrics = workflow.get_session_metrics()
+print(f"After run 2: {metrics.total_tokens} tokens")  # 250 (100 + 150)
+
+# Third run uses 200 tokens
+workflow.run(input="Task 3")
+metrics = workflow.get_session_metrics()
+print(f"After run 3: {metrics.total_tokens} tokens")  # 450 (100 + 150 + 200)
+```
+
+## Common Patterns
+
+### Track Costs Per User
+
+Monitor spending for each user's workflow session:
+
+```python
+def get_user_workflow_costs(user_id: str) -> float:
+    workflow = Workflow(
+        name="User Workflow",
+        db=SqliteDb(db_file="workflows.db"),
+        session_id=f"user-{user_id}",
+        steps=[...],
+    )
+    
+    metrics = workflow.get_session_metrics()
+    return metrics.total_cost if metrics else 0.0
+
+# Check costs
+user_cost = get_user_workflow_costs("123")
+print(f"User 123 has spent ${user_cost:.4f}")
+```
+
+### Monitor Token Usage
+
+Keep track of token consumption to stay within budgets:
+
+```python
+def check_token_budget(session_id: str, budget: int) -> dict:
+    workflow = Workflow(
+        name="Monitored Workflow",
+        db=SqliteDb(db_file="workflows.db"),
+        session_id=session_id,
+        steps=[...],
+    )
+    
+    metrics = workflow.get_session_metrics()
+    
+    used = metrics.total_tokens if metrics else 0
+    remaining = budget - used
+    percentage = (used / budget) * 100 if budget > 0 else 0
+    
+    return {
+        "used": used,
+        "remaining": remaining,
+        "percentage": percentage,
+        "over_budget": used > budget,
+    }
+
+# Check budget
+status = check_token_budget("user-123", budget=100000)
+print(f"Used: {status['used']:,} tokens ({status['percentage']:.1f}%)")
+print(f"Remaining: {status['remaining']:,} tokens")
+
+if status['over_budget']:
+    print("⚠️ Budget exceeded!")
+```
+
+### Compare Session Performance
+
+Analyze metrics across different sessions:
+
+```python
+def compare_sessions(session_ids: list[str]) -> dict:
+    results = {}
+    
+    for session_id in session_ids:
+        workflow = Workflow(
+            name="Analytics Workflow",
+            db=SqliteDb(db_file="analytics.db"),
+            session_id=session_id,
+            steps=[...],
+        )
+        
+        metrics = workflow.get_session_metrics()
+        
+        results[session_id] = {
+            "tokens": metrics.total_tokens if metrics else 0,
+            "cost": metrics.total_cost if metrics else 0.0,
+        }
+    
+    return results
+
+# Compare multiple sessions
+comparison = compare_sessions(["session-a", "session-b", "session-c"])
+
+for session_id, data in comparison.items():
+    print(f"{session_id}: {data['tokens']:,} tokens, ${data['cost']:.4f}")
+```
+
+### Export Metrics for Analysis
+
+Extract metrics for external analysis or reporting:
+
+```python
+import csv
+from datetime import datetime
+
+def export_session_metrics(session_id: str, output_file: str):
+    workflow = Workflow(
+        name="Reporting Workflow",
+        db=SqliteDb(db_file="workflows.db"),
+        session_id=session_id,
+        steps=[...],
+    )
+    
+    metrics = workflow.get_session_metrics()
+    session = workflow.get_session(session_id=session_id)
+    
+    # Prepare data
+    data = {
+        "session_id": session_id,
+        "workflow_name": workflow.name,
+        "total_runs": len(session.runs) if session and session.runs else 0,
+        "total_tokens": metrics.total_tokens if metrics else 0,
+        "input_tokens": metrics.input_tokens if metrics else 0,
+        "output_tokens": metrics.output_tokens if metrics else 0,
+        "total_cost": metrics.total_cost if metrics else 0.0,
+        "exported_at": datetime.now().isoformat(),
+    }
+    
+    # Write to CSV
+    with open(output_file, 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=data.keys())
+        writer.writeheader()
+        writer.writerow(data)
+    
+    print(f"Metrics exported to {output_file}")
+
+# Export
+export_session_metrics("user-123", "metrics_report.csv")
+```
+
+## Metrics Persistence
+
+Metrics are stored in the session database:
+
+```python
+# Get session to see how metrics are stored
+session = workflow.get_session(session_id="my-session")
+
+# Metrics are in session_data
+if session.session_data:
+    metrics_dict = session.session_data.get("session_metrics", {})
+    print(f"Total tokens: {metrics_dict.get('total_tokens')}")
+    print(f"Total cost: {metrics_dict.get('total_cost')}")
+```
+
+This means metrics persist across workflow instances:
+
+```python
+# First workflow instance
+workflow1 = Workflow(
+    name="Pipeline",
+    db=SqliteDb(db_file="shared.db"),
+    session_id="shared-session",
+    steps=[...],
+)
+
+workflow1.run(input="Task 1")
+metrics1 = workflow1.get_session_metrics()
+print(f"Workflow 1 metrics: {metrics1.total_tokens} tokens")
+
+# Second workflow instance (same session)
+workflow2 = Workflow(
+    name="Pipeline",
+    db=SqliteDb(db_file="shared.db"),
+    session_id="shared-session",  # Same session ID
+    steps=[...],
+)
+
+workflow2.run(input="Task 2")
+metrics2 = workflow2.get_session_metrics()
+print(f"Workflow 2 metrics: {metrics2.total_tokens} tokens")
+# ^ This includes tokens from both workflow1 and workflow2 runs
+```
+
+## Metrics vs Run Metrics
+
+Understanding the difference:
+
+| Feature | Run Metrics | Session Metrics |
+|---------|------------|----------------|
+| **Scope** | Single workflow execution | All runs in session |
+| **Access** | `workflow_run_output.metrics` | `workflow.get_session_metrics()` |
+| **When available** | After run completes | After any run completes |
+| **Accumulation** | Per-run only | Cumulative |
+| **Use case** | Analyze individual execution | Track overall usage |
+
+### Example: Both Types
+
+```python
+# Run workflow
+result = workflow.run(input="Process data")
+
+# Run metrics (this execution only)
+print(f"This run used: {result.metrics.total_tokens} tokens")
+
+# Session metrics (all runs)
+session_metrics = workflow.get_session_metrics()
+print(f"Session total: {session_metrics.total_tokens} tokens")
+```
+
+## Step-Level Metrics
+
+While session metrics aggregate everything, you can also access individual step metrics from a run:
+
+```python
+result = workflow.run(input="Multi-step task")
+
+# Access step-level metrics from the run
+if result.metrics and hasattr(result.metrics, 'steps'):
+    for step_name, step_metrics in result.metrics.steps.items():
+        print(f"{step_name}: {step_metrics.metrics.total_tokens} tokens")
+```
+
+<Note>
+Step-level metrics are available on the run output, but session metrics aggregate all steps and all runs into a single total.
+</Note>
+
+## Best Practices
+
+### Monitor Regularly
+
+Set up periodic metrics checks:
+
+```python
+def monitor_workflow(session_id: str, alert_threshold: int):
+    workflow = Workflow(
+        name="Monitored Workflow",
+        db=SqliteDb(db_file="workflows.db"),
+        session_id=session_id,
+        steps=[...],
+    )
+    
+    metrics = workflow.get_session_metrics()
+    tokens = metrics.total_tokens if metrics else 0
+    
+    if tokens > alert_threshold:
+        print(f"⚠️ Alert: {session_id} has used {tokens:,} tokens")
+        send_alert(session_id, tokens)  # Your alert function
+    
+    return tokens
+```
+
+### Reset Metrics by Session
+
+Start fresh sessions when you need to reset metrics:
+
+```python
+from datetime import datetime
+
+# Use date-based session IDs to track daily metrics
+today = datetime.now().strftime("%Y-%m-%d")
+session_id = f"user-123-{today}"
+
+workflow = Workflow(
+    name="Daily Pipeline",
+    db=SqliteDb(db_file="workflows.db"),
+    session_id=session_id,  # New session each day
+    steps=[...],
+)
+```
+
+### Log Metrics After Important Runs
+
+Track metrics at key points:
+
+```python
+def process_batch(batch_id: str, items: list):
+    workflow = Workflow(
+        name="Batch Processor",
+        db=SqliteDb(db_file="batch.db"),
+        session_id=f"batch-{batch_id}",
+        steps=[...],
+    )
+    
+    for item in items:
+        workflow.run(input=item)
+    
+    # Log final metrics
+    metrics = workflow.get_session_metrics()
+    log_batch_completion(
+        batch_id=batch_id,
+        items_processed=len(items),
+        total_tokens=metrics.total_tokens,
+        total_cost=metrics.total_cost,
+    )
+```
+
+### Compare Efficiency
+
+Track metrics to optimize your workflow:
+
+```python
+# Version A of workflow
+workflow_a = Workflow(
+    name="Pipeline V1",
+    db=SqliteDb(db_file="test.db"),
+    session_id="test-a",
+    steps=[step1, step2, step3],  # Original design
+)
+
+workflow_a.run(input="Test")
+metrics_a = workflow_a.get_session_metrics()
+
+# Version B of workflow (optimized)
+workflow_b = Workflow(
+    name="Pipeline V2",
+    db=SqliteDb(db_file="test.db"),
+    session_id="test-b",
+    steps=[optimized_step],  # New design
+)
+
+workflow_b.run(input="Test")
+metrics_b = workflow_b.get_session_metrics()
+
+# Compare
+print(f"V1: {metrics_a.total_tokens} tokens, ${metrics_a.total_cost:.4f}")
+print(f"V2: {metrics_b.total_tokens} tokens, ${metrics_b.total_cost:.4f}")
+
+savings = metrics_a.total_tokens - metrics_b.total_tokens
+print(f"Savings: {savings} tokens ({savings/metrics_a.total_tokens*100:.1f}%)")
+```
+
+## Troubleshooting
+
+### Metrics are None
+
+If `get_session_metrics()` returns `None`:
+
+1. **Check database is set:** Metrics require `db` parameter
+2. **Verify runs completed:** Metrics are only available after successful runs
+3. **Check session exists:** Session must exist in database
+
+```python
+# Check if session exists
+session = workflow.get_session(session_id=workflow.session_id)
+if session is None:
+    print("Session doesn't exist yet - run the workflow first")
+else:
+    metrics = workflow.get_session_metrics()
+```
+
+### Metrics Not Accumulating
+
+If metrics aren't adding up across runs:
+
+- **Verify same session_id:** Different sessions have separate metrics
+- **Check database connection:** Ensure database is properly configured
+- **Look for errors:** Failed runs may not contribute to metrics
+
+```python
+# Verify session ID is consistent
+print(f"Session ID: {workflow.session_id}")
+
+# Check run history
+session = workflow.get_session(session_id=workflow.session_id)
+print(f"Number of runs: {len(session.runs) if session and session.runs else 0}")
+```
+
+### Missing Step Metrics
+
+If step-level metrics are missing:
+
+- Step metrics are only available on individual run outputs
+- Use `result.metrics` to access step breakdown
+- Session metrics intentionally aggregate everything
+
+## Next Steps
+
+- **[Overview](/basics/sessions/workflow-sessions/overview)** - Back to workflow sessions basics
+- **[Workflow History](/basics/sessions/workflow-sessions/workflow-history)** - Learn about run history
+- **[Session State](/basics/sessions/workflow-sessions/session-state)** - Manage workflow state
+
+## Developer Resources
+
+- View the [Metrics schema](/reference/run/metrics)
+- See the [Workflow API](/reference/workflows/workflow)
+- Check existing [metrics docs](/basics/sessions/metrics/overview) for Agent/Team metrics
+
