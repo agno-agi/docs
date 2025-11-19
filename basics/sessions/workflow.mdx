@@ -1,14 +1,264 @@
 ---
 title: Workflow Sessions
-sidebarTitle: Workflow Sessions
-description: Learn about Workflow sessions and managing conversation history.
+sidebarTitle: Overview
+description: Learn about workflow sessions and managing conversation history.
 keywords: [sessions, workflow sessions, multi-turn conversations]
 ---
 
-TBD
+When we call `Workflow.run()`, it creates a stateless, singular workflow run.
+
+But what if we want to continue this conversation or track multiple related workflow executions? That's where "Sessions" come in. A session is collection of consecutive runs.
+
+In practice, a workflow session is a series of related workflow executions that share context, state, and history. Using a `session_id`, we can connect multiple workflow runs together and maintain continuity across executions.
+
+Here are the core concepts:
+
+- **Session:** A session is collection of consecutive workflow runs. Sessions are identified by a `session_id` and house all runs, metrics, state and other data that belong to the session.
+- **Run:** Every workflow execution is called a **run**. Runs are identified by a `run_id` and `Workflow.run()` creates a new `run_id` when called.
+- **Session State:** Workflows can maintain shared state across runs within a session, enabling data persistence and continuity between executions.
+
+See [Session Storage](/basics/storage/overview) for more details on how sessions are stored.
+
+## Single Workflow Run
+
+Here we have an example where a single run is created with a Workflow. A `run_id` is automatically generated, as well as a `session_id`.
+
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.workflow import Workflow
+from agno.db.sqlite import SqliteDb
+
+# Create a simple agent
+research_agent = Agent(
+    name="Researcher",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    instructions="Research the given topic and provide comprehensive insights"
+)
+
+# Create workflow
+workflow = Workflow(
+    name="Research Workflow",
+    description="Research topics and generate insights",
+    db=SqliteDb(db_file="tmp/workflow.db"),
+    steps=[research_agent],
+)
+
+# Run workflow and return the response
+response = workflow.run("Research AI trends in 2024")
+print(response.content)
+print(response.run_id)
+print(response.session_id)
+```
+
+## Multi-Turn Workflow Sessions
+
+Each user that is interacting with a Workflow gets a unique set of sessions and you can have multiple users interacting with the same Workflow at the same time.
+
+Set a `user_id` to connect a user to their sessions with the Workflow.
+
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.workflow import Workflow
+from agno.db.sqlite import SqliteDb
+
+db = SqliteDb(db_file="tmp/workflow.db")
+
+research_agent = Agent(
+    name="Researcher",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    instructions="Research topics and provide insights"
+)
+
+workflow = Workflow(
+    name="Research Workflow",
+    description="Research workflow for multiple users",
+    db=db,
+    steps=[research_agent],
+)
+
+user_1_id = "user_101"
+user_2_id = "user_102"
+
+user_1_session_id = "session_101"
+user_2_session_id = "session_102"
+
+# Start the session with user 1
+workflow.print_response(
+    "Research AI trends",
+    user_id=user_1_id,
+    session_id=user_1_session_id,
+)
+
+# Continue the session with user 1
+workflow.print_response(
+    "What are the key findings?",
+    user_id=user_1_id,
+    session_id=user_1_session_id
+)
+
+# Start the session with user 2
+workflow.print_response(
+    "Research quantum computing",
+    user_id=user_2_id,
+    session_id=user_2_session_id
+)
+
+# Continue the session with user 2
+workflow.print_response(
+    "Summarize the research",
+    user_id=user_2_id,
+    session_id=user_2_session_id
+)
+```
+
+<Note>
+For session history and management, you need to have a database assigned to the workflow. See [Storage](/basics/storage/overview) for more details.
+</Note>
+
+## Session State
+
+Workflows can maintain shared state across runs within a session using `session_state`. This is particularly useful for workflows that need to accumulate data, track progress, or maintain context across multiple executions.
+
+### Example: Shopping List with Session State
+
+```python shared_session_state_with_agent.py
+from agno.agent.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai.chat import OpenAIChat
+from agno.run import RunContext
+from agno.workflow.step import Step
+from agno.workflow.workflow import Workflow
+
+db = SqliteDb(db_file="tmp/workflow.db")
+
+# Define tools to manage a shopping list in workflow session state
+def add_item(run_context: RunContext, item: str) -> str:
+    """Add an item to the shopping list in workflow session state."""
+    if run_context.session_state is None:
+        run_context.session_state = {}
+
+    existing_items = [
+        existing_item.lower()
+        for existing_item in run_context.session_state["shopping_list"]
+    ]
+    if item.lower() not in existing_items:
+        run_context.session_state["shopping_list"].append(item)
+        return f"Added '{item}' to the shopping list."
+    else:
+        return f"'{item}' is already in the shopping list."
+
+def list_items(run_context: RunContext) -> str:
+    """List all items in the shopping list from workflow session state."""
+    if run_context.session_state is None:
+        run_context.session_state = {}
+
+    if len(run_context.session_state["shopping_list"]) == 0:
+        return "Shopping list is empty."
+
+    items = run_context.session_state["shopping_list"]
+    items_str = "\n".join([f"- {item}" for item in items])
+    return f"Shopping list:\n{items_str}"
+
+# Create agent with tools that use workflow session state
+shopping_assistant = Agent(
+    name="Shopping Assistant",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    tools=[add_item, list_items],
+    instructions="Help users manage their shopping list"
+)
+
+# Create workflow with initialized session state
+workflow = Workflow(
+    name="Shopping List Workflow",
+    db=db,
+    steps=[shopping_assistant],
+    session_state={"shopping_list": []},  # Initialize with empty list
+)
+
+# Use the workflow
+workflow.print_response("Add milk and bread to my shopping list")
+workflow.print_response("Show me my shopping list")
+
+# Get current session state
+current_state = workflow.get_session_state()
+print(f"Current shopping list: {current_state.get('shopping_list', [])}")
+```
+
+For a complete example, see the [Session State usage example](/basics/input-output/workflow/usage/session-state).
+
+## Conversational Workflows
+
+Workflows can be made conversational by adding a `WorkflowAgent`. This enables natural multi-turn conversations where the workflow intelligently decides whether to answer directly from history or execute the workflow steps.
+
+```python
+from agno.workflow import WorkflowAgent, Workflow
+from agno.models.openai import OpenAIChat
+from agno.db.sqlite import SqliteDb
+
+# Create a WorkflowAgent
+workflow_agent = WorkflowAgent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    num_history_runs=4
+)
+
+workflow = Workflow(
+    name="Research Workflow",
+    description="Research and answer questions",
+    agent=workflow_agent,
+    steps=[research_agent],
+    db=SqliteDb(db_file="tmp/workflow.db"),
+)
+
+# First call - will run the workflow (new topic)
+workflow.print_response("Research AI trends in 2024")
+
+# Second call - will answer directly from history
+workflow.print_response("What were the key findings?")
+```
+
+Learn more in [Conversational Workflows](/basics/workflows/conversational-workflows).
+
+## Session Metrics
+
+Workflows automatically track comprehensive metrics for each session. You can retrieve these metrics to understand workflow performance, token usage, and execution patterns.
+
+```python workflow_with_session_metrics.py
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.workflow import Workflow
+from agno.db.sqlite import SqliteDb
+
+db = SqliteDb(db_file="tmp/workflow.db")
+
+research_agent = Agent(
+    name="Researcher",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    instructions="Research the given topic"
+)
+
+workflow = Workflow(
+    name="Research Workflow",
+    db=db,
+    steps=[research_agent],
+)
+
+# Run the workflow
+workflow.run("Research AI trends")
+
+# Get session metrics
+session_metrics = workflow.get_session_metrics()
+print(f"Total runs: {session_metrics.runs}")
+print(f"Total tokens: {session_metrics.total_tokens}")
+print(f"Input tokens: {session_metrics.input_tokens}")
+print(f"Output tokens: {session_metrics.output_tokens}")
+```
+
+Learn more in [Session Metrics for Workflows](/basics/sessions/metrics/workflow).
 
 ## Developer Resources
 
 - View the [Workflow schema](/reference/workflows/workflow)
 - View the [Session schema](/reference/workflows/session)
-- View [Cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/workflows/session/)
+- View [Cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/workflows/_06_advanced_concepts/_04_shared_session_state/)
