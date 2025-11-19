@@ -1,6 +1,6 @@
 ---
 title: Workflow Sessions
-sidebarTitle: Overview
+sidebarTitle: Workflow Sessions
 description: Learn how workflow sessions track multi-step pipeline executions
 ---
 
@@ -149,35 +149,22 @@ workflow.run(input="AI trends", user_id="user-123")
 
 ## Database Options
 
-Workflow sessions work with all Agno database types:
+Workflow sessions require a database to persist execution history. Agno supports multiple database types:
 
 ```python
-# SQLite (local development)
 from agno.db.sqlite import SqliteDb
-db = SqliteDb(db_file="workflows.db")
 
-# PostgreSQL (production)
-from agno.db.postgres import PostgresDb
-db = PostgresDb(
-    host="localhost",
-    port=5432,
-    user="user",
-    password="password",
-    database="agno",
+# Quick start - SQLite
+workflow = Workflow(
+    name="Research Pipeline",
+    db=SqliteDb(db_file="workflows.db"),
+    steps=[...],
 )
-
-# JSON (simple demos)
-from agno.db.json import JsonDb
-db = JsonDb(db_path="tmp/workflows")
-
-# In-memory (testing)
-from agno.db.in_memory import InMemoryDb
-db = InMemoryDb()
 ```
 
-<Check>
-For production workflows, use PostgreSQL to ensure reliable session persistence and concurrent access.
-</Check>
+<Card title="Database Configuration Guide" icon="database" href="/basics/storage/overview">
+  See all supported databases, connection options, and production recommendations
+</Card>
 
 ## What Gets Stored
 
@@ -188,6 +175,50 @@ Each workflow run stores:
 - **Step results:** Output from each step in the pipeline
 - **Metadata:** Execution time, status, metrics
 - **Session state:** Shared data between steps (if used)
+
+## Workflow History
+
+Workflow history lets workflow steps access results from previous runs. When enabled, Agno formats prior run results and prepends them to each step input so future executions can build on that context.
+
+### Enable history for your steps
+
+```python
+from agno.workflow import Workflow
+from agno.db.sqlite import SqliteDb
+
+workflow = Workflow(
+    name="Content Pipeline",
+    db=SqliteDb(db_file="workflows.db"),
+    steps=[...],
+    add_workflow_history_to_steps=True,  # Include previous runs
+    num_history_runs=5,                  # Limit how many runs to load
+)
+```
+
+### Why it helps
+
+- **Learn from previous runs** instead of repeating work
+- **Reference past decisions** to keep outputs consistent
+- **Maintain context** across multi-run workflows
+- **Build on prior results** for richer analysis
+
+### History format
+
+Agno wraps past runs in a structured XML block before inserting it into each step input:
+
+```xml
+<workflow_history_context>
+[Workflow Run-1]
+User input: Create a blog post about AI
+Workflow output: [Full output from run]
+
+[Workflow Run-2]
+User input: Write about machine learning
+Workflow output: [Full output from run]
+</workflow_history_context>
+```
+
+See the [workflow history implementation guide](/basics/chat-history/workflow/overview) for advanced controls, per-step overrides, and programmatic access patterns.
 
 ## Common Patterns
 
@@ -238,27 +269,74 @@ workflow = Workflow(
 workflow.run(input="Process this once")
 ```
 
+## Session Naming
+
+Give your workflow sessions meaningful names for easier identification:
+
+### Manual Naming
+
+```python
+from agno.workflow import Workflow
+from agno.db.sqlite import SqliteDb
+
+workflow = Workflow(
+    name="Research Pipeline",
+    db=SqliteDb(db_file="workflows.db"),
+    steps=[...],
+)
+
+workflow.run(input="Analyze AI trends")
+workflow.set_session_name(session_name="AI Trends Analysis Q4 2024")
+
+# Retrieve the name
+name = workflow.get_session_name()
+print(name)  # "AI Trends Analysis Q4 2024"
+```
+
+### Auto-Generation
+
+Workflow sessions can auto-generate timestamp-based names:
+
+```python
+workflow = Workflow(
+    name="Research Pipeline",
+    description="Automated research and analysis pipeline",
+    db=SqliteDb(db_file="workflows.db"),
+    steps=[...],
+)
+
+workflow.run(input="Research topic")
+workflow.set_session_name(autogenerate=True)
+
+name = workflow.get_session_name()
+print(name)  # "Automated research and analysis pipel - 2024-11-19 14:30"
+```
+
+<Note>
+Unlike agent/team sessions which use AI to generate names from conversation content (e.g., "Python Best Practices"), workflow sessions use timestamp-based formatting since they represent executions rather than conversations.
+</Note>
+
 ## Next Steps
 
 Now that you understand workflow sessions, explore these features:
 
 <CardGroup cols={2}>
-  <Card title="Workflow History" icon="clock-rotate-left" href="/basics/sessions/workflow-sessions/workflow-history/overview">
-    Learn how workflows access previous run results
+  <Card title="Workflow History" icon="clock-rotate-left" href="/basics/chat-history/workflow/overview">
+    Enable workflows to learn from previous runs
   </Card>
-  <Card title="Session State" icon="database" href="/basics/sessions/workflow-sessions/session-state/overview">
-    Share data between workflow steps
+  <Card title="Session State" icon="database" href="/basics/state/workflows/overview">
+    Share data between workflow steps across runs
   </Card>
-  <Card title="Workflow Session Naming" icon="tag" href="/basics/sessions/workflow-sessions/workflow-naming/overview">
-    Organize and identify your sessions
+  <Card title="Session Management" icon="tag" href="/basics/sessions/session-management/overview">
+    Manage session names, IDs, and organization
   </Card>
-  <Card title="Workflow Agents" icon="robot" href="/basics/sessions/workflow-sessions/workflow-agents/overview">
-    Use agents that decide when to run workflows
+  <Card title="Conversational Workflows" icon="comments" href="/basics/workflows/conversational-workflows">
+    Make workflows interactive with WorkflowAgent
   </Card>
-  <Card title="Metrics" icon="chart-line" href="/basics/sessions/workflow-sessions/metrics/overview">
-    Track workflow performance over time
+  <Card title="Metrics" icon="chart-line" href="/basics/sessions/metrics/workflow">
+    Track workflow performance and usage
   </Card>
-  <Card title="Persisting Sessions" icon="floppy-disk" href="/basics/sessions/persisting-sessions">
+  <Card title="Database Setup" icon="database" href="/basics/storage/overview">
     Configure databases for session storage
   </Card>
 </CardGroup>
@@ -268,4 +346,3 @@ Now that you understand workflow sessions, explore these features:
 - View the [Workflow schema](/reference/workflows/workflow)
 - View the [WorkflowSession schema](/reference/workflows/session)
 - Browse [workflow session examples](https://github.com/agno-agi/agno/tree/main/cookbook/workflows)
-
