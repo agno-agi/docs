@@ -1,0 +1,224 @@
+---
+title: Disable Tool Storage
+description: Learn how to control whether tool execution details are persisted to your database
+---
+
+By default, Agno stores all tool calls and their results in the database. For agents or teams that make many tool calls, this can significantly increase database size.
+
+The `store_tool_messages` flag lets you control this behavior. When set to `False`, tool calls and results are still executed during the run, but they are scrubbed from the database after completion.
+
+## Key Concepts
+
+**Important: Message Pair Removal**: When `store_tool_messages=False`, Agno removes both:
+1. The tool result message (role="tool")
+2. The assistant message containing the tool call
+
+This is required to maintain valid message sequences that model providers expect. Your metrics will still show the actual tokens used, including the removed tool messages.
+
+**Runtime vs. Storage**: Tools execute normally and provide data during the run, but are scrubbed before database persistence:
+
+- ✅ Tools execute and provide results to your agent/team
+- ✅ The model receives tool results and generates responses
+- ✅ Token usage metrics reflect actual tool calls
+- ⚠️ Tool execution details are not persisted to the database
+
+## When to Use This
+
+Use `store_tool_messages=False` when:
+
+- **Cost optimization**: Your agent/team makes many tool calls and you want to reduce database storage
+- **Privacy compliance**: Tool results contain sensitive data (API keys, user data, etc.)
+- **Audit focused**: You only care about final outputs, not intermediate tool executions
+- **Large responses**: Tools return large data (e.g., web scraping, file processing) that bloats storage
+
+## Basic Example
+
+<Tabs>
+  <Tab title="Agent">
+```python
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIChat
+from agno.tools.hackernews import HackerNewsTools
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    tools=[HackerNewsTools()],
+    db=SqliteDb(db_file="tmp/agent.db"),
+    store_tool_messages=False,  # Don't persist tool execution details
+)
+
+# Agent uses tools, gets results, and generates response
+# But tool calls and results are not stored in the database
+response = agent.run("What is the latest news from Hacker News?")
+
+# Check what was stored
+stored_run = agent.get_last_run_output()
+if stored_run and stored_run.messages:
+    tool_messages = [m for m in stored_run.messages if m.role == "tool"]
+    print(f"Total messages stored: {len(stored_run.messages)}")
+    print(f"Tool result messages: {len(tool_messages)}")  # Will be 0
+```
+  </Tab>
+
+  <Tab title="Team">
+```python
+from agno.team import Team
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIChat
+from agno.tools.hackernews import HackerNewsTools
+
+team = Team(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    members=[
+        Agent(name="Researcher", tools=[HackerNewsTools()]),
+    ],
+    db=SqliteDb(db_file="tmp/team.db"),
+    store_tool_messages=False,  # Don't persist tool execution details
+)
+
+# Team uses tools, gets results, and generates response
+# But tool calls and results are not stored in the database
+response = team.run("What is the latest news from Hacker News?")
+
+# Check what was stored
+stored_run = team.get_last_run_output()
+if stored_run and stored_run.messages:
+    tool_messages = [m for m in stored_run.messages if m.role == "tool"]
+    print(f"Total messages stored: {len(stored_run.messages)}")
+    print(f"Tool result messages: {len(tool_messages)}")  # Will be 0
+```
+  </Tab>
+</Tabs>
+
+## Web Scraping Example
+
+For agents that fetch large amounts of data:
+
+<Tabs>
+  <Tab title="Agent">
+```python
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIChat
+from agno.tools.newspaper4k import Newspaper4kTools
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o"),
+    tools=[Newspaper4kTools()],
+    db=SqliteDb(db_file="tmp/agent.db"),
+    store_tool_messages=False,  # Don't store large article content
+    markdown=True,
+)
+
+# Agent fetches and processes article (large content)
+# Only the final summary is stored, not the raw article data
+agent.print_response(
+    "Read https://example.com/article and summarize the key points"
+)
+```
+  </Tab>
+
+  <Tab title="Team">
+```python
+from agno.team import Team
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIChat
+from agno.tools.newspaper4k import Newspaper4kTools
+
+team = Team(
+    model=OpenAIChat(id="gpt-4o"),
+    members=[
+        Agent(name="Scraper", tools=[Newspaper4kTools()]),
+        Agent(name="Summarizer", role="You create concise summaries"),
+    ],
+    db=SqliteDb(db_file="tmp/team.db"),
+    store_tool_messages=False,  # Don't store large article content
+    markdown=True,
+)
+
+# Team fetches and processes article (large content)
+# Only the final summary is stored, not the raw article data
+team.print_response(
+    "Read https://example.com/article and summarize the key points"
+)
+```
+  </Tab>
+</Tabs>
+
+## Selective Storage
+
+You can combine storage flags for fine-grained control:
+
+<Tabs>
+  <Tab title="Agent">
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+from agno.tools.duckduckgo import DuckDuckGoTools
+
+db = PostgresDb(
+    host="localhost",
+    port=5432,
+    user="agno",
+    password="agno",
+    database="agno",
+)
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o"),
+    tools=[DuckDuckGoTools()],
+    db=db,
+    add_history_to_context=True,
+    store_media=True,              # Store user uploads
+    store_tool_messages=False,     # Don't store search results (save space)
+    store_history_messages=True,   # Store conversation history for analysis
+)
+
+agent.print_response("Search for recent AI breakthroughs and explain them")
+```
+  </Tab>
+
+  <Tab title="Team">
+```python
+from agno.team import Team
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+from agno.tools.duckduckgo import DuckDuckGoTools
+
+db = PostgresDb(
+    host="localhost",
+    port=5432,
+    user="agno",
+    password="agno",
+    database="agno",
+)
+
+team = Team(
+    model=OpenAIChat(id="gpt-4o"),
+    members=[
+        Agent(name="Searcher", tools=[DuckDuckGoTools()]),
+        Agent(name="Explainer", role="You explain complex topics simply"),
+    ],
+    db=db,
+    add_history_to_context=True,
+    store_media=True,              # Store user uploads
+    store_tool_messages=False,     # Don't store search results (save space)
+    store_history_messages=True,   # Store conversation history for analysis
+)
+
+team.print_response("Search for recent AI breakthroughs and explain them")
+```
+  </Tab>
+</Tabs>
+
+## Learn More
+
+- [Storage Control Overview](/basics/sessions/storage-control/overview)
+- [Tools Documentation](/basics/tools/overview)
+- [Session Storage](/basics/storage/overview)
+

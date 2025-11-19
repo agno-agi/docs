@@ -1,0 +1,205 @@
+---
+title: Control History Context
+description: Configure how much conversation history is included in each request
+---
+
+This example demonstrates how to control the amount of conversation history added to context using `add_history_to_context` and `num_history_runs`.
+
+<Tabs>
+<Tab title="Agent">
+
+## Code
+
+```python history_limit.py
+"""
+This example shows how to use the session history to store the conversation history.
+add_history_to_context flag is used to add the history to the messages.
+num_history_runs is used to set the number of history runs to add to the messages.
+"""
+
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+
+db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
+
+db = PostgresDb(db_url=db_url, session_table="sessions")
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=db,
+    session_id="session_storage",
+    add_history_to_context=True,
+    num_history_runs=2,  # Only include last 2 runs in context
+)
+
+agent.print_response("Tell me a new interesting fact about space")
+```
+
+## Usage
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install libraries">
+    ```bash
+    pip install -U agno openai psycopg2-binary
+    ```
+  </Step>
+
+  <Step title="Setup PostgreSQL">
+    ```bash
+    # Make sure PostgreSQL is running
+    # Update connection string in the code as needed
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+      export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+      $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup> 
+  </Step>
+
+  <Step title="Run the code">
+    ```bash
+    python history_limit.py
+    ```
+  </Step>
+</Steps>
+
+</Tab>
+
+<Tab title="Team">
+
+## Code
+
+```python history_limit.py
+"""
+This example shows how to use the session history to store the conversation history.
+add_history_to_context flag is used to add the history to the messages.
+num_history_runs is used to set the number of history runs to add to the messages.
+"""
+
+from agno.agent import Agent
+from agno.team import Team
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+
+db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
+
+db = PostgresDb(db_url=db_url, session_table="sessions")
+
+agent = Agent(model=OpenAIChat(id="gpt-4o-mini"))
+
+team = Team(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    members=[agent],
+    db=db,
+    add_history_to_context=True,
+    num_history_runs=2,  # Only include last 2 runs in context
+)
+
+team.print_response("Tell me a new interesting fact about space")
+```
+
+## Usage
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install libraries">
+    ```bash
+    pip install -U agno openai psycopg2-binary
+    ```
+  </Step>
+
+  <Step title="Setup PostgreSQL">
+    ```bash
+    # Make sure PostgreSQL is running
+    # Update connection string in the code as needed
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+      export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+      $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup> 
+  </Step>
+
+  <Step title="Run the code">
+    ```bash
+    python history_limit.py
+    ```
+  </Step>
+</Steps>
+
+</Tab>
+</Tabs>
+
+## Configuration Options
+
+### By Runs
+Control history by number of previous runs:
+
+```python
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=db,
+    add_history_to_context=True,
+    num_history_runs=3,  # Last 3 runs
+)
+```
+
+### By Messages
+Control history by number of individual messages:
+
+```python
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=db,
+    add_history_to_context=True,
+    num_history_messages=10,  # Last 10 messages
+)
+```
+
+<Warning>
+You cannot use both `num_history_runs` and `num_history_messages` together. If both are set, `num_history_runs` takes precedence.
+</Warning>
+
+### Limiting Tool Calls in History
+Prevent excessive tool call data from being included:
+
+```python
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=db,
+    add_history_to_context=True,
+    num_history_runs=5,
+    max_tool_calls_from_history=10,  # Max 10 tool calls from history
+)
+```
+
+## Key Points
+
+- **Default**: If neither parameter is set, `num_history_runs` defaults to 3
+- **Context Window**: Smaller limits reduce token usage and costs
+- **Memory vs Performance**: More history = better context but higher costs
+- **Tool Heavy Workflows**: Use `max_tool_calls_from_history` to prevent token overflow
+
+## Next Steps
+
+- Learn how to [retrieve history programmatically](/basics/sessions/history-management/usage/retrieve-history)
+- Explore [session summaries](/basics/sessions/session-summaries/overview) for managing long conversations
+

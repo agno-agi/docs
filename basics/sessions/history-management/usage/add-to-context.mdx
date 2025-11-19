@@ -1,0 +1,221 @@
+---
+title: Add History to Context
+description: Enable conversation memory by including history in each request
+---
+
+This example demonstrates how to enable conversation memory using `add_history_to_context=True`, which automatically includes previous messages in each new request.
+
+## Why Add History to Context?
+
+Without history, every message is treated as a fresh start - the agent has no memory of what was said before. By adding history to context, you give your agent memory of the conversation.
+
+<Tabs>
+<Tab title="Agent">
+
+## Code
+
+```python add_to_context.py
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIChat
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=SqliteDb(db_file="tmp/data.db"),
+    add_history_to_context=True,  # Enable conversation memory
+)
+
+# First interaction - establish context
+agent.print_response("My name is Alice and I love Python programming.")
+
+# Second interaction - agent remembers the previous message
+agent.print_response("What is my name and what do I love?")
+# Agent responds: "Your name is Alice and you love Python programming."
+```
+
+## Usage
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install libraries">
+    ```bash
+    pip install -U agno openai
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+      export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+      $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup> 
+  </Step>
+
+  <Step title="Run the code">
+    ```bash
+    python add_to_context.py
+    ```
+  </Step>
+</Steps>
+
+</Tab>
+
+<Tab title="Team">
+
+## Code
+
+```python add_to_context.py
+from agno.agent import Agent
+from agno.team import Team
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIChat
+
+team = Team(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    members=[Agent(model=OpenAIChat(id="gpt-4o-mini"))],
+    db=SqliteDb(db_file="tmp/data.db"),
+    add_history_to_context=True,  # Enable conversation memory
+)
+
+# First interaction - establish context
+team.print_response("My name is Alice and I love Python programming.")
+
+# Second interaction - team remembers the previous message
+team.print_response("What is my name and what do I love?")
+# Team responds: "Your name is Alice and you love Python programming."
+```
+
+## Usage
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install libraries">
+    ```bash
+    pip install -U agno openai
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+      export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+      $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup> 
+  </Step>
+
+  <Step title="Run the code">
+    ```bash
+    python add_to_context.py
+    ```
+  </Step>
+</Steps>
+
+</Tab>
+</Tabs>
+
+## How It Works
+
+When `add_history_to_context=True` is set:
+
+1. **First run**: Only the current message is sent to the model
+2. **Subsequent runs**: Previous messages are automatically included
+3. **Automatic**: No manual management needed - Agno handles it
+
+### Example Message Flow
+
+**Without history:**
+```
+Run 1: "My name is Alice"
+  → Model sees: ["My name is Alice"]
+  
+Run 2: "What is my name?"
+  → Model sees: ["What is my name?"]  ❌ No context!
+```
+
+**With history:**
+```
+Run 1: "My name is Alice"
+  → Model sees: ["My name is Alice"]
+  
+Run 2: "What is my name?"
+  → Model sees: ["My name is Alice", "...", "What is my name?"]  ✅ Has context!
+```
+
+## Default Behavior
+
+By default, Agno includes the last **3 runs** of history. You can customize this:
+
+```python
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=SqliteDb(db_file="tmp/data.db"),
+    add_history_to_context=True,
+    num_history_runs=5,  # Include last 5 runs instead of 3
+)
+```
+
+See [History Limits](/basics/sessions/history-management/usage/history-limits) for more control options.
+
+## Best Practices
+
+### ✅ Do This
+
+```python
+# Always enable for conversational agents
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=db,
+    add_history_to_context=True,  # Enable memory
+    num_history_runs=3,             # Reasonable default
+)
+```
+
+### ⚠️ Consider This
+
+```python
+# For long conversations, use session summaries
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=db,
+    add_history_to_context=True,
+    num_history_runs=5,
+    enable_session_summaries=True,  # Condense old history
+)
+```
+
+See [Session Summaries](/basics/sessions/session-summaries/overview) for managing long conversations.
+
+## When Not to Use
+
+You might **not** want history in context if:
+
+- ❌ Each request is independent (e.g., batch processing)
+- ❌ You're handling multiple unrelated tasks
+- ❌ You want to manually control context
+
+For these cases, omit `add_history_to_context` or set it to `False`.
+
+## Key Points
+
+- **Requires Database**: History management needs a configured database
+- **Automatic**: Once enabled, history is managed automatically
+- **Token Cost**: More history = more tokens per request
+- **Default Limit**: Last 3 runs included by default
+- **Customizable**: Control how much history with `num_history_runs` or `num_history_messages`
+
+## Next Steps
+
+- Learn how to [control history limits](/basics/sessions/history-management/usage/history-limits)
+- Explore [retrieving history programmatically](/basics/sessions/history-management/usage/retrieve-history)
+- Manage long conversations with [session summaries](/basics/sessions/session-summaries/overview)
+

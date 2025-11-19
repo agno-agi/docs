@@ -1,0 +1,479 @@
+---
+title: Auto-generate Session Names
+description: Let AI automatically generate meaningful session names from conversation content
+---
+
+Instead of manually naming every session, Agno can automatically generate meaningful names by analyzing the conversation content. This is perfect for applications where you want session names but don't want to manually track and name each one.
+
+## How Auto-generation Works
+
+When you call `set_session_name(autogenerate=True)`:
+
+1. **Collects Context**: Reads the first 6 messages from the session
+2. **Generates Name**: Uses the model to create a concise, descriptive name (max 5 words)
+3. **Saves**: Stores the generated name in the session
+4. **Returns**: Gives you the generated name
+
+<Note>
+Auto-generation requires a model call, so there's a small latency cost. Consider generating names after a few messages have been exchanged, not on every single message.
+</Note>
+
+## Basic Example
+
+<Tabs>
+  <Tab title="Agent">
+```python
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIChat
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o"),
+    db=SqliteDb(db_file="tmp/agent.db"),
+)
+
+# Have a conversation
+agent.run("I need to build a REST API for my e-commerce platform")
+agent.run("It should handle user authentication and product catalog")
+agent.run("What technologies do you recommend?")
+
+# Auto-generate a name based on the conversation
+agent.set_session_name(autogenerate=True)
+
+# Check the generated name
+name = agent.get_session_name()
+print(f"Generated name: {name}")
+# Example output: "E-commerce API Development"
+```
+  </Tab>
+
+  <Tab title="Team">
+```python
+from agno.team import Team
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIChat
+
+team = Team(
+    model=OpenAIChat(id="gpt-4o"),
+    members=[
+        Agent(name="Architect", role="You design system architecture"),
+        Agent(name="Developer", role="You provide implementation advice"),
+    ],
+    db=SqliteDb(db_file="tmp/team.db"),
+)
+
+# Have a conversation
+team.run("I need to build a REST API for my e-commerce platform")
+team.run("It should handle user authentication and product catalog")
+team.run("What technologies do you recommend?")
+
+# Auto-generate a name based on the conversation
+team.set_session_name(autogenerate=True)
+
+# Check the generated name
+name = team.get_session_name()
+print(f"Generated name: {name}")
+# Example output: "E-commerce API Planning"
+```
+  </Tab>
+</Tabs>
+
+## When to Generate Names
+
+### After Initial Exchange
+
+Generate names after a few messages to ensure enough context:
+
+<Tabs>
+  <Tab title="Agent">
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+
+db = PostgresDb(
+    host="localhost",
+    port=5432,
+    user="agno",
+    password="agno",
+    database="agno",
+)
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o"),
+    db=db,
+    add_history_to_context=True,
+)
+
+# Message counter
+message_count = 0
+
+def chat(message: str, session_id: str):
+    global message_count
+    message_count += 1
+    
+    response = agent.run(message, session_id=session_id)
+    
+    # Auto-generate name after 3 messages
+    if message_count == 3:
+        agent.set_session_name(session_id=session_id, autogenerate=True)
+        name = agent.get_session_name(session_id=session_id)
+        print(f"Session named: {name}")
+    
+    return response
+
+# Use the chat function
+chat("Tell me about machine learning", session_id="ml_session")
+chat("How do neural networks work?", session_id="ml_session")
+chat("What are transformers?", session_id="ml_session")  # Name generated here
+```
+  </Tab>
+
+  <Tab title="Team">
+```python
+from agno.team import Team
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+
+db = PostgresDb(
+    host="localhost",
+    port=5432,
+    user="agno",
+    password="agno",
+    database="agno",
+)
+
+team = Team(
+    model=OpenAIChat(id="gpt-4o"),
+    members=[
+        Agent(name="Educator", role="You explain ML concepts"),
+        Agent(name="Expert", role="You provide deep technical knowledge"),
+    ],
+    db=db,
+    add_history_to_context=True,
+)
+
+# Message counter
+message_count = 0
+
+def chat(message: str, session_id: str):
+    global message_count
+    message_count += 1
+    
+    response = team.run(message, session_id=session_id)
+    
+    # Auto-generate name after 3 messages
+    if message_count == 3:
+        team.set_session_name(session_id=session_id, autogenerate=True)
+        name = team.get_session_name(session_id=session_id)
+        print(f"Session named: {name}")
+    
+    return response
+
+# Use the chat function
+chat("Tell me about machine learning", session_id="ml_session")
+chat("How do neural networks work?", session_id="ml_session")
+chat("What are transformers?", session_id="ml_session")  # Name generated here
+```
+  </Tab>
+</Tabs>
+
+### Batch Processing
+
+Generate names for multiple sessions in batch:
+
+<Tabs>
+  <Tab title="Agent">
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+
+db = PostgresDb(
+    host="localhost",
+    port=5432,
+    user="agno",
+    password="agno",
+    database="agno",
+)
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o"),
+    db=db,
+)
+
+# Simulate multiple user sessions
+users = [
+    ("user_001", "How do I deploy a Django app?"),
+    ("user_002", "What's the best database for analytics?"),
+    ("user_003", "Help me optimize my SQL queries"),
+]
+
+# Have conversations
+for user_id, message in users:
+    session_id = f"session_{user_id}"
+    agent.run(message, session_id=session_id, user_id=user_id)
+    agent.run("Can you provide more details?", session_id=session_id, user_id=user_id)
+
+# Auto-generate names for all sessions
+for user_id, _ in users:
+    session_id = f"session_{user_id}"
+    agent.set_session_name(session_id=session_id, autogenerate=True)
+    name = agent.get_session_name(session_id=session_id)
+    print(f"User {user_id}: {name}")
+```
+  </Tab>
+
+  <Tab title="Team">
+```python
+from agno.team import Team
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+
+db = PostgresDb(
+    host="localhost",
+    port=5432,
+    user="agno",
+    password="agno",
+    database="agno",
+)
+
+team = Team(
+    model=OpenAIChat(id="gpt-4o"),
+    members=[
+        Agent(name="DevOps Expert", role="You help with deployment"),
+        Agent(name="Database Expert", role="You help with databases"),
+    ],
+    db=db,
+)
+
+# Simulate multiple user sessions
+users = [
+    ("user_001", "How do I deploy a Django app?"),
+    ("user_002", "What's the best database for analytics?"),
+    ("user_003", "Help me optimize my SQL queries"),
+]
+
+# Have conversations
+for user_id, message in users:
+    session_id = f"session_{user_id}"
+    team.run(message, session_id=session_id, user_id=user_id)
+    team.run("Can you provide more details?", session_id=session_id, user_id=user_id)
+
+# Auto-generate names for all sessions
+for user_id, _ in users:
+    session_id = f"session_{user_id}"
+    team.set_session_name(session_id=session_id, autogenerate=True)
+    name = team.get_session_name(session_id=session_id)
+    print(f"User {user_id}: {name}")
+```
+  </Tab>
+</Tabs>
+
+## Fallback Strategy
+
+Combine auto-generation with manual fallback:
+
+<Tabs>
+  <Tab title="Agent">
+```python
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIChat
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o"),
+    db=SqliteDb(db_file="tmp/agent.db"),
+)
+
+def name_session(session_id: str, default_name: str = None):
+    """Auto-generate a name, or use default if generation fails."""
+    try:
+        agent.set_session_name(session_id=session_id, autogenerate=True)
+        return agent.get_session_name(session_id=session_id)
+    except Exception as e:
+        # Fallback to manual name if auto-generation fails
+        if default_name:
+            agent.set_session_name(session_id=session_id, session_name=default_name)
+            return default_name
+        else:
+            # Use session_id as last resort
+            return session_id
+
+# Use it
+agent.run("Hello", session_id="my_session")
+agent.run("Help me with Python", session_id="my_session")
+
+name = name_session("my_session", default_name="Python Help Session")
+print(f"Session name: {name}")
+```
+  </Tab>
+
+  <Tab title="Team">
+```python
+from agno.team import Team
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIChat
+
+team = Team(
+    model=OpenAIChat(id="gpt-4o"),
+    members=[Agent(name="Helper", role="You help with programming")],
+    db=SqliteDb(db_file="tmp/team.db"),
+)
+
+def name_session(session_id: str, default_name: str = None):
+    """Auto-generate a name, or use default if generation fails."""
+    try:
+        team.set_session_name(session_id=session_id, autogenerate=True)
+        return team.get_session_name(session_id=session_id)
+    except Exception as e:
+        # Fallback to manual name if auto-generation fails
+        if default_name:
+            team.set_session_name(session_id=session_id, session_name=default_name)
+            return default_name
+        else:
+            # Use session_id as last resort
+            return session_id
+
+# Use it
+team.run("Hello", session_id="my_session")
+team.run("Help me with Python", session_id="my_session")
+
+name = name_session("my_session", default_name="Python Help Session")
+print(f"Session name: {name}")
+```
+  </Tab>
+</Tabs>
+
+## UI Integration
+
+Auto-generated names work great for conversation history interfaces:
+
+<Tabs>
+  <Tab title="Agent">
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+
+db = PostgresDb(
+    host="localhost",
+    port=5432,
+    user="agno",
+    password="agno",
+    database="agno",
+)
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o"),
+    db=db,
+)
+
+def get_user_sessions(user_id: str):
+    """Get all sessions for a user with generated names."""
+    # This would typically query your database
+    # Here's a simplified example
+    
+    sessions = []
+    # Assume you have session IDs from database
+    session_ids = ["session_001", "session_002", "session_003"]
+    
+    for session_id in session_ids:
+        try:
+            name = agent.get_session_name(session_id=session_id)
+            if not name:
+                # Generate if doesn't exist
+                agent.set_session_name(session_id=session_id, autogenerate=True)
+                name = agent.get_session_name(session_id=session_id)
+            
+            sessions.append({
+                "id": session_id,
+                "name": name,
+            })
+        except Exception as e:
+            # Skip sessions that can't be loaded
+            continue
+    
+    return sessions
+
+# In your UI/API
+user_sessions = get_user_sessions("user_123")
+for session in user_sessions:
+    print(f"[{session['id']}] {session['name']}")
+```
+  </Tab>
+
+  <Tab title="Team">
+```python
+from agno.team import Team
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+
+db = PostgresDb(
+    host="localhost",
+    port=5432,
+    user="agno",
+    password="agno",
+    database="agno",
+)
+
+team = Team(
+    model=OpenAIChat(id="gpt-4o"),
+    members=[Agent(name="Assistant", role="You help users")],
+    db=db,
+)
+
+def get_user_sessions(user_id: str):
+    """Get all sessions for a user with generated names."""
+    # This would typically query your database
+    # Here's a simplified example
+    
+    sessions = []
+    # Assume you have session IDs from database
+    session_ids = ["session_001", "session_002", "session_003"]
+    
+    for session_id in session_ids:
+        try:
+            name = team.get_session_name(session_id=session_id)
+            if not name:
+                # Generate if doesn't exist
+                team.set_session_name(session_id=session_id, autogenerate=True)
+                name = team.get_session_name(session_id=session_id)
+            
+            sessions.append({
+                "id": session_id,
+                "name": name,
+            })
+        except Exception as e:
+            # Skip sessions that can't be loaded
+            continue
+    
+    return sessions
+
+# In your UI/API
+user_sessions = get_user_sessions("user_123")
+for session in user_sessions:
+    print(f"[{session['id']}] {session['name']}")
+```
+  </Tab>
+</Tabs>
+
+## Best Practices
+
+1. **Timing**: Generate names after 2-3 messages for better context
+2. **Cost**: Auto-generation uses model calls - balance UX benefit vs. cost
+3. **Fallback**: Always have a fallback to manual names or session IDs
+4. **Async**: Use async methods in async applications for better performance
+5. **Uniqueness**: Generated names aren't guaranteed to be unique - use session IDs as primary keys
+
+## Learn More
+
+- [Set Custom Session Names](/basics/sessions/session-management/usage/set-session-name)
+- [Session Management Overview](/basics/sessions/session-management/overview)
+- [Sessions Overview](/basics/sessions/overview)
+

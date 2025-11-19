@@ -1,0 +1,398 @@
+---
+title: Set Session Names
+description: Learn how to set custom names for your sessions
+---
+
+Session names are human-readable labels that help you identify and organize conversations. Instead of tracking sessions by UUID, you can assign meaningful names like "Product Launch Discussion" or "Customer Support - Issue #123".
+
+## Why Use Session Names?
+
+- **Better UX**: Show meaningful names in conversation history UIs
+- **Organization**: Group and search sessions by name
+- **Context**: Quickly understand what a session is about
+- **Integration**: Map sessions to external systems (tickets, tasks, etc.)
+
+## Basic Example
+
+<Tabs>
+  <Tab title="Agent">
+```python
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIChat
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o"),
+    db=SqliteDb(db_file="tmp/agent.db"),
+)
+
+# Have a conversation
+agent.run("I need help planning a product launch")
+agent.run("We're targeting enterprise customers")
+
+# Set a descriptive name
+agent.set_session_name(session_name="Product Launch Planning")
+
+# Retrieve the name
+session_name = agent.get_session_name()
+print(f"Session: {session_name}")  # Output: Session: Product Launch Planning
+```
+  </Tab>
+
+  <Tab title="Team">
+```python
+from agno.team import Team
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIChat
+
+team = Team(
+    model=OpenAIChat(id="gpt-4o"),
+    members=[
+        Agent(name="Planner", role="You help plan product launches"),
+        Agent(name="Marketer", role="You create marketing strategies"),
+    ],
+    db=SqliteDb(db_file="tmp/team.db"),
+)
+
+# Have a conversation
+team.run("I need help planning a product launch")
+team.run("We're targeting enterprise customers")
+
+# Set a descriptive name
+team.set_session_name(session_name="Product Launch Planning")
+
+# Retrieve the name
+session_name = team.get_session_name()
+print(f"Session: {session_name}")  # Output: Session: Product Launch Planning
+```
+  </Tab>
+</Tabs>
+
+## Setting Names for Specific Sessions
+
+You can manage multiple sessions and set names for each:
+
+<Tabs>
+  <Tab title="Agent">
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+
+db = PostgresDb(
+    host="localhost",
+    port=5432,
+    user="agno",
+    password="agno",
+    database="agno",
+)
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o"),
+    db=db,
+)
+
+# Session 1: Bug investigation
+agent.run("Help me debug this error", session_id="session_001")
+agent.set_session_name(
+    session_id="session_001",
+    session_name="Bug Investigation - Login Issue"
+)
+
+# Session 2: Feature planning
+agent.run("Let's plan the new feature", session_id="session_002")
+agent.set_session_name(
+    session_id="session_002",
+    session_name="Feature Planning - Dark Mode"
+)
+
+# Retrieve names
+name1 = agent.get_session_name(session_id="session_001")
+name2 = agent.get_session_name(session_id="session_002")
+
+print(f"Session 1: {name1}")  # Bug Investigation - Login Issue
+print(f"Session 2: {name2}")  # Feature Planning - Dark Mode
+```
+  </Tab>
+
+  <Tab title="Team">
+```python
+from agno.team import Team
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+
+db = PostgresDb(
+    host="localhost",
+    port=5432,
+    user="agno",
+    password="agno",
+    database="agno",
+)
+
+team = Team(
+    model=OpenAIChat(id="gpt-4o"),
+    members=[
+        Agent(name="Debugger", role="You help debug code"),
+        Agent(name="Planner", role="You plan features"),
+    ],
+    db=db,
+)
+
+# Session 1: Bug investigation
+team.run("Help me debug this error", session_id="session_001")
+team.set_session_name(
+    session_id="session_001",
+    session_name="Bug Investigation - Login Issue"
+)
+
+# Session 2: Feature planning
+team.run("Let's plan the new feature", session_id="session_002")
+team.set_session_name(
+    session_id="session_002",
+    session_name="Feature Planning - Dark Mode"
+)
+
+# Retrieve names
+name1 = team.get_session_name(session_id="session_001")
+name2 = team.get_session_name(session_id="session_002")
+
+print(f"Session 1: {name1}")  # Bug Investigation - Login Issue
+print(f"Session 2: {name2}")  # Feature Planning - Dark Mode
+```
+  </Tab>
+</Tabs>
+
+## Renaming Sessions
+
+You can update session names at any time:
+
+<Tabs>
+  <Tab title="Agent">
+```python
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o"),
+    db=SqliteDb(db_file="tmp/agent.db"),
+)
+
+# Start with one name
+agent.run("Initial message", session_id="my_session")
+agent.set_session_name(session_id="my_session", session_name="Initial Discussion")
+
+# Later, update the name based on how the conversation evolved
+agent.run("Actually, let's focus on the API design", session_id="my_session")
+agent.set_session_name(session_id="my_session", session_name="API Design Discussion")
+
+print(agent.get_session_name(session_id="my_session"))
+# Output: API Design Discussion
+```
+  </Tab>
+
+  <Tab title="Team">
+```python
+team = Team(
+    model=OpenAIChat(id="gpt-4o"),
+    members=[Agent(name="Helper", role="You help with discussions")],
+    db=SqliteDb(db_file="tmp/team.db"),
+)
+
+# Start with one name
+team.run("Initial message", session_id="my_session")
+team.set_session_name(session_id="my_session", session_name="Initial Discussion")
+
+# Later, update the name based on how the conversation evolved
+team.run("Actually, let's focus on the API design", session_id="my_session")
+team.set_session_name(session_id="my_session", session_name="API Design Discussion")
+
+print(team.get_session_name(session_id="my_session"))
+# Output: API Design Discussion
+```
+  </Tab>
+</Tabs>
+
+## Integration with External Systems
+
+Session names are perfect for integrating with ticketing systems, task managers, or CRMs:
+
+<Tabs>
+  <Tab title="Agent">
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+
+db = PostgresDb(
+    host="localhost",
+    port=5432,
+    user="agno",
+    password="agno",
+    database="agno",
+)
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o"),
+    db=db,
+)
+
+# Customer support example
+ticket_id = "SUPPORT-12345"
+customer_name = "Acme Corp"
+
+# Start session with ticket context
+response = agent.run(
+    "Customer is having login issues",
+    session_id=ticket_id,
+    metadata={"ticket_id": ticket_id, "customer": customer_name}
+)
+
+# Set name that matches your ticket system
+agent.set_session_name(
+    session_id=ticket_id,
+    session_name=f"Support - {customer_name} - Login Issue"
+)
+
+# Later, retrieve by ticket ID
+session_name = agent.get_session_name(session_id=ticket_id)
+print(f"Working on: {session_name}")
+```
+  </Tab>
+
+  <Tab title="Team">
+```python
+from agno.team import Team
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+
+db = PostgresDb(
+    host="localhost",
+    port=5432,
+    user="agno",
+    password="agno",
+    database="agno",
+)
+
+team = Team(
+    model=OpenAIChat(id="gpt-4o"),
+    members=[
+        Agent(name="Support Agent", role="You help customers"),
+        Agent(name="Technical Expert", role="You solve technical issues"),
+    ],
+    db=db,
+)
+
+# Customer support example
+ticket_id = "SUPPORT-12345"
+customer_name = "Acme Corp"
+
+# Start session with ticket context
+response = team.run(
+    "Customer is having login issues",
+    session_id=ticket_id,
+    metadata={"ticket_id": ticket_id, "customer": customer_name}
+)
+
+# Set name that matches your ticket system
+team.set_session_name(
+    session_id=ticket_id,
+    session_name=f"Support - {customer_name} - Login Issue"
+)
+
+# Later, retrieve by ticket ID
+session_name = team.get_session_name(session_id=ticket_id)
+print(f"Working on: {session_name}")
+```
+  </Tab>
+</Tabs>
+
+## Async Support
+
+Session naming works with async operations:
+
+<Tabs>
+  <Tab title="Agent">
+```python
+import asyncio
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+
+async def manage_session():
+    db = PostgresDb(
+        host="localhost",
+        port=5432,
+        user="agno",
+        password="agno",
+        database="agno",
+    )
+    
+    agent = Agent(
+        model=OpenAIChat(id="gpt-4o"),
+        db=db,
+    )
+    
+    # Run async
+    await agent.arun("Start conversation", session_id="async_session")
+    
+    # Set name async
+    await agent.aset_session_name(
+        session_id="async_session",
+        session_name="Async Discussion"
+    )
+    
+    # Get name async
+    name = await agent.aget_session_name(session_id="async_session")
+    print(f"Session: {name}")
+
+asyncio.run(manage_session())
+```
+  </Tab>
+
+  <Tab title="Team">
+```python
+import asyncio
+from agno.team import Team
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+
+async def manage_session():
+    db = PostgresDb(
+        host="localhost",
+        port=5432,
+        user="agno",
+        password="agno",
+        database="agno",
+    )
+    
+    team = Team(
+        model=OpenAIChat(id="gpt-4o"),
+        members=[Agent(name="Helper", role="You help with tasks")],
+        db=db,
+    )
+    
+    # Run async
+    await team.arun("Start conversation", session_id="async_session")
+    
+    # Set name async
+    await team.aset_session_name(
+        session_id="async_session",
+        session_name="Async Discussion"
+    )
+    
+    # Get name async
+    name = await team.aget_session_name(session_id="async_session")
+    print(f"Session: {name}")
+
+asyncio.run(manage_session())
+```
+  </Tab>
+</Tabs>
+
+## Learn More
+
+- [Auto-generate Session Names](/basics/sessions/session-management/usage/auto-generate-name)
+- [Session Management Overview](/basics/sessions/session-management/overview)
+- [Sessions Overview](/basics/sessions/overview)
+

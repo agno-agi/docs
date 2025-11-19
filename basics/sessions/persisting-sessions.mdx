@@ -1,0 +1,162 @@
+---
+title: Persisting Sessions
+sidebarTitle: Persisting Sessions
+description: Store session data in a database for multi-turn conversations
+keywords: [sessions, database, persistence, PostgreSQL, SQLite]
+---
+
+To enable sessions across multiple runs, you need to configure a database. Once configured, Agno automatically stores conversation history, session state, and run metadata.
+
+## Quick Start
+
+<Tabs>
+<Tab title="Agent">
+
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+
+# Configure database
+db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=db,  # Enable persistence
+    session_id="user_123",  # Same ID = same conversation
+)
+
+agent.print_response("Hello!")
+```
+
+</Tab>
+
+<Tab title="Team">
+
+```python
+from agno.agent import Agent
+from agno.team import Team
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+
+# Configure database
+db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+team = Team(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    members=[Agent(model=OpenAIChat(id="gpt-4o-mini"))],
+    db=db,  # Enable persistence
+    session_id="user_123",  # Same ID = same conversation
+)
+
+team.print_response("Hello!")
+```
+
+</Tab>
+</Tabs>
+
+## Supported Databases
+
+### PostgreSQL (Recommended)
+
+```python
+from agno.db.postgres import PostgresDb
+
+db = PostgresDb(
+    db_url="postgresql+psycopg://user:pass@localhost:5432/dbname",
+    session_table="agent_sessions"  # Optional: custom table name
+)
+```
+
+### SQLite
+
+Perfect for development and testing:
+
+```python
+from agno.db.sqlite import SqliteDb
+
+db = SqliteDb(
+    db_file="tmp/agents.db",
+    session_table="agent_sessions"  # Optional: custom table name
+)
+```
+
+### In-Memory Database
+
+For testing without persistent storage:
+
+```python
+from agno.db.in_memory import InMemoryDb
+
+db = InMemoryDb()
+```
+
+<Warning>
+In-memory databases lose all data when the process ends. Use only for development/testing.
+</Warning>
+
+## Session IDs
+
+Sessions are identified by `session_id`. Use the same ID to continue a conversation:
+
+```python
+# First run
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=db,
+    session_id="conversation_123",
+)
+agent.run("My name is Alice")
+
+# Later run with same session_id
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=db,
+    session_id="conversation_123",  # Same ID
+    add_history_to_context=True,     # Enable history
+)
+agent.run("What's my name?")  # Agent remembers "Alice"
+```
+
+## What Gets Stored
+
+When you configure a database, Agno automatically stores:
+
+- ✅ **Messages** - User inputs and agent responses
+- ✅ **Run metadata** - Timestamps, token usage, model info
+- ✅ **Session state** - Custom key-value data
+- ✅ **Tool calls** - Tool usage and results (optional)
+- ✅ **Media** - Images, audio, files (optional)
+
+See [Storage Control](/basics/sessions/storage-control/overview) to customize what gets saved.
+
+## Multi-User Sessions
+
+Use `user_id` to track different users:
+
+```python
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=db,
+    user_id="alice@example.com",
+    session_id="session_456",
+)
+```
+
+## Key Points
+
+- **Database Required**: Session features require a configured database
+- **Automatic Storage**: No manual save/load needed - it's automatic
+- **Session ID**: Same `session_id` = same conversation thread
+- **Production**: Use PostgreSQL for production workloads
+- **Development**: SQLite or in-memory work great for local development
+
+## Next Steps
+
+Now that you have persistence configured, explore what you can do with sessions:
+
+- [History Management](/basics/sessions/history-management/overview) - Control conversation history
+- [Session Summaries](/basics/sessions/session-summaries/overview) - Condense long conversations
+- [Storage Control](/basics/sessions/storage-control/overview) - Optimize what gets saved
+- [Session Management](/basics/sessions/session-management/overview) - Naming, caching, and more
+
