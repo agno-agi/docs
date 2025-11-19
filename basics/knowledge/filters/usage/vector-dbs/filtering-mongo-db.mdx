@@ -1,6 +1,7 @@
 ---
-title: Filtering on Qdrant
-description: Learn how to filter knowledge base searches using Pdf documents with user-specific metadata in Qdrant.
+title: Filtering on MongoDB
+description: Learn how to filter knowledge base searches using Pdf documents with user-specific metadata in MongoDB.
+keywords: [filter, filtering, mongo]
 ---
 
 ## Code
@@ -12,27 +13,31 @@ from agno.utils.media import (
     SampleDataFileExtension,
     download_knowledge_filters_sample_data,
 )
-from agno.vectordb.qdrant import Qdrant
+from agno.vectordb.mongodb import MongoVectorDb
 
 # Download all sample CVs and get their paths
 downloaded_cv_paths = download_knowledge_filters_sample_data(
     num_files=5, file_extension=SampleDataFileExtension.PDF
 )
 
-COLLECTION_NAME = "filtering-cv"
+mdb_connection_string = "mongodb+srv://<username>:<password>@cluster0.mongodb.net/?retryWrites=true&w=majority"
 
-vector_db = Qdrant(collection=COLLECTION_NAME, url="http://localhost:6333")
 # Step 1: Initialize knowledge base with documents and metadata
 # ------------------------------------------------------------------------------
 # When initializing the knowledge base, we can attach metadata that will be used for filtering
 # This metadata can include user IDs, document types, dates, or any other attributes
 
 knowledge = Knowledge(
-    name="Qdrant Knowledge Base",
-    description="A knowledge base for Qdrant",
-    vector_db=vector_db,
+    name="MongoDB Knowledge Base",
+    description="A knowledge base for MongoDB",
+    vector_db=MongoVectorDb(
+        collection_name="filters",
+        db_url=mdb_connection_string,
+        search_index_name="filters",
+    ),
 )
 
+# Load all documents into the vector database
 knowledge.add_contents(
     [
         {
@@ -91,6 +96,7 @@ agent.print_response(
     knowledge_filters={"user_id": "jordan_mitchell"},
     markdown=True,
 )
+
 ```
 
 ## Usage
@@ -98,7 +104,7 @@ agent.print_response(
 <Steps>
   <Step title="Install libraries">
     ```bash
-    pip install -U agno qdrant-client openai
+    pip install -U agno pymongo openai
     ```
   </Step>
 
@@ -108,21 +114,24 @@ agent.print_response(
     ```
   </Step>
 
-  <Step title="Run Qdrant">
-
-    ```bash
-    docker run -d --name local-qdrant -p 6333:6333 qdrant/qdrant:latest
+  <Step title="Run MongoDB">
+   ```bash
+docker run -d \
+  --name local-mongo \
+  -p 27017:27017 \
+  -e MONGO_INITDB_ROOT_USERNAME=mongoadmin \
+  -e MONGO_INITDB_ROOT_PASSWORD=secret \
+  mongo
     ```
   </Step>
-
   <Step title="Run the example">
     <CodeGroup>
     ```bash Mac
-    python cookbook/knowledge/filters/vector_dbs/filtering_qdrant_db.py 
+    python cookbook/knowledge/filters/vector_dbs/filtering_mongo_db.py
     ```
 
     ```bash Windows
-    python cookbook/knowledge/filters/vector_dbs/filtering_qdrant_db.py
+    python cookbook/knowledge/filters/vector_dbs/filtering_mongo_db.py
     ```
     </CodeGroup>
   </Step>
