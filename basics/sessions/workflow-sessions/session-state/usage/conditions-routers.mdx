@@ -1,0 +1,173 @@
+---
+title: Session State in Conditions & Routers
+sidebarTitle: Conditions & Routers
+description: Use session state in workflow control flow
+---
+
+## Condition Evaluators
+
+Condition evaluators can access and modify session state:
+
+```python
+from agno.workflow.condition import Condition
+from agno.workflow.step import Step, StepInput
+
+def check_budget_exceeded(step_input: StepInput, session_state: dict) -> bool:
+    """Condition that checks session state"""
+    total_spent = session_state.get("total_spent", 0)
+    budget = session_state.get("budget", 100)
+    
+    # Update counter
+    session_state["budget_checks"] = session_state.get("budget_checks", 0) + 1
+    
+    return total_spent > budget
+
+workflow = Workflow(
+    name="Budget Tracker",
+    db=SqliteDb(db_file="budget.db"),
+    steps=[
+        Step(name="Process Purchase", agent=purchaser),
+        Condition(
+            name="Budget Check",
+            evaluator=check_budget_exceeded,
+            steps=[
+                Step(name="Send Alert", agent=alerter),
+            ],
+        ),
+    ],
+    session_state={"total_spent": 0, "budget": 100},
+)
+```
+
+## Router Selectors
+
+Router selectors can use session state to choose routes:
+
+```python
+from agno.workflow.router import Router
+
+def route_by_history(step_input: StepInput, session_state: dict) -> Step:
+    """Router that uses session state"""
+    interaction_count = session_state.get("interaction_count", 0)
+    session_state["interaction_count"] = interaction_count + 1
+    
+    if interaction_count == 0:
+        return welcome_step
+    else:
+        return continuing_step
+
+workflow = Workflow(
+    name="Adaptive Workflow",
+    db=SqliteDb(db_file="adaptive.db"),
+    steps=[
+        Router(
+            name="Route by Experience",
+            selector=route_by_history,
+            choices=[welcome_step, continuing_step],
+        ),
+    ],
+    session_state={"interaction_count": 0},
+)
+```
+
+## Stateful Condition Example
+
+Track attempts and failures:
+
+```python
+def should_retry(step_input: StepInput, session_state: dict) -> bool:
+    """Condition that tracks retry attempts"""
+    max_retries = 3
+    retry_count = session_state.get("retry_count", 0)
+    last_status = session_state.get("last_status", "")
+    
+    # Update retry tracking
+    if last_status == "failed":
+        retry_count += 1
+        session_state["retry_count"] = retry_count
+    
+    # Return True if should retry
+    return retry_count < max_retries
+
+workflow = Workflow(
+    name="Retry Workflow",
+    db=SqliteDb(db_file="retry.db"),
+    steps=[
+        Step(name="Attempt Task", agent=worker),
+        Condition(
+            name="Check Retry",
+            evaluator=should_retry,
+            steps=[
+                Step(name="Retry Task", agent=worker),
+            ],
+        ),
+    ],
+    session_state={"retry_count": 0, "last_status": ""},
+)
+```
+
+## Route Based on Accumulated Data
+
+```python
+def route_by_collection_size(step_input: StepInput, session_state: dict) -> Step:
+    """Route based on how much data collected"""
+    items = session_state.get("collected_items", [])
+    
+    if len(items) < 5:
+        return collect_more_step
+    elif len(items) < 10:
+        return process_batch_step
+    else:
+        return finalize_step
+
+workflow = Workflow(
+    name="Collection Workflow",
+    db=SqliteDb(db_file="collection.db"),
+    steps=[
+        Router(
+            name="Collection Router",
+            selector=route_by_collection_size,
+            choices=[collect_more_step, process_batch_step, finalize_step],
+        ),
+    ],
+    session_state={"collected_items": []},
+)
+```
+
+## Best Practices
+
+### Keep Evaluators Simple
+
+```python
+# Good: Simple, focused condition
+def is_ready(step_input: StepInput, session_state: dict) -> bool:
+    return session_state.get("initialized", False)
+
+# Avoid: Complex logic in evaluator
+def complex_check(step_input: StepInput, session_state: dict) -> bool:
+    # Too much logic here...
+    pass
+```
+
+### Update State Consistently
+
+```python
+def my_condition(step_input: StepInput, session_state: dict) -> bool:
+    # Always update tracking fields
+    session_state["last_check"] = "timestamp"
+    session_state["check_count"] = session_state.get("check_count", 0) + 1
+    
+    return some_condition
+```
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Custom Functions" icon="code" href="/basics/sessions/workflow-sessions/session-state/usage/custom-functions">
+    Use state in custom functions
+  </Card>
+  <Card title="Agent Tools" icon="wrench" href="/basics/sessions/workflow-sessions/session-state/usage/agent-tools">
+    Access state from agent tools
+  </Card>
+</CardGroup>
+

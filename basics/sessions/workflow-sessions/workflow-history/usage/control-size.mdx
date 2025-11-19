@@ -1,0 +1,339 @@
+---
+title: Control History Size
+sidebarTitle: Control Size
+description: Manage how many previous runs are included in workflow history
+---
+
+## Workflow-Level Control
+
+Use `num_history_runs` to control how many previous runs are included for all steps:
+
+```python
+from agno.workflow import Workflow
+from agno.db.sqlite import SqliteDb
+
+workflow = Workflow(
+    name="Research Pipeline",
+    db=SqliteDb(db_file="workflows.db"),
+    steps=[...],
+    add_workflow_history_to_steps=True,
+    num_history_runs=5,  # Include last 5 runs (default: 3)
+)
+```
+
+## Step-Level Override
+
+Individual steps can override the workflow-level setting:
+
+```python
+from agno.workflow.step import Step
+
+workflow = Workflow(
+    name="Analysis Workflow",
+    db=SqliteDb(db_file="workflows.db"),
+    steps=[
+        # Uses workflow default (5 runs)
+        Step(name="Quick Analysis", agent=quick_analyzer),
+        
+        # Override: needs more history
+        Step(
+            name="Deep Analysis",
+            agent=deep_analyzer,
+            add_workflow_history=True,
+            num_history_runs=10,  # This step sees 10 runs
+        ),
+    ],
+    add_workflow_history_to_steps=True,
+    num_history_runs=5,  # Default for other steps
+)
+```
+
+## Choosing the Right Size
+
+### Short-Term Context (3-5 runs)
+
+Good for tasks that need recent context:
+
+```python
+workflow = Workflow(
+    name="Quick Tasks",
+    db=SqliteDb(db_file="tasks.db"),
+    steps=[...],
+    add_workflow_history_to_steps=True,
+    num_history_runs=3,  # Just recent context
+)
+```
+
+**Use cases:**
+- Simple question answering
+- Sequential task processing
+- Recent conversation continuation
+
+### Medium-Term Context (5-10 runs)
+
+Good for tasks that build on recent work:
+
+```python
+workflow = Workflow(
+    name="Content Series",
+    db=SqliteDb(db_file="content.db"),
+    steps=[...],
+    add_workflow_history_to_steps=True,
+    num_history_runs=7,  # Week's worth of content
+)
+```
+
+**Use cases:**
+- Content series creation
+- Progressive analysis
+- Building on recent decisions
+
+### Long-Term Memory (10-20 runs)
+
+Good for tasks that need extensive history:
+
+```python
+workflow = Workflow(
+    name="Learning Assistant",
+    db=SqliteDb(db_file="assistant.db"),
+    steps=[...],
+    add_workflow_history_to_steps=True,
+    num_history_runs=15,  # Remember more interactions
+)
+```
+
+**Use cases:**
+- Learning from patterns
+- Comprehensive analysis
+- Long-running projects
+
+## Mixed History Sizes
+
+Different steps can have different history requirements:
+
+```python
+workflow = Workflow(
+    name="Comprehensive Analysis",
+    db=SqliteDb(db_file="analysis.db"),
+    steps=[
+        # Quick overview - needs just recent runs
+        Step(
+            name="Quick Overview",
+            agent=overview_agent,
+            add_workflow_history=True,
+            num_history_runs=3,
+        ),
+        
+        # Detailed analysis - needs more history
+        Step(
+            name="Detailed Analysis",
+            agent=detail_agent,
+            add_workflow_history=True,
+            num_history_runs=10,
+        ),
+        
+        # Trend analysis - needs extensive history
+        Step(
+            name="Trend Analysis",
+            agent=trend_agent,
+            add_workflow_history=True,
+            num_history_runs=20,
+        ),
+    ],
+)
+```
+
+## Context Window Considerations
+
+Be mindful of your model's context window:
+
+```python
+# For models with smaller context windows
+workflow = Workflow(
+    name="Efficient Workflow",
+    db=SqliteDb(db_file="efficient.db"),
+    steps=[
+        Step(
+            name="Process",
+            agent=Agent(model=OpenAIChat(id="gpt-4o-mini")),
+            add_workflow_history=True,
+            num_history_runs=3,  # Conservative for smaller models
+        ),
+    ],
+)
+
+# For models with larger context windows
+workflow = Workflow(
+    name="Comprehensive Workflow",
+    db=SqliteDb(db_file="comprehensive.db"),
+    steps=[
+        Step(
+            name="Process",
+            agent=Agent(model=OpenAIChat(id="gpt-4o")),
+            add_workflow_history=True,
+            num_history_runs=20,  # Can handle more history
+        ),
+    ],
+)
+```
+
+## Dynamic History Control
+
+You can check history size programmatically:
+
+```python
+# Get current history
+session = workflow.get_session(session_id=workflow.session_id)
+history = session.get_workflow_history(num_runs=5)
+
+print(f"Available history: {len(history)} runs")
+
+# Adjust based on available history
+if len(history) < 10:
+    # Use all available history
+    workflow_runs = len(history)
+else:
+    # Limit to 10 most recent
+    workflow_runs = 10
+```
+
+## Monitoring History Usage
+
+Track how much history you're actually using:
+
+```python
+session = workflow.get_session(session_id=workflow.session_id)
+
+# Get formatted history
+history_context = session.get_workflow_history_context(num_runs=10)
+
+if history_context:
+    # Check token count (approximate)
+    char_count = len(history_context)
+    approx_tokens = char_count // 4  # Rough estimate
+    
+    print(f"History size: {char_count} characters")
+    print(f"Estimated tokens: {approx_tokens}")
+    
+    if approx_tokens > 10000:
+        print("⚠️ Warning: History is consuming significant tokens")
+```
+
+## Best Practices
+
+### Start Small, Increase as Needed
+
+```python
+# Initial setup
+workflow = Workflow(
+    name="Test Workflow",
+    db=SqliteDb(db_file="test.db"),
+    steps=[...],
+    add_workflow_history_to_steps=True,
+    num_history_runs=3,  # Start conservative
+)
+
+# If you need more context, increase gradually
+workflow.num_history_runs = 5
+```
+
+### Balance History with Performance
+
+```python
+# Good balance for most use cases
+workflow = Workflow(
+    name="Balanced Workflow",
+    db=SqliteDb(db_file="balanced.db"),
+    steps=[
+        # Lightweight steps: less history
+        Step(
+            name="Quick Check",
+            agent=quick_agent,
+            add_workflow_history=True,
+            num_history_runs=3,
+        ),
+        
+        # Complex steps: more history
+        Step(
+            name="Deep Analysis",
+            agent=complex_agent,
+            add_workflow_history=True,
+            num_history_runs=10,
+        ),
+    ],
+)
+```
+
+### Monitor and Adjust
+
+```python
+def optimal_history_size(workflow_session):
+    """Determine optimal history size based on usage"""
+    runs = workflow_session.runs or []
+    
+    if len(runs) < 5:
+        return len(runs)  # Use all available
+    elif len(runs) < 10:
+        return 5  # Medium history
+    else:
+        return 10  # Full history
+    
+# Use in workflow
+session = workflow.get_session(session_id=workflow.session_id)
+optimal_size = optimal_history_size(session)
+
+# Could adjust for next run if needed
+```
+
+## Troubleshooting
+
+### Too Much Context
+
+If you're hitting context limits:
+
+1. **Reduce `num_history_runs`:** Use fewer previous runs
+2. **Disable for some steps:** Not all steps need history
+3. **Use selective history:** Only enable where it adds value
+
+```python
+# Reduced history
+workflow = Workflow(
+    name="Efficient Workflow",
+    db=SqliteDb(db_file="efficient.db"),
+    steps=[...],
+    add_workflow_history_to_steps=True,
+    num_history_runs=2,  # Minimal history
+)
+```
+
+### History Has Wrong Content
+
+If the history shows unexpected runs:
+
+- **Check session ID:** Different session IDs have separate histories
+- **Verify run status:** Only completed runs appear in history
+- **Check `num_history_runs`:** Might be showing fewer runs than expected
+
+```python
+# Debug history content
+session = workflow.get_session(session_id=workflow.session_id)
+history = session.get_workflow_history(num_runs=5)
+
+print(f"Number of runs in history: {len(history)}")
+for i, (input_text, output_text) in enumerate(history, 1):
+    print(f"\nRun {i}:")
+    print(f"Input: {input_text[:100]}...")
+    print(f"Output: {output_text[:100]}...")
+```
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Enable History" icon="toggle-on" href="/basics/sessions/workflow-sessions/workflow-history/usage/enable-history">
+    Enable history globally or per-step
+  </Card>
+  <Card title="Access Programmatically" icon="code" href="/basics/sessions/workflow-sessions/workflow-history/usage/access-programmatically">
+    Read history data directly from sessions
+  </Card>
+</CardGroup>
+

@@ -1,0 +1,210 @@
+---
+title: Workflow History
+sidebarTitle: Overview
+description: Learn how workflows access previous execution results to improve performance
+---
+
+## What is Workflow History?
+
+Workflow history lets your workflow steps access the results from previous workflow runs. This is different from conversation history in agents or teams. Instead of storing individual messages, workflow history stores complete execution records with inputs and outputs.
+
+When you enable workflow history, your workflow steps can see what happened in earlier runs and use that context to make better decisions, avoid repetition, or build on previous work.
+
+## Why Use Workflow History?
+
+Workflow history is useful when you want workflows to:
+
+- **Learn from previous runs** to avoid repeating the same work
+- **Build on prior results** to create more sophisticated outputs
+- **Maintain context** across multiple executions
+- **Avoid duplication** when generating content or processing data
+- **Reference past decisions** to ensure consistency
+
+## How Workflow History Works
+
+When workflow history is enabled, Agno formats the previous run results and prepends them to each step's input. This gives your agents, teams, or custom functions access to what happened before, without you having to manually pass it around.
+
+### History Format
+
+The history is formatted as structured text that looks like this:
+
+```
+<workflow_history_context>
+[Workflow Run-1]
+User input: Create a blog post about AI trends
+Workflow output: Blog post about transformers and LLMs...
+
+[Workflow Run-2]
+User input: Write about machine learning automation
+Workflow output: Article about AutoML and no-code AI...
+
+</workflow_history_context>
+```
+
+This formatted history is prepended to the step's input message before execution.
+
+## Key Concepts
+
+### Run-Based History
+
+Workflow history stores complete runs (full pipeline executions), not individual steps or messages. Each run includes:
+- **Input:** The data passed to `workflow.run()`
+- **Output:** The final result from the workflow
+
+### Completed Runs Only
+
+History only includes successfully completed runs. Pending, failed, or cancelled runs are not included in the history context.
+
+### Configurable Size
+
+Control how many previous runs are included using `num_history_runs`:
+
+```python
+workflow = Workflow(
+    name="Content Creator",
+    db=SqliteDb(db_file="workflows.db"),
+    steps=[...],
+    add_workflow_history_to_steps=True,
+    num_history_runs=5,  # Include last 5 runs
+)
+```
+
+## Workflow History vs Agent History
+
+It's important to understand the difference:
+
+| Feature | Workflow History | Agent/Team History |
+|---------|-----------------|-------------------|
+| **What's stored** | Complete workflow runs (input → output) | Individual messages in conversation |
+| **How it's added** | Prepended to step input as formatted text | Added to LLM context as message history |
+| **Granularity** | Workflow-level (entire execution) | Message-level (each exchange) |
+| **Enable with** | `add_workflow_history_to_steps=True` | `add_history_to_context=True` |
+| **Control size** | `num_history_runs` (number of runs) | `num_history_runs` or `num_history_messages` |
+
+<Note>
+You can use both workflow history and agent history together when using agents inside workflow steps.
+</Note>
+
+## Quick Examples
+
+### Enable for All Steps
+
+```python
+workflow = Workflow(
+    name="Research Pipeline",
+    db=SqliteDb(db_file="workflows.db"),
+    steps=[...],
+    add_workflow_history_to_steps=True,  # All steps see history
+)
+```
+
+### Enable for Specific Steps
+
+```python
+workflow = Workflow(
+    name="Content Pipeline",
+    db=SqliteDb(db_file="workflows.db"),
+    steps=[
+        Step(name="Research", agent=researcher),
+        Step(
+            name="Write",
+            agent=writer,
+            add_workflow_history=True,  # Only this step sees history
+        ),
+    ],
+)
+```
+
+## Usage Guides
+
+Learn how to use workflow history in different scenarios:
+
+<CardGroup cols={2}>
+  <Card title="Enable History" icon="toggle-on" href="/basics/sessions/workflow-sessions/workflow-history/usage/enable-history">
+    Enable history globally or per-step
+  </Card>
+  <Card title="Control History Size" icon="list-ol" href="/basics/sessions/workflow-sessions/workflow-history/usage/control-size">
+    Limit the number of runs included
+  </Card>
+  <Card title="Access Programmatically" icon="code" href="/basics/sessions/workflow-sessions/workflow-history/usage/access-programmatically">
+    Read history data directly from sessions
+  </Card>
+  <Card title="Common Use Cases" icon="lightbulb" href="/basics/sessions/workflow-sessions/workflow-history/usage/use-cases">
+    Practical examples and patterns
+  </Card>
+</CardGroup>
+
+## Best Practices
+
+### Choose the Right Number of Runs
+
+```python
+# Short-term context (3-5 runs)
+workflow = Workflow(
+    add_workflow_history_to_steps=True,
+    num_history_runs=3,  # Just recent context
+)
+
+# Long-term memory (10-20 runs)
+workflow = Workflow(
+    add_workflow_history_to_steps=True,
+    num_history_runs=15,  # Remember more interactions
+)
+```
+
+### Be Selective About Which Steps Need History
+
+Not every step benefits from history. Enable it only where needed:
+
+```python
+workflow = Workflow(
+    steps=[
+        Step(name="Fetch Data", agent=fetcher),  # No history needed
+        Step(
+            name="Analyze",
+            agent=analyst,
+            add_workflow_history=True,  # Benefits from history
+        ),
+        Step(name="Format", agent=formatter),  # No history needed
+    ],
+)
+```
+
+### Provide Context in Agent Instructions
+
+Help your agents understand and use the history:
+
+```python
+writer = Agent(
+    name="Content Writer",
+    instructions=[
+        "You are a content writer.",
+        "IMPORTANT: Check the workflow history above.",
+        "Avoid repeating topics or themes from previous runs.",
+        "Build on previous content to create a cohesive series.",
+    ],
+)
+```
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Session State" icon="database" href="/basics/sessions/workflow-sessions/session-state/overview">
+    Share data between steps in real time
+  </Card>
+  <Card title="Workflow Agents" icon="robot" href="/basics/sessions/workflow-sessions/workflow-agents/overview">
+    Use agents that decide when to run workflows
+  </Card>
+  <Card title="Overview" icon="book" href="/basics/sessions/workflow-sessions/overview">
+    Back to workflow sessions basics
+  </Card>
+  <Card title="Metrics" icon="chart-line" href="/basics/sessions/workflow-sessions/metrics/overview">
+    Track workflow performance
+  </Card>
+</CardGroup>
+
+## Developer Resources
+
+- View [workflow history examples](https://github.com/agno-agi/agno/tree/main/cookbook/workflows/_06_advanced_concepts/_07_workflow_history)
+- See the [WorkflowSession API](/reference/workflows/session)
+

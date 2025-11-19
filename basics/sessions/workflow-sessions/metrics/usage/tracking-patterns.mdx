@@ -1,0 +1,177 @@
+---
+title: Metrics Tracking Patterns
+sidebarTitle: Tracking Patterns
+description: Common patterns for monitoring workflow metrics
+---
+
+## Track Costs Per User
+
+```python
+def get_user_workflow_costs(user_id: str) -> float:
+    workflow = Workflow(
+        name="User Workflow",
+        db=SqliteDb(db_file="workflows.db"),
+        session_id=f"user-{user_id}",
+        steps=[...],
+    )
+    
+    metrics = workflow.get_session_metrics()
+    return metrics.total_cost if metrics else 0.0
+
+# Check costs
+user_cost = get_user_workflow_costs("123")
+print(f"User 123 has spent ${user_cost:.4f}")
+```
+
+## Monitor Token Usage
+
+```python
+def check_token_budget(session_id: str, budget: int) -> dict:
+    workflow = Workflow(
+        name="Monitored Workflow",
+        db=SqliteDb(db_file="workflows.db"),
+        session_id=session_id,
+        steps=[...],
+    )
+    
+    metrics = workflow.get_session_metrics()
+    
+    used = metrics.total_tokens if metrics else 0
+    remaining = budget - used
+    percentage = (used / budget) * 100 if budget > 0 else 0
+    
+    return {
+        "used": used,
+        "remaining": remaining,
+        "percentage": percentage,
+        "over_budget": used > budget,
+    }
+
+# Check budget
+status = check_token_budget("user-123", budget=100000)
+print(f"Used: {status['used']:,} tokens ({status['percentage']:.1f}%)")
+
+if status['over_budget']:
+    print("⚠️ Budget exceeded!")
+```
+
+## Compare Session Performance
+
+```python
+def compare_sessions(workflow, session_id_1, session_id_2):
+    """Compare metrics between two sessions"""
+    session1 = workflow.get_session(session_id=session_id_1)
+    session2 = workflow.get_session(session_id=session_id_2)
+    
+    metrics1 = workflow.get_session_metrics(session_id=session_id_1)
+    metrics2 = workflow.get_session_metrics(session_id=session_id_2)
+    
+    return {
+        "session_1": {
+            "id": session_id_1,
+            "runs": len(session1.runs) if session1 and session1.runs else 0,
+            "tokens": metrics1.total_tokens if metrics1 else 0,
+            "cost": metrics1.total_cost if metrics1 else 0.0,
+        },
+        "session_2": {
+            "id": session_id_2,
+            "runs": len(session2.runs) if session2 and session2.runs else 0,
+            "tokens": metrics2.total_tokens if metrics2 else 0,
+            "cost": metrics2.total_cost if metrics2 else 0.0,
+        },
+    }
+```
+
+## Export Metrics
+
+```python
+import csv
+from datetime import datetime
+
+def export_session_metrics(workflow, session_id: str, output_file: str):
+    """Export metrics to CSV"""
+    metrics = workflow.get_session_metrics(session_id=session_id)
+    session = workflow.get_session(session_id=session_id)
+    
+    data = {
+        "session_id": session_id,
+        "workflow_name": workflow.name,
+        "total_runs": len(session.runs) if session and session.runs else 0,
+        "total_tokens": metrics.total_tokens if metrics else 0,
+        "input_tokens": metrics.input_tokens if metrics else 0,
+        "output_tokens": metrics.output_tokens if metrics else 0,
+        "total_cost": metrics.total_cost if metrics else 0.0,
+        "exported_at": datetime.now().isoformat(),
+    }
+    
+    with open(output_file, 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=data.keys())
+        writer.writeheader()
+        writer.writerow(data)
+```
+
+## Monitor Regularly
+
+```python
+def monitor_workflow(session_id: str, alert_threshold: int):
+    workflow = Workflow(
+        name="Monitored Workflow",
+        db=SqliteDb(db_file="workflows.db"),
+        session_id=session_id,
+        steps=[...],
+    )
+    
+    metrics = workflow.get_session_metrics()
+    tokens = metrics.total_tokens if metrics else 0
+    
+    if tokens > alert_threshold:
+        print(f"⚠️ Alert: {session_id} has used {tokens:,} tokens")
+        # send_alert(session_id, tokens)
+    
+    return tokens
+```
+
+## Compare Workflow Versions
+
+```python
+# Version A
+workflow_a = Workflow(
+    name="Pipeline V1",
+    db=SqliteDb(db_file="test.db"),
+    session_id="test-a",
+    steps=[step1, step2, step3],
+)
+
+workflow_a.run(input="Test")
+metrics_a = workflow_a.get_session_metrics()
+
+# Version B (optimized)
+workflow_b = Workflow(
+    name="Pipeline V2",
+    db=SqliteDb(db_file="test.db"),
+    session_id="test-b",
+    steps=[optimized_step],
+)
+
+workflow_b.run(input="Test")
+metrics_b = workflow_b.get_session_metrics()
+
+# Compare
+print(f"V1: {metrics_a.total_tokens} tokens, ${metrics_a.total_cost:.4f}")
+print(f"V2: {metrics_b.total_tokens} tokens, ${metrics_b.total_cost:.4f}")
+
+savings = metrics_a.total_tokens - metrics_b.total_tokens
+print(f"Savings: {savings} tokens ({savings/metrics_a.total_tokens*100:.1f}%)")
+```
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Access Metrics" icon="chart-bar" href="/basics/sessions/workflow-sessions/metrics/usage/access-metrics">
+    Get and work with metrics data
+  </Card>
+  <Card title="Overview" icon="book" href="/basics/sessions/workflow-sessions/metrics/overview">
+    Back to metrics overview
+  </Card>
+</CardGroup>
+
