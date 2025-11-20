@@ -1,0 +1,88 @@
+---
+title: Disable Tool Storage
+description: Learn how to control whether tool execution details are persisted to your database
+---
+
+By default, Agno stores all tool calls and their results in the database. For agents or teams that make many tool calls, this can significantly increase database size.
+
+The `store_tool_messages` flag lets you control this behavior. When set to `False`, tool calls and results are still executed during the run, but they are scrubbed from the database after completion.
+
+<Warning>
+When you disable tool message storage, it might cause hallucinations on the LLM, if the tool results are essential to the history. If you don't use history, you can safely disable tool message storage.
+</Warning>
+
+## Key Concepts
+
+**Important: Message Pair Removal**: When `store_tool_messages=False`, Agno removes both:
+1. The tool result message (role="tool")
+2. The tool call from the corresponding assistant message (message from the LLM)
+
+This is required to maintain valid message sequences that model providers expect. Your metrics will still show the actual tokens used, including the removed tool messages.
+
+**Runtime vs. Storage**: Tools execute normally and provide data during the run, but are scrubbed before database persistence:
+
+- ✅ Tools execute and provide results to your agent/team
+- ✅ The model receives tool results and generates responses
+- ✅ Token usage metrics reflect actual tool calls
+- ⚠️ Tool execution details are not persisted to the database
+
+## Basic Example
+
+<Tabs>
+  <Tab title="Agent">
+```python
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIChat
+from agno.tools.hackernews import HackerNewsTools
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    tools=[HackerNewsTools()],
+    db=SqliteDb(db_file="tmp/agent.db"),
+    store_tool_messages=False,  # Don't persist tool execution details
+)
+
+# Agent uses tools, gets results, and generates response
+# But tool calls and results are not stored in the database
+response = agent.run("What is the latest news from Hacker News?")
+
+# Check what was stored
+stored_run = agent.get_last_run_output()
+if stored_run and stored_run.messages:
+    tool_messages = [m for m in stored_run.messages if m.role == "tool"]
+    print(f"Total messages stored: {len(stored_run.messages)}")
+    print(f"Tool result messages: {len(tool_messages)}")  # Will be 0
+```
+  </Tab>
+
+  <Tab title="Team">
+```python
+from agno.team import Team
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIChat
+from agno.tools.hackernews import HackerNewsTools
+
+team = Team(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    members=[
+        Agent(name="Researcher", tools=[HackerNewsTools()]),
+    ],
+    db=SqliteDb(db_file="tmp/team.db"),
+    store_tool_messages=False,  # Don't persist tool execution details
+)
+
+# Team uses tools, gets results, and generates response
+# But tool calls and results are not stored in the database
+response = team.run("What is the latest news from Hacker News?")
+
+# Check what was stored
+stored_run = team.get_last_run_output()
+if stored_run and stored_run.messages:
+    tool_messages = [m for m in stored_run.messages if m.role == "tool"]
+    print(f"Total messages stored: {len(stored_run.messages)}")
+    print(f"Tool result messages: {len(tool_messages)}")  # Will be 0
+```
+  </Tab>
+</Tabs>
