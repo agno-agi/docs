@@ -1,35 +1,56 @@
 ---
 title: What is Reasoning?
 sidebarTitle: Overview
-description: Reasoning gives Agents the ability to "think" before responding and "analyze" the results of their actions (i.e. tool calls), greatly improving the Agents' ability to solve problems that require sequential tool calls.
+description: Give your agents the ability to think through problems step-by-step, validate their work, and self-correct, dramatically improving accuracy on complex tasks.
 ---
 
-Reasoning Agents go through an internal chain of thought before responding, working through different ideas, validating and correcting as needed.
+Imagine asking a regular AI agent to solve a complex math problem, analyze a scientific paper, or plan a multi-step travel itinerary. Often, it rushes to an answer without fully thinking through the problem. The result? Wrong calculations, incomplete analysis, or illogical plans.
 
-## ReAct: Reason and Act
+Now imagine an agent that pauses, thinks through the problem step-by-step, validates its reasoning, catches its own mistakes, and only then provides an answer. This is reasoning in action, and it transforms agents from quick responders into careful problem-solvers.
 
-At the core of effective reasoning lies the **ReAct** (Reason and Act) methodology - a paradigm where agents alternate between reasoning about a problem and taking actions (like calling tools) to gather information or execute tasks. This iterative process allows agents to break down complex problems into manageable steps, validate their assumptions through action, and adjust their approach based on real-world feedback.
+## Why Reasoning Matters
 
-In Agno, ReAct principles are embedded throughout our reasoning implementations.
-Whether an agent is using reasoning models to think through a problem, or employing reasoning tools to structure their thought process, they follow this fundamental pattern of reasoning → acting → observing → reasoning again until reaching a solution.
+Without reasoning, agents struggle with tasks that require:
 
-Agno supports 3 approaches to reasoning:
+- **Multi-step thinking** - Breaking complex problems into logical steps
+- **Self-validation** - Checking their own work before responding
+- **Error correction** - Catching and fixing mistakes mid-process
+- **Strategic planning** - Thinking ahead instead of reacting
 
-1. [Reasoning Models](#reasoning-models)
-2. [Reasoning Tools](#reasoning-tools)
-3. [Reasoning Agents](#reasoning-agents)
+**Example:** Ask a normal agent "Which is bigger: 9.11 or 9.9?" and it might incorrectly say 9.11 (comparing digit by digit instead of decimal values). A reasoning agent thinks through the decimal comparison logic first and gets it right.
 
-Which approach works best will depend on your use case, we recommend trying them all and immersing yourself in this new era of Reasoning Agents!
+## How Reasoning Works
 
-## Reasoning Models
+Agno supports multiple reasoning patterns, each suited for different problem-solving approaches:
 
-Reasoning models are a separate class of large language models pre-trained to think before they answer. They produce an internal chain of thought before responding. Examples of reasoning models include OpenAI o-series, Claude 3.7 sonnet in extended-thinking mode, Gemini 2.0 flash thinking and DeepSeek-R1.
+**Chain-of-Thought (CoT):** The model thinks through a problem step-by-step internally, breaking down complex reasoning into logical steps before producing an answer. This is used by reasoning models and reasoning agents.
 
-Reasoning at the model layer is all about what the model does **before it starts generating a final response**. Reasoning models excel at single-shot use-cases. They're perfect for solving hard problems (coding, math, physics) that don't require multiple turns, or calling tools sequentially.
+**ReAct (Reason and Act):** An iterative cycle where the agent alternates between reasoning and taking actions:
 
-You can try any supported Agno model and if that model has reasoning capabilities, it will be used to reason about the problem.
+1. **Reason** - Think through the problem, plan next steps
+2. **Act** - Take action (call a tool, perform calculation)
+3. **Observe** - Analyze the results
+4. **Repeat** - Continue reasoning based on new information until solved
 
-### Example
+This pattern is particularly useful with reasoning tools and when agents need to validate assumptions through real-world feedback.
+
+## Three Approaches to Reasoning
+
+Agno gives you three ways to add reasoning to your agents, each suited for different use cases:
+
+### 1. Reasoning Models
+
+**What:** Pre-trained models that natively think before answering (e.g. OpenAI gpt-5, Claude 4.5 Sonnet, Gemini 2.0 Flash Thinking, DeepSeek-R1).
+
+**How it works:** The model generates an internal chain of thought before producing its final response. This happens at the model layer: you simply use the model and reasoning happens automatically.
+
+**Best for:**
+
+- Single-shot complex problems (math, coding, physics)
+- Problems where you trust the model to handle reasoning internally
+- Use cases where you don't need to control the reasoning process
+
+**Example:**
 
 ```python o3_mini.py
 from agno.agent import Agent
@@ -46,17 +67,11 @@ agent.print_response(
 )
 ```
 
-Read more about reasoning models in the [Reasoning Models Guide](/concepts/reasoning/reasoning-models).
+**Learn more:** [Reasoning Models Guide](/concepts/reasoning/reasoning-models)
 
-## Reasoning Model + Response Model
+#### Reasoning Model + Response Model
 
-What if we wanted to use a Reasoning Model to reason but a different model to generate the response? It is well known that reasoning models are great at solving problems but not that great at responding in a natural way (like Claude Sonnet or GPT-4o).
-
-By using a model to generate the response, and a different one for reasoning, we can have the best of both worlds:
-
-### Example
-
-Let's use DeepSeek-R1 from Groq for reasoning and Claude Sonnet for a natural response.
+Here's a powerful pattern: use one model for reasoning (like DeepSeek-R1) and another for the final response (like GPT-4o). Why? Reasoning models are excellent at solving problems but often produce robotic or overly technical responses. By combining a reasoning model with a natural-sounding response model, you get accurate thinking with polished output.
 
 ```python deepseek_plus_claude.py
 from agno.agent import Agent
@@ -65,7 +80,7 @@ from agno.models.groq import Groq
 
 # Setup your Agent using Claude as main model, and DeepSeek as reasoning model
 claude_with_deepseek_reasoner = Agent(
-    model=Claude(id="claude-3-7-sonnet-20250219"),
+    model=Claude(id="claude-3-5-sonnet-20241022"),
     reasoning_model=Groq(
         id="deepseek-r1-distill-llama-70b", temperature=0.6, max_tokens=1024, top_p=0.95
     ),
@@ -79,13 +94,19 @@ claude_with_deepseek_reasoner.print_response(
 )
 ```
 
-## Reasoning Tools
+### 2. Reasoning Tools
 
-By giving a model **reasoning tools**, we can greatly improve its reasoning capabilities by providing a dedicated space for structured thinking. This is a simple, yet effective approach to add reasoning to non-reasoning models.
+**What:** Give any model explicit tools for thinking (like a scratchpad or notepad) to work through problems step-by-step.
 
-The research was first published by Anthropic in [this blog post](https://www.anthropic.com/engineering/claude-think-tool) but has been practiced by many AI Engineers (including our own team) long before it was published.
+**How it works:** You provide tools like `think()` and `analyze()` that let the agent explicitly structure its reasoning process. The agent calls these tools to organize its thoughts before responding.
 
-### Example
+**Best for:**
+
+- Adding reasoning to non-reasoning models (like regular GPT-4o or Claude 3.5 Sonnet)
+- When you want visibility into the reasoning process
+- Tasks that benefit from structured thinking (research, analysis, planning)
+
+**Example:**
 
 ```python claude_reasoning_tools.py
 from agno.agent import Agent
@@ -94,7 +115,7 @@ from agno.tools.reasoning import ReasoningTools
 
 # Setup our Agent with the reasoning tools
 reasoning_agent = Agent(
-    model=Claude(id="claude-3-7-sonnet-latest"),
+    model=Claude(id="claude-3-5-sonnet-20241022"),
     tools=[
         ReasoningTools(add_instructions=True),
     ],
@@ -110,30 +131,34 @@ reasoning_agent.print_response(
 )
 ```
 
-Read more about reasoning tools in the [Reasoning Tools Guide](/concepts/reasoning/reasoning-tools).
+**Learn more:** [Reasoning Tools Guide](/concepts/reasoning/reasoning-tools)
 
-## Reasoning Agents
+### 3. Reasoning Agents
 
-Reasoning Agents are a new type of multi-agent system developed by Agno that combines chain of thought reasoning with tool use.
+**What:** Transform any regular model into a reasoning system through structured chain-of-thought processing via prompt engineering.
 
-You can enable reasoning on any Agent by setting `reasoning=True`.
+**How it works:** Set `reasoning=True` on any agent. Agno creates a separate reasoning agent that uses **your same model** (not a different one) but with specialized prompting to force step-by-step thinking, tool use, and self-validation. Works best with non-reasoning models like gpt-4o or Claude Sonnet. With reasoning models like gpt-5-mini, you're usually better off using them directly.
 
-When an Agent with `reasoning=True` is given a task, a separate "Reasoning Agent" first solves the problem using chain-of-thought. At each step, it calls tools to gather information, validate results, and iterate until it reaches a final answer. Once the Reasoning Agent has a final answer, it hands the results back to the original Agent to validate and provide a response.
+**Best for:**
 
-### Example
+- Transforming regular models into reasoning systems
+- Complex tasks requiring multiple sequential tool calls
+- When you need automated chain-of-thought with iteration and self-correction
+
+**Example:**
 
 ```python reasoning_agent.py
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
 
-# Setup our Agent with reasoning enabled
+# Transform a regular model into a reasoning system
 reasoning_agent = Agent(
-    model=OpenAIChat(id="gpt-5-mini"),
-    reasoning=True,
+    model=OpenAIChat(id="gpt-4o"),  # Regular model, not a reasoning model
+    reasoning=True,  # Enables structured chain-of-thought
     markdown=True,
 )
 
-# Run the Agent
+# The agent will now think step-by-step before responding
 reasoning_agent.print_response(
     "Solve the trolley problem. Evaluate multiple ethical frameworks. Include an ASCII diagram of your solution.",
     stream=True,
@@ -141,4 +166,16 @@ reasoning_agent.print_response(
 )
 ```
 
-Read more about reasoning agents in the [Reasoning Agents Guide](/concepts/reasoning/reasoning-agents).
+**Learn more:** [Reasoning Agents Guide](/concepts/reasoning/reasoning-agents)
+
+## Choosing the Right Approach
+
+Here's how the three approaches compare:
+
+| Approach             | Transparency                       | Best Use Case                  | Model Requirements                |
+| -------------------- | ---------------------------------- | ------------------------------ | --------------------------------- |
+| **Reasoning Models** | Continuous (full reasoning trace)  | Single-shot complex problems   | Requires reasoning-capable models |
+| **Reasoning Tools**  | Structured (explicit step-by-step) | Structured research & analysis | Works with any model              |
+| **Reasoning Agents** | Iterative (agent interactions)     | Multi-step tool-based tasks    | Works with any model              |
+
+
