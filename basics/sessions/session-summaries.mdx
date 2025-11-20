@@ -1,0 +1,183 @@
+---
+title: Session Summaries
+description: Automatically condense long conversations into concise summaries
+keywords: [sessions, session summaries, conversation summaries, memory management]
+---
+
+As conversations grow longer, passing the entire chat history to your LLM becomes expensive and slow. Session summaries solve this by automatically condensing conversations into concise summaries that capture the key points.
+
+Think of it like taking notes during a long meeting - you don't need a transcript of everything said, just the important bits.
+
+## The Problem: Growing Token Costs
+
+Without summaries, every message adds to your context window:
+
+```
+Run 1: 100 tokens
+Run 2: 250 tokens (100 history + 150 new)
+Run 3: 450 tokens (250 history + 200 new)
+Run 4: 750 tokens (450 history + 300 new)
+...exponential growth
+```
+
+This quickly becomes expensive and hits context limits.
+
+## The Solution: Automatic Summaries
+
+Session summaries condense your history:
+
+```
+Run 1: 100 tokens
+Run 2: 250 tokens
+[Summary created: 50 tokens]
+Run 3: 250 tokens (50 summary + 200 new)
+Run 4: 350 tokens (50 summary + 300 new)
+...linear growth
+```
+
+**Benefits:**
+- ✅ Dramatically reduced token costs
+- ✅ Avoid context window limits
+- ✅ Maintain conversation continuity
+- ✅ Automatic creation and updates
+
+## How It Works
+
+Session summaries follow a simple three-step pattern:
+
+<Steps>
+    <Step title="Enable Summary Generation">
+        Set `enable_session_summaries=True` on your agent or team. Summaries are automatically created and updated after runs when there are meaningful messages to summarize, then stored in your database.
+    </Step>
+    <Step title="Use Summaries in Context">
+        Set `add_session_summary_to_context=True` to include the summary in your messages (this is enabled by default if you enable session summary generation). Instead of sending dozens of historical messages, only the condensed summary is sent, dramatically reducing tokens while maintaining context.
+    </Step>
+    <Step title="Customize (Optional)">
+        Use [`SessionSummaryManager`](/reference/session/summary_manager) to control summary generation - use a cheaper model, customize prompts, or change the summary format. This lets you optimize costs by using a lightweight model for summaries while keeping your main agent powerful.
+    </Step>
+</Steps>
+
+## Enable Session Summaries
+
+Turn on `enable_session_summaries=True` to have Agno maintain a rolling summary for each session. Summaries sit alongside the stored history and can be reused later to save tokens.
+
+<CodeGroup>
+```python Agent
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai"),
+    enable_session_summaries=True,
+)
+
+agent.print_response("Hi my name is John and I live in New York", session_id="conversation_123")
+
+# Retrieve the summary
+summary = agent.get_session_summary(session_id="conversation_123")
+if summary:
+    print(summary.summary, summary.topics)
+```
+
+```python Team
+from agno.team import Team
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+
+team = Team(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai"),
+    enable_session_summaries=True,
+)
+
+team.print_response("Hi my name is John and I live in New York", session_id="conversation_123")
+
+# Retrieve the summary
+summary = team.get_session_summary(session_id="conversation_123")
+if summary:
+    print(summary.summary, summary.topics)
+```
+</CodeGroup>
+
+### Customizing Generation
+
+- Provide a [`SessionSummaryManager`](/reference/session/summary_manager) to specify a cheaper model or custom prompt
+- Run summary generation out-of-band by instantiating a lightweight Agent that just calls `get_session_summary` across all sessions
+
+## Use Summary in Context
+
+`add_session_summary_to_context=True` is enabled by default if you enable session summary generation. If you don't want summaries to be generated, but still want to use them in context, you can set `add_session_summary_to_context=True`. Alternatively, if you don't want to use summaries in context, you can set `add_session_summary_to_context=False`.
+
+<CodeGroup>
+```python Agent
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+
+db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=db,
+    add_session_summary_to_context=True,
+)
+
+agent.print_response("Hi my name is John and I live in New York", session_id="conversation_123")
+```
+
+```python Team
+from agno.team import Team
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+
+db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+team = Team(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=db,
+    add_session_summary_to_context=True,
+)
+
+team.print_response("Hi my name is John and I live in New York", session_id="conversation_123")
+```
+</CodeGroup>
+
+Agno automatically loads the latest summary from storage before each run. You can still mix in recent history:
+
+<CodeGroup>
+```python Agent
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=db,
+    add_session_summary_to_context=True,
+    add_history_to_context=True,
+    num_history_runs=2,  # Summary for long-term memory, last 2 runs for detail
+)
+```
+
+```python Team
+team = Team(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=db,
+    add_session_summary_to_context=True,
+    add_history_to_context=True,
+    num_history_runs=2,  # Summary for long-term memory, last 2 runs for detail
+)
+```
+</CodeGroup>
+
+## When to Use Session Summaries
+
+**✅ Perfect for:**
+- Long-running customer support conversations
+- Multi-day or multi-week interactions
+- Conversations with 10+ turns
+- Production systems where cost matters
+
+**⚠️ Consider alternatives for:**
+- Short conversations (fewer than 5 turns)
+- When full detail is critical
+- Real-time chat with recent context only
+
