@@ -1,133 +1,170 @@
 ---
 title: Quickstart
 description: Build and run your first Agent using Agno.
+keywords: [agno, agent, quickstart, tutorial]
 mode: "wide"
 ---
 
-**Agents are AI programs where a language model controls the flow of execution.**
+## What we're building
 
-In 10 lines of code, we can build an Agent that uses tools to achieve a task.
+In this quickstart, you'll create a simple Agent that can understand and respond to questions. You'll see it work in seconds, then learn how to make it production-ready.
 
-```python hackernews_agent.py lines
-from agno.agent import Agent
-from agno.models.anthropic import Claude
-from agno.tools.hackernews import HackerNewsTools
+**[Agents](/basics/agents/overview) are programs where a language model controls the flow of execution.**
 
-agent = Agent(
-    model=Claude(id="claude-sonnet-4-5"),
-    tools=[HackerNewsTools()],
-    markdown=True,
-)
-agent.print_response("Write a report on trending startups and products.", stream=True)
-```
-
-## Build your first Agent
-
-Instead of a toy demo, let's build an Agent that you can extend and build upon. We'll connect our agent to the Agno MCP server, and give it a database to store conversation history and state.
-
-**This is a simple yet complete example that you can extend by connecting to any MCP server**.
-
-```python agno_agent.py lines
-from agno.agent import Agent
-from agno.db.sqlite import SqliteDb
-from agno.models.anthropic import Claude
-from agno.os import AgentOS
-from agno.tools.mcp import MCPTools
-
-# Create the Agent
-agno_agent = Agent(
-    name="Agno Agent",
-    model=Claude(id="claude-sonnet-4-5"),
-    # Add a database to the Agent
-    db=SqliteDb(db_file="agno.db"),
-    # Add the Agno MCP server to the Agent
-    tools=[MCPTools(transport="streamable-http", url="https://docs.agno.com/mcp")],
-    # Add the previous session history to the context
-    add_history_to_context=True,
-    markdown=True,
-)
-
-
-# Create the AgentOS
-agent_os = AgentOS(agents=[agno_agent])
-# Get the FastAPI app for the AgentOS
-app = agent_os.get_app()
-```
-
-<Check>
-
-There is an incredible amount of alpha in these 25 lines of code.
-
-You get a fully functional Agent with memory and state that can access any MCP server. It's served via a FastAPI app with pre-built endpoints that you can use to build your product.
-
-</Check>
-
-## Run your AgentOS
-
-The AgentOS gives us a FastAPI application with ready-to-use API endpoints for serving, monitoring and managing our Agents. Let's run it.
+## Step 1: Install and configure
 
 <Steps>
-  <Step title="Setup your virtual environment">
+  <Step title="Install Agno">
+
+    Install Agno and your model provider SDK:
 
     <CodeGroup>
-    ```bash Mac
-    uv venv --python 3.12
-    source .venv/bin/activate
+    ```bash Mac/Linux
+    pip install agno openai
     ```
 
     ```bash Windows
-    uv venv --python 3.12
-    .venv/Scripts/activate
+    pip install agno openai
     ```
     </CodeGroup>
 
+    <Note>
+    You can use any model provider. For Claude, install `anthropic` instead of `openai`. See [all supported models](/integrations/models/model-index).
+    </Note>
+
   </Step>
-  <Step title="Install dependencies">
+  <Step title="Set your API key">
+
+    Get your API key from your model provider and set it as an environment variable:
 
     <CodeGroup>
-    ```bash Mac
-    uv pip install -U agno anthropic mcp 'fastapi[standard]' sqlalchemy
+    ```bash Mac/Linux
+    export OPENAI_API_KEY=sk-***
     ```
 
     ```bash Windows
-    uv pip install -U agno anthropic mcp 'fastapi[standard]' sqlalchemy
+    setx OPENAI_API_KEY sk-***
     ```
     </CodeGroup>
 
-  </Step>
-  <Step title="Export your Anthropic API key">
-
-    <CodeGroup>
-    ```bash Mac
-    export ANTHROPIC_API_KEY=sk-***
-    ```
-
-    ```bash Windows
-    setx ANTHROPIC_API_KEY sk-***
-    ```
-    </CodeGroup>
-
-  </Step>
-  <Step title="Run your AgentOS">
-
-    ```shell
-    fastapi dev agno_agent.py
-    ```
-
-    This will start your AgentOS on `http://localhost:8000`
+    <Note>
+    For Claude, use `ANTHROPIC_API_KEY` instead. On Windows, you may need to restart your terminal after setting the environment variable.
+    </Note>
 
   </Step>
 </Steps>
 
-## Connect your AgentOS
+## Step 2: Create your first Agent
 
-Agno provides a web interface that connects to your AgentOS, use it to monitor, manage and test your agentic system. Open [os.agno.com](https://os.agno.com) and sign in to your account.
+Create a file called `agent.py`:
 
-1. Click on **"Add new OS"** in the top navigation bar.
-2. Select **"Local"** to connect to a local AgentOS running on your machine.
-3. Enter the endpoint URL of your AgentOS. The default is `http://localhost:8000`.
-4. Give your AgentOS a descriptive name like "Development OS" or "Local 8000".
-5. Click **"Connect"**.
+```python agent.py
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+
+# Create your Agent
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    instructions="You are a helpful AI assistant.",
+    markdown=True,
+)
+
+# Run
+agent.print_response("What is artificial intelligence?", stream=True)
+```
+
+## Step 3: Run your Agent
+
+```bash
+python agent.py
+```
+
+Your agent will process the input and stream its response directly to your terminal.
+
+<Check>
+**You've successfully created and run your first Agent.** In just a few lines of code, you have a working agent that can understand questions and generate responses.
+</Check>
+
+## What's next?
+
+Now that you have a working agent, here are some ways to extend it:
+
+### Add tools
+
+Give your agent access to external tools via MCP (Model Context Protocol). MCP enables your agent to interact with external systems through a standardized interface.
+
+In this example, we'll use the Agno MCP server:
+
+```python agent.py
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.tools.mcp import MCPTools
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+     # Add the Agno MCP server to the Agent
+    tools=[MCPTools(transport="streamable-http", url="https://docs.agno.com/mcp")],
+    instructions="You are a helpful AI assistant.",
+    markdown=True,
+)
+```
+
+Learn more about [MCP tools](/basics/tools/mcp/overview) and [all available tools](/basics/tools/overview).
+
+### Add short-term memory
+
+Store conversation history in a database:
+
+```python agent.py
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.db.sqlite import SqliteDb
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=SqliteDb(db_file="agent.db"),  # Store conversations
+    add_history_to_context=True,  # Remember previous messages
+    instructions="You are a helpful AI assistant.",
+    markdown=True,
+)
+```
+
+Learn more about [sessions and memory](/basics/sessions/overview).
+
+### Deploy as an API
+
+Turn your agent into a production-ready API using [AgentOS](/agent-os/overview). Update your `agent.py`:
+
+```python agent.py
+from agno.os import AgentOS
+from agno.agent import Agent
+
+agent = Agent(...)
+
+agent_os = AgentOS(agents=[agent])
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="agent:app", reload=True)
+```
+
+Then run it:
+
+```bash
+python agent.py
+```
+
+This creates a FastAPI server with REST endpoints, streaming support, and a web interface.  Read more about [AgentOS](/agent-os/overview).
+
+#### Connect to AgentOS Control Plane
+
+Agno provides a web interface called the [AgentOS Control Plane](/agent-os/control-plane) that connects to your AgentOS. Use it to monitor, manage and test your agentic system.
+
+1. Open [os.agno.com](https://os.agno.com) and sign in to your account
+2. Click **"Add new OS"** in the top navigation bar
+3. Select **"Local"** to connect to a local AgentOS running on your machine
+4. Enter the endpoint URL (default is `http://localhost:8000`)
+5. Give your AgentOS a descriptive name and click **"Connect"**
 
 <Frame>
   <video
@@ -141,14 +178,9 @@ Agno provides a web interface that connects to your AgentOS, use it to monitor, 
   </video>
 </Frame>
 
-Once connected, you'll see your new OS with a live status indicator.
+#### Chat with your Agent
 
-## Chat with your Agent
-
-Next, let's chat with our Agent, go to the `Chat` section in the sidebar and select your Agent.
-
-- Ask “What is Agno?” and the Agent will answer using the Agno MCP server.
-- Agents keep their own history, tools, and instructions; switching users won’t mix context.
+Once connected, go to the `Chat` section in the sidebar and select your Agent. You can now interact with your agent through the web interface!
 
 <Frame>
   <video
@@ -158,22 +190,18 @@ Next, let's chat with our Agent, go to the `Chat` section in the sidebar and sel
     playsInline
     style={{ borderRadius: "0.5rem", width: "100%", height: "auto" }}
   >
-    <source src="/videos/agno-agent-chat.mp4" type="video/mp4" />
+    <source src="/videos/agentos-agent-chat.mp4" type="video/mp4" />
   </video>
 </Frame>
 
-<Tip>
+Learn more about [creating your first AgentOS](/agent-os/creating-your-first-os).
 
-Click on Sessions to view your Agent's conversations. This data is stored in your Agent's database, so no need for external tracing services.
+## Next steps
 
-</Tip>
+After running your AgentOS, dive into the [key aspects of Agent Engineering](/getting-started/agent-engineering) and extend your Agents with more capabilities.
 
-## Pre-built API endpoints
+- Explore [building agents](/basics/agents/building-agents) with more features
+- Check out [examples](/examples/getting-started/01-basic-agent) for inspiration
+- Read the [full documentation](/basics/agents/overview) to dive deeper
 
-The FastAPI app generated by your AgentOS comes with pre-built SSE-compatible API endpoints that you can use to build your product. You can always add your own routes, middleware or any other FastAPI feature, but this is such a great starting point.
-
-Checkout the API endpoints at `/docs` of your AgentOS url, e.g. http://localhost:8000/docs
-
-## Next
-
-After running your AgentOS, dive into the [key aspects of Agent Engineering](/getting-started/agent-engineering) and extend your Agents with more capabilities. Happy building!
+Happy building!
