@@ -4,152 +4,103 @@ description: Control how conversation history is accessed and used
 keywords: [sessions, history, conversation history, chat history, context management]
 ---
 
-Agents and Teams with a database configured automatically track message and run history. You have multiple ways to access and use this history to give your AI "memory" of past conversations.
+Agents and Teams with a database configured automatically track message and run history. You have multiple ways to access and use this history to give your agents and teams "memory" of past conversations.
 
-<Note>
-All of the detailed implementation guides (Agent vs. Team, full code examples, etc.) live in the [Chat History docs](/basics/chat-history/agent/overview). This page provides a quick reference for the most common history management patterns.
-</Note>
+## Common Patterns
 
-## History Capabilities at a Glance
+### Automatic History (Most Common)
 
-| Use case | Setting(s) | Where to learn more |
-| --- | --- | --- |
-| Include recent turns automatically | `add_history_to_context`, `num_history_runs`, `num_history_messages` | [Agent chat history](/basics/chat-history/agent/overview#add-history-to-the-agent-context) |
-| Let the LLM fetch older history on demand | `read_chat_history` / `read_team_history` | [Chat history – read tools](/basics/chat-history/agent/overview#read-the-chat-history) |
-| Programmatic access from your app | `get_messages_for_session()`, `get_chat_history()` | [Agent reference](/reference/agents/agent#history), [Team reference](/reference/teams/team#history) |
-| Cross-session recall | `search_session_history`, `num_history_sessions` | [Multi-session memory](/basics/chat-history/agent/overview#multi-session-memory) |
-| Tool call auditing | `read_tool_call_history`, `max_tool_calls_from_history` | [Chat history – tool history](/basics/chat-history/agent/overview#read-the-chat-history) |
-
-## Add History to Context
-
-`add_history_to_context=True` tells Agno to automatically prepend the most recent messages from the current session to every run. That's the single flag behind "the agent remembers what I said earlier".
+Enable `add_history_to_context=True` to automatically include recent messages in every run:
 
 <CodeGroup>
 ```python Agent
-from agno.agent import Agent
-from agno.models.openai import OpenAIChat
-from agno.db.sqlite import SqliteDb
-
 agent = Agent(
     model=OpenAIChat(id="gpt-4o-mini"),
     db=SqliteDb(db_file="tmp/data.db"),
     add_history_to_context=True,
-    num_history_runs=3,  # or num_history_messages=10
+    num_history_runs=3,  # Last 3 conversation turns
 )
 ```
 
 ```python Team
-from agno.team import Team
-from agno.models.openai import OpenAIChat
-from agno.db.sqlite import SqliteDb
-
 team = Team(
     model=OpenAIChat(id="gpt-4o-mini"),
     db=SqliteDb(db_file="tmp/data.db"),
     add_history_to_context=True,
-    num_history_runs=3,  # or num_history_messages=10
+    num_history_runs=3,  # Last 3 conversation turns
 )
 ```
 </CodeGroup>
 
-Pick **runs** when you want to count full turns, or **messages** when you need finer control.
+**When to use:** Chat-style products, quick prototypes, any scenario where responses need context from previous turns.
 
-### When to Use It
+### On-Demand History Access
 
-- Chat-style products where every reply should "remember" the previous few turns
-- Quick prototypes where you don't want to wire up explicit history tools yet
-- Any scenario where "stateless" responses are confusing
+Enable `read_chat_history=True` to let the model decide when to look up history:
 
-## Control History Size
-
-Once history is enabled, you control **how much** gets injected into each run:
-
-| Goal | Setting |
-| --- | --- |
-| Count in conversation turns | `num_history_runs=<int>` |
-| Count individual messages | `num_history_messages=<int>` |
-| Limit tool-call noise | `max_tool_calls_from_history=<int>` |
-
-<CodeGroup>
-```python Agent
-from agno.agent import Agent
-from agno.models.openai import OpenAIChat
-from agno.db.sqlite import SqliteDb
-
+```python
 agent = Agent(
     model=OpenAIChat(id="gpt-4o-mini"),
     db=SqliteDb(db_file="tmp/data.db"),
-    add_history_to_context=True,
-    num_history_runs=2,          # Only last 2 turns
-    max_tool_calls_from_history=5,
+    read_chat_history=True,  # Model can call get_chat_history() tool
 )
 ```
 
-```python Team
-from agno.team import Team
-from agno.models.openai import OpenAIChat
-from agno.db.sqlite import SqliteDb
+**When to use:** Analytics, auditing, or when you want the model to selectively access history rather than always including it.
 
-team = Team(
-    model=OpenAIChat(id="gpt-4o-mini"),
-    db=SqliteDb(db_file="tmp/data.db"),
-    add_history_to_context=True,
-    num_history_runs=2,          # Only last 2 turns
-    max_tool_calls_from_history=5,
-)
-```
-</CodeGroup>
+### Programmatic Access
 
-<Warning>
-Set either `num_history_runs` **or** `num_history_messages`. If both are present, runs take precedence.
-</Warning>
+Retrieve history directly in your code:
 
-### Picking the Right Limit
-
-- **UX-first chats:** 2–3 runs keeps answers coherent without exploding tokens
-- **Tool-heavy agents:** use `max_tool_calls_from_history` to avoid copying long tool payloads into context
-- **Analytics / auditing:** skip the limit entirely and lean on `read_chat_history` so the LLM decides when to look back
-
-## Retrieve History Programmatically
-
-Need the raw transcript for analytics, debugging, or to hydrate your own UI? Use the history helpers directly:
-
-<CodeGroup>
-```python Agent
-# Deduplicated list
+```python
+# All messages excluding those marked as from_history
 chat_history = agent.get_chat_history()
 
-# Every message as stored
+# User-assistant message pairs from each run
 messages = agent.get_messages_for_session()
 
-# Includes metrics + tool calls
+# Last run output with metrics and tool calls
 last_run = agent.get_last_run_output()
 ```
 
-```python Team
-# Deduplicated list
-chat_history = team.get_chat_history()
-
-# Every message as stored
-messages = team.get_messages_for_session()
-
-# Includes metrics + tool calls
-last_run = team.get_last_run_output()
-```
-</CodeGroup>
-
-Each message object exposes `role`, `content`, timestamps, tool metadata, and per-message token metrics (when available), so you can render exactly what you need.
-
-**Tips:**
-- Fetching history programmatically still requires a database-backed agent or team
-- Use `read_chat_history=True` if you want the **model** to call the same helper at run time instead of doing it yourself
-- Pair this with [Storage Control](/basics/sessions/storage-control) if you only want to persist a subset of messages
+**When to use:** Building your own UI, analytics, debugging, or when you need raw transcripts.
 
 ## Choosing a Pattern
 
-- **Short chats:** leave the defaults (history off) or enable `add_history_to_context` with `num_history_runs=3`
-- **Long-lived threads:** combine limited history with [session summaries](/basics/sessions/session-summaries) so tokens stay flat
-- **Audit/debug flows:** enable the read tools (chat history, team history, tool call history) so the model can look things up only when it needs to
-- **Cross-session recall:** keep `num_history_sessions` low (≈2) to avoid blowing the context window
-- **Programmatic workflows:** call `get_messages_for_session()` / `get_chat_history()` in your own code when you need raw transcripts
+- **Short chats:** Leave defaults (history off) or enable `add_history_to_context` with `num_history_runs=3`
+- **Long-lived threads:** Combine limited history (`num_history_runs=2`) with [session summaries](/basics/sessions/session-summaries) to keep tokens manageable
+- **Tool-heavy agents:** Use `max_tool_calls_from_history` to limit tool call noise in context
+- **Audit/debug flows:** Enable `read_chat_history=True` so the model looks things up only when needed
+- **Cross-session recall:** Use `search_session_history=True` with `num_history_sessions=2` (keep low to avoid context limits)
+- **Programmatic workflows:** Call `get_messages_for_session()` / `get_chat_history()` directly in your code
 
+## Learn More
+
+For comprehensive guides, detailed examples, and advanced patterns:
+
+<CardGroup cols={3}>
+  <Card
+    title="Chat History in Agents"
+    icon="robot"
+    iconType="duotone"
+    href="/basics/chat-history/agent/overview"
+  >
+    Complete guide to agent history management with detailed examples and advanced patterns.
+  </Card>
+  <Card
+    title="Chat History in Teams"
+    icon="users"
+    iconType="duotone"
+    href="/basics/chat-history/team/overview"
+  >
+    Team-specific history features, member coordination, and shared context patterns.
+  </Card>
+  <Card
+    title="Chat History Overview"
+    icon="book"
+    iconType="duotone"
+    href="/basics/chat-history/overview"
+  >
+    Overview of all history capabilities across agents, teams, and workflows.
+  </Card>
+</CardGroup>
