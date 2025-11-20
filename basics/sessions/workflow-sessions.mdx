@@ -2,9 +2,9 @@
 title: Workflow Sessions
 sidebarTitle: Workflow Sessions
 description: Learn how workflow sessions track multi-step pipeline executions
+keywords: [sessions, workflow sessions, workflow history, workflow execution]
 ---
 
-## What are Workflow Sessions?
 
 Workflow sessions track the execution history of your workflows. Unlike agent or team sessions that store conversation messages, workflow sessions store complete **workflow runs**, where each run represents a full execution of all your workflow steps from input to final output.
 
@@ -22,6 +22,10 @@ Use workflow sessions when you need to:
 - **Persist workflow results** for analysis and debugging
 - **Maintain context** across multiple workflow executions
 
+<Tip>
+In most cases it is recommended to add session persistence to your workflow.
+</Tip>
+
 ## How Workflow Sessions Work
 
 When you create a workflow with a database, Agno automatically manages sessions for you:
@@ -37,7 +41,7 @@ workflow = Workflow(
 )
 
 # Each run creates or updates the workflow session
-result = workflow.run(input="AI trends")
+result = workflow.run(input="AI trends", session_id="session_123")
 ```
 
 Each time you run the workflow, Agno:
@@ -47,7 +51,7 @@ Each time you run the workflow, Agno:
 3. Updates the session with the new run
 4. Makes the history available for future runs
 
-## Workflow Session Structure
+### Workflow Session Structure
 
 A workflow session stores:
 
@@ -75,7 +79,17 @@ class WorkflowSession:
 Unlike agent sessions, workflow sessions don't have a `summary` field. Workflows store complete run results instead of creating summaries.
 </Note>
 
-## Key Differences from Agent/Team Sessions
+### What Gets Stored
+
+Each workflow run stores:
+
+- **Input:** The data passed to `workflow.run()`
+- **Output:** The final result from the workflow
+- **Step results:** Output from each step in the pipeline
+- **Session Data:** Execution time, status, metrics
+- **Session state:** Shared data between steps (if used)
+
+### Key Differences from Agent/Team Sessions
 
 If you're familiar with agent or team sessions, here are the main differences:
 
@@ -83,71 +97,11 @@ If you're familiar with agent or team sessions, here are the main differences:
 |---------|-------------------|------------------|
 | **What's stored** | Messages and conversation turns | Complete workflow runs with step results |
 | **History type** | Message-based (chat history) | Run-based (execution history) |
-| **Session state** | Optional metadata | First-class feature for cross-step data sharing |
 | **Summaries** | Supported with `enable_session_summaries` | Not supported (stores complete runs) |
 | **History format** | Messages in LLM context | Previous run results prepended to step inputs |
 
-## Setting up Workflow Sessions
 
-### Basic Setup with Database
-
-To enable sessions, provide a database when creating your workflow:
-
-```python
-from agno.workflow import Workflow
-from agno.workflow.step import Step
-from agno.agent import Agent
-from agno.db.sqlite import SqliteDb
-
-researcher = Agent(name="Researcher", ...)
-
-workflow = Workflow(
-    name="Research Pipeline",
-    description="Research and analyze topics",
-    db=SqliteDb(db_file="workflows.db"),
-    steps=[
-        Step(name="Research", agent=researcher),
-        Step(name="Analyze", agent=analyzer),
-    ],
-)
-```
-
-### With Session ID
-
-You can provide a specific session ID to group multiple runs:
-
-```python
-# All runs with this session_id will be grouped together
-workflow = Workflow(
-    name="Research Pipeline",
-    db=SqliteDb(db_file="workflows.db"),
-    session_id="user-123-research",
-    steps=[...],
-)
-
-# Or pass it during execution
-workflow.run(input="AI trends", session_id="user-123-research")
-```
-
-If you don't provide a `session_id`, Agno generates one automatically and makes it "sticky" to the workflow instance.
-
-### With User ID
-
-Track which user's session this belongs to:
-
-```python
-workflow = Workflow(
-    name="Research Pipeline",
-    db=SqliteDb(db_file="workflows.db"),
-    user_id="user-123",
-    steps=[...],
-)
-
-# Or pass during execution
-workflow.run(input="AI trends", user_id="user-123")
-```
-
-## Database Options
+### Database Options
 
 Workflow sessions require a database to persist execution history. Agno supports multiple database types:
 
@@ -166,15 +120,6 @@ workflow = Workflow(
   See all supported databases, connection options, and production recommendations
 </Card>
 
-## What Gets Stored
-
-Each workflow run stores:
-
-- **Input:** The data passed to `workflow.run()`
-- **Output:** The final result from the workflow
-- **Step results:** Output from each step in the pipeline
-- **Metadata:** Execution time, status, metrics
-- **Session state:** Shared data between steps (if used)
 
 ## Workflow History
 
@@ -195,12 +140,14 @@ workflow = Workflow(
 )
 ```
 
-### Why it helps
+<Check>
+Why it helps:
 
-- **Learn from previous runs** instead of repeating work
+- **Access previous runs** instead of repeating work
 - **Reference past decisions** to keep outputs consistent
 - **Maintain context** across multi-run workflows
 - **Build on prior results** for richer analysis
+</Check>
 
 ### History format
 
@@ -220,55 +167,6 @@ Workflow output: [Full output from run]
 
 See the [workflow history implementation guide](/basics/chat-history/workflow/overview) for advanced controls, per-step overrides, and programmatic access patterns.
 
-## Common Patterns
-
-### Single User Workflow
-
-```python
-# One workflow instance per user
-user_workflow = Workflow(
-    name="Personal Assistant",
-    db=db,
-    session_id=f"user-{user_id}",
-    user_id=user_id,
-    steps=[...],
-)
-
-# All runs for this user are tracked in one session
-user_workflow.run(input="Task 1")
-user_workflow.run(input="Task 2")
-```
-
-### Multi-Turn Workflow
-
-```python
-# Workflow remembers previous executions
-workflow = Workflow(
-    name="Content Creator",
-    db=db,
-    steps=[...],
-)
-
-# First execution
-workflow.run(input="Write about AI")
-
-# Second execution (same session)
-workflow.run(input="Now write about ML")
-```
-
-### Temporary Sessions
-
-```python
-# No database = no session persistence
-workflow = Workflow(
-    name="One-off Task",
-    steps=[...],  # No db parameter
-)
-
-# Runs independently, no history stored
-workflow.run(input="Process this once")
-```
-
 ## Session Naming
 
 Give your workflow sessions meaningful names for easier identification:
@@ -285,11 +183,11 @@ workflow = Workflow(
     steps=[...],
 )
 
-workflow.run(input="Analyze AI trends")
-workflow.set_session_name(session_name="AI Trends Analysis Q4 2024")
+workflow.run(input="Analyze AI trends", session_id="session_123")
+workflow.set_session_name(session_id="session_123", session_name="AI Trends Analysis Q4 2024")
 
 # Retrieve the name
-name = workflow.get_session_name()
+name = workflow.get_session_name(session_id="session_123")
 print(name)  # "AI Trends Analysis Q4 2024"
 ```
 
@@ -305,16 +203,12 @@ workflow = Workflow(
     steps=[...],
 )
 
-workflow.run(input="Research topic")
-workflow.set_session_name(autogenerate=True)
+workflow.run(input="Research topic", session_id="session_123")
+workflow.set_session_name(session_id="session_123", autogenerate=True)
 
-name = workflow.get_session_name()
+name = workflow.get_session_name(session_id="session_123")
 print(name)  # "Automated research and analysis pipel - 2024-11-19 14:30"
 ```
-
-<Note>
-Unlike agent/team sessions which use AI to generate names from conversation content (e.g., "Python Best Practices"), workflow sessions use timestamp-based formatting since they represent executions rather than conversations.
-</Note>
 
 ## Next Steps
 
