@@ -1,8 +1,102 @@
 ---
 title: Context Compression
 sidebarTitle: Overview
-description: Learn how to compress the context of your agents and teams.
-keywords: [context compression, context compression techniques, context compression strategies]
+description: Learn how to compress tool call results to save context space while preserving critical information.
+keywords: [context compression, tool call compression, context management, token optimization]
 ---
 
-Coming soon.
+Context Compression allows you to intelligently summarize large tool results reducing token usage without losing essential data.
+
+## Quick Start
+
+Enable context compression with a single parameter:
+
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.tools.duckduckgo import DuckDuckGoTools
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o"),
+    tools=[DuckDuckGoTools()],
+    compress_tool_results=True,  # Enable compression
+    debug_mode=True,  # See compression in action
+)
+
+agent.print_response(
+    "Research the latest AI announcements from OpenAI, Anthropic, and Google"
+)
+```
+
+<Tip>
+Compression preserves specific facts (numbers, dates, entities, identifiers) while removing verbose descriptions, meta-commentary, and formatting artifacts.
+</Tip>
+
+## Custom Compression
+
+For more customization options:
+
+```python
+from agno.agent import Agent
+from agno.compression.manager import CompressionManager
+from agno.models.openai import OpenAIChat
+from agno.tools.duckduckgo import DuckDuckGoTools
+
+compression_manager = CompressionManager(
+    model=OpenAIChat(id="gpt-4o-mini"),  # Use a faster model for compression
+    compress_tool_results_limit=2,  # Compress after 2 tool calls (default: 3)
+    compress_tool_call_instructions="Your custom compression prompt here...",
+)
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o"),
+    tools=[DuckDuckGoTools()],
+    compression_manager=compression_manager,
+)
+
+agent.print_response("Find recent funding rounds for AI startups")
+```
+
+<Tip>
+Use a faster, cheaper model like `gpt-4o-mini` for compression to reduce latency and cost while keeping your main agent on a more capable model.
+</Tip>
+
+## Using with Teams
+
+Context compression also works with Teams:
+
+```python
+from agno.compression.manager import CompressionManager
+from agno.team import Team
+
+compression_manager = CompressionManager(compress_tool_results_limit=2)
+
+team = Team(
+    name="Research Team",
+    members=[...],
+    compression_manager=compression_manager,
+)
+```
+
+## When to Use
+
+**Good use cases:**
+- Agents with web search tools that return verbose results
+- Multi-step workflows with many tool calls
+- Long-running sessions where context accumulates
+- Cost-sensitive applications where token usage matters
+
+**Consider alternatives when:**
+- Tool results are already concise
+- Every detail in tool output is critical
+
+<Note>
+Context compression adds latency (one LLM call per compressed result) but significantly reduces context usage and costs for tool-heavy agents.
+</Note>
+
+## Developer Resources
+
+- [Agent Reference](/reference/agents/agent) - Full parameter documentation
+- [Team Reference](/reference/teams/team) - Team parameter documentation
+- [Context Engineering](/basics/context/overview) - Learn about context management
+- [Cookbook Examples](https://github.com/agno-agi/agno/tree/main/cookbook/agents/context_compression)
