@@ -1,0 +1,80 @@
+---
+title: MLflow
+description: Integrate Agno with MLflow to automatically capture OpenTelemetry-native traces from your agents with one line of code.
+---
+
+## Integrating Agno with MLflow
+
+[MLflow](https://mlflow.org/) provides built-in GenAI tracing so you can capture, explore, and analyze LLM & agent traces. Agno integrates directly with MLflow via a single call to `mlflow.agno.autolog()`.
+
+## Prerequisites
+
+
+1. **Install Dependencies**
+
+   Ensure the required packages are installed:
+
+   ```bash
+   pip install -U mlflow agno opentelemetry-exporter-otlp openinference-instrumentation-agno
+   ```
+
+2. **Start the MLflow tracking server**
+
+   Start the MLflow tracking server to view traces as you run your code:
+
+   ```bash
+   mlflow server
+   ```
+
+   For more information on how to host MLflow server, see the [MLflow documentation](https://mlflow.org/docs/latest/self-hosting/).
+
+
+   <Tip>
+
+   If you don't want to self-host MLflow server, you can use [Managed MLflow](https://mlflow.org/docs/latest/self-hosting/#cloud-services) offered by various cloud providers.
+
+   </Tip>
+
+## Enable Automatic Tracing in your code
+
+Call `mlflow.agno.autolog()` once at startup, then use your Agno agent as usual. MLflow will automatically record traces of model/tool calls and agent steps.
+
+```python
+import mlflow
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.tools.duckduckgo import DuckDuckGoTools
+
+# Enable MLflow tracing for Agno
+mlflow.agno.autolog()
+
+# Specify the MLflow server URL and experiment name (optional)
+mlflow.set_tracking_uri("http://localhost:5000")
+mlflow.set_experiment("Agno Agent")
+
+# Create and use the agent
+agent = Agent(
+    model=OpenAIChat(id="gpt-5-mini"),
+    tools=[YFinanceTools(stock_price=True)],
+    instructions="Use tables to display data. Don't include any other text.",
+    markdown=True,
+)
+agent.print_response("What is the stock price of Apple?", stream=False)
+```
+
+## View Traces
+
+Access the MLflow UI to view the traces. If you started the UI locally, open `http://127.0.0.1:5000` in your browser. If you are using a managed MLflow server, you can access the UI at the URL provided by the cloud provider.
+
+<Frame caption="MLflow Traces">
+  <img
+    src="/images/mlflow-trace.png"
+    style={{ borderRadius: '10px', width: '100%', maxWidth: '800px' }}
+    alt="mlflow-agno observability"
+  />
+</Frame>
+
+## Notes
+
+- Ensure your model provider credentials (for example, `OPENAI_API_KEY`) are set in the environment.
+- For best results, use the latest MLflow version that includes the Agno autolog integration.
