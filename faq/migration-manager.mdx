@@ -1,0 +1,46 @@
+---
+title: Migration Manager
+sidebarTitle: Migration Manager
+---
+
+In version 2.3.0, we introduced the `MigrationManager` class to help you manage your database migrations. This class makes it accessible and easier to run database migrations. The `MigrationManager` works by creating a new table which stores a record of schema versions for each table like sessions, memories, metrics, evaluations and knowledge. By maintaining this record, we can easily track the schema version for each table and apply the necessary migrations.
+
+## Usage
+
+```python
+import asyncio
+
+from agno.db.migrations import MigrationManager
+from agno.db.postgres import AsyncPostgresDb
+
+db = AsyncPostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+async def run_migrations():
+    await MigrationManager(db).up(target_version=2.3.0, table_type="memory", force=True)
+
+if __name__ == "__main__":
+    asyncio.run(run_migrations())
+```
+
+Read more about the `MigrationManager` in the [Database Migrations](/basics/database/migrations) page.
+
+The `MigrationManager` should be able to migrate your database tables to the latest schema by running the `up` method. However, if you are facing issues migrating your database, please follow the **Troubleshooting** section below.
+
+## Troubleshooting
+
+- If you continue to see errors and are not able to read or write to the database, it's likely due to a mismatch between the schema version and the actual schema of the table. Please set the `force` parameter to `True` to force the migration.
+
+```python
+await MigrationManager(db).up(
+  target_version=2.3.0,
+  table_type="memory",
+  force=True,
+)
+```
+
+- If after updating the schema, you are still facing issues with accessing or writing to the database with AgentOS, you may need to refresh the instance. The Sqlalchemy engine may be caching your database Tables and not reading the latest schema. The in-memory Table object that is used to determine columns for upserts could be outdated. You can refresh it by calling restarting your AgentOS instance.
+
+Additional tips:
+
+- Please avoid creating custom columns in your database. This can cause the migration manager to fail.
+- Ensure the schema versions in the `agno_schema_versions` table are correct.
