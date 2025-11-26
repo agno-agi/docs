@@ -37,7 +37,23 @@ The `MigrationManager` class supports the following databases:
 
 You can also use the asynchronous database classes (`AsyncPostgresDb` and `AsyncSqliteDb`) with your migrations.
 
-## Upgrade a specific table
+## How It Works
+
+The `MigrationManager`:
+
+1. Creates an `agno_schema_versions` table to track schema versions for each table
+2. Checks the current schema version of each table
+3. Applies migrations in order from the current version to the target version
+4. Updates the schema version record after successful migration
+5. Supports both synchronous and asynchronous database operations
+
+See the [MigrationManager](/reference/storage/migrations) page for more information.
+
+<Note>
+When using [AgentOS](/agent-os/overview), it is recommended that you run the migrations in a separate script and restart the AgentOS for the updated schema's to take effect.
+</Note>
+
+### Upgrade a specific table
 
 You can also upgrade a specific table:
 
@@ -46,7 +62,6 @@ import asyncio
 
 from agno.db.migrations import MigrationManager
 from agno.db.postgres import AsyncPostgresDb
-
 
 # The database you want to migrate
 db = AsyncPostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
@@ -65,7 +80,10 @@ if __name__ == "__main__":
     asyncio.run(run_migrate_table())
 ```
 
-## Reverting Migrations
+The supported table types are: `session`, `memory`, `metrics`, `eval`, `knowledge`, `culture`.
+
+
+### Reverting Migrations
 
 You can also use the `MigrationManager` class to revert a migration:
 
@@ -85,38 +103,15 @@ if __name__ == "__main__":
     asyncio.run(run_revert_migrations())
 ```
 
-## Migrating a Specific Table
-
-In case you need it, notice you can migrate only a specific table:
-
-```python
-import asyncio
-
-from agno.db.migrations import MigrationManager
-from agno.db.postgres import AsyncPostgresDb
-
-# The database you want to migrate
-db = AsyncPostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
-
-async run_migrate_table():
-    # This will migrate the memories table to the latest version
-    await MigrationManager(db).up(table_type="memory")
-
-if __name__ == "__main__":
-    asyncio.run(run_migrate_table())
-```
-
-The supported table types are: `session`, `memory`, `metrics`, `eval`, `knowledge`, `culture`.
-
 
 ## Troubleshooting
 
 <Tabs>
-  <Tab title="Database Connection Errors">
-    Verify your database connection string and ensure the database is running and accessible.
+  <Tab title="Invalid Column Errors">
+    Ensure you have run the migration before using the updated `agno` code in production.
   </Tab>
-  <Tab title="Migration Errors">
-    If you are facing migration errors, please check the error message and troubleshoot accordingly.
+  <Tab title="SQL INSERT Errors">
+    If you are facing SQL INSERT errors when using your database, ensure that you have run the latest migrations AND you restarted your AgentOS instance.
   </Tab>
 </Tabs>
 
