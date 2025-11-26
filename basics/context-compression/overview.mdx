@@ -8,25 +8,68 @@ tag: beta
 
 Context Compression allows you to manage your agent context while it is running, helping the agent stay within its context window and avoid rate limits or decreases in response quality. 
 
-The first iteration of context compression focuses on intelligently summarizing large tool results, reducing token usage without losing essential data.
+Think of it like a research assistant who reads lengthy reports and gives you the key bullet points instead of the full documents.
 
-## When to Use
 
-**Good use cases:**
-- Agents with tools that return verbose results
-- Multi-step workflows with many tool calls
-- Long-running sessions where context accumulates
 
-<Note>
-Context compression adds latency but significantly reduces context usage and costs for tool-heavy agents.
-</Note>
+## The Problem: Verbose Tool Results
 
-## Quick Start
+Without compression, tool results quickly consume your context window:
 
-Enable context compression with a single parameter:
+```
+Tool Call 1: 2,500 tokens
+Tool Call 2: 5,700 tokens (2,500 + 3,200 new)
+Tool Call 3: 8,500 tokens (5,700 + 2,800 new)
+Tool Call 4: 12,000 tokens (8,500 + 3,500 new)
+...exponential growth
+```
+
+This quickly becomes expensive and hits context limits during complex workflows.
+
+## The Solution: Automatic Compression
+
+Context compression summarizes tool results after a threshold:
+
+```
+Tool Call 1: 2,500 tokens
+Tool Call 2: 5,700 tokens
+Tool Call 3: 8,500 tokens
+[Compression triggered]
+Tool Call 4: 1,300 tokens (800 compressed + 500 new)
+...linear growth
+```
+
+**Benefits:**
+- ✅ Dramatically reduced token costs
+- ✅ Stay within context window limits
+- ✅ Preserve critical facts and data
+- ✅ Automatic compression
+
+## How It Works
+
+Context compression follows a simple pattern:
+
+<Steps>
+    <Step title="Enable Compression">
+        Set `compress_tool_results=True` on your agent or team. The system monitors tool call results as they come in.
+    </Step>
+    <Step title="Threshold Reached">
+        After the threshold is reached, compression is triggered. All accumulated tool results are summarized.
+    </Step>
+    <Step title="Intelligent Summarization">
+        The compression model preserves key facts (numbers, dates, entities, URLs) while removing boilerplate, redundancy, and filler text.
+    </Step>
+    <Step title="Customize (Optional)">
+        Use [`CompressionManager`](/reference/compression/compression-manager) to control compression - use a cheaper model, adjust the threshold, or provide custom prompts.
+    </Step>
+</Steps>
+
+## Enable Compression
+
+Turn on `compress_tool_results=True` to automatically compress tool results:
 
 <CodeGroup>
-```python Agent wrap
+```python Agent
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
 from agno.tools.duckduckgo import DuckDuckGoTools
@@ -34,13 +77,13 @@ from agno.tools.duckduckgo import DuckDuckGoTools
 agent = Agent(
     model=OpenAIChat(id="gpt-4o"),
     tools=[DuckDuckGoTools()],
-    compress_tool_results=True,  # Enable compression
+    compress_tool_results=True,
 )
 
 agent.print_response("Research the latest AI announcements")
 ```
 
-```python Team wrap
+```python Team
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
 from agno.team import Team
@@ -54,16 +97,16 @@ web_agent = Agent(
 team = Team(
     model=OpenAIChat(id="gpt-4o"),
     members=[web_agent],
-    compress_tool_results=True,  # Enable compression
+    compress_tool_results=True,
 )
 
-team.print_response("What are the latest developments in AI agents? Which companies dominate the market? Find the latest news and reports on the companies.")
+team.print_response("Research the latest AI announcements")
 ```
 </CodeGroup>
 
 ## Custom Compression
 
-For more control, use the [`CompressionManager`](/reference/compression/compression-manager) directly:
+Provide a [`CompressionManager`](/reference/compression/compression-manager) to customize the compression behavior:
 
 <CodeGroup>
 ```python Agent
@@ -119,7 +162,18 @@ team.print_response("Find recent funding rounds for AI startups")
 Use a faster, cheaper model like `gpt-4o-mini` for compression to reduce latency and cost while keeping your main agent on a more capable model.
 </Tip>
 
+## When to Use Context Compression
 
+**✅ Perfect for:**
+- Agents with tools that return verbose results (web search, APIs)
+- Multi-step workflows with many tool calls
+- Long-running sessions where context accumulates
+- Production systems where cost matters
+
+**⚠️ Consider alternatives for:**
+- Agents with few tool calls (fewer than 3)
+- When full tool output details are critical
+- Real-time chat where compression latency matters
 
 ## Developer Resources
 
