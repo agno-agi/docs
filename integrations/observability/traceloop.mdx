@@ -1,0 +1,188 @@
+---
+title: Traceloop
+description: Integrate Agno with Traceloop to send traces and gain insights into your agent's performance.
+---
+
+## Integrating Agno with Traceloop
+
+[Traceloop](https://www.traceloop.com/) provides an LLM observability platform built on [OpenLLMetry](https://github.com/traceloop/openllmetry), an open-source OpenTelemetry extension. By integrating Agno with Traceloop, you can automatically trace agent execution, team workflows, tool calls, and token usage metrics.
+
+## Prerequisites
+
+1. **Install Dependencies**
+
+   Ensure you have the necessary packages installed:
+
+   ```bash
+   pip install agno openai traceloop-sdk
+   ```
+
+2. **Setup Traceloop Account**
+
+   - Sign up for an account at [Traceloop](https://app.traceloop.com/).
+   - Obtain your API key from [Settings > API Keys](https://app.traceloop.com/settings/api-keys).
+
+3. **Set Environment Variables**
+
+   Configure your environment with the Traceloop API key:
+
+   ```bash
+   export TRACELOOP_API_KEY=<your-api-key>
+   ```
+
+## Sending Traces to Traceloop
+
+- ### Example: Basic Agent Instrumentation
+
+Initialize Traceloop at the start of your application. The SDK automatically instruments Agno agent execution.
+
+```python
+from traceloop.sdk import Traceloop
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+
+# Initialize Traceloop - must be called before creating agents
+Traceloop.init(app_name="agno_agent")
+
+# Create and configure the agent
+agent = Agent(
+    name="Assistant",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    description="A helpful assistant",
+    instructions=["Be concise and helpful"],
+)
+
+# Agent execution is automatically traced
+response = agent.run("What is the capital of France?")
+print(response.content)
+```
+
+- ### Example: Development Mode (Disable Batching)
+
+For local development, disable batching to see traces immediately:
+
+```python
+from traceloop.sdk import Traceloop
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+
+# Disable batching for immediate trace visibility during development
+Traceloop.init(app_name="agno_dev", disable_batch=True)
+
+# Create and configure the agent
+agent = Agent(
+    name="DevAgent",
+    model=OpenAIChat(id="gpt-4o-mini"),
+)
+
+agent.print_response("Hello, world!")
+```
+
+
+- ### Example: Multi-Agent Team Tracing
+
+Team execution is automatically traced, showing the coordination between multiple agents:
+
+```python
+from traceloop.sdk import Traceloop
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.team import Team
+
+Traceloop.init(app_name="agno_team")
+
+researcher = Agent(
+    name="Researcher",
+    role="Research Specialist",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    instructions=["Research topics thoroughly and provide factual information"],
+    debug_mode=True,
+)
+
+writer = Agent(
+    name="Writer",
+    role="Content Writer",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    instructions=["Write clear, engaging content based on research"],
+    debug_mode=True,
+)
+
+team = Team(
+    name="ContentTeam",
+    members=[researcher, writer],
+    model=OpenAIChat(id="gpt-4o-mini"),
+    debug_mode=True,
+)
+
+# Team execution creates parent span with child spans for each agent
+result = team.run("Write a brief overview of OpenTelemetry observability")
+print(result.content)
+```
+
+- ### Example: Using Workflow Decorators
+
+Use the `@workflow` decorator to create custom spans for organizing your traces:
+
+```python
+from traceloop.sdk import Traceloop
+from traceloop.sdk.decorators import workflow
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+
+Traceloop.init(app_name="agno_workflows")
+
+agent = Agent(
+    name="AnalysisAgent",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    debug_mode=True,
+)
+
+@workflow(name="data_analysis_pipeline")
+def analyze_data(query: str) -> str:
+    """Custom workflow that wraps agent execution."""
+    response = agent.run(query)
+    return response.content
+
+# The workflow decorator creates a parent span
+result = analyze_data("Analyze the benefits of observability in AI systems")
+print(result)
+```
+
+
+- ### Example: Async Agent with Tools
+
+Async agent execution is fully supported with automatic tool call tracing:
+
+```python
+import asyncio
+from traceloop.sdk import Traceloop
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+
+Traceloop.init(app_name="agno_async")
+
+def get_weather(city: str) -> str:
+    """Get the weather for a city."""
+    return f"The weather in {city} is sunny, 72°F"
+
+agent = Agent(
+    name="WeatherAgent",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    tools=[get_weather],
+    debug_mode=True,
+)
+
+async def main():
+    # Async execution is automatically traced
+    response = await agent.arun("What's the weather in San Francisco?")
+    print(response.content)
+
+asyncio.run(main())
+```
+
+## Notes
+
+- **Initialization**: Call `Traceloop.init()` before creating any agents to ensure proper instrumentation.
+- **Development Mode**: Use `disable_batch=True` during development for immediate trace visibility.
+- **Async Support**: Both sync (`run()`) and async (`arun()`) methods are fully instrumented.
+- **Privacy Control**: Set `TRACELOOP_TRACE_CONTENT=false` to disable logging of prompts and completions.
