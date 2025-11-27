@@ -2,29 +2,31 @@
 title: Memory Optimization
 description: Reduce token usage by optimizing memories through summarization and compression strategies.
 keywords: [memory optimization, token reduction, memory compression, summarize memories, cost optimization]
+tag: beta
 ---
 
 As your application grows and users accumulate memories, token costs can increase significantly. Memory optimization helps you reduce these costs by combining multiple memories into fewer, more concise memories while preserving all key information.
 
 ## The Problem: Growing Memory Costs
 
-When users have many memories, each conversation becomes more expensive:
+When users have many memories, each conversation becomes more expensive.
+Imagine the following scenario:
 
-```python
-# User with 50 memories
-# Each memory: ~50 tokens
-# Total memory context: 50 × 50 = 2,500 tokens per conversation
+User with 50 memories:
+- Each memory: ~50 tokens
+- Total memory context: 50 × 50 = 2,500 tokens per conversation
 
-# User with 200 memories  
-# Total memory context: 200 × 50 = 10,000 tokens per conversation
-# This gets loaded into every agentic memory operation!
-```
+User with 200 memories  
+- Each memory: ~50 tokens
+- Total memory context: 200 × 50 = 10,000 tokens per conversation
 
-With agentic memory enabled, this becomes even more expensive since all memories are loaded into context for each memory operation.
+This gets loaded into every agentic memory operation!
+
 
 ## The Solution: Memory Optimization
 
-Memory optimization uses LLM-based summarization to combine multiple memories into fewer, more efficient memories. The default **Summarize** strategy combines all memories into a single comprehensive summary, dramatically reducing token usage while preserving all factual information.
+Memory optimization uses LLM-based summarization to combine multiple memories into fewer, more efficient memories. 
+The default **Summarize** strategy combines all memories into a single comprehensive summary, dramatically reducing token usage while preserving all factual information.
 
 **Benefits:**
 - **Dramatically reduced token costs** - Often 50-80% reduction
@@ -47,12 +49,7 @@ Memory optimization follows a simple pattern:
     <Step title="Replace or Preview">
         If `apply=True`, optimized memories replace the originals. If `apply=False`, returns preview without saving.
     </Step>
-    <Step title="Track Savings">
-        Token counts before and after optimization are tracked to measure impact.
-    </Step>
 </Steps>
-
-## Basic Usage
 
 ### Optimize Memories for a User
 
@@ -72,8 +69,13 @@ agent = Agent(
     enable_user_memories=True,
 )
 
-# After some conversations, optimize memories for a user
-optimized = agent.memory_manager.optimize_memories(
+memory_manager = MemoryManager(
+    db=db,
+    model=OpenAIChat(id="gpt-4o-mini"),  # Use a cheaper model for optimization
+)
+
+# After a few conversations, optimize memories for a user
+optimized = memory_manager.optimize_memories(
     user_id="user_123",
     strategy=MemoryOptimizationStrategyType.SUMMARIZE,
     apply=True,  # Set to False to preview without saving
@@ -88,7 +90,7 @@ Before applying optimization, you can preview the results:
 
 ```python
 # Preview optimization without saving
-preview = agent.memory_manager.optimize_memories(
+preview = memory_manager.optimize_memories(
     user_id="user_123",
     strategy=MemoryOptimizationStrategyType.SUMMARIZE,
     apply=False,  # Don't save changes
@@ -96,59 +98,9 @@ preview = agent.memory_manager.optimize_memories(
 
 # Check the optimized memory
 if preview:
-    print(f"Original memories: {len(agent.memory_manager.get_user_memories('user_123'))}")
-    print(f"Optimized to: {len(preview)} memory")
+    print(f"Original memories: {len(memory_manager.get_user_memories('user_123'))}")
+    print(f"Optimized to: {len(preview)} memories")
     print(f"Content: {preview[0].memory}")
-```
-
-### Using a Custom Model for Optimization
-
-You can use a cheaper model specifically for optimization to reduce costs:
-
-```python
-from agno.memory import MemoryManager
-from agno.models.openai import OpenAIChat
-
-# Use a cheaper model for optimization
-memory_manager = MemoryManager(
-    db=db,
-    model=OpenAIChat(id="gpt-4o-mini"),  # Cheaper model for optimization
-)
-
-# Optimize with the cheaper model
-optimized = memory_manager.optimize_memories(
-    user_id="user_123",
-    apply=True,
-)
-```
-
-## Standalone Memory Manager
-
-You can also optimize memories using a standalone `MemoryManager`:
-
-```python
-from agno.db.sqlite import SqliteDb
-from agno.memory import MemoryManager
-from agno.memory.strategies.types import MemoryOptimizationStrategyType
-from agno.models.openai import OpenAIChat
-
-# Setup database and memory manager
-db = SqliteDb(db_file="agno.db")
-memory_manager = MemoryManager(
-    db=db,
-    model=OpenAIChat(id="gpt-4o-mini"),
-)
-
-# Optimize memories for a user
-optimized = memory_manager.optimize_memories(
-    user_id="user_123",
-    strategy=MemoryOptimizationStrategyType.SUMMARIZE,
-    apply=True,
-)
-
-print(f"Optimized memories: {len(optimized)}")
-for mem in optimized:
-    print(f"- {mem.memory[:100]}...")
 ```
 
 ## Async Usage
@@ -180,9 +132,16 @@ async def optimize_user_memories():
 optimized = asyncio.run(optimize_user_memories())
 ```
 
-## Understanding Optimization Results
+## Optimization Strategies
 
-The Summarize strategy combines all memories into a single comprehensive summary:
+### Summarize Strategy (Default)
+
+The `SUMMARIZE` strategy combines all memories into a single comprehensive summary:
+
+- **Best for:** Most use cases, maximum token reduction
+- **Result:** All memories combined into 1 memory
+- **Preserves:** All factual information, topics, metadata
+
 
 **Before Optimization:**
 ```
@@ -203,26 +162,6 @@ Memory 1: "John Doe is a software engineer who lives in San Francisco.
 - Before: ~50 tokens × 5 memories = 250 tokens
 - After: ~40 tokens × 1 memory = 40 tokens
 - **Savings: 84% reduction**
-
-## Optimization Strategies
-
-### Summarize Strategy (Default)
-
-The `SUMMARIZE` strategy combines all memories into a single comprehensive summary:
-
-- **Best for:** Most use cases, maximum token reduction
-- **Result:** All memories combined into 1 memory
-- **Preserves:** All factual information, topics, metadata
-
-```python
-from agno.memory.strategies.types import MemoryOptimizationStrategyType
-
-optimized = memory_manager.optimize_memories(
-    user_id="user_123",
-    strategy=MemoryOptimizationStrategyType.SUMMARIZE,
-    apply=True,
-)
-```
 
 ### Custom Strategies
 
@@ -263,7 +202,7 @@ optimized = memory_manager.optimize_memories(
 
 ## Measuring Token Savings
 
-You can measure token savings by comparing before and after:
+You can measure token savings by comparing the number of tokens before and after optimization (using the `count_tokens` method):
 
 ```python
 from agno.memory.strategies.summarize import SummarizeStrategy
@@ -278,6 +217,7 @@ tokens_before = strategy.count_tokens(original_memories)
 # Optimize
 optimized = memory_manager.optimize_memories(
     user_id="user_123",
+    strategy=strategy,
     apply=True,
 )
 
@@ -292,14 +232,6 @@ print(f"Tokens before: {tokens_before}")
 print(f"Tokens after: {tokens_after}")
 print(f"Tokens saved: {tokens_saved} ({reduction_percentage:.1f}% reduction)")
 ```
-
-## Best Practices
-
-1. **Preview before applying:** Always test with `apply=False` first
-2. **Use cheaper models:** Use `gpt-4o-mini` or similar for optimization
-3. **Optimize periodically:** Set up scheduled jobs for long-running apps
-4. **Monitor token savings:** Track reduction percentages to measure impact
-5. **Backup before optimization:** Consider backing up memories before applying
 
 ## API Usage (AgentOS)
 
@@ -336,7 +268,7 @@ The API returns detailed statistics:
 - **LLM cost:** Optimization itself requires an LLM call (use cheaper models)
 - **One-way operation:** Once optimized, original memories are replaced (use `apply=False` to preview)
 
-## Example Code
+## Examples
 
 See the [Memory Optimization Example](/basics/memory/working-with-memories/usage/memory-optimization) for a complete working example that demonstrates:
 - Creating multiple memories for a user
