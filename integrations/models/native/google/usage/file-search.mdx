@@ -1,0 +1,394 @@
+---
+title: File Search
+description: Use Google Gemini File Search to upload documents and query them with automatic citation extraction.
+keywords: [gemini file search, document search, RAG, file search store, citations, document management]
+---
+
+File Search enables you to upload documents to managed stores and query them with Gemini models. The model automatically searches your documents and provides responses with source citations, making it ideal for RAG (Retrieval-Augmented Generation) applications.
+
+## What is File Search?
+
+File Search is Google's managed document search service that:
+- Stores documents in searchable stores
+- Automatically chunks and indexes documents
+- Provides semantic search across your documents
+- Returns responses with automatic source citations
+- Supports metadata filtering for precise document retrieval
+
+Unlike traditional RAG setups that require vector databases and embedding models, File Search handles document processing, chunking, and retrieval automatically.
+
+## How It Works
+
+<Steps>
+    <Step title="Create a Store">
+        Create a File Search store to hold your documents.
+    </Step>
+    <Step title="Upload Documents">
+        Upload files directly or import from the Files API with custom chunking and metadata.
+    </Step>
+    <Step title="Configure Model">
+        Set `file_search_store_names` on your Gemini model to enable File Search.
+    </Step>
+    <Step title="Query">
+        Ask questions - Gemini automatically searches your documents and provides citations.
+    </Step>
+</Steps>
+
+## Basic Usage
+
+### Create a Store and Upload a File
+
+```python
+from pathlib import Path
+from agno.agent import Agent
+from agno.models.google import Gemini
+
+# Create Gemini model
+model = Gemini(id="gemini-2.5-flash")
+
+# Create a File Search store
+store = model.create_file_search_store(display_name="My Document Store")
+print(f"Created store: {store.name}")
+
+# Upload a file
+operation = model.upload_to_file_search_store(
+    file_path=Path("documents/my_document.txt"),
+    store_name=store.name,
+    display_name="My Document",
+)
+
+# Wait for upload to complete
+model.wait_for_operation(operation)
+print("Upload completed")
+
+# Configure model to use File Search
+model.file_search_store_names = [store.name]
+
+# Query the documents
+agent = Agent(model=model, markdown=True)
+response = agent.run("What are the main topics in the document?")
+print(response.content)
+```
+
+### Extract Citations
+
+File Search automatically provides citations in responses:
+
+```python
+from pathlib import Path
+from agno.agent import Agent
+from agno.models.google import Gemini
+
+# Create Gemini model
+model = Gemini(id="gemini-2.5-flash")
+
+# Create a File Search store and upload a document
+store = model.create_file_search_store(display_name="My Document Store")
+operation = model.upload_to_file_search_store(
+    file_path=Path("documents/my_document.txt"),
+    store_name=store.name,
+    display_name="My Document",
+)
+model.wait_for_operation(operation)
+
+# Configure model to use File Search
+model.file_search_store_names = [store.name]
+
+# Query the documents
+agent = Agent(model=model, markdown=True)
+response = agent.run("Summarize the key points from the documents")
+
+# Access citations from response
+if response.citations and response.citations.raw:
+    grounding_metadata = response.citations.raw.get("grounding_metadata", {})
+    chunks = grounding_metadata.get("grounding_chunks", []) or []
+    
+    sources = set()
+    for chunk in chunks:
+        if isinstance(chunk, dict):
+            retrieved_context = chunk.get("retrieved_context")
+            if isinstance(retrieved_context, dict):
+                title = retrieved_context.get("title", "Unknown")
+                sources.add(title)
+    
+    print(f"\nSources ({len(sources)}):")
+    for i, source in enumerate(sorted(sources), 1):
+        print(f"  [{i}] {source}")
+```
+
+## Advanced Usage
+
+### Custom Chunking Configuration
+
+Control how documents are chunked for better retrieval:
+
+```python
+from pathlib import Path
+from agno.models.google import Gemini
+
+# Create Gemini model
+model = Gemini(id="gemini-2.5-flash")
+
+# Create a File Search store
+store = model.create_file_search_store(display_name="My Document Store")
+
+# Upload with custom chunking configuration
+operation = model.upload_to_file_search_store(
+    file_path=Path("technical_doc.txt"),
+    store_name=store.name,
+    display_name="Technical Documentation",
+    chunking_config={
+        "white_space_config": {
+            "max_tokens_per_chunk": 300,  # Larger chunks for technical docs
+            "max_overlap_tokens": 50,     # Overlap for context
+        }
+    },
+)
+
+# Wait for upload to complete
+model.wait_for_operation(operation)
+print("Upload completed")
+```
+
+### Metadata Filtering
+
+Add metadata to documents and filter by it:
+
+```python
+from pathlib import Path
+from agno.agent import Agent
+from agno.models.google import Gemini
+
+# Create Gemini model
+model = Gemini(id="gemini-2.5-flash")
+
+# Create a File Search store
+store = model.create_file_search_store(display_name="My Document Store")
+
+# Upload with metadata
+operation = model.upload_to_file_search_store(
+    file_path=Path("document.txt"),
+    store_name=store.name,
+    display_name="Document",
+    custom_metadata=[
+        {"key": "department", "string_value": "engineering"},
+        {"key": "version", "numeric_value": 2},
+        {"key": "category", "string_value": "technical"},
+    ],
+)
+
+# Wait for upload to complete
+model.wait_for_operation(operation)
+
+# Query with metadata filter
+model.file_search_store_names = [store.name]
+model.file_search_metadata_filter = 'department="engineering" AND version=2'
+
+agent = Agent(model=model, markdown=True)
+response = agent.run("What are the engineering specifications?")
+print(response.content)
+```
+
+### Multiple Stores
+
+Search across multiple stores:
+
+```python
+from pathlib import Path
+from agno.agent import Agent
+from agno.models.google import Gemini
+
+# Create Gemini model
+model = Gemini(id="gemini-2.5-flash")
+
+# Create multiple stores
+tech_store = model.create_file_search_store(display_name="Technical Docs")
+marketing_store = model.create_file_search_store(display_name="Marketing Docs")
+
+# Upload to different stores
+tech_operation = model.upload_to_file_search_store(
+    file_path=Path("tech_doc.txt"),
+    store_name=tech_store.name,
+    display_name="Technical Document",
+)
+marketing_operation = model.upload_to_file_search_store(
+    file_path=Path("marketing_doc.txt"),
+    store_name=marketing_store.name,
+    display_name="Marketing Document",
+)
+
+# Wait for uploads to complete
+model.wait_for_operation(tech_operation)
+model.wait_for_operation(marketing_operation)
+
+# Search across both stores
+model.file_search_store_names = [tech_store.name, marketing_store.name]
+model.file_search_metadata_filter = None  # No filter
+
+agent = Agent(model=model, markdown=True)
+response = agent.run("What are the key features and marketing points?")
+print(response.content)
+```
+
+### Document Management
+
+List, get, and delete documents:
+
+```python
+from pathlib import Path
+from agno.models.google import Gemini
+
+# Create Gemini model
+model = Gemini(id="gemini-2.5-flash")
+
+# Create a File Search store and upload a document
+store = model.create_file_search_store(display_name="My Document Store")
+operation = model.upload_to_file_search_store(
+    file_path=Path("document.txt"),
+    store_name=store.name,
+    display_name="My Document",
+)
+model.wait_for_operation(operation)
+
+# List all documents in a store
+documents = model.list_documents(store.name)
+for doc in documents:
+    print(f"- {doc.display_name} ({doc.name})")
+
+# Get a specific document (using the first document's name from the list)
+if documents:
+    document = model.get_document(documents[0].name)
+    print(f"\nRetrieved document: {document.display_name}")
+
+# Delete a document (using the first document's name from the list)
+if documents:
+    model.delete_document(documents[0].name)
+    print(f"Deleted document: {documents[0].display_name}")
+```
+
+### Store Management
+
+Manage your File Search stores:
+
+```python
+from agno.models.google import Gemini
+
+# Create Gemini model
+model = Gemini(id="gemini-2.5-flash")
+
+# Create a store for demonstration
+store = model.create_file_search_store(display_name="Demo Store")
+print(f"Created store: {store.name}")
+
+# List all stores
+stores = model.list_file_search_stores()
+for store_item in stores:
+    print(f"- {store_item.display_name} ({store_item.name})")
+
+# Get a specific store
+retrieved_store = model.get_file_search_store(store.name)
+print(f"\nRetrieved store: {retrieved_store.display_name}")
+
+# Delete a store (force delete removes all documents)
+model.delete_file_search_store(store.name, force=True)
+print(f"Deleted store: {store.name}")
+```
+
+## Async Usage
+
+All File Search operations support async/await:
+
+```python
+import asyncio
+from pathlib import Path
+from agno.agent import Agent
+from agno.models.google import Gemini
+
+async def setup_file_search():
+    model = Gemini(id="gemini-2.5-flash")
+    
+    # Create store async
+    store = await model.async_create_file_search_store(display_name="Async Store")
+    
+    # Upload file async
+    operation = await model.async_upload_to_file_search_store(
+        file_path=Path("document.txt"),
+        store_name=store.name,
+    )
+    
+    # Wait for operation async
+    await model.async_wait_for_operation(operation)
+    
+    # Configure and query
+    model.file_search_store_names = [store.name]
+    agent = Agent(model=model)
+    response = agent.run("Query the documents")
+    
+    return response
+
+# Run async function
+response = asyncio.run(setup_file_search())
+```
+
+## Import Existing Files
+
+If you've already uploaded files via the Files API, import them into a store:
+
+```python
+from pathlib import Path
+from agno.models.google import Gemini
+
+# Create Gemini model
+model = Gemini(id="gemini-2.5-flash")
+
+# Create a File Search store
+store = model.create_file_search_store(display_name="My Document Store")
+
+# Upload file via Files API first
+file = model.upload_file(Path("document.pdf"))
+print(f"Uploaded file: {file.name}")
+
+# Import into File Search store
+operation = model.import_file_to_store(
+    file_name=file.name,
+    store_name=store.name,
+    chunking_config={
+        "white_space_config": {
+            "max_tokens_per_chunk": 200,
+        }
+    },
+)
+
+# Wait for import to complete
+model.wait_for_operation(operation)
+print("File imported successfully")
+```
+
+## Best Practices
+
+1. **Use appropriate chunk sizes**: Technical docs benefit from larger chunks (300-500 tokens), while code files work better with smaller chunks (150-200 tokens)
+2. **Add meaningful metadata**: Use metadata to filter documents by department, version, category, etc.
+3. **Wait for operations**: Always wait for upload/import operations to complete before querying
+4. **Use async for production**: Async methods are more efficient for bulk operations
+5. **Clean up stores**: Delete unused stores to avoid unnecessary costs
+
+## Limitations
+
+- File Search stores are managed by Google and may have usage limits
+- Document updates require re-uploading the file
+- Metadata filtering syntax follows Google's filter language
+- Large files may take time to process
+
+## Example Code
+
+See the File Search examples:
+- [Basic File Search](/examples/basics/integrations/google/file-search-basic) - Simple upload and query
+- [Advanced File Search](/examples/basics/integrations/google/file-search-advanced) - Multiple stores, metadata filtering
+- [RAG Pipeline](/examples/basics/integrations/google/file-search-rag-pipeline) - Complete async RAG pipeline
+
+## Related Documentation
+
+- [Gemini Overview](/integrations/models/native/google/overview) - Learn about Gemini models
+- [Knowledge Base](/integrations/models/native/google/usage/knowledge) - Alternative RAG approach using vector databases
+- [Grounding](/integrations/models/native/google/usage/grounding) - Web search with citations
+
