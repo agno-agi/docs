@@ -1,0 +1,497 @@
+---
+title: Build a Research Agent
+sidebarTitle: Research Agent
+description: Create an AI investigative journalist that researches topics and writes professional reports.
+---
+
+In this tutorial, we'll build a research agent that searches the web, extracts article content, and generates professional NYT-style reports on any topic.
+
+**What we're using:**
+- **Agno** - Framework for building agents
+- **DuckDuckGo Tools** - Web search across multiple sources
+- **Newspaper4k Tools** - Article extraction and content analysis
+- **GPT-4o** - Advanced model for research synthesis
+
+<img
+  src="/images/research-agent-architecture.png"
+  alt="Research Agent Architecture"
+  style={{ width: "100%" }}
+/>
+
+## Prerequisites
+
+Before we start, grab your API key:
+
+- [OpenAI API](https://platform.openai.com/api-keys)
+
+<Tip>
+No additional API keys needed! DuckDuckGo and Newspaper4k are both free and don't require authentication.
+</Tip>
+
+## Quick Setup
+
+```bash
+# Create project and virtual environment
+mkdir research-agent && cd research-agent
+python3 -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install agno openai duckduckgo-search ddgs newspaper4k lxml-html-clean "fastapi[standard]" uvicorn python-dotenv
+```
+
+Create a `.env` file:
+
+```env
+OPENAI_API_KEY=sk-your-openai-key
+```
+
+Now let's create `research_agent.py` and build it step by step.
+
+<Note>
+Steps 1-5 explain each component individually. The complete working code is in Step 6 - you can skip there if you want to run it first and learn later.
+</Note>
+
+---
+
+## Step 1: Choose Your AI Model
+
+**Which model should I use?** You can choose any model from our [supported providers](/integrations/models/openai). Models are typically chosen based on cost and performance.
+
+**Why GPT-4o?** Research tasks require strong reasoning and synthesis capabilities.
+
+- **Complex analysis** - Can process and synthesize multiple sources
+- **Long-form writing** - Generates coherent, well-structured reports
+- **Fact handling** - Good at maintaining accuracy across sources
+
+```python
+from dotenv import load_dotenv
+from agno.models.openai import OpenAIChat
+
+load_dotenv()
+
+model = OpenAIChat(id="gpt-4o")
+```
+
+---
+
+## Step 2: Add Research Tools
+
+**Which tools should I use?** We need two capabilities: searching the web for sources and extracting full article content from URLs.
+
+### 2a. DuckDuckGo for Web Search
+
+**Why DuckDuckGo?** It provides free, comprehensive web search without API keys.
+
+```python
+from agno.tools.duckduckgo import DuckDuckGoTools
+
+search_tool = DuckDuckGoTools()
+```
+
+### 2b. Newspaper4k for Article Extraction
+
+**Why Newspaper4k?** Search results only give snippets. Newspaper4k extracts the full article text from any URL, giving your agent complete context.
+
+```python
+from agno.tools.newspaper4k import Newspaper4kTools
+
+article_tool = Newspaper4kTools()
+```
+
+**What Newspaper4k provides:**
+- Full article text extraction
+- Title and author detection
+- Clean text without ads/navigation
+- Works with most news sites and blogs
+
+---
+
+## Step 3: Define Research Strategy
+
+**Why do we need instructions?** Research requires a structured methodology. Without clear instructions, the agent won't know how to gather sources, verify information, or structure its output.
+
+```python
+from textwrap import dedent
+
+instructions = dedent("""
+    You are an elite investigative journalist.
+
+    RESEARCH PHASE:
+    - Search for 5+ authoritative sources on the topic
+    - Prioritize recent publications and expert opinions
+    - Look for diverse perspectives
+
+    ANALYSIS PHASE:
+    - Extract key information from each source using read_article
+    - Cross-reference facts across multiple sources
+    - Identify patterns and trends
+    - Note any conflicting viewpoints
+
+    WRITING PHASE:
+    - Craft a compelling headline
+    - Write in clear, professional prose
+    - Include relevant quotes and statistics
+    - Maintain objectivity and balance
+    - Cite your sources
+""")
+```
+
+**Why structure it this way?**
+- **Research phase** - Ensures comprehensive source gathering
+- **Analysis phase** - Promotes fact-checking and verification
+- **Writing phase** - Guides professional output quality
+
+---
+
+## Step 4: Define Output Format
+
+**Why use expected_output?** It gives the agent a template to follow, ensuring consistent, well-structured reports every time.
+
+```python
+expected_output = dedent("""
+    # {Compelling Headline}
+
+    ## Executive Summary
+    {2-3 sentence overview of key findings}
+
+    ## Background
+    {Context and why this topic matters}
+
+    ## Key Findings
+    {Main discoveries with supporting evidence}
+
+    ## Analysis
+    {What the findings mean, expert perspectives}
+
+    ## Future Outlook
+    {Trends, predictions, implications}
+
+    ## Sources
+    {List of sources used}
+""")
+```
+
+---
+
+## Step 5: Create the Complete Agent
+
+Now let's put all the pieces together:
+
+```python
+from agno.agent import Agent
+
+research_agent = Agent(
+    name="Research Agent",
+    model=model,
+    tools=[search_tool, article_tool],
+    instructions=instructions,
+    expected_output=expected_output,
+    markdown=True,
+    add_datetime_to_context=True,
+)
+```
+
+Add a function to run research:
+
+```python
+def research(topic: str):
+    """Research a topic and generate a report."""
+    prompt = f"Research and write a comprehensive report on: {topic}"
+    return research_agent.print_response(prompt, stream=True)
+```
+
+---
+
+## Step 6: Complete Working Code
+
+Here's the complete `research_agent.py`:
+
+```python
+"""Research Agent - AI Investigative Journalist"""
+from textwrap import dedent
+from dotenv import load_dotenv
+
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.tools.duckduckgo import DuckDuckGoTools
+from agno.tools.newspaper4k import Newspaper4kTools
+
+load_dotenv()
+
+# Step 1: Choose the AI model
+model = OpenAIChat(id="gpt-4o")
+
+# Step 2: Configure research tools
+search_tool = DuckDuckGoTools()
+article_tool = Newspaper4kTools()
+
+# Step 3: Define research instructions
+instructions = dedent("""
+    You are an elite investigative journalist.
+
+    RESEARCH PHASE:
+    - Search for 5+ authoritative sources on the topic
+    - Prioritize recent publications and expert opinions
+    - Look for diverse perspectives
+
+    ANALYSIS PHASE:
+    - Extract key information from each source using read_article
+    - Cross-reference facts across multiple sources
+    - Identify patterns and trends
+    - Note any conflicting viewpoints
+
+    WRITING PHASE:
+    - Craft a compelling headline
+    - Write in clear, professional prose
+    - Include relevant quotes and statistics
+    - Maintain objectivity and balance
+    - Cite your sources
+""")
+
+# Step 4: Define output format
+expected_output = dedent("""
+    # {Compelling Headline}
+
+    ## Executive Summary
+    {2-3 sentence overview of key findings}
+
+    ## Background
+    {Context and why this topic matters}
+
+    ## Key Findings
+    {Main discoveries with supporting evidence}
+
+    ## Analysis
+    {What the findings mean, expert perspectives}
+
+    ## Future Outlook
+    {Trends, predictions, implications}
+
+    ## Sources
+    {List of sources used}
+""")
+
+# Step 5: Create the agent
+research_agent = Agent(
+    name="Research Agent",
+    model=model,
+    tools=[search_tool, article_tool],
+    instructions=instructions,
+    expected_output=expected_output,
+    markdown=True,
+    add_datetime_to_context=True,
+)
+
+
+def research(topic: str):
+    """Research a topic and generate a report."""
+    prompt = f"Research and write a comprehensive report on: {topic}"
+    return research_agent.print_response(prompt, stream=True)
+
+
+if __name__ == "__main__":
+    research("Latest developments in AI regulation worldwide")
+```
+
+**Run it:**
+
+```bash
+python research_agent.py
+```
+
+You should see the agent search for sources, extract article content, and generate a comprehensive research report.
+
+---
+
+## Step 7: Deploy to AgentOS
+
+Now let's make this production-ready with [AgentOS](/agent-os/introduction). Create `my_os.py`:
+
+```python
+"""AgentOS deployment for Research Agent"""
+from textwrap import dedent
+from dotenv import load_dotenv
+
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.tools.duckduckgo import DuckDuckGoTools
+from agno.tools.newspaper4k import Newspaper4kTools
+from agno.os import AgentOS
+
+load_dotenv()
+
+research_agent = Agent(
+    name="Research Agent",
+    model=OpenAIChat(id="gpt-4o"),
+    tools=[DuckDuckGoTools(), Newspaper4kTools()],
+    instructions=dedent("""
+        You are an elite investigative journalist.
+
+        When researching a topic:
+        1. Search for 5+ authoritative sources
+        2. Extract full article content from the best sources
+        3. Cross-reference and verify facts
+        4. Write a comprehensive, well-structured report
+        5. Cite all sources used
+    """),
+    expected_output=dedent("""
+        # {Headline}
+
+        ## Executive Summary
+        {Key findings overview}
+
+        ## Background
+        {Context}
+
+        ## Key Findings
+        {Main discoveries}
+
+        ## Analysis
+        {What it means}
+
+        ## Sources
+        {List of sources}
+    """),
+    markdown=True,
+    add_datetime_to_context=True,
+)
+
+agent_os = AgentOS(
+    id="research-agent",
+    description="AI Research & Reporting System",
+    agents=[research_agent],
+)
+
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="my_os:app", reload=True)
+```
+
+**What changed from the standalone script?**
+
+| Addition | Purpose |
+|----------|---------|
+| `AgentOS` wrapper | Exposes agent as REST API |
+| `agent_os.serve()` | Runs the FastAPI server |
+
+**Start it:**
+
+```bash
+python my_os.py
+```
+
+Your API is now running at `http://localhost:7777`
+
+### Test the API
+
+```bash
+# Check the config
+curl http://localhost:7777/config
+
+# Run a research query
+curl -X POST http://localhost:7777/agents/research-agent/runs \
+  -F "message=Research the latest developments in quantum computing" \
+  -F "stream=false"
+```
+
+### Connect the Control Plane
+
+For a visual dashboard:
+
+1. Go to [agno.com/app](https://agno.com/app)
+2. Click **Connect AgentOS**
+3. Enter `http://localhost:7777`
+
+Now you can chat with your agent, view session history, and monitor performance through the UI.
+
+---
+
+## Step 8: Deploy to Railway (Optional)
+
+Want to deploy your agent to the cloud? Railway makes it easy.
+
+### 8a. Create Requirements File
+
+```bash
+cat > requirements.txt << 'EOF'
+agno
+openai
+duckduckgo-search
+ddgs
+newspaper4k
+lxml-html-clean
+fastapi[standard]
+uvicorn
+python-dotenv
+EOF
+```
+
+### 8b. Create Procfile
+
+```bash
+cat > Procfile << 'EOF'
+web: uvicorn my_os:app --host 0.0.0.0 --port $PORT
+EOF
+```
+
+### 8c. Install Railway CLI and Login
+
+```bash
+# macOS
+brew install railway
+
+# Login to Railway
+railway login
+```
+
+### 8d. Initialize and Deploy
+
+```bash
+railway init
+railway up
+```
+
+### 8e. Add Environment Variables
+
+In the Railway dashboard, add your environment variable:
+
+- `OPENAI_API_KEY`
+
+Once deployed, you'll get a public URL like `https://research-agent-production.up.railway.app`.
+
+Connect this URL to the AgentOS Control Plane at [agno.com/app](https://agno.com/app) to manage your production agent.
+
+---
+
+## Next Steps
+
+You've built a working AI research agent! Here are some ideas to extend it:
+
+- **Add session storage** - Use `SqliteDb` to remember previous research
+- **Specialized domains** - Create focused agents for tech, finance, or science
+- **Source filtering** - Add domain whitelists for trusted sources
+- **Export formats** - Generate PDF or Word documents from reports
+
+<CardGroup cols={2}>
+  <Card title="Tools Reference" icon="wrench" href="/tools/duckduckgo">
+    Explore more research tools
+  </Card>
+  <Card title="Explore Cookbooks" icon="book" href="https://github.com/agno-agi/agno/tree/main/cookbook">
+    More agent examples and patterns
+  </Card>
+</CardGroup>
+
+---
+
+## Conclusion
+
+In this tutorial, you built a Research Agent that:
+
+- Searches the web for authoritative sources
+- Extracts full article content for deep analysis
+- Synthesizes information into professional reports
+- Runs as a production API via AgentOS
+
+The same pattern works for any research domain - just adjust the instructions and output format for your specific needs.
