@@ -1,0 +1,100 @@
+---
+title: "WhatsApp Agent with User Memory"
+description: "Personalized WhatsApp agent that remembers user information and preferences"
+---
+
+## Code
+
+```python cookbook/os/interfaces/whatsapp/agent_with_user_memory.py
+from textwrap import dedent
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.memory.manager import MemoryManager
+from agno.models.google import Gemini
+from agno.os.app import AgentOS
+from agno.os.interfaces.whatsapp import Whatsapp
+from agno.tools.duckduckgo import DuckDuckGoTools
+
+agent_db = SqliteDb(db_file="tmp/persistent_memory.db")
+
+memory_manager = MemoryManager(
+    memory_capture_instructions="""\
+                    Collect User's name,
+                    Collect Information about user's passion and hobbies,
+                    Collect Information about the users likes and dislikes,
+                    Collect information about what the user is doing with their life right now
+                """,
+    model=Gemini(id="gemini-2.0-flash"),
+)
+
+personal_agent = Agent(
+    name="Basic Agent",
+    model=Gemini(id="gemini-2.0-flash"),
+    tools=[DuckDuckGoTools()],
+    add_history_to_context=True,
+    num_history_runs=3,
+    add_datetime_to_context=True,
+    markdown=True,
+    db=agent_db,
+    memory_manager=memory_manager,
+    enable_agentic_memory=True,
+    instructions=dedent("""
+        You are a personal AI friend of the user, your purpose is to chat with the user about things and make them feel good.
+        First introduce yourself and ask for their name then, ask about themeselves, their hobbies, what they like to do and what they like to talk about.
+        Use the DuckDuckGo tools to find latest infromation about things in the conversations
+                        """),
+    debug_mode=True,
+)
+
+agent_os = AgentOS(
+    agents=[personal_agent],
+    interfaces=[Whatsapp(agent=personal_agent)],
+)
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="agent_with_user_memory:app", reload=True)
+```
+
+## Usage
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Set Environment Variables">
+    ```bash
+    export WHATSAPP_ACCESS_TOKEN=your_whatsapp_access_token
+    export WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id
+    export WHATSAPP_WEBHOOK_URL=your_webhook_url
+    export WHATSAPP_VERIFY_TOKEN=your_verify_token
+    export APP_ENV=development
+    ```
+  </Step>
+
+  <Step title="Install libraries">
+    ```bash
+    pip install -U agno
+    ```
+  </Step>
+
+  <Step title="Run Example">
+    <CodeGroup>
+    ```bash Mac
+    python cookbook/os/interfaces/whatsapp/agent_with_user_memory.py
+    ```
+
+    ```bash Windows
+    python cookbook/os/interfaces/whatsapp/agent_with_user_memory.py
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+## Key Features
+
+- **Memory Management**: Remembers user names, hobbies, preferences, and activities
+- **DuckDuckGo Search**: Access to current information during conversations
+- **Personalized Responses**: Uses stored memories for contextualized replies
+- **Friendly AI**: Acts as personal AI friend with engaging conversation
+- **Gemini Powered**: Fast, intelligent responses with multimodal capabilities
+

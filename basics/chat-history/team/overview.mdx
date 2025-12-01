@@ -1,0 +1,207 @@
+---
+title: Chat History in Teams
+sidebarTitle: Overview
+description: Learn about Team session history and managing conversation history.
+keywords: [chat history, history, team history, multi-turn conversations]
+---
+
+Teams with storage enabled automatically have access to the run history of the session (also called the "conversation history" or "chat history").
+
+We can give the Team access to the chat history in the following ways:
+
+**Team-Level History**:
+  - You can set `add_history_to_context=True` and `num_history_runs=5` to add the inputs and responses from the last 5 runs automatically to every request sent to the team leader.
+  - You can be more granular about how many messages to add to include in the list sent to the model, by setting `num_history_messages`.
+  - You can set `read_chat_history=True` to provide a `get_chat_history()` tool to your team allowing it to read any message in the entire chat history.
+  - You can set `read_tool_call_history=True` to provide a `get_tool_call_history()` tool to your team allowing it to read tool calls in reverse chronological order.
+  - You can enable `search_session_history` to allow searching through previous sessions.
+  - You can set `add_team_history_to_members=True` and `num_team_history_runs=5` to add the inputs and responses from the last 5 runs (that is the team-level inputs and responses) automatically to every message sent to the team members.
+
+**Member-Level History**:
+  - You can also enable `add_history_to_context` for individual team members. This will only add the inputs and outputs for that member to all requests sent to that member, giving it access to its own history.
+
+<Tip>
+Working with team history can be tricky. Experiment with the above settings to find the best fit for your use case.
+See the [History Reference](#history-reference) for help on how to use the different history features.
+</Tip>
+
+
+## History Reference
+
+<Tabs>
+  <Tab title="Simple History">
+    Start with **Team History in Context** for basic conversation continuity:
+    ```python
+    team = Team(
+        members=[...],
+        db=SqliteDb(db_file="tmp/team.db"),
+        add_history_to_context=True,
+        num_history_runs=5,
+    )
+    ```
+  </Tab>
+
+  <Tab title="Member Coordination">
+    Use **Team History to Members** for shared context:
+    ```python
+    team = Team(
+        members=[german_agent, spanish_agent],
+        db=SqliteDb(db_file="tmp/team.db"),
+        add_team_history_to_members=True,
+        num_team_history_runs=3,
+    )
+    ```
+  </Tab>
+
+  <Tab title="Share Interaction Information">
+    Share **Member Interactions** during a run:
+    ```python
+    team = Team(
+        members=[profile_agent, billing_agent],
+        db=SqliteDb(db_file="tmp/team.db"),
+        share_member_interactions=True,
+    )
+    ```
+  </Tab>
+  <Tab title="Long Conversations">
+    Add **Chat History Tool** when agents need to search history:
+    ```python
+    team = Team(
+        members=[...],
+        db=SqliteDb(db_file="tmp/team.db"),
+        read_chat_history=True,  # Agent decides when to look up
+    )
+    ```
+  </Tab>
+
+  <Tab title="Multi-Session Memory">
+    Enable **Multi-Session Search** for cross-session continuity:
+    ```python
+    team = Team(
+        members=[...],
+        db=SqliteDb(db_file="tmp/team.db"),
+        search_session_history=True,
+        num_history_sessions=2,  # Keep low
+    )
+    ```
+  </Tab>
+
+</Tabs>
+
+<Note>
+**Database Requirement**: All history features require a database configured on the team. See [Database](/basics/database/overview) for setup.
+</Note>
+
+<Tip>
+**Performance Tip**: More history = larger context = slower and costlier requests. Start with `num_history_runs=3` and increase only if needed.
+</Tip>
+
+
+
+## Add history to the team context
+
+To add the history of the conversation to the context, you can set `add_history_to_context=True`.
+This will add the inputs and responses from the last 3 runs (that is the default) to the context of the team leader.
+You can change the number of runs by setting `num_history_runs=n` where `n` is the number of runs to include.
+
+See the [Direct Response with Team History](/basics/chat-history/team/usage/respond-directly-with-history) example for a complete implementation.
+
+## Send team history to members
+
+To send the team history to the members, you can set `add_team_history_to_members=True`.
+This will send the inputs and responses from the last 3 team-level runs (that is the default) to the members when tasks are delegated to them.
+You can change the number of runs by setting `num_team_history_runs=n` where `n` is the number of runs to include.
+
+When enabled, team history is appended to the task sent to a team member in this format:
+```
+<team_history_context>
+input: Hallo, wie heißt du? Meine Name ist John.
+response: Ich heiße ChatGPT.
+</team_history_context>
+```
+
+This allows members to access information from previous interactions with other team members.
+
+See the [Team History for Members](/basics/chat-history/team/usage/team-history) example for a complete implementation.
+
+## Share member interactions with other members
+
+All interactions with team members are automatically recorded, including the member name, the task given to the member, and the response from the member.
+
+<Note>
+This feature is only available during a single run - it shares interactions that happen within the current execution.
+</Note>
+
+If you want members to have access to all interactions that has happened during the current run, you can set `share_member_interactions=True`.
+
+When enabled, interaction details are appended to the task sent to a team member in this format:
+```
+<member_interaction_context>
+- Member: Web Researcher
+- Task: Find information about the web
+- Response: I found information about the web
+
+- Member: HackerNews Researcher
+- Task: Find information about the web
+- Response: I found information about the web
+</member_interaction_context>
+```
+
+See the [Share Member Interactions](/basics/chat-history/team/usage/share-member-interactions) example for a complete implementation.
+
+## Read the chat history
+
+To read the chat history, you can set `read_chat_history=True`.
+This will provide a `get_chat_history()` tool to your team allowing it to read any message in the entire chat history.
+
+
+## Search the session history
+
+In some scenarios, you might want to fetch messages from across multiple sessions to provide context or continuity in conversations.
+
+To enable fetching messages from the last N sessions, you need to use the following flags:
+
+- `search_session_history`: Set this to `True` to allow searching through previous sessions.
+- `num_history_sessions`: Specify the number of past sessions to include in the search.
+
+<Tip>
+Keep `num_history_sessions` low (2 or 3) to avoid filling up the context length of the model, which can lead to performance issues.
+</Tip>
+
+
+## Developer Resources
+
+<CardGroup cols={2}>
+  <Card
+    title="Direct Response with History"
+    icon="reply"
+    iconType="duotone"
+    href="/basics/chat-history/team/usage/respond-directly-with-history"
+  >
+    Team leader routes requests with access to conversation history.
+  </Card>
+  <Card
+    title="Team History for Members"
+    icon="share-nodes"
+    iconType="duotone"
+    href="/basics/chat-history/team/usage/team-history"
+  >
+    Members access shared team history from previous interactions.
+  </Card>
+  <Card
+    title="Member-Level History"
+    icon="user-check"
+    iconType="duotone"
+    href="/basics/chat-history/team/usage/history-of-members"
+  >
+    Each member maintains its own isolated conversation history.
+  </Card>
+  <Card
+    title="Share Member Interactions"
+    icon="comments"
+    iconType="duotone"
+    href="/basics/chat-history/team/usage/share-member-interactions"
+  >
+    Share member interactions during the current run to avoid duplicate work.
+  </Card>
+</CardGroup>

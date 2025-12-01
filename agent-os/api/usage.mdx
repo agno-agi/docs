@@ -1,0 +1,101 @@
+---
+title: "API Usage"
+sidebarTitle: "API Usage"
+description: "Running your Agent / Team / Workflow with the AgentOS API"
+keywords: [agentos api, agent api, team api, workflow api]
+---
+
+The AgentOS API provides endpoints:
+- **Run an Agent**: `POST /agents/{agent_id}/runs`  (See the [API reference](/reference-api/schema/agents/create-agent-run))
+- **Run a Team**: `POST /teams/{team_id}/runs`  (See the [API reference](/reference-api/schema/teams/create-team-run))
+- **Run a Workflow**: `POST /workflows/{workflow_id}/runs`  (See the [API reference](/reference-api/schema/workflows/execute-workflow))
+
+These endpoints support form-based input. Below is an example of how to run an agent with the API:
+
+```bash
+curl --location 'http://localhost:7777/agents/agno-agent/runs' \
+    --header 'Content-Type: application/x-www-form-urlencoded' \
+    --data-urlencode 'message=Tell me about Agno.' \
+    --data-urlencode 'stream=True' \
+    --data-urlencode 'user_id=john@example.com' \
+    --data-urlencode 'session_id=session_123'
+```
+
+## Passing parameters to your Agent / Team / Workflow
+
+Agent, Team and Workflow `run()` and `arun()` endpoints support various runtime parameters. See the [Agent run schema](/reference/agents/agent#run), [Team run schema](/reference/teams/team#run), [Workflow run schema](/reference/workflows/workflow#run) for more details.
+
+It is a common pattern to want to pass `session_state`, `dependencies`, `metadata`, etc. to your Agent, Team or Workflow via the API.
+
+To pass these parameters via the AgentOS API, you can simply specify them as form-based parameters.
+
+Below is an example where `dependencies` are passed to the agent:
+
+```python dependencies_to_agent.py
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.os import AgentOS
+
+# Setup the database
+db = PostgresDb(id="basic-db", db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+# Setup basic agents, teams and workflows
+story_writer = Agent(
+    id="story-writer-agent",
+    name="Story Writer Agent",
+    db=db,
+    markdown=True,
+    instructions="You are a story writer. You are asked to write a story about a robot. Always name the robot {robot_name}",
+)
+
+# Setup our AgentOS app
+agent_os = AgentOS(
+    description="Example AgentOS to show how to pass dependencies to an agent",
+    agents=[story_writer],
+)
+app = agent_os.get_app()
+
+
+if __name__ == "__main__":
+    agent_os.serve(app="dependencies_to_agent:app", reload=True)
+```
+
+Then to test it, you can run the following command:
+
+```bash
+curl --location 'http://localhost:7777/agents/story-writer-agent/runs' \
+    --header 'Content-Type: application/x-www-form-urlencoded' \
+    --data-urlencode 'message=Write me a 5 line story.' \
+    --data-urlencode 'dependencies={"robot_name": "Anna"}'
+```
+
+## Passing Output Schema
+
+You can pass an output schema for a specific agent or team run by passing the `output_schema` parameter as a JSON schema string.
+
+```bash
+curl --location 'http://localhost:7777/agents/story-writer-agent/runs' \
+    --header 'Content-Type: application/x-www-form-urlencoded' \
+    --data-urlencode 'message=Write a story' \
+    --data-urlencode 'output_schema={"type":"object","properties":{"title":{"type":"string"},"content":{"type":"string"}},"required":["title","content"]}'
+```
+
+## Cancelling a Run
+
+You can cancel a running agent, team or workflow by using the appropriate endpoint.
+
+For example, to cancel an agent run:
+
+```bash
+curl --location 'http://localhost:7777/agents/story-writer-agent/runs/123/cancel'
+```
+
+See the specific API references for more details:
+- [Cancel Agent Run API reference](/reference-api/schema/agents/cancel-agent-run)
+- [Cancel Team Run API reference](/reference-api/schema/teams/cancel-team-run)
+- [Cancel Workflow Run API reference](/reference-api/schema/workflows/cancel-workflow-run)
+
+## Developer Resources
+
+- View [Complete API Reference](/reference-api/overview) for all endpoints
+- See [Authentication](/agent-os/api/authentication) for securing your API

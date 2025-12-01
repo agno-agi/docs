@@ -1,0 +1,287 @@
+---
+title: What is Culture?
+description: Enable your agents to share universal knowledge, principles, and best practices that compound across all interactions.
+sidebarTitle: Overview
+keywords: [culture, culture management, culture sharing, cultural knowledge]
+---
+
+<Badge icon="code-branch" color="orange">
+    <Tooltip tip="Introduced in v2.1.10" cta="View release notes" href="https://github.com/agno-agi/agno/releases/tag/v2.1.10">v2.1.10</Tooltip>
+</Badge>
+
+Imagine agents that learn from every interaction and share those learnings with each other. 
+A support agent discovers that customers prefer step-by-step solutions with code examples. 
+A technical writer agent learns that "Operational Thinking" produces better documentation. 
+These insights shouldn't be lost—they should become part of a shared culture that benefits all agents, forever. Culture turns these patterns into reusable rules your agents can follow from day one.
+
+
+## How Culture Works
+
+Culture provides a shared knowledge layer where agents store universal principles, best practices, and reusable insights that apply across all interactions. Unlike Memory, which stores user-specific facts ("Sarah prefers email"), Culture stores universal knowledge that benefits everyone ("Always provide actionable solutions with clear next steps").
+
+When an agent completes a task, it can reflect on what worked well and distill that into cultural knowledge. Later, when any agent faces a similar situation, it automatically accesses this shared culture and applies those learnings.
+
+<Tip>
+**Culture ≠ Memory:** Culture stores universal principles and best practices that apply to all interactions. [Memory](/basics/memory/overview) stores user-specific facts and preferences. Think of Culture as "how we do things here" and Memory as "what I know about you."
+</Tip>
+
+<Note>
+**Notice:** Culture is an experimental feature and is subject to change. The current goal is helping agents stay consistent in tone, reasoning, and behavior. The eventual goal is to transform isolated agents into a living, evolving system of collective intelligence.
+</Note>
+
+## Why Use Culture?
+
+Culture enables intelligence to compound. Instead of each agent starting from scratch, they build on collective experience:
+
+- **Consistency:** All agents follow the same communication standards, formatting rules, and best practices
+- **Evolution:** Your agent system improves over time as agents learn what works
+- **Efficiency:** Agents don't re-learn the same lessons repeatedly
+
+**Example Use Cases:**
+- Technical documentation agents that maintain consistent style and structure
+- Customer support teams that apply proven problem-solving patterns
+- Development assistants that follow your organization's coding standards
+- Content generation that adheres to brand voice and formatting guidelines
+
+## Getting Started with Culture
+
+Setting up culture is straightforward: connect a database and enable the culture feature. Here's a basic setup:
+
+```python
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+
+# Setup your database
+db = SqliteDb(db_file="agno.db")
+
+# Setup your Agent with Culture
+agent = Agent(
+    db=db,
+    add_culture_to_context=True,  # Agent reads cultural knowledge
+    update_cultural_knowledge=True,  # Agent updates culture after runs
+)
+```
+
+With these flags enabled, your agent automatically:
+1. Loads relevant cultural knowledge when starting a task
+2. Applies that knowledge during reasoning and response generation
+3. Reflects on the interaction afterward
+4. Updates or adds cultural knowledge based on what it learned
+
+## Three Approaches to Culture Management
+
+Agno gives you three ways to manage cultural knowledge, depending on your needs:
+
+### 1. Automatic Culture (`update_cultural_knowledge=True`)
+
+After each agent run, the system automatically reflects on the interaction and updates cultural knowledge. This is the recommended approach for most production use cases.
+
+```python
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+
+db = SqliteDb(db_file="agno.db")
+
+agent = Agent(
+    db=db,
+    add_culture_to_context=True,  # Read culture
+    update_cultural_knowledge=True,  # Update culture automatically
+)
+
+# The agent will learn from this interaction
+agent.print_response(
+    "How do I set up a FastAPI service using Docker?",
+    stream=True,
+)
+```
+
+**Best for:** Production systems where you want agents to continuously improve their approach based on what works.
+
+### 2. Agentic Culture (`enable_agentic_culture=True`)
+
+The agent gets full control over culture management through built-in tools. It decides when and what to add to the cultural knowledge base.
+
+```python
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+
+db = SqliteDb(db_file="agno.db")
+
+agent = Agent(
+    db=db,
+    add_culture_to_context=True,  # Read culture
+    enable_agentic_culture=True,  # Agent-controlled culture tools
+)
+```
+
+With agentic culture, the agent is equipped with tools to manage cultural knowledge when it deems relevant during the conversation itself, not just after completion.
+
+**Best for:** Complex workflows where the agent should actively decide what principles to establish or update during the task.
+
+### 3. Manual Culture Management
+
+Create cultural knowledge explicitly using the `CultureManager` or by directly instantiating `CulturalKnowledge` objects. Perfect for seeding organizational standards.
+
+```python
+from agno.culture.manager import CultureManager
+from agno.db.schemas.culture import CulturalKnowledge
+from agno.db.sqlite import SqliteDb
+from agno.models.anthropic import Claude
+
+db = SqliteDb(db_file="agno.db")
+
+# Option A: Use CultureManager with a model to process principles
+culture_manager = CultureManager(
+    db=db,
+    model=Claude(id="claude-sonnet-4-5"),
+)
+
+message = """
+All technical guidance should follow 'Operational Thinking':
+1. State the Objective — What outcome and why
+2. Show the Procedure — Clear, reproducible steps
+3. Surface Pitfalls — What usually fails
+4. Define Validation — How to confirm it works
+5. Close the Loop — Suggest next iterations
+"""
+
+culture_manager.create_cultural_knowledge(message=message)
+
+# Option B: Manually add cultural knowledge without a model
+response_format = CulturalKnowledge(
+    name="Response Format Standard",
+    summary="Keep responses concise, scannable, and runnable-first",
+    categories=["communication", "ux"],
+    content=(
+        "- Lead with minimal runnable snippet\n"
+        "- Use numbered steps for procedures\n"
+        "- End with validation checklist"
+    ),
+    notes=["Derived from user feedback"],
+)
+
+culture_manager.add_cultural_knowledge(response_format)
+```
+
+**Best for:** Seeding initial organizational principles, onboarding standards, or brand guidelines that all agents should follow.
+
+## Storage: Where Culture Lives
+
+Cultural knowledge is stored in the database you connect to your agent. Agno supports all major database systems: Postgres, SQLite, MongoDB, and more. Check the [Database documentation](/basics/database/overview) for the full list.
+
+By default, cultural knowledge is stored in the `agno_cultural_knowledge` table (or collection for document databases). A custom table name can also be configured. If this table doesn't exist, Agno creates it automatically.
+
+
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+
+db = PostgresDb(
+    db_url="postgresql://user:password@localhost:5432/my_database",
+    cultural_knowledge_table="my_culture_table",  # Custom table name
+)
+
+agent = Agent(
+    db=db, 
+    add_culture_to_context=True,
+    update_cultural_knowledge=True,
+)
+```
+
+### Manual Culture Retrieval
+
+You can manually retrieve cultural knowledge using the `CultureManager`:
+
+```python
+from agno.culture.manager import CultureManager
+from agno.db.sqlite import SqliteDb
+
+db = SqliteDb(db_file="agno.db")
+culture_manager = CultureManager(db=db)
+
+# Get all cultural knowledge
+all_knowledge = culture_manager.get_all_knowledge()
+print(all_knowledge)
+
+# Preview cultural knowledge (truncated for readability)
+for knowledge in all_knowledge:
+    print(knowledge.preview())
+```
+
+## Cultural Knowledge Data Model
+
+Each cultural knowledge entry in your database contains the following fields:
+
+| Field        | Type     | Description                                      |
+| ------------ | -------- | ------------------------------------------------ |
+| `id`         | `str`    | Unique identifier (auto-generated)               |
+| `name`       | `str`    | Name/title of the cultural knowledge             |
+| `content`    | `str`    | The main content of the principle/knowledge      |
+| `summary`    | `str`    | Brief summary of the knowledge                   |
+| `categories` | `list`   | Categories (e.g., "communication", "engineering")|
+| `notes`      | `list`   | Additional notes or context                      |
+| `metadata`   | `dict`   | Arbitrary metadata (source, version, etc.)       |
+| `input`      | `str`    | Original input that generated this knowledge     |
+| `created_at` | `int`    | Timestamp when created (epoch seconds)           |
+| `updated_at` | `int`    | Timestamp when last updated (epoch seconds)      |
+| `agent_id`   | `str`    | ID of the agent that created it                  |
+| `team_id`    | `str`    | ID of the team associated with it                |
+
+
+## Best Practices
+
+1. **Start with Manual Seeding:** Define core organizational principles, communication standards, and best practices upfront
+2. **Use Automatic Updates in Production:** Let `update_cultural_knowledge=True` handle the evolution naturally
+3. **Review Periodically:** Check what cultural knowledge has accumulated and refine as needed
+4. **Keep Culture Focused:** Culture should contain universal principles, not task-specific details
+5. **Combine with Memory:** Use Culture for "how we do things" and Memory for "what I know about you"
+
+## Common Use Cases
+
+### Technical Documentation Standards
+```python
+# Seed documentation standards
+doc_standard = CulturalKnowledge(
+    name="Documentation Standard",
+    summary="All docs follow structure: Example → Explanation → Validation",
+    categories=["documentation", "engineering"],
+    content=(
+        "1. Start with a minimal working example\n"
+        "2. Explain key concepts and decisions\n"
+        "3. Provide validation steps\n"
+        "4. Link to related resources"
+    ),
+)
+```
+
+### Customer Communication Tone
+```python
+# Define communication standards
+comm_standard = CulturalKnowledge(
+    name="Customer Communication Tone",
+    summary="Professional, empathetic, solution-focused",
+    categories=["communication", "support"],
+    content=(
+        "- Acknowledge the customer's situation first\n"
+        "- Provide clear, actionable steps\n"
+        "- Avoid jargon unless necessary\n"
+        "- Always offer next steps or alternatives"
+    ),
+)
+```
+
+### Code Review Principles
+```python
+# Engineering standards
+code_review = CulturalKnowledge(
+    name="Code Review Standards",
+    summary="Focus on maintainability, security, and performance",
+    categories=["engineering", "code-review"],
+    content=(
+        "- Check for security vulnerabilities first\n"
+        "- Verify error handling is comprehensive\n"
+        "- Ensure code is self-documenting\n"
+        "- Suggest performance optimizations where relevant"
+    ),
+)
+```

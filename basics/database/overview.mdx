@@ -1,0 +1,314 @@
+---
+title: Database Support
+sidebarTitle: Overview
+description: Enable your Agents to store session history, memories, and more.
+keywords: [database, storage]
+---
+
+Adding a database to your Agents adds persistence, allowing them to remember previous messages, user memories, and more.
+
+It works by equipping your Agents and Teams with a database that is used to store and retrieve:
+- [Sessions](/basics/sessions/overview)
+- [User Memories](/basics/memory/overview)
+- [Knowledge](/basics/knowledge/content-db)
+- [Evals](/basics/evals/overview)
+- [Culture](/basics/culture/overview)
+<Note>
+Culture is an experimental feature.
+</Note>
+
+<img 
+  className="block dark:hidden" 
+  src="/images/storage-overview-light.png" 
+  alt="Team structure"
+  style={{ maxWidth: '100%', transform: 'scale(1.1)' }}
+/>
+
+<img 
+  className="hidden dark:block" 
+  src="/images/storage-overview-dark.png" 
+  alt="Team structure"
+  style={{ maxWidth: '100%', transform: 'scale(1.1)' }}
+/>
+
+## Adding a database to your Agent
+
+To enable session persistence on your Agent, create a database and provide it to the Agent:
+```python
+from agno.agent import Agent
+from agno.db.sqlite import SQLiteDb
+
+# Set up your database
+db = SQLiteDb(id="my_agent_db", db_file="agno.db")
+
+# Initialize your Agent passing the database
+agent = Agent(db=db)
+```
+<Note>
+It's recommended to add an `id` for better management and easier identification of your database. You can add it to your database configuration like this:
+</Note>
+
+<Tip>
+**When should I use Storage on my Agents?**
+
+Agents are ephemeral by default. They won't remember previous conversations.
+
+But in production environments, you will often need to continue the same session across multiple requests. Storage is the way to persist the session history and state in a database, enabling you and your users to pick up where you left off.
+
+Storage also lets us inspect and evaluate Agent sessions, extract few-shot examples and build internal monitoring tools. In general, it lets you **keep track of the data**, to build better Agents.
+</Tip>
+
+### Adding session history to the context
+
+Agents backed by a database persist their [sessions](/basics/sessions/overview) to it. You can then load this persisted history into the context to maintain continuity across sessions.
+
+```python
+from agno.agent import Agent
+from agno.db.sqlite import SQLiteDb
+
+# Setup your database
+db = SQLiteDb(db_file="agno.db")
+
+# Setup your Agent with the database and add the session history to the context
+agent = Agent(
+    db=db,
+    add_history_to_context=True, # Automatically add the persisted session history to the context
+    num_history_runs=3, # Specify how many messages to add to the context
+)
+```
+
+### Where are sessions stored?
+
+By default, sessions are stored in the `agno_sessions` table of the database.
+
+If the table or collection doesn't exist, it is created automatically when first storing a session.
+
+You can specify where the sessions are stored exactly using the `session_table` parameter:
+
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+
+# Setup your database
+db = PostgresDb(
+    db_url="postgresql://user:password@localhost:5432/my_database",
+    session_table="my_session_table", # Specify the table to store sessions
+)
+
+# Setup your Agent with the database
+agent = Agent(db=db)
+
+# Run the Agent. This will store a session in our "my_session_table"
+agent.print_response("What is the capital of France?")
+```
+
+## Retrieving sessions
+
+You can manually retrieve stored sessions using the `get_session` method. This also works for `Teams` and `Workflows`:
+
+```python
+from agno.agent import Agent
+from agno.db.sqlite import SQLiteDb
+
+# Setup your database
+db = SQLiteDb(db_file="agno.db")
+
+# Setup your Agent with the database
+agent = Agent(db=db)
+
+# Run the Agent, effectively creating and persisting a session
+agent.print_response("What is the capital of France?", session_id="123")
+
+# Retrieve our freshly created session
+session_history = agent.get_session(session_id="123")
+```
+
+## Benefits of using session storage
+
+Storage is often an important feature when building production-ready agentic applications. It enables the system to:
+
+- Continue a session: retrieve previous messages and enable users to pick up a conversation where they left off.
+- Keep a record of sessions: enable users to inspect their past conversations.
+- Data ownership: keeping sessions in your own database gives you full control over the data.
+
+<Warning>
+  Storage is a critical part of your Agentic infrastructure. We recommend to
+  never offload it to a third-party service. You should almost always use your
+  own storage layer for your Agents.
+</Warning>
+
+## Storage for Teams and Workflows
+
+Storage also works with Teams and Workflows, providing persistent memory for your more complex agentic applications.
+
+Similarly to Agents, you simply need to provide your Team or Workflow with a database for sessions to be persisted:
+
+```python
+from agno.team import Team
+from agno.workflow import Workflow
+from agno.db.sqlite import SQLiteDb
+
+# Set up your database
+db = SQLiteDb(db_file="agno.db")
+
+# Setup your Team
+team = Team(db=db, ...)
+
+# Setup your Workflow
+workflow = Workflow(db=db, ...)
+```
+
+<Note>
+  Learn more about [Teams](/basics/teams/overview) and
+  [Workflows](/basics/workflows/overview), Agno abstractions to build
+  multi-agent systems.
+</Note>
+
+## Asynchronous Database Support
+
+Agno supports asynchronous database operations when using the `AsyncPostgresDb` and `AsyncSqliteDb` classes.
+
+For example:
+```python async_postgres_for_agent.py
+from agno.agent import Agent
+from agno.db.postgres import AsyncPostgresDb
+
+db_url = "postgresql+psycopg_async://ai:ai@localhost:5532/ai"
+
+db = AsyncPostgresDb(db_url=db_url)
+
+agent = Agent(db=db)
+```
+
+
+## Supported databases
+
+ Databases currently supported for storage:
+
+<CardGroup cols={3}>
+  <Card
+    title="DynamoDB"
+    icon="database"
+    iconType="duotone"
+    href="/integrations/database/dynamodb/overview"
+  >
+    Amazon's NoSQL database service
+  </Card>
+  <Card
+    title="FireStore"
+    icon="database"
+    iconType="duotone"
+    href="/integrations/database/firestore/overview"
+  >
+    Google's NoSQL document database
+  </Card>
+  <Card
+    title="JSON"
+    icon="file-code"
+    iconType="duotone"
+    href="/integrations/database/json/overview"
+  >
+    Simple file-based JSON storage
+  </Card>
+  <Card
+    title="JSON on GCS"
+    icon="cloud"
+    iconType="duotone"
+    href="/integrations/database/gcs/overview"
+  >
+    JSON storage on Google Cloud Storage
+  </Card>
+  <Card
+    title="MongoDB"
+    icon="database"
+    iconType="duotone"
+    href="/integrations/database/mongo/overview"
+  >
+    Popular NoSQL document database
+  </Card>
+  <Card
+    title="MySQL"
+    icon="database"
+    iconType="duotone"
+    href="/integrations/database/mysql/overview"
+  >
+    Widely-used relational database
+  </Card>
+  <Card
+    title="Neon"
+    icon="database"
+    iconType="duotone"
+    href="/integrations/database/neon/overview"
+  >
+    Serverless PostgreSQL platform
+  </Card>
+  <Card
+    title="PostgreSQL"
+    icon="database"
+    iconType="duotone"
+    href="/integrations/database/postgres/overview"
+  >
+    Advanced open-source relational database
+  </Card>
+  <Card
+    title="Redis"
+    icon="database"
+    iconType="duotone"
+    href="/integrations/database/redis/overview"
+  >
+    In-memory data structure store
+  </Card>
+  <Card
+    title="SurrealDB"
+    icon="database"
+    iconType="duotone"
+    href="/integrations/database/surrealdb/overview"
+  >
+    Open source multi-modal database
+  </Card>
+  <Card
+    title="SingleStore"
+    icon="database"
+    iconType="duotone"
+    href="/integrations/database/singlestore/overview"
+  >
+    Real-time analytics database
+  </Card>
+  <Card
+    title="SQLite"
+    icon="database"
+    iconType="duotone"
+    href="/integrations/database/sqlite/overview"
+  >
+    Lightweight embedded database
+  </Card>
+  <Card
+    title="Supabase"
+    icon="database"
+    iconType="duotone"
+    href="/integrations/database/supabase/overview"
+  >
+    Open source Firebase alternative
+  </Card>
+</CardGroup>
+
+<Note>
+[In-Memory](/integrations/database/in-memory/overview) databases are also supported. This is not recommended for production, but perfect for demos and testing.
+</Note>
+
+You can see a detailed list of [examples](/integrations/database) for all supported databases.
+
+## Troubleshooting
+
+<Tabs>
+  <Tab title="`MissingGreenlet` exception">
+    If you are seeing `sqlalchemy.exc.MissingGreenlet: greenlet_spawn has not been called ...`, it means you are using a synchronous `db_engine` when using `AsyncPostgresDb` or `AsyncSqliteDb`. 
+    
+    You can create an asynchronous database engine by using the `create_async_engine` function from `sqlalchemy.ext.asyncio`.
+  </Tab>
+  <Tab title="`AsyncContextNotStarted` exception">
+    If you are seeing `sqlalchemy.ext.asyncio.exc.AsyncContextNotStarted: AsyncConnection context ...` error, it means you are using an asynchronous `db_engine` with `PostgresDb` or `SqliteDb`.
+    
+    You can create a synchronous database engine by using the `create_engine` function from `sqlalchemy`.
+  </Tab>
+</Tabs>

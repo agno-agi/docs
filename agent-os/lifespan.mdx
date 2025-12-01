@@ -1,0 +1,142 @@
+---
+title: "Custom Lifespan"
+description: "Customize the lifespan of your AgentOS app to handle startup and shutdown logic."
+keywords: [agentos, agentos hooks, lifespan, lifespan function, lifespan context manager, fastapi lifespan]
+---
+
+You will often want to run code before your AgentOS app starts or before it shuts down.
+
+This can be done by providing a custom **lifespan function** via the `lifespan` parameter.
+
+This is how a lifespan function looks like:
+
+```python
+@asynccontextmanager
+async def lifespan(app):
+    # This will run before your app starts
+    log_info("Starting My FastAPI App")
+
+    yield
+
+    # This will run before your app shuts down
+    log_info("Stopping My FastAPI App")
+```
+
+## FastAPI Lifespan
+
+The custom lifespan function you provide will be used as the **lifespan context manager** for the FastAPI app used by your AgentOS. Remember to decorate it with `@asynccontextmanager` as shown in the examples.
+
+<Tip>
+See the [FastAPI documentation](https://fastapi.tiangolo.com/advanced/events/#lifespan-events) for more information about the lifespan context manager.
+</Tip>
+
+If you are using a custom FastAPI app, you don't need to worry about overwriting its lifespan.
+
+The lifespan you provide will wrap the existing lifespan of the app, letting you combine all.
+
+## Common Use Cases
+
+Lifespan control is useful to handle typical startup and shutdown tasks, such as:
+
+- **Resource Initialization**: databases, third party services, caches... or anything else needed by your app.
+- **Cleanup**: Close connections, store data or release resources before shut down.
+- **Health Checks**: Verify dependencies are available before serving requests
+- **Background Tasks**: Start/stop background processes
+
+
+## Example
+
+<Steps>
+  <Step title="Code">
+    ```python custom_lifespan.py
+    from contextlib import asynccontextmanager
+
+    from agno.agent import Agent
+    from agno.db.postgres import PostgresDb
+    from agno.models.anthropic import Claude
+    from agno.os import AgentOS
+    from agno.utils.log import log_info
+
+    # Setup the database
+    db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+    # Setup basic agents, teams and workflows
+    agno_support_agent = Agent(
+        id="example-agent",
+        name="Example Agent",
+        model=Claude(id="claude-sonnet-4-0"),
+        db=db,
+        markdown=True,
+    )
+
+
+    @asynccontextmanager
+    async def lifespan(app):
+        log_info("Starting My FastAPI App")
+        yield
+        log_info("Stopping My FastAPI App")
+
+
+    agent_os = AgentOS(
+        description="Example app with custom lifespan",
+        agents=[agno_support_agent],
+        lifespan=lifespan,
+    )
+
+
+    app = agent_os.get_app()
+
+    if __name__ == "__main__":
+        """Run your AgentOS.
+
+        You can see test your AgentOS at:
+        http://localhost:7777/docs
+
+        """
+        agent_os.serve(app="custom_lifespan:app")
+
+    ```
+  </Step>
+
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Set Environment Variables">
+    ```bash
+    export ANTHROPIC_API_KEY=your_anthropic_api_key
+    ```
+  </Step>
+
+  <Step title="Install libraries">
+    ```bash
+    pip install -U agno anthropic "fastapi[standard]" uvicorn sqlalchemy
+    ```
+  </Step>
+
+  <Step title="Setup PostgreSQL Database">
+    ```bash
+    # Using Docker
+    docker run -d \
+      --name agno-postgres \
+      -e POSTGRES_DB=ai \
+      -e POSTGRES_USER=ai \
+      -e POSTGRES_PASSWORD=ai \
+      -p 5532:5432 \
+      pgvector/pgvector:pg17
+    ```
+  </Step>
+
+  <Step title="Run Example with Python">
+    <CodeGroup>
+    ```bash FastAPI CLI
+    fastapi run custom_lifespan.py
+    ```
+    ```bash Mac
+    python custom_lifespan.py
+    ```
+
+    ```bash Windows
+    python ovecustom_lifespanrride_routes.py
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>

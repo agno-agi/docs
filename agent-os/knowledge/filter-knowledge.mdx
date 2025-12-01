@@ -1,0 +1,309 @@
+---
+title: Filter Knowledge
+description: Learn how to use advanced filter expressions through the Agno API for precise knowledge base filtering.
+keywords: [api, filtering, filterexpr, knowledge, search, rest api]
+---
+
+When using the AgentOS API, you can apply filters to precisely control which knowledge base documents your agents search, without changing your agent code. 
+Filter expressions serialize to JSON and are automatically reconstructed server-side for powerful, programmatic filtering.
+
+## Two Approaches to Filtering
+
+Agno supports two ways to filter knowledge through the API:
+
+- Use **dictionary filters** for simple "field = value" lookups
+- Use **filter expressions** when you need OR/NOT logic or ranges
+
+### 1. Dictionary Filters (Simple)
+
+Best for straightforward equality matching. Send a JSON object with key-value pairs:
+
+```json
+{"docs": "agno", "status": "published"}
+```
+
+### 2. Filter Expressions (Advanced)
+
+Best for complex filtering with full logical control. Send structured filter objects:
+
+```json
+{"op": "AND", "conditions": [
+  {"op": "EQ", "key": "docs", "value": "agno"},
+  {"op": "GT", "key": "version", "value": 2}
+]}
+```
+
+<Tip>
+**When to use which:**
+- Use **dict filters** for simple queries like filtering by category or status
+- Use **filter expressions** when you need OR logic, exclusions (NOT), or range queries (GT/LT)
+</Tip>
+
+## Filter Operators
+
+Filter expressions support a range of comparison and logical operators:
+
+### Comparison Operators
+
+- **`EQ(key, value)`** - Equality: field equals value
+- **`GT(key, value)`** - Greater than: field > value  
+- **`LT(key, value)`** - Less than: field < value
+- **`IN(key, [values])`** - Inclusion: field in list of values
+
+### Logical Operators
+
+- **`AND(*filters)`** - All conditions must be true
+- **`OR(*filters)`** - At least one condition must be true
+- **`NOT(filter)`** - Negate a condition
+
+## Serialization Format
+
+Filter expression objects use a dictionary format with an `"op"` key that distinguishes them from regular dict filters:
+
+```python
+from agno.filters import EQ, GT, AND
+
+# Python filter expression
+filter_expr = AND(EQ("status", "published"), GT("views", 1000))
+
+# Serialized to JSON
+{
+  "op": "AND",
+  "conditions": [
+    {"op": "EQ", "key": "status", "value": "published"},
+    {"op": "GT", "key": "views", "value": 1000}
+  ]
+}
+```
+
+<Note>
+The presence of the `"op"` key tells the API to deserialize the filter as a filter expression. Regular dict filters (without `"op"`) continue to work for backward compatibility.
+</Note>
+
+## Using Filters Through the API
+
+In all examples below, you pass the serialized JSON string via the `knowledge_filters` field when creating a run.
+
+### Dictionary Filters (Simple Approach)
+ 
+For basic filtering, send a JSON object with key-value pairs. All conditions are combined with AND logic:
+
+<CodeGroup>
+
+```python Python Client
+import requests
+import json
+
+# Simple dict filter
+filter_dict = {"docs": "agno", "status": "published"}
+
+# Serialize to JSON
+filter_json = json.dumps(filter_dict)
+
+# Send request
+response = requests.post(
+    "http://localhost:7777/agents/agno-knowledge-agent/runs",
+    data={
+        "message": "What are agno's key features?",
+        "stream": "false",
+        "knowledge_filters": filter_json,
+    }
+)
+
+result = response.json()
+```
+
+```bash cURL
+curl -X 'POST' \
+  'http://localhost:7777/agents/agno-knowledge-agent/runs' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: multipart/form-data' \
+  -F 'message=What are agno'\''s key features?' \
+  -F 'stream=false' \
+  -F 'session_id=' \
+  -F 'user_id=' \
+  -F 'knowledge_filters={"docs": "agno"}'
+```
+
+</CodeGroup>
+
+**More Dict Filter Examples:**
+
+```python
+# Filter by single field
+{"category": "technology"}
+
+# Filter by multiple fields (AND logic)
+{"category": "technology", "status": "published", "year": 2024}
+
+# Filter with different data types
+{"active": True, "priority": 1, "department": "engineering"}
+```
+
+### Filter Expressions (Advanced Approach)
+
+For complex filtering with logical operators and comparisons:
+
+<CodeGroup>
+
+```python Python Client
+import requests
+import json
+from agno.filters import EQ
+
+# Create filter expression
+filter_expr = EQ("category", "technology")
+
+# Serialize to JSON
+filter_json = json.dumps(filter_expr.to_dict())
+
+# Send request
+response = requests.post(
+    "http://localhost:7777/agents/my-agent/runs",
+    data={
+        "message": "What are the latest tech articles?",
+        "stream": "false",
+        "knowledge_filters": filter_json,
+    }
+)
+
+result = response.json()
+```
+
+```bash cURL
+curl -X 'POST' \
+  'http://localhost:7777/agents/my-agent/runs' \
+  -H 'Content-Type: multipart/form-data' \
+  -F 'message=What are the latest tech articles?' \
+  -F 'stream=false' \
+  -F 'knowledge_filters={"op": "EQ", "key": "category", "value": "technology"}'
+```
+
+</CodeGroup>
+
+### Multiple Filter Expressions
+
+Send multiple filter expressions as a JSON array:
+
+<CodeGroup>
+
+```python Python Client
+from agno.filters import EQ, GT
+
+# Create multiple filters
+filters = [
+    EQ("status", "published"),
+    GT("date", "2024-01-01")
+]
+
+# Serialize list to JSON
+filters_json = json.dumps([f.to_dict() for f in filters])
+
+response = requests.post(
+    "http://localhost:7777/agents/my-agent/runs",
+    data={
+        "message": "Show recent published articles",
+        "stream": "false",
+        "knowledge_filters": filters_json,
+    }
+)
+```
+
+```bash cURL
+curl -X 'POST' \
+  'http://localhost:7777/agents/my-agent/runs' \
+  -H 'Content-Type: multipart/form-data' \
+  -F 'message=Show recent published articles' \
+  -F 'stream=false' \
+  -F 'knowledge_filters=[{"op": "EQ", "key": "status", "value": "published"}, {"op": "GT", "key": "date", "value": "2024-01-01"}]'
+```
+
+</CodeGroup>
+
+## Error Handling
+
+### Invalid Filter Structure
+
+When filters have errors, they're gracefully ignored with warnings:
+
+```bash
+# Missing required fields
+curl ... -F 'knowledge_filters={"op": "EQ", "key": "status"}'
+# Result: Filter ignored, warning logged
+
+# Unknown operator
+curl ... -F 'knowledge_filters={"op": "UNKNOWN", "key": "status", "value": "x"}'
+# Result: Filter ignored, warning logged
+
+# Invalid JSON
+curl ... -F 'knowledge_filters={invalid json}'
+# Result: Filter ignored, warning logged
+```
+
+<Warning>
+When filters fail to parse, the search proceeds **without filters** rather than throwing an error. Always verify your filter JSON is valid and check server logs if results seem unfiltered.
+</Warning>
+
+### Client-Side Validation
+
+Add validation before sending requests:
+
+```python
+def validate_and_send_filter(filter_expr, message):
+    """Validate filter before sending to API."""
+    try:
+        # Test serialization
+        filter_dict = filter_expr.to_dict()
+        filter_json = json.dumps(filter_dict)
+        
+        # Verify it's valid JSON
+        json.loads(filter_json)
+        
+        # Send request
+        return send_filtered_agent_request(message, filter_expr)
+        
+    except (AttributeError, TypeError, json.JSONDecodeError) as e:
+        print(f"Filter validation failed: {e}")
+        return None
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Advanced Filtering Guide" 
+    icon="filter"
+    href="/basics/knowledge/filters/advanced-filtering"
+  >
+    Learn about filter expressions and metadata design in detail
+  </Card>
+  <Card
+    title="Agent OS API"
+    icon="code" 
+    href="/agent-os/api"
+  >
+    Explore the full Agent OS API reference
+  </Card>
+  <Card
+    title="Knowledge Bases"
+    icon="database"
+    href="/basics/knowledge/knowledge-bases" 
+  >
+    Understand knowledge base architecture and setup
+  </Card>
+  <Card
+    title="Search & Retrieval"
+    icon="magnifying-glass"
+    href="/basics/knowledge/search-and-retrieval/overview"
+  >
+    Optimize your search strategies
+  </Card>
+  <Card
+    title="Filter Expressions Example"
+    icon="code"
+    href="/basics/knowledge/filters/usage/filter-expressions"
+  >
+    See working examples of filter expressions via API
+  </Card>
+</CardGroup>
+

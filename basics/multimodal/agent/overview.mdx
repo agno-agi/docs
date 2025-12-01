@@ -1,0 +1,201 @@
+---
+title: Multimodal Agents
+sidebarTitle: Overview
+description: Learn how to create multimodal agents in Agno.
+keywords: [multimodal, multimodal agents, image input, audio input, video input, agent multimodal support, multimodal outputs]
+---
+
+Agno agents support text, image, audio, video and files inputs and can generate text, image, audio, video and files as output.
+
+For a complete overview of multimodal support, please checkout the [multimodal](/basics/multimodal/overview) documentation.
+
+<Tip>
+Not all models support multimodal inputs and outputs.
+To see which models support multimodal inputs and outputs, please checkout the [compatibility matrix](/basics/models/compatibility).
+</Tip>
+
+
+## Multimodal inputs to an agent
+
+Let's create an agent that can understand images and make tool calls as needed
+
+### Image Agent
+
+```python image_agent.py
+from agno.agent import Agent
+from agno.media import Image
+from agno.models.openai import OpenAIChat
+from agno.tools.duckduckgo import DuckDuckGoTools
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-5-mini"),
+    tools=[DuckDuckGoTools()],
+    markdown=True,
+)
+
+agent.print_response(
+    "Tell me about this image and give me the latest news about it.",
+    images=[
+        Image(
+            url="https://upload.wikimedia.org/wikipedia/commons/0/0c/GoldenGateBridge-001.jpg"
+        )
+    ],
+    stream=True,
+)
+```
+
+Run the agent:
+
+```shell
+python image_agent.py
+```
+
+See [Image as input](/basics/multimodal/images/image-input) for more details.
+
+### Audio Agent
+
+```python audio_agent.py
+import base64
+
+import requests
+from agno.agent import Agent
+from agno.media import Audio
+from agno.models.openai import OpenAIChat
+
+# Fetch the audio file and convert it to a base64 encoded string
+url = "https://openaiassets.blob.core.windows.net/$web/API/docs/audio/alloy.wav"
+response = requests.get(url)
+response.raise_for_status()
+wav_data = response.content
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-5-mini-audio-preview", modalities=["text"]),
+    markdown=True,
+)
+agent.print_response(
+    "What is in this audio?", audio=[Audio(content=wav_data, format="wav")]
+)
+```
+
+### Video Agent
+
+<Note>Currently Agno only supports video as an input for Gemini models.</Note>
+
+```python video_agent.py
+from pathlib import Path
+
+from agno.agent import Agent
+from agno.media import Video
+from agno.models.google import Gemini
+
+agent = Agent(
+    model=Gemini(id="gemini-2.0-flash-exp"),
+    markdown=True,
+)
+
+# Please download "GreatRedSpot.mp4" using
+# wget https://storage.googleapis.com/generativeai-downloads/images/GreatRedSpot.mp4
+video_path = Path(__file__).parent.joinpath("GreatRedSpot.mp4")
+
+agent.print_response("Tell me about this video", videos=[Video(filepath=video_path)])
+```
+
+## Multimodal outputs from an agent
+
+Similar to providing multimodal inputs, you can also get multimodal outputs from an agent.
+
+### Image Generation
+
+The following example demonstrates how to generate an image using DALL-E with an agent.
+
+```python image_agent.py
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.tools.dalle import DalleTools
+
+image_agent = Agent(
+    model=OpenAIChat(id="gpt-5-mini"),
+    tools=[DalleTools()],
+    description="You are an AI agent that can generate images using DALL-E.",
+    instructions="When the user asks you to create an image, use the `create_image` tool to create the image.",
+    markdown=True,
+)
+
+image_agent.print_response("Generate an image of a white siamese cat")
+
+images = image_agent.get_images()
+if images and isinstance(images, list):
+    for image_response in images:
+        image_url = image_response.url
+        print(image_url)
+```
+
+### Audio Response
+
+The following example demonstrates how to obtain both text and audio responses from an agent. The agent will respond with text and audio bytes that can be saved to a file.
+
+```python audio_agent.py
+from agno.agent import Agent, RunOutput
+from agno.models.openai import OpenAIChat
+from agno.utils.audio import write_audio_to_file
+
+agent = Agent(
+    model=OpenAIChat(
+        id="gpt-5-mini-audio-preview",
+        modalities=["text", "audio"],
+        audio={"voice": "alloy", "format": "wav"},
+    ),
+    markdown=True,
+)
+response: RunOutput = agent.run("Tell me a 5 second scary story")
+
+# Save the response audio to a file
+if response.response_audio is not None:
+    write_audio_to_file(
+        audio=agent.run_response.response_audio.content, filename="tmp/scary_story.wav"
+    )
+```
+
+## Multimodal inputs and outputs together
+
+You can create Agents that can take multimodal inputs and return multimodal outputs. The following example demonstrates how to provide a combination of audio and text inputs to an agent and obtain both text and audio outputs.
+
+### Audio input and Audio output
+
+```python audio_agent.py
+import base64
+
+import requests
+from agno.agent import Agent
+from agno.media import Audio
+from agno.models.openai import OpenAIChat
+from agno.utils.audio import write_audio_to_file
+
+# Fetch the audio file and convert it to a base64 encoded string
+url = "https://openaiassets.blob.core.windows.net/$web/API/docs/audio/alloy.wav"
+response = requests.get(url)
+response.raise_for_status()
+wav_data = response.content
+
+agent = Agent(
+    model=OpenAIChat(
+        id="gpt-5-mini-audio-preview",
+        modalities=["text", "audio"],
+        audio={"voice": "alloy", "format": "wav"},
+    ),
+    markdown=True,
+)
+
+agent.run("What's in these recording?", audio=[Audio(content=wav_data, format="wav")])
+
+if agent.run_response.response_audio is not None:
+    write_audio_to_file(
+        audio=agent.run_response.response_audio.content, filename="tmp/result.wav"
+    )
+```
+
+## Developer Resources
+
+- View [Image Agent Examples](/basics/multimodal/agent/usage/image-to-text)
+- View [Audio Agent Examples](/basics/multimodal/agent/usage/audio-to-text)
+- View [Video Agent Examples](/basics/multimodal/agent/usage/video-caption-agent)

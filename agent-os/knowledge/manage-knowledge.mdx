@@ -1,0 +1,128 @@
+---
+title: "Manage Knowledge"
+sidebarTitle: "Manage Knowledge"
+description: "Attach Knowledge to your AgentOS instance"
+---
+
+The AgentOS control plane provides a simple way to [manage](/agent-os/features/knowledge-management#adding-content) your Knowledge bases. 
+You can add, edit, and delete content from your Knowledge bases directly through the control plane.
+
+You can specify multiple Knowledge bases and reuse the same Knowledge instance 
+across different Agents or Teams as needed.
+
+## Prerequisites
+
+Before setting up Knowledge management in AgentOS, ensure you have:
+
+- PostgreSQL database running and accessible - used for this example
+- Required dependencies installed: `pip install agno`
+- OpenAI API key configured (for embeddings)
+- Basic understanding of [Knowledge concepts](/basics/knowledge/getting-started)
+
+## Example
+
+This example demonstrates how to attach multiple Knowledge bases to AgentOS 
+and populate them with content from different sources.
+```python agentos_knowledge.py
+from textwrap import dedent
+
+from agno.db.postgres import PostgresDb
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.knowledge.knowledge import Knowledge
+from agno.os import AgentOS
+from agno.vectordb.pgvector import PgVector, SearchType
+
+# ************* Setup Knowledge Databases *************
+db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
+documents_db = PostgresDb(
+    db_url,
+    id="agno_knowledge_db",
+    knowledge_table="agno_knowledge_contents",
+)
+faq_db = PostgresDb(
+    db_url,
+    id="agno_faq_db",
+    knowledge_table="agno_faq_contents",
+)
+# *******************************
+
+documents_knowledge = Knowledge(
+    vector_db=PgVector(
+        db_url=db_url,
+        table_name="agno_knowledge_vectors",
+        search_type=SearchType.hybrid,
+        embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+    ),
+    contents_db=documents_db,
+)
+
+faq_knowledge = Knowledge(
+    vector_db=PgVector(
+        db_url=db_url,
+        table_name="agno_faq_vectors",
+        search_type=SearchType.hybrid,
+        embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+    ),
+    contents_db=faq_db,
+)
+
+agent_os = AgentOS(
+    description="Example app with AgentOS Knowledge",
+    # Add the knowledge bases to AgentOS
+    knowledge=[documents_knowledge, faq_knowledge],
+)
+
+
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    documents_knowledge.add_content(
+        name="Agno Docs", url="https://docs.agno.com/llms-full.txt", skip_if_exists=True
+    )
+    faq_knowledge.add_content(
+        name="Agno FAQ",
+        text_content=dedent("""
+            What is Agno?
+            Agno is a framework for building agents.
+            Use it to build multi-agent systems with memory, knowledge,
+            human in the loop and MCP support.
+        """),
+        skip_if_exists=True,
+    )
+    # Run your AgentOS
+    # You can test your AgentOS at: http://localhost:7777/
+
+    agent_os.serve(app="agentos_knowledge:app")
+```
+
+### Screenshots
+The screenshots below show how you can access and manage your different Knowledge bases through the AgentOS interface:
+<img src="/images/agno_knowledge_db.png" alt="llm-app-aidev-run" />
+<img src="/images/agno_faq_db.png" alt="llm-app-aidev-run" />
+
+
+## Best Practices
+
+- **Separate Knowledge by Domain**: Create separate Knowledge bases for different topics (e.g., technical docs, FAQs, policies)
+- **Consistent Naming**: Use descriptive names for your Knowledge bases that reflect their content
+- **Regular Updates**: Keep your Knowledge bases current by regularly adding new content and removing outdated information
+- **Monitor Performance**: Use different table names for vector storage to avoid conflicts
+- **Content Organization**: Use the `name` parameter when adding content to make it easily identifiable
+- **Use metadata for filtering and searching**: Add metadata to your content to make it easier to find and filter
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Knowledge base not appearing in AgentOS interface">
+    Ensure your knowledge base is properly added to the `knowledge` parameter when creating your AgentOS instance.
+    Also make sure to attach a `contents_db` to your Knowledge instance.
+  </Accordion>
+  
+  <Accordion title="Database connection errors">
+    Verify your PostgreSQL connection string and ensure the database is running and accessible.
+  </Accordion>
+  
+  <Accordion title="Content not being found in searches">
+    Check that your content has been properly embedded by verifying entries in your vector database table.
+  </Accordion>
+</AccordionGroup>

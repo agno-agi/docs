@@ -1,0 +1,202 @@
+---
+title: Input & Output
+sidebarTitle: Overview
+description: Learn how to control inputs and outputs with type-safe Pydantic models for reliable, production-ready systems.
+---
+
+Agno Agents, Teams and Workflows support various forms of input and output, from simple string-based interactions to structured data validation using Pydantic models.
+
+## Structured Output
+
+Generate validated, type-safe outputs using Pydantic models for reliable production systems. Structured outputs provide consistent, predictable response formats instead of unstructured text.
+
+Common use cases include data extraction, classification, content generation, and validation.
+
+<Info>
+Structured outputs work seamlessly with tools, knowledge bases, and most other Agno features.
+</Info>
+
+### Agent Example
+
+```python
+from pydantic import BaseModel, Field
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+
+class MovieScript(BaseModel):
+    setting: str = Field(..., description="Setting for the movie")
+    genre: str = Field(..., description="Genre of the movie")
+    storyline: str = Field(..., description="Storyline for the movie")
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-5-mini"),
+    description="You write movie scripts.",
+    output_schema=MovieScript,
+)
+
+response = agent.run("Write a movie script about New York")
+print(response.content)  # Returns MovieScript object
+```
+
+### Team Example
+
+```python
+from pydantic import BaseModel
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.team import Team
+
+class StockReport(BaseModel):
+    symbol: str
+    company_name: str
+    analysis: str
+
+team = Team(
+    model=OpenAIChat(id="gpt-5-mini"),
+    members=[...],
+    output_schema=StockReport,
+)
+
+response = team.run("Analyze NVDA stock")
+print(response.content)  # Returns StockReport object
+```
+
+### Workflow Example
+
+```python
+from pydantic import BaseModel
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.workflow import Step, Workflow
+
+class ResearchFindings(BaseModel):
+    summary: str
+    insights: list[str]
+
+research_agent = Agent(
+    model=OpenAIChat(id="gpt-5-mini"),
+    output_schema=ResearchFindings,
+)
+
+workflow = Workflow(
+    steps=[Step(agent=research_agent)],
+)
+
+response = workflow.run("Research AI trends")
+print(response.content)  # Returns ResearchFindings object
+```
+
+<Tip>
+For models that don't support structured output, Agno provides JSON mode, which instructs the model to respond in JSON format. While less accurate than native structured output, JSON mode offers a fallback option for compatible models. Set `use_json_mode=True` on your Agent, Team, or Workflow.
+</Tip>
+
+## Structured Input
+
+Agents, Teams, and Workflows support structured input using Pydantic models or `TypedDict`. Pass them to the `input` parameter in `run()` or `print_response()`.
+
+### Agent Example
+
+```python
+from pydantic import BaseModel, Field
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+
+class ResearchTopic(BaseModel):
+    topic: str
+    focus_areas: list[str] = Field(description="Areas to focus on")
+    sources_required: int = Field(default=5)
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-5-mini"),
+    tools=[...],
+)
+
+agent.run(
+    input=ResearchTopic(
+        topic="AI",
+        focus_areas=["Machine Learning", "LLMs"],
+        sources_required=5,
+    )
+)
+```
+
+### Team Example
+
+```python
+from pydantic import BaseModel, Field
+from agno.team import Team
+from agno.models.openai import OpenAIChat
+
+class ResearchProject(BaseModel):
+    project_name: str
+    research_topics: list[str] = Field(min_items=1)
+    max_sources: int = Field(ge=3, le=20, default=10)
+
+team = Team(
+    model=OpenAIChat(id="gpt-5-mini"),
+    members=[...],
+)
+
+team.run(
+    input=ResearchProject(
+        project_name="AI Framework Comparison",
+        research_topics=["LangChain", "CrewAI", "Agno"],
+        max_sources=15,
+    )
+)
+```
+
+### Workflow Example
+
+```python
+from pydantic import BaseModel, Field
+from agno.workflow import Workflow
+
+class ResearchRequest(BaseModel):
+    topic: str = Field(description="Research topic")
+    depth: int = Field(description="Research depth (1-10)")
+
+workflow = Workflow(
+    steps=[...],
+    input_schema=ResearchRequest,
+)
+
+workflow.run(
+    input=ResearchRequest(
+        topic="AI trends 2024",
+        depth=8,
+    )
+)
+```
+
+## Typesafe Patterns
+
+When you combine both `input_schema` and `output_schema`, you create a **typesafe** component with end-to-end type safety—a fully validated data pipeline from input to output.
+
+## Advanced Features
+
+- **[Parser Model](/basics/input-output/agent/usage/parser-model)**: Use a different model to parse and structure output from your primary model
+- **[Output Model](/basics/input-output/agent/usage/output-model)**: Use a different model to produce the final output
+- **[Input Validation](/basics/input-output/agent/usage/input-schema-on-agent)**: Set `input_schema` to automatically validate dictionary inputs
+- **[Streaming](/basics/input-output/team/usage/structured-output-streaming)**: Structured outputs work seamlessly with streaming
+
+## Learn More
+
+<CardGroup cols={3}>
+  <Card
+    title="Agent Usage Examples"
+    icon="robot"
+    iconType="duotone"
+    href="/basics/input-output/agent/usage"
+  >
+    Explore detailed examples for structured input and output with Agents.
+  </Card>
+  <Card
+    title="Team Usage Examples"
+    icon="users"
+    iconType="duotone"
+    href="/basics/input-output/team/usage"
+  >
+    Explore detailed examples for structured input and output with Teams.
+  </Card>
+</CardGroup>

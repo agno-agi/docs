@@ -1,0 +1,519 @@
+---
+title: Advanced Filtering
+sidebarTitle: Advanced Filtering
+description: Use filter expressions (EQ, AND, OR, NOT) for complex logical filtering of knowledge base searches.
+keywords: [search, retrieval, rag, agentic rag, agentic search, search, filters, metadata, filter expressions]
+---
+
+<Badge icon="code-branch" color="orange">
+    <Tooltip tip="Introduced in v2.2.12" cta="View release notes" href="https://github.com/agno-agi/agno/releases/tag/v2.2.12">v2.2.12</Tooltip>
+</Badge>
+
+When basic dictionary filters aren't enough, filter expressions give you powerful logical control over knowledge searches. Use them to combine multiple conditions with AND/OR logic, exclude content with NOT, or perform comparisons like "greater than" and "less than".
+
+For basic filtering with dictionary format, see [Search & Retrieval](/basics/knowledge/search-and-retrieval/overview).
+
+## Filter Expression Operators
+
+Agno provides a rich set of filter expressions that can be combined to create sophisticated search criteria:
+
+### Comparison Operators
+
+These operators let you match against specific values:
+
+#### EQ (Equals)
+Match content where a metadata field equals a specific value.
+
+```python
+from agno.filters import EQ
+
+# Find only HR policy documents
+EQ("department", "hr")
+
+# Find content from a specific year
+EQ("year", 2024)
+```
+
+#### IN (Contains Any)
+Match content where a metadata field contains any of the specified values.
+
+```python
+from agno.filters import IN
+
+# Find content from multiple regions
+IN("region", ["north_america", "europe", "asia"])
+
+# Find multiple document types
+IN("document_type", ["policy", "guideline", "procedure"])
+```
+
+#### GT (Greater Than) & LT (Less Than)
+Match content based on numeric comparisons.
+
+```python
+from agno.filters import GT, LT
+
+# Find recent documents
+GT("year", 2020)
+
+# Find documents with high priority scores
+GT("priority_score", 8.0)
+
+# Find documents within a date range
+LT("year", 2025)
+```
+
+### Logical Operators
+
+Combine multiple conditions using logical operators:
+
+#### AND
+All conditions must be true.
+
+```python
+from agno.filters import AND, EQ
+
+# Find sales documents from North America in 2024
+AND(
+    EQ("data_type", "sales"),
+    EQ("region", "north_america"),
+    EQ("year", 2024)
+)
+```
+
+#### OR
+At least one condition must be true.
+
+```python
+from agno.filters import OR, EQ
+
+# Find either engineering or product documents
+OR(
+    EQ("department", "engineering"),
+    EQ("department", "product")
+)
+```
+
+#### NOT
+Exclude content that matches the condition.
+
+```python
+from agno.filters import NOT, EQ
+
+# Find everything except draft documents
+NOT(EQ("status", "draft"))
+```
+
+
+## Using Filters with Agents
+
+Here's how to apply filters when running agents with knowledge.
+
+<Note>
+You need a [contents database](/basics/knowledge/content-db) with your Knowledge base to use agentic filtering.
+</Note>
+
+### Basic Agent Filtering
+
+```python
+from agno.agent import Agent
+from agno.filters import EQ, IN, AND
+from agno.knowledge.knowledge import Knowledge
+from agno.vectordb.pgvector import PgVector
+
+# Setup knowledge with metadata
+knowledge = Knowledge(
+    contents_db=PostgresDb(
+        db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
+        knowledge_table="knowledge_contents",
+    ),
+    vector_db=PgVector(
+        table_name="filtered_knowledge",
+        db_url="postgresql+psycopg://ai:ai@localhost:5532/ai"
+    )
+)
+
+# Add content with rich metadata
+knowledge.add_content(
+    path="sales_report_q1.csv",
+    metadata={
+        "data_type": "sales",
+        "quarter": "Q1",
+        "year": 2024,
+        "region": "north_america",
+        "currency": "USD"
+    }
+)
+
+# Create agent with knowledge
+sales_agent = Agent(
+    knowledge=knowledge,
+    search_knowledge=True,
+    instructions="Always search knowledge before answering questions"
+)
+
+# Use filters in agent responses - NOTE: filters must be in a list!
+sales_agent.print_response(
+    "What were our Q1 sales results?",
+    knowledge_filters=[  # ← Must be a list!
+        AND(EQ("data_type", "sales"), EQ("quarter", "Q1"))
+    ]
+)
+```
+
+### Complex Filter Examples
+
+```python
+from agno.filters import AND, OR, NOT, EQ, IN, GT
+
+# Find recent sales data from specific regions, but exclude drafts
+complex_filter = AND(
+    EQ("data_type", "sales"),
+    IN("region", ["north_america", "europe"]),
+    GT("year", 2022),
+    NOT(EQ("status", "draft"))
+)
+
+# Search for either customer feedback or survey data from the last two years
+feedback_filter = AND(
+    OR(
+        EQ("data_type", "feedback"),
+        EQ("data_type", "survey")
+    ),
+    GT("year", 2022)
+)
+
+agent.print_response(
+    "What do our customers think about our new features?",
+    knowledge_filters=[feedback_filter]  # ← List wrapper required
+)
+```
+
+## Using Filters with Teams
+
+Teams can also leverage filtered knowledge searches:
+
+```python
+from agno.team.team import Team
+from agno.agent import Agent
+from agno.filters import IN, AND, NOT, EQ
+
+# Setup team members
+research_agent = Agent(
+    name="Research Agent",
+    role="Analyze candidate information",
+    knowledge=knowledge_base
+)
+
+# Create team with knowledge
+hiring_team = Team(
+    name="Hiring Team",
+    members=[research_agent],
+    knowledge=knowledge_base,
+    instructions="Analyze candidate profiles thoroughly"
+)
+
+# Filter to specific candidates
+hiring_team.print_response(
+    "Compare the experience of our top candidates",
+    knowledge_filters=[  # ← List wrapper required
+        AND(
+            EQ("document_type", "cv"),
+            IN("user_id", ["jordan_mitchell", "taylor_brooks"]),
+            NOT(EQ("status", "rejected"))
+        )
+    ]
+)
+```
+
+## Advanced Filtering Patterns
+
+### User-Specific Content
+
+Filter content based on user access or preferences:
+
+```python
+from agno.filters import OR, EQ
+
+def get_user_filter(user_id: str, user_department: str):
+    """Create filters based on user context."""
+    return OR(
+        EQ("visibility", "public"),
+        EQ("owner", user_id),
+        EQ("department", user_department)
+    )
+
+# Apply user-specific filtering
+user_filter = get_user_filter("john_doe", "engineering")
+agent.print_response(
+    "Show me the latest project updates",
+    knowledge_filters=[user_filter]  # ← List wrapper required
+)
+```
+
+### Time-Based Filtering
+
+Filter by recency or date ranges:
+
+```python
+from datetime import datetime
+from agno.filters import AND, NOT, EQ, GT
+
+current_year = datetime.now().year
+
+# Only search recent content
+recent_filter = GT("year", current_year - 2)
+
+# Exclude archived content
+active_filter = NOT(EQ("status", "archived"))
+
+# Combine for active, recent content
+current_content = AND(recent_filter, active_filter)
+
+# Use in agent - wrap in list
+agent.print_response(
+    "What's new?",
+    knowledge_filters=[current_content]
+)
+```
+
+### Progressive Filtering
+
+Start broad, then narrow down based on results:
+
+```python
+from agno.filters import AND, EQ, GT
+
+async def progressive_search(agent, query, base_filters=None):
+    """Try broad search first, then narrow if too many results."""
+
+    # First attempt: broad search
+    broad_results = await agent.aget_relevant_docs_from_knowledge(
+        query=query,
+        filters=base_filters,  # Already a list
+        num_documents=10
+    )
+
+    if len(broad_results) > 8:
+        # Too many results, add more specific filters
+        specific_filter = AND(
+            base_filters[0] if base_filters else EQ("status", "active"),
+            GT("relevance_score", 0.8)
+        )
+
+        return await agent.aget_relevant_docs_from_knowledge(
+            query=query,
+            filters=[specific_filter],  # ← Wrapped in list
+            num_documents=5
+        )
+
+    return broad_results
+```
+
+## Best Practices for Filter Expressions
+
+### Filter Design
+
+- **Start Simple**: Begin with basic filters and add complexity as needed
+- **Test Combinations**: Verify that your logical combinations work as expected
+- **Document Your Schema**: Keep track of available metadata fields and their possible values
+- **Performance Considerations**: Some filter combinations may be slower than others
+
+## Troubleshooting
+
+### Filter Not Working
+
+<AccordionGroup>
+  <Accordion title="Verify metadata keys exist">
+    Check that the keys you're filtering on actually exist in your knowledge base:
+
+    ```python
+    # Add content with explicit metadata
+    knowledge.add_content(
+        path="doc.pdf",
+        metadata={"status": "published", "category": "tech"}
+    )
+
+    # Now filter will work
+    filter_expr = EQ("status", "published")
+    ```
+  </Accordion>
+
+  <Accordion title="Check filter structure">
+    Print the filter to verify it's constructed correctly:
+
+    ```python
+    from agno.filters import EQ, GT, AND
+
+    filter_expr = AND(EQ("status", "published"), GT("views", 100))
+    print(filter_expr.to_dict())
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Complex Filters Failing
+
+<AccordionGroup>
+  <Accordion title="Break down into smaller filters">
+    Test each condition individually:
+
+    ```python
+    # Test each part separately
+    filter1 = EQ("status", "published")  # Test
+    filter2 = GT("date", "2024-01-01")   # Test
+    filter3 = IN("region", ["US", "EU"]) # Test
+
+    # Then combine
+    combined = AND(filter1, filter2, filter3)
+    ```
+  </Accordion>
+
+  <Accordion title="Verify filter structure">
+    Check that nested logic is correctly structured:
+
+    ```python
+    import json
+
+    try:
+        filter_dict = filter_expr.to_dict()
+        json_str = json.dumps(filter_dict)
+        json.loads(json_str)  # Verify it parses
+        print("Valid filter structure")
+    except (TypeError, ValueError) as e:
+        print(f"Invalid filter: {e}")
+    ```
+  </Accordion>
+
+  <Accordion title="Check operator precedence">
+    Make sure nested logic is clear and well-structured:
+
+    ```python
+    # Clear nested structure
+    filter_expr = OR(
+        AND(EQ("a", 1), EQ("b", 2)),
+        EQ("c", 3)
+    )
+
+    # Break down complex filters for readability
+    condition1 = AND(EQ("a", 1), EQ("b", 2))
+    condition2 = EQ("c", 3)
+    filter_expr = OR(condition1, condition2)
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Vector Database Support
+
+Advanced filter expressions (using `FilterExpr` like `EQ()`, `AND()`, etc.) is currently only supported in PGVector.
+
+<Note>
+**What happens with unsupported FilterExpr:**
+
+When using `FilterExpr` with unsupported vector databases:
+- You'll see: `WARNING: Filter Expressions are not yet supported in [DatabaseName]. No filters will be applied.`
+- Search proceeds without filters (unfiltered results)
+- No errors thrown, but filtering is ignored
+
+**Workaround:** Use dictionary format instead:
+```python
+# Works with all vector databases
+knowledge_filters=[{"department": "hr", "year": 2024}]
+
+# Only works with PgVector currently
+knowledge_filters=[AND(EQ("department", "hr"), EQ("year", 2024))]
+```
+</Note>
+
+### Agentic Filtering Compatibility
+
+Advanced filter expressions (`FilterExpr`) are **not compatible with agentic filtering**, where agents dynamically construct filters based on conversation context.
+
+**For agentic filtering, use dictionary format:**
+
+```python
+# Works with agentic filtering (agent decides filters dynamically)
+knowledge_filters = [{"department": "hr", "document_type": "policy"}]
+
+# Does not work with agentic filtering (static, predefined logic)
+knowledge_filters = [AND(EQ("department", "hr"), EQ("document_type", "policy"))]
+```
+
+**When to use each approach:**
+
+| Approach | Use Case | Example |
+|----------|----------|---------|
+| **Dictionary format** | Agent dynamically chooses filters based on conversation | User mentions "HR policies" → agent adds `{"department": "hr"}` |
+| **Filter expressions** | You need complex, predetermined logic with full control | Always exclude drafts AND filter by multiple regions with OR logic |
+
+
+## Using Filters Through the API
+
+All the filter expressions shown in this guide can also be used through the Agent OS API. FilterExpressions serialize to JSON and are automatically reconstructed server-side, enabling the same powerful filtering capabilities over REST endpoints.
+
+```python
+import requests
+import json
+from agno.filters import EQ, GT, AND
+
+# Create filter expression
+filter_expr = AND(EQ("status", "published"), GT("views", 1000))
+
+# Serialize to JSON
+filter_json = json.dumps(filter_expr.to_dict())
+
+# Send through API
+response = requests.post(
+    "http://localhost:7777/agents/my-agent/runs",
+    data={
+        "message": "Find popular published articles",
+        "stream": "false",
+        "knowledge_filters": filter_json,
+    }
+)
+```
+
+<Note>
+FilterExpressions use a dictionary format with an `"op"` key (e.g., `{"op": "EQ", "key": "status", "value": "published"}`) which tells the API to deserialize them as FilterExpr objects. Regular dict filters without the `"op"` key continue to work for backward compatibility.
+</Note>
+
+For detailed examples, API-specific patterns, and troubleshooting, see the [API Filtering Guide](/agent-os/knowledge/filter-knowledge).
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="API Filtering Guide"
+    icon="code"
+    href="/agent-os/knowledge/filter-knowledge"
+  >
+    Use filter expressions through the Agent OS API
+  </Card>
+  <Card
+    title="Search & Retrieval"
+    icon="magnifying-glass"
+    href="/basics/knowledge/search-and-retrieval/overview"
+  >
+    Learn about different search strategies and optimization
+  </Card>
+  <Card
+    title="Content Database"
+    icon="database" 
+    href="/basics/knowledge/content-db"
+  >
+    Understand how content and metadata are stored and managed
+  </Card>
+  <Card
+    title="Knowledge Bases"
+    icon="book-open"
+    href="/basics/knowledge/knowledge-bases" 
+  >
+    Deep dive into knowledge base architecture and design
+  </Card>
+  <Card
+    title="Performance Tips"
+    icon="gauge"
+    href="/basics/knowledge/performance-tips"
+  >
+    Optimize your filtered searches for speed and accuracy
+  </Card>
+</CardGroup>

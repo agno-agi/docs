@@ -1,0 +1,212 @@
+---
+title: AgentOS Configuration
+sidebarTitle: Configuration
+description: Customize your AgentOS instance with custom configuration
+keywords: [agentos configuration, agentOS config, yaml configuration, quick prompts, display names, configuration file, database config]
+---
+
+AgentOS configuration allows you to customize your instance for different environments and deployment scenarios. 
+
+You can control which AI models are available globally and per-domain (for Evals), set custom display names for UI pages, define "quick prompts" for the chat interface, and configure per-database settings. This is particularly useful when managing multiple databases, deploying across different environments (development, staging, production), or building multi-tenant systems where each client needs distinct configurations.
+
+<Note>
+Configuring "Quick Prompts" can be particularly useful for improving the chat experience for users of your AgentOS.
+
+It changes the available options when your user creates a new session on the Chat Page.
+</Note>
+
+## Setting your configuration
+
+You can provide your AgentOS configuration in two different ways: with a configuration YAML file, or using the `AgentOSConfig` class.
+
+<Tip>
+See the full reference for the `AgentOSConfig` class [here](/reference/agent-os/configuration).
+</Tip>
+
+## Configuration YAML File
+
+1. Create a YAML file with your configuration. For example:
+
+```yaml
+# Configure quick prompts for the Chat interface (per agent)
+chat:
+  quick_prompts:
+    marketing-agent:
+      - "What can you do?"
+      - "How is our latest post working?"
+      - "Tell me about our active marketing campaigns"
+
+# Configure Memory page with custom display names
+memory:
+  display_name: "User Memory Store"
+  dbs:
+    - db_id: db-0001
+      tables: ["custom_memory_table"]  # Optional: specify custom table names
+      domain_config:
+        display_name: Main app user memories
+    - db_id: db-0002
+      domain_config:
+        display_name: Support flow user memories
+
+# Configure Knowledge page
+knowledge:
+  display_name: "Knowledge Base"
+  dbs:
+    - db_id: db-0001
+      domain_config:
+        display_name: Product documentation
+
+# Configure Session tracking
+session:
+  display_name: "User Sessions"
+  dbs:
+    - db_id: db-0001
+      domain_config:
+        display_name: Production sessions
+
+# Configure Evals page (supports both global and per-database available models)
+evals:
+  display_name: "Evaluations"
+  available_models:
+    - "openai:gpt-4"
+    - "anthropic:claude-sonnet-4"
+  dbs:
+    - db_id: db-0001
+      domain_config:
+        display_name: Production evals
+        available_models:
+          - "openai:gpt-4o-mini"
+```
+
+2. Pass the configuration to your AgentOS using the `config` parameter:
+
+```python
+from agno.os import AgentOS
+
+agent_os = AgentOS(
+    name="My AgentOS",
+    ...,
+    config="path/to/configuration.yaml"
+)
+```
+
+## `AgentOSConfig` Class
+
+You can also provide your configuration using the `AgentOSConfig` class:
+
+```python
+from agno.os import AgentOS
+from agno.os.config import (
+    AgentOSConfig,
+    ChatConfig,
+    DatabaseConfig,
+    EvalsConfig,
+    EvalsDomainConfig,
+    KnowledgeConfig,
+    KnowledgeDomainConfig,
+    MemoryConfig,
+    MemoryDomainConfig,
+    SessionConfig,
+    SessionDomainConfig,
+)
+
+agent_os = AgentOS(
+    ...,
+    config=AgentOSConfig(
+        chat=ChatConfig(
+            quick_prompts={
+                "marketing-agent": [
+                    "What can you do?",
+                    "How is our latest post working?",
+                    "Tell me about our active marketing campaigns",
+                ]
+            }
+        ),
+        memory=MemoryConfig(
+            display_name="User Memory Store",
+            dbs=[
+                DatabaseConfig(
+                    db_id=marketing_db.id,
+                    domain_config=MemoryDomainConfig(
+                        display_name="Main app user memories",
+                    ),
+                ),
+                DatabaseConfig(
+                    db_id=support_db.id,
+                    domain_config=MemoryDomainConfig(
+                        display_name="Support flow user memories",
+                    ),
+                )
+            ],
+        ),
+    ),
+)
+```
+
+## The /config endpoint
+
+The `/config` endpoint returns your complete AgentOS configuration as JSON. You could use this to inspect your AgentOS configuration that is served to the AgentOS Control Plane.
+
+The response includes:
+
+- **OS ID**: The ID of your AgentOS (automatically generated if not set)
+- **Description**: The description of your AgentOS
+- **Databases**: The list of IDs of the databases present in your AgentOS
+- **Agents**: The list of Agents available in your AgentOS
+- **Teams**: The list of Teams available in your AgentOS
+- **Workflows**: The list of Workflows available in your AgentOS
+- **Interfaces**: The list of Interfaces available in your AgentOS. E.g. WhatsApp, Slack, etc.
+- **Chat**: The configuration for the Chat page, which includes the list of quick prompts for each Agent, Team and Workflow in your AgentOS
+- **Session**: The configuration for the Session page of your AgentOS
+- **Metrics**: The configuration for the Metrics page of your AgentOS
+- **Memory**: The configuration for the Memory page of your AgentOS
+- **Knowledge**: The configuration for the Knowledge page of your AgentOS
+- **Evals**: The configuration for the Evals page of your AgentOS
+
+You will receive a JSON response with your configuration. Using the previous examples, you will receive:
+
+```json
+{
+	"os_id": "0001",
+	"name": "My AgentOS",
+	"description": "Your AgentOS",
+	"available_models": [
+		"openai:gpt-4",
+	],
+	"databases": [
+		"db-0001",
+		"db-0002"
+	],
+	"agents": [],
+	"chat": {
+		"quick_prompts": {
+			"marketing-agent": [
+				"What can you do?",
+				"How is our latest post working?",
+				"Tell me about our active marketing campaigns"
+			]
+		}
+	},
+	"memory": {
+		"dbs": [
+			{
+				"db_id": "db-0001",
+				"domain_config": {
+					"display_name": "Main app user memories"
+				}
+			},
+			{
+				"db_id": "db-0002",
+				"domain_config": {
+					"display_name": "Support flow user memories"
+				}
+			}
+		]
+	},
+	...
+}
+```
+
+<Tip>
+See the full schema for the `/config` endpoint [here](/reference-api/schema/core/get-os-configuration).
+</Tip>

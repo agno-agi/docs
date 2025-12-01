@@ -1,0 +1,92 @@
+---
+title: Custom Toolkits
+sidebarTitle: Custom Toolkits
+description: Learn how to write your own toolkits.
+---
+
+Many advanced use-cases will require writing custom Toolkits. A Toolkit is a collection of functions that can be added to an Agent. The functions in a Toolkit are designed to work together, share internal state and provide a better development experience.
+
+Here's the general flow:
+
+1. Create a class inheriting the `agno.tools.Toolkit` class.
+2. Add your functions to the class.
+3. Include all the functions in the `tools` argument to the `Toolkit` constructor.
+
+For example:
+
+```python shell_toolkit.py
+from typing import List
+
+from agno.agent import Agent
+from agno.tools import Toolkit
+from agno.utils.log import logger
+
+class ShellTools(Toolkit):
+    def __init__(self, working_directory: str = "/", **kwargs):
+        self.working_directory = working_directory
+
+        tools = [
+            self.run_shell_command,
+        ]
+
+        super().__init__(name="shell_tools", tools=tools, **kwargs)
+    
+    def list_files(self, directory: str):
+        """
+        List the files in the given directory.
+
+        Args:
+            directory (str): The directory to list the files from.
+        Returns:
+            str: The list of files in the directory.
+        """
+        import os
+
+        # List files relative to the toolkit's working_directory
+        path = os.path.join(self.working_directory, directory)
+        try:
+            files = os.listdir(path)
+            return "\n".join(files)
+        except Exception as e:
+            logger.warning(f"Failed to list files in {path}: {e}")
+            return f"Error: {e}"
+        return os.listdir(directory)
+
+    def run_shell_command(self, args: List[str], tail: int = 100) -> str:
+        """
+        Runs a shell command and returns the output or error.
+
+        Args:
+            args (List[str]): The command to run as a list of strings.
+            tail (int): The number of lines to return from the output.
+        Returns:
+            str: The output of the command.
+        """
+        import subprocess
+
+        logger.info(f"Running shell command: {args}")
+        try:
+            logger.info(f"Running shell command: {args}")
+            result = subprocess.run(args, capture_output=True, text=True, cwd=self.working_directory)
+            logger.debug(f"Result: {result}")
+            logger.debug(f"Return code: {result.returncode}")
+            if result.returncode != 0:
+                return f"Error: {result.stderr}"
+            # return only the last n lines of the output
+            return "\n".join(result.stdout.split("\n")[-tail:])
+        except Exception as e:
+            logger.warning(f"Failed to run shell command: {e}")
+            return f"Error: {e}"
+
+agent = Agent(tools=[ShellTools()], markdown=True)
+agent.print_response("List all the files in my home directory.")
+
+```
+
+<Tip>
+Important Tips:
+- Fill in the docstrings for each function with detailed descriptions of the function and its arguments.
+- Remember that this function is provided to the LLM and is not used elsewhere in code, so the docstring should make sense to an LLM and the name of the functions need to be descriptive.
+</Tip>
+
+See the [Toolkit Reference](/reference/tools/toolkit) for more details.

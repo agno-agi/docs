@@ -1,0 +1,152 @@
+---
+title: Dependencies with Agents
+sidebarTitle: Overview
+description: Learn how to use dependencies to add context to your agents.
+keywords: [agent dependencies, agent context, inject context]
+---
+
+**Dependencies** are a way to inject variables into your Agent context. The `dependencies` parameter accepts a dictionary containing functions or static variables that are automatically resolved before the agent runs.
+
+<Note>
+You can use dependencies to inject memories, dynamic few-shot examples, "retrieved" documents, etc.
+</Note>
+
+## Basic usage
+
+You can reference the dependencies in your agent instructions or user message.
+
+```python dependencies.py
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-5-mini"),
+    dependencies={"name": "John Doe"},
+    instructions="You are a story writer. The current user is {name}."
+)
+
+agent.print_response("Write a 5 second short story about {name}")
+```
+
+<Note>
+Dependencies can be static values or callable functions. When using functions, they are automatically executed at runtime before the agent runs, and their return values are used as the dependency values.
+</Note>
+
+<Tip>
+You can set `dependencies` and `add_dependencies_to_context` on `Agent` initialization, or pass them dynamically to the `run()`, `arun()`, `print_response()` and `aprint_response()` methods.
+</Tip>
+
+## Adding dependencies to context
+
+Set `add_dependencies_to_context=True` to add the entire list of dependencies to the user message. This way you don't have to manually add the dependencies to the instructions.
+
+```python dependencies_instructions.py
+import json
+
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+
+
+def get_user_profile() -> str:
+    """Fetch and return the user profile.
+
+    Returns:
+        JSON string containing user profile information
+    """
+    # Get the user profile from the database (this is a placeholder)
+    user_profile = {
+        "name": "John Doe",
+        "experience_level": "senior",
+    }
+
+    return json.dumps(user_profile, indent=4)
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-5-mini"),
+    dependencies={"user_profile": get_user_profile},
+    # We can add the entire dependencies dictionary to the user message
+    add_dependencies_to_context=True,
+    markdown=True,
+)
+
+agent.print_response(
+    "Get the user profile and tell me about their experience level.",
+    stream=True,
+)
+# Optionally pass the dependencies to the print_response method
+# agent.print_response(
+#     "Get the user profile and tell me about their experience level.",
+#     dependencies={"user_profile": get_user_profile},
+#     stream=True,
+# )
+```
+
+<Note>
+This adds the entire dependencies dictionary to the user message between `<additional context>` tags.
+The new user message looks like this:
+```
+Get the user profile and tell me about their experience level.                                                       
+                                                                                                                                               
+<additional context>                                                                                                                     
+{                                                                                                                                        
+"user_profile": "{\n    \"name\": \"John Doe\",\n    \"experience_level\": \"senior\"\n}"                                              
+}                                                                                                                                        
+</additional context>
+```
+</Note>
+
+## Access dependencies in tool calls and hooks
+
+You can access the dependencies in tool calls and hooks by using the `RunContext` object.
+
+```python
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIChat
+from agno.run import RunContext
+
+def get_user_profile(run_context: RunContext) -> str:
+    """Get the user profile."""
+    return run_context.dependencies["user_profiles"][run_context.user_id]
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-5-mini"),
+    db=SqliteDb(db_file="tmp/agents.db"),
+    tools=[get_user_profile],
+    dependencies={
+        "user_profiles": {
+            "user_1001": {"name": "John Doe", "experience_level": "senior"},
+            "user_1002": {"name": "Jane Doe", "experience_level": "junior"},
+        }
+    },
+)
+
+agent.print_response("Get the user profile for the current user and tell me about their experience level.", user_id="user_1001", stream=True)
+```
+
+See the [RunContext schema](/reference/run/run-context) for more information.
+
+## Learn more
+
+<CardGroup cols={2}>
+  <Card title="Dependencies Overview"
+  icon="book"
+  href="/basics/dependencies/overview">
+    Learn about dependencies in Agno
+  </Card>
+  <Card title="Add Dependencies on Run"
+  icon="play"
+  href="/basics/dependencies/agent/usage/add-dependencies-run">
+    Pass dependencies to agent.run()
+  </Card>
+  <Card title="Add Dependencies to Context"
+  icon="inbox"
+  href="/basics/dependencies/agent/usage/add-dependencies-to-context">
+    Auto-inject dependencies into messages
+  </Card>
+  <Card title="Access in Tools"
+  icon="wrench"
+  href="/basics/dependencies/agent/usage/access-dependencies-in-tool">
+    Use dependencies in custom tools
+  </Card>
+</CardGroup>
