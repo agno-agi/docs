@@ -1,0 +1,123 @@
+---
+title: Span
+sidebarTitle: Span
+---
+
+A `Span` represents a single operation within an agent execution. Spans form a parent-child hierarchy within a trace, allowing you to understand the execution flow.
+
+## Span Attributes
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `span_id` | `str` | Required | Unique span identifier |
+| `trace_id` | `str` | Required | Parent trace ID (groups related spans) |
+| `parent_span_id` | `Optional[str]` | `None` | Parent span ID (`None` for root spans) |
+| `name` | `str` | Required | Operation name (e.g., `OpenAIChat.invoke`, `get_weather`) |
+| `status_code` | `str` | Required | Status: `OK`, `ERROR`, or `UNSET` |
+| `status_message` | `Optional[str]` | `None` | Status message (typically error details) |
+| `duration_ms` | `int` | Required | Execution time in milliseconds |
+| `start_time` | `datetime` | Required | When the span started |
+| `end_time` | `datetime` | Required | When the span completed |
+| `attributes` | `Optional[dict]` | `None` | OpenTelemetry attributes (tokens, params, etc.) |
+| `events` | `Optional[list]` | `None` | Span events |
+| `kind` | `Optional[str]` | `None` | Span kind (e.g., `INTERNAL`, `CLIENT`) |
+
+## Common Span Names
+
+Spans are automatically created for various operations:
+
+| Span Name Pattern | Description |
+|-------------------|-------------|
+| `{AgentName}.run` | Agent execution |
+| `{TeamName}.run` | Team execution |
+| `{ModelName}.invoke` | LLM model call |
+| `{tool_name}` | Tool execution |
+
+## Attributes by Operation Type
+
+The `attributes` field contains OpenTelemetry semantic attributes that vary by operation:
+
+### LLM Spans
+
+| Attribute | Description |
+|-----------|-------------|
+| `llm.token_count.prompt` | Input token count |
+| `llm.token_count.completion` | Output token count |
+| `llm.model_name` | Model identifier |
+| `llm.provider` | Model provider name |
+
+### Tool Spans
+
+| Attribute | Description |
+|-----------|-------------|
+| `tool.name` | Tool function name |
+| `tool.parameters` | Tool input parameters (JSON) |
+
+## Methods
+
+### `to_dict()`
+
+Convert the span to a dictionary.
+
+```python
+span_dict = span.to_dict()
+```
+
+**Returns:** `dict`
+
+### `from_dict()`
+
+Create a span from a dictionary.
+
+```python
+span = Span.from_dict(data)
+```
+
+**Parameters:**
+- `data` (`dict`): Dictionary containing span data
+
+**Returns:** `Span`
+
+## Usage
+
+```python
+from agno.db.sqlite import SqliteDb
+
+db = SqliteDb(db_file="tmp/traces.db")
+
+# Get all spans for a trace
+spans = db.get_spans(trace_id=trace.trace_id)
+
+for span in spans:
+    print(f"Span: {span.name}")
+    print(f"  Duration: {span.duration_ms}ms")
+    print(f"  Status: {span.status_code}")
+    
+    # Check for token usage (LLM spans)
+    if span.attributes:
+        tokens = span.attributes.get("llm.token_count.completion")
+        if tokens:
+            print(f"  Tokens: {tokens}")
+```
+
+## Building a Span Tree
+
+```python
+def print_span_tree(spans, parent_id=None, indent=0):
+    """Recursively print spans as a tree."""
+    for span in spans:
+        if span.parent_span_id == parent_id:
+            prefix = "  " * indent + ("└─ " if indent > 0 else "")
+            print(f"{prefix}{span.name} ({span.duration_ms}ms)")
+            print_span_tree(spans, span.span_id, indent + 1)
+
+# Get spans and print tree
+spans = db.get_spans(trace_id=trace.trace_id)
+print_span_tree(spans)
+```
+
+## See Also
+
+- [Trace Reference](/reference/tracing/trace) - Complete execution trace
+- [DB Functions](/basics/tracing/db-functions) - Query functions for traces and spans
+
