@@ -172,6 +172,42 @@ A popular use case for hooks are Guardrails: built-in safeguards for your Agents
 
 You can learn more about them in the [Guardrails](/basics/guardrails/overview) section.
 
+## The `@hook` Decorator
+
+The `@hook` decorator allows you to configure individual hook behavior. Currently, it supports marking hooks to run in the background when used with [AgentOS](/agent-os/overview).
+
+### Background Execution
+
+By default, hooks are either executed synchronously or asynchronously, in an API context they still block the response until they complete. For hooks that perform non-critical tasks (logging, analytics, notifications), you can mark them to run in the background:
+
+```python
+from agno.hooks import hook
+
+@hook(run_in_background=True)
+async def send_notification(run_output, agent):
+    """This hook will run in the background without blocking the response."""
+    await send_email_notification(run_output.content)
+```
+
+<Warning>
+Background execution requires [AgentOS](/agent-os/overview). When running agents directly (not through AgentOS), hooks marked with `run_in_background=True` will still execute synchronously.
+</Warning>
+
+### When to Use Background Hooks
+
+Background hooks are ideal for:
+- **Logging and analytics**: Record metrics without affecting response time
+- **Notifications**: Send emails, Slack messages, or webhooks
+- **Async data storage**: Write to external databases or APIs
+- **Non-critical post-processing**: Tasks that don't affect the response
+
+<Note>
+Hooks running in background mode (both pre-hooks and post-hooks) cannot modify any of the hook parameters (like `run_input`, `run_output`, `run_context`, etc.) since the agent may process the request before the hook completes. 
+Use background mode primarily for post-hooks or for pre-hooks that only perform logging/monitoring. This means background mode is not suitable for Guardrails.
+</Note>
+
+For complete documentation on background task execution, see the [Background Tasks](/agent-os/background_tasks/overview) guide.
+
 ## Developer Resources
 
 - View [Agent Examples](/basics/hooks/usage/agent/input-transformation-pre-hook)

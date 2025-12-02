@@ -1,0 +1,117 @@
+---
+title: Background Hooks
+sidebarTitle: Background Hooks
+description: Run agent hooks as non-blocking background tasks in AgentOS
+keywords: [background tasks, hooks, pre-hooks, post-hooks, async, non-blocking, AgentOS]
+---
+
+When serving agents through AgentOS, you can configure pre-hooks and post-hooks to run as background tasks. This means the API response is returned immediately to the user while the hooks continue executing in the background.
+
+## Why Use Background Tasks?
+
+By default, hooks run synchronously and block the response:
+
+```
+Request → Pre-hooks → Agent Processing → Post-hooks → Response
+                                              ↑
+                                    User waits for completion
+```
+
+With background tasks enabled:
+
+```
+Request → Agent Processing → Response (immediate)
+                ↓
+        Pre-hooks + Post-hooks run in background
+```
+
+This is useful for:
+
+- **Analytics and logging**: Track usage patterns without affecting response time
+- **Notifications**: Send emails, Slack messages, or webhook calls
+- **External API calls**: Sync data with third-party services
+- **Non-critical data processing**: Tasks that don't affect the response
+
+## Enabling Background Tasks
+
+There are two ways to enable background execution for hooks:
+
+### Option 1: Global Setting via AgentOS
+
+Enable background execution for **all** hooks across all agents:
+
+```python
+from agno.os import AgentOS
+
+agent_os = AgentOS(
+    agents=[agent],
+    run_hooks_in_background=True,  # All hooks run in background
+)
+```
+
+See [Global Background Hooks Example](/agent-os/usage/background-hooks-global) for an example.
+
+### Option 2: Per-Hook Setting via Decorator
+
+Mark specific hooks to run in background using the `@hook` decorator:
+
+```python
+from agno.hooks import hook
+
+@hook(run_in_background=True)
+async def send_notification(run_output, agent):
+    """Only this hook runs in the background."""
+    await send_slack_message(run_output.content)
+```
+
+This approach gives you fine-grained control: critical hooks are executed during the run while non-critical hooks run in the background.
+
+See [Per-Hook Background Example](/agent-os/usage/background-hooks-decorator) for an example.
+
+## How It Works
+
+AgentOS uses FastAPI's [BackgroundTasks](https://fastapi.tiangolo.com/tutorial/background-tasks/) to schedule hooks for execution after the response is sent.
+
+<Note>
+Background tasks execute **sequentially** after the response is sent. If you have multiple background hooks, they run one after another.
+</Note>
+
+### Data Isolation
+
+When hooks run in the background, AgentOS automatically creates deep copies of:
+
+- `run_input` - The input to the agent run
+- `run_context` - The current run context
+- `run_output` - The output from the agent
+
+This prevents race conditions where background hooks might accidentally modify data that's being used elsewhere.
+
+
+<Warning>
+**Pre- and post-hooks in background mode cannot modify the request or response.** Any modifications to `run_input` or `run_output` won't affect the agent's processing. Only use background mode for pre- and post-hooks that perform logging or monitoring. This means background mode is not suitable for Guardrails.
+</Warning>
+
+<Warning>
+**Background tasks require AgentOS.** When running agents directly (not through AgentOS), the `@hook(run_in_background=True)` decorator has no effect - hooks will run synchronously.
+</Warning>
+
+### Error Handling
+
+Errors in background tasks don't affect the API response (since it's already been sent). Make sure to implement proper error handling and logging in your background hooks:
+
+```python
+@hook(run_in_background=True)
+async def safe_background_hook(run_output, agent):
+    try:
+        await external_api_call(run_output)
+    except Exception as e:
+        logger.error(f"Background hook failed: {e}")
+```
+
+## Developer Resources
+
+- View [Global Background Hooks Example](/agent-os/usage/background-hooks-global)
+- View [Per-Hook Background Example](/agent-os/usage/background-hooks-decorator)
+- View [Hooks Overview](/basics/hooks/overview)
+- View [Cookbook Examples](https://github.com/agno-agi/agno/tree/main/cookbook/agent_os/background_tasks)
+
