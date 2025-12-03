@@ -1,0 +1,124 @@
+---
+title: Scenario Testing
+---
+
+This example demonstrates how to use the Scenario testing library to test an agent with defined success and failure criteria. It shows how to implement automated testing for agent behavior and responses.
+
+<Steps>
+
+  <Step title="Create a Python file">
+    ```bash
+    touch scenario_testing.py
+    ```
+  </Step>
+
+
+  <Step title="Add the following code to your Python file">
+    ```python scenario_testing.py
+    """
+    This is an example that uses the [scenario](https://github.com/langwatch/scenario) testing library to test an agent.
+
+    Prerequisites:
+    - Install scenario: `uv add langwatch-scenario OR pip install langwatch-scenario`
+    """
+
+    import pytest
+    from scenario import Scenario, TestingAgent, scenario_cache
+
+    Scenario.configure(testing_agent=TestingAgent(model="openai/gpt-5-nano"))
+
+
+    @pytest.mark.agent_test
+    @pytest.mark.asyncio
+    async def test_vegetarian_recipe_agent():
+        agent = VegetarianRecipeAgent()
+
+        def vegetarian_recipe_agent(message, context):
+            # Call your agent here
+            return agent.run(message)
+
+        # Define the scenario
+        scenario = Scenario(
+            "User is looking for a dinner idea",
+            agent=vegetarian_recipe_agent,
+            success_criteria=[
+                "Recipe agent generates a vegetarian recipe",
+                "Recipe includes a list of ingredients",
+                "Recipe includes step-by-step cooking instructions",
+            ],
+            failure_criteria=[
+                "The recipe is not vegetarian or includes meat",
+                "The agent asks more than two follow-up questions",
+            ],
+        )
+
+        # Run the scenario and get results
+        result = await scenario.run()
+
+        # Assert for pytest to know whether the test passed
+        assert result.success
+
+
+    # Example agent implementation
+    from agno.agent import Agent  # noqa: E402
+    from agno.models.openai import OpenAIChat  # noqa: E402
+
+
+    class VegetarianRecipeAgent:
+        def __init__(self):
+            self.history = []
+
+        @scenario_cache()
+        def run(self, message: str):
+            self.history.append({"role": "user", "content": message})
+
+            agent = Agent(
+                model=OpenAIChat(id="gpt-5-mini"),
+                markdown=True,
+                instructions="You are a vegetarian recipe agent",
+            )
+
+            response = agent.run(message)
+            result = response.content
+            print(result)
+            self.history.append(result)
+
+            return {"message": result}
+    ```
+  </Step>
+
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install libraries">
+    ```bash
+    pip install -U agno openai scenario pytest
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+
+    <CodeGroup>
+
+    ```bash Mac/Linux
+      export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+      $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the script">
+    <CodeGroup>
+    ```bash Mac
+    pytest scenario_testing.py -v
+    ```
+
+    ```bash Windows
+    pytest scenario_testing.py -v
+    ```
+    </CodeGroup>
+  </Step>
+
+</Steps>

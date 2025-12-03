@@ -1,0 +1,73 @@
+---
+title: "@hook Decorator"
+sidebarTitle: "@hook Decorator"
+---
+
+The `@hook` decorator allows you to configure individual hook behavior. It can be applied to both pre-hooks and post-hooks.
+
+## Import
+
+```python
+from agno.hooks import hook
+```
+
+## Parameters
+
+| Parameter            | Type   | Default | Description                                                                                         |
+| -------------------- | ------ | ------- | --------------------------------------------------------------------------------------------------- |
+| `run_in_background`  | `bool` | `False` | When `True`, the hook runs as a background task after the response is sent. Requires [AgentOS](/agent-os/overview). |
+
+## Usage
+
+### Background Execution
+
+Mark a hook to run in the background without blocking the API response:
+
+```python
+from agno.hooks import hook
+
+@hook(run_in_background=True)
+async def log_analytics(run_output, agent):
+    """Runs after the response is sent to the user."""
+    await store_metrics(run_output)
+```
+
+### Combining with Regular Hooks
+
+You can mix background and regular hooks on the same agent:
+
+```python
+from agno.hooks import hook
+
+def validate_output(run_output, agent):
+    """Runs synchronously, blocks response until complete."""
+    if not run_output.content:
+        raise OutputCheckError("Empty response not allowed")
+
+@hook(run_in_background=True)
+async def send_notification(run_output, agent):
+    """Runs in background after response is sent."""
+    await notify_user(run_output.content)
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o"),
+    post_hooks=[validate_output, send_notification],
+)
+```
+
+## Important Notes
+
+<Warning>
+**Background execution requires AgentOS.** When running agents directly (not through AgentOS), hooks marked with `run_in_background=True` will execute synchronously.
+</Warning>
+
+<Warning>
+**Background hooks cannot modify data.** Since background hooks run after the response is sent, any modifications to `run_input`, `run_output`, or other parameters won't affect the agent's processing. Use background mode only for logging, analytics, or notifications.
+</Warning>
+
+## See Also
+
+- [Background Tasks Overview](/agent-os/background-tasks/overview)
+- [Pre-hooks Reference](/reference/hooks/pre-hooks)
+- [Post-hooks Reference](/reference/hooks/post-hooks)
+

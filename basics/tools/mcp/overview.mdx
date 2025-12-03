@@ -1,0 +1,256 @@
+---
+title: Model Context Protocol (MCP)
+sidebarTitle: Overview
+description: Learn how to use MCP with Agno to enable your agents to interact with external systems through a standardized interface.
+---
+
+The [Model Context Protocol (MCP)](https://modelcontextprotocol.io) enables Agents to interact with external systems through a standardized interface.
+You can connect your Agents to any MCP server, using Agno's MCP integration.
+
+Below is a simple example shows how to connect an Agent to the Agno MCP server:
+
+```python
+from agno.agent import Agent
+from agno.models.anthropic import Claude
+from agno.tools.mcp import MCPTools
+
+# Create the Agent
+agno_agent = Agent(
+    name="Agno Agent",
+    model=Claude(id="claude-sonnet-4-0"),
+    # Add the Agno MCP server to the Agent
+    tools=[MCPTools(transport="streamable-http", url="https://docs.agno.com/mcp")],
+)
+```
+
+## The Basic Flow
+
+<Steps>
+    <Step title="Find the MCP server you want to use">
+    You can use any working MCP server. To see some examples, you can check [this GitHub repository](https://github.com/modelcontextprotocol/servers), by the maintainers of the MCP themselves.
+    </Step>
+
+    <Step title="Initialize the MCP integration">
+    Initialize the `MCPTools` class and connect to the MCP server. 
+    The recommended way to define the MCP server is to use the `command` or `url` parameters. 
+    With `command`, you can pass the command used to run the MCP server you want. With `url`, you can pass the URL of the running MCP server you want to use.
+
+    For example, to connect to the Agno documentation MCP server, you can do the following:
+
+    ```python
+    from agno.tools.mcp import MCPTools
+
+    # Initialize and connect to the MCP server
+    mcp_tools = MCPTools(transport="streamable-http", url="https://docs.agno.com/mcp"))
+    await mcp_tools.connect()
+    ```
+
+    </Step>
+
+    <Step title="Provide the MCPTools to the Agent">
+    When initializing the Agent, pass the `MCPTools` instance in the `tools` parameter. Remember to close the connection when you're done.
+
+    The agent will now be ready to use the MCP server:
+
+    ```python
+    from agno.agent import Agent
+    from agno.models.openai import OpenAIChat
+    from agno.tools.mcp import MCPTools
+
+    # Initialize and connect to the MCP server
+    mcp_tools = MCPTools(url="https://docs.agno.com/mcp")
+    await mcp_tools.connect()
+
+    try:
+        # Setup and run the agent
+        agent = Agent(model=OpenAIChat(id="gpt-5-mini"), tools=[mcp_tools])
+        await agent.aprint_response("Tell me more about MCP support in Agno", stream=True)
+    finally:
+        # Always close the connection when done
+        await mcp_tools.close()
+    ```
+    </Step>
+
+</Steps>
+
+
+### Example: Filesystem Agent
+
+Here's a filesystem agent that uses the [Filesystem MCP server](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem) to explore and analyze files:
+
+```python filesystem_agent.py
+import asyncio
+from pathlib import Path
+from textwrap import dedent
+
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.tools.mcp import MCPTools
+
+
+async def run_agent(message: str) -> None:
+    """Run the filesystem agent with the given message."""
+
+    file_path = "<path to the directory you want to explore>"
+
+    # Initialize and connect to the MCP server to access the filesystem
+    mcp_tools = MCPTools(command=f"npx -y @modelcontextprotocol/server-filesystem {file_path}")
+    await mcp_tools.connect()
+
+    try:
+        agent = Agent(
+            model=OpenAIChat(id="gpt-5-mini"),
+            tools=[mcp_tools],
+            instructions=dedent("""\
+                You are a filesystem assistant. Help users explore files and directories.
+
+                - Navigate the filesystem to answer questions
+                - Use the list_allowed_directories tool to find directories that you can access
+                - Provide clear context about files you examine
+                - Use headings to organize your responses
+                - Be concise and focus on relevant information\
+            """),
+            markdown=True,
+        )
+
+        # Run the agent
+        await agent.aprint_response(message, stream=True)
+    finally:
+        # Always close the connection when done
+        await mcp_tools.close()
+
+
+# Example usage
+if __name__ == "__main__":
+    # Basic example - exploring project license
+    asyncio.run(run_agent("What is the license for this project?"))
+```
+
+## Connecting your MCP server
+
+### Using `connect()` and `close()`
+
+It is recommended to use the `connect()` and `close()` methods to manage the connection lifecycle of the MCP server.
+
+```python
+mcp_tools = MCPTools(command="uvx mcp-server-git")
+await mcp_tools.connect()
+```
+
+After you're done, you should close the connection to the MCP server.
+
+```python
+await mcp_tools.close()
+```
+
+<Check>
+This is the recommended way to manage the connection lifecycle of the MCP server when using `Agent` or `Team` instances.
+</Check>
+
+### Automatic Connection Management
+
+If you pass the `MCPTools` instance to the `Agent` or `Team` instances without first calling `connect()`, the connection will be managed automatically.
+
+For example:
+
+```python
+mcp_tools = MCPTools(command="uvx mcp-server-git")
+agent = Agent(model=OpenAIChat(id="gpt-5-mini"), tools=[mcp_tools])
+await agent.aprint_response("What is the license for this project?", stream=True)  # The connection is established and closed on each run.
+```
+
+<Note>
+Here the connection to the MCP server (in the case of hosted MCP servers) is established and closed on each run.
+Additionally the list of available tools is refreshed on each run.
+
+This has an impact on performance and is not recommended for production use.
+</Note>
+
+### Using Async Context Manager
+
+If you prefer, you can also use `MCPTools` or `MultiMCPTools` as async context managers for automatic resource cleanup:
+
+```python
+async with MCPTools(command="uvx mcp-server-git") as mcp_tools:
+    agent = Agent(model=OpenAIChat(id="gpt-5-mini"), tools=[mcp_tools])
+    await agent.aprint_response("What is the license for this project?", stream=True)
+```
+
+This pattern automatically handles connection and cleanup, but the explicit `.connect()` and `.close()` methods provide more control over connection lifecycle.
+
+### Automatic Connection Management in AgentOS
+
+When using MCPTools within AgentOS, the lifecycle is automatically managed. No need to manually connect or disconnect the `MCPTools` instance. This does not automatically refresh connections, you can use [`refresh_connection`](#connection-refresh) to do so.
+
+See the [AgentOS + MCPTools](/agent-os/mcp/tools) page for more details.
+
+<Check>
+This is the recommended way to manage the connection lifecycle of the MCP server when using `AgentOS`.
+</Check>
+
+## Connection Refresh
+
+You can set `refresh_connection` on the `MCPTools` and `MultiMCPTools` instances to refresh the connection to the MCP server on each run.
+
+```python
+mcp_tools = MCPTools(command="uvx mcp-server-git", refresh_connection=True)
+await mcp_tools.connect()
+
+agent = Agent(model=OpenAIChat(id="gpt-5-mini"), tools=[mcp_tools])
+await agent.aprint_response("What is the license for this project?", stream=True)  # The connection will be refreshed on each run.
+
+await mcp_tools.close()
+```
+
+### How it works
+
+- When you call the `connect()` method, a new session is established with the MCP server. If that server becomes unavailable, that connection is closed and a new one has to be established.
+- If you set `refresh_connection` to `True`, each time the agent is run the connection to the MCP server is checked and re-established if needed, and the list of available tools is then refreshed.
+- This is particularly useful for hosted MCP servers that are prone to restarts or that often change their schema or list of tools.
+- It is recommended to only use this when you manually manage the connection lifecycle of the MCP server, or when using agents/teams with [`MCPTools` in `AgentOS`](/agent-os/mcp/tools).
+
+## Transports
+
+Transports in the Model Context Protocol (MCP) define how messages are sent and received. The Agno integration supports the three existing types:
+- [stdio](https://modelcontextprotocol.io/docs/basics/transports#standard-input%2Foutput-stdio) -> See the [stdio transport documentation](/basics/tools/mcp/transports/stdio)
+- [Streamable HTTP](https://modelcontextprotocol.io/specification/draft/basic/transports#streamable-http) -> See the [streamable HTTP transport documentation](/basics/tools/mcp/transports/streamable_http)
+- [SSE](https://modelcontextprotocol.io/docs/basics/transports#server-sent-events-sse) -> See the [SSE transport documentation](/basics/tools/mcp/transports/sse)
+
+<Note>
+The stdio (standard input/output) transport is the default one in Agno's `MCPTools` and `MultiMCPTools`. 
+</Note>
+
+
+## Best Practices
+
+1. **Resource Cleanup**: Always close MCP connections when done to prevent resource leaks:
+```python
+mcp_tools = MCPTools(command="uvx mcp-server-git")
+await mcp_tools.connect()
+
+try:
+    # Your agent code here
+    pass
+finally:
+    await mcp_tools.close()
+```
+
+2. **Error Handling**: Always include proper error handling for MCP server connections and operations.
+
+3. **Clear Instructions**: Provide clear and specific instructions to your agent:
+
+```python
+instructions = """
+You are a filesystem assistant. Help users explore files and directories.
+- Navigate the filesystem to answer questions
+- Use the list_allowed_directories tool to find accessible directories
+- Provide clear context about files you examine
+- Be concise and focus on relevant information
+"""
+```
+
+## Developer Resources
+
+- See how to use MCP with AgentOS [here](/agent-os/mcp/tools).
+- Find examples of Agents that use MCP [here](/basics/tools/mcp/usage/airbnb).
+- Find a collection of MCP servers [here](https://github.com/modelcontextprotocol/servers).

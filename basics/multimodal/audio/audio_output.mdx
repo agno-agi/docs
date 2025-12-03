@@ -1,0 +1,86 @@
+---
+title: Audio Model Output
+sidebarTitle: Audio Model Output
+description: Learn how to use audio from models as output with Agno agents.
+keywords: [audio output, multimodal audio, audio response, generated audio, voice output]
+mode: wide
+---
+
+Similar to providing audio inputs, you can also get audio outputs from an agent. Take a look at the [compatibility matrix](/basics/models/compatibility#multimodal-support) to see which models support audio as output.
+
+## Audio response modality
+
+The following example demonstrates how some models can directly generate audio as part of their response.
+
+```python audio_agent.py
+from agno.agent import Agent, RunOutput
+from agno.models.openai import OpenAIChat
+from agno.utils.audio import write_audio_to_file
+
+agent = Agent(
+    model=OpenAIChat(
+        id="gpt-5-mini-audio-preview",
+        modalities=["text", "audio"],
+        audio={"voice": "alloy", "format": "wav"},
+    ),
+    markdown=True,
+)
+response: RunOutput = agent.run("Tell me a 5 second scary story")
+
+# Save the response audio to a file
+if response.response_audio is not None:
+    write_audio_to_file(
+        audio=agent.run_response.response_audio.content, filename="tmp/scary_story.wav"
+    )
+```
+
+<Check>
+  You can find the audio response in the `RunOutput.response_audio` object.
+</Check>
+
+<Note>
+There is a distinction between audio response modality and generated audio artifacts. When the model responds with audio, it is stored in the `RunOutput.response_audio` object. The generated audio artifacts are stored in the `RunOutput.audio` list.
+</Note>
+
+## Audio input and Audio output
+
+The following example demonstrates how to provide a combination of audio and text inputs to an agent and obtain both text and audio outputs.
+
+```python audio_agent.py
+import requests
+from agno.agent import Agent
+from agno.media import Audio
+from agno.models.openai import OpenAIChat
+from agno.utils.audio import write_audio_to_file
+from rich.pretty import pprint
+
+# Fetch the audio file and convert it to a base64 encoded string
+url = "https://openaiassets.blob.core.windows.net/$web/API/docs/audio/alloy.wav"
+response = requests.get(url)
+response.raise_for_status()
+wav_data = response.content
+
+agent = Agent(
+    model=OpenAIChat(
+        id="gpt-5-mini-audio-preview",
+        modalities=["text", "audio"],
+        audio={"voice": "sage", "format": "wav"},
+    ),
+    markdown=True,
+)
+
+run_response = agent.run(
+    "What's in these recording?",
+    audio=[Audio(content=wav_data, format="wav")],
+)
+
+if run_response.response_audio is not None:
+    pprint(run_response.content)
+    write_audio_to_file(
+        audio=run_response.response_audio.content, filename="tmp/result.wav"
+    )
+```
+
+## Developer Resources
+
+- View more [Examples](/basics/multimodal/audio/usage/audio-input-output)

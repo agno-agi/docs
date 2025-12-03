@@ -1,0 +1,89 @@
+---
+title: Firecrawl Reader Async
+---
+
+The **Firecrawl Reader** with asynchronous processing uses the Firecrawl API to scrape and crawl web content efficiently, converting it into documents for your knowledge base.
+
+## Code
+
+```python examples/basics/knowledge/readers/firecrawl_reader_async.py
+import os
+import asyncio
+
+from agno.agent import Agent
+from agno.knowledge.knowledge import Knowledge
+from agno.knowledge.reader.firecrawl_reader import FirecrawlReader
+from agno.vectordb.pgvector import PgVector
+
+api_key = os.getenv("FIRECRAWL_API_KEY")
+db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
+
+knowledge = Knowledge(
+    vector_db=PgVector(
+        table_name="firecrawl_documents",
+        db_url=db_url,
+    ),
+)
+
+agent = Agent(
+    knowledge=knowledge,
+    search_knowledge=True,
+)
+
+async def main():
+    # Add Firecrawl content to knowledge base
+    await knowledge.add_content_async(
+        url="https://github.com/agno-agi/agno",
+        reader=FirecrawlReader(
+            api_key=api_key,
+            mode="scrape",
+            chunk=True,
+            params={"formats": ["markdown"]},
+        ),
+    )
+
+    # Query the knowledge base
+    await agent.aprint_response(
+        "What is the main purpose of this repository?",
+        markdown=True,
+    )
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## Usage
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install libraries">
+    ```bash
+    pip install -U firecrawl-py sqlalchemy psycopg pgvector agno
+    ```
+  </Step>
+
+  <Step title="Set API Key">
+    ```bash
+    export FIRECRAWL_API_KEY="your-firecrawl-api-key"
+    ```
+  </Step>
+
+  <Snippet file="run-pgvector-step.mdx" />
+
+  <Step title="Run Agent">
+    <CodeGroup>
+    ```bash Mac
+    python examples/basics/knowledge/readers/firecrawl_reader_async.py
+    ```
+
+    ```bash Windows
+    python examples/basics/knowledge/readers/firecrawl_reader_async.py
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+## Params
+
+<Snippet file="firecrawl-reader-reference.mdx" />

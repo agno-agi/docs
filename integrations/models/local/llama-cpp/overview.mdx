@@ -1,0 +1,198 @@
+---
+title: LlamaCpp
+sidebarTitle: Overview
+description: Learn how to use LlamaCpp with Agno.
+---
+
+<Badge icon="code-branch" color="orange">
+    <Tooltip tip="Introduced in v2.0.7" cta="View release notes" href="https://github.com/agno-agi/agno/releases/tag/v2.0.7">v2.0.7</Tooltip>
+</Badge>
+
+Run Large Language Models locally with LLaMA CPP
+
+[LlamaCpp](https://github.com/ggerganov/llama.cpp) is a powerful tool for running large language models locally with efficient inference. LlamaCpp supports multiple open-source models and provides an OpenAI-compatible API server.
+
+LlamaCpp supports a wide variety of models in GGML format. You can find models on HuggingFace, including the default `ggml-org/gpt-oss-20b-GGUF` used in the examples below.
+
+We recommend experimenting to find the best model for your use case. Here are some popular model recommendations:
+
+### Google Gemma Models
+
+- `google/gemma-2b-it-GGUF` - Lightweight 2B parameter model, great for resource-constrained environments
+- `google/gemma-7b-it-GGUF` - Balanced 7B model with strong performance for general tasks
+- `ggml-org/gemma-3-1b-it-GGUF` - Latest Gemma 3 series, efficient for everyday use
+
+### Meta Llama Models
+
+- `Meta-Llama-3-8B-Instruct` - Popular 8B parameter model with excellent instruction following
+- `Meta-Llama-3.1-8B-Instruct` - Enhanced version with improved capabilities and 128K context
+- `Meta-Llama-3.2-3B-Instruct` - Compact 3B model for faster inference
+
+### Default Options
+
+- `ggml-org/gpt-oss-20b-GGUF` - Default model for general use cases
+- Models with different quantizations (Q4_K_M, Q8_0, etc.) for different speed/quality tradeoffs
+- Choose models based on your hardware constraints and performance requirements
+
+## Set up LlamaCpp
+
+### Install LlamaCpp
+
+First, install LlamaCpp following the [official installation guide](https://github.com/ggerganov/llama.cpp):
+
+```bash install
+git clone https://github.com/ggerganov/llama.cpp.git
+cd llama.cpp
+make
+```
+
+Or using package managers:
+
+```bash brew install
+# macOS with Homebrew
+brew install llama.cpp
+```
+
+### Download a Model
+
+Download a model in GGUF format following the [llama.cpp model download guide](https://github.com/ggerganov/llama.cpp#obtaining-and-using-the-facebook-llama-2-model). For the examples below, we use `ggml-org/gpt-oss-20b-GGUF`.
+
+### Start the Server
+
+Start the LlamaCpp server with your model:
+
+```bash start server
+llama-server -hf ggml-org/gpt-oss-20b-GGUF --ctx-size 0 --jinja -ub 2048 -b 2048
+```
+
+This starts the server at `http://127.0.0.1:8080` with an OpenAI Chat compatible endpoints
+
+## Example
+
+After starting the LlamaCpp server, use the `LlamaCpp` model class to access it:
+
+<CodeGroup>
+
+```python agent.py
+from agno.agent import Agent
+from agno.models.llama_cpp import LlamaCpp
+
+agent = Agent(
+    model=LlamaCpp(id="ggml-org/gpt-oss-20b-GGUF"),
+    markdown=True
+)
+
+# Print the response in the terminal
+agent.print_response("Share a 2 sentence horror story.")
+```
+
+</CodeGroup>
+
+## Configuration
+
+The `LlamaCpp` model supports customizing the server URL and model ID:
+
+<CodeGroup>
+
+```python custom_config.py
+from agno.agent import Agent
+from agno.models.llama_cpp import LlamaCpp
+
+# Custom server configuration
+agent = Agent(
+    model=LlamaCpp(
+        id="your-custom-model",
+        base_url="http://localhost:8080/v1",  # Custom server URL
+    ),
+    markdown=True
+)
+```
+
+</CodeGroup>
+
+<Note> View more examples [here](/integrations/models/local/llama-cpp/usage/basic). </Note>
+
+## Params
+
+| Parameter      | Type                       | Default                        | Description                                                                                                          |
+| -------------- | -------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `id`           | `str`                      | `"llama-cpp"`                  | The identifier for the Llama.cpp model                                                                              |
+| `name`         | `str`                      | `"LlamaCpp"`                   | The name of the model                                                                                                |
+| `provider`     | `str`                      | `"LlamaCpp"`                   | The provider of the model                                                                                            |
+| `base_url`     | `str`                      | `"http://localhost:8080"`      | The base URL for the Llama.cpp server                                                                               |
+| `api_key`      | `Optional[str]`            | `None`                         | The API key (usually not needed for local Llama.cpp)                                                               |
+| `chat_format`  | `Optional[str]`            | `None`                         | The chat format to use (e.g., "chatml", "llama-2", "alpaca")                                                      |
+| `n_ctx`        | `Optional[int]`            | `None`                         | The context window size                                                                                              |
+| `temperature`  | `Optional[float]`          | `None`                         | Sampling temperature (0.0 to 2.0)                                                                                   |
+| `top_p`        | `Optional[float]`          | `None`                         | Top-p sampling parameter                                                                                             |
+| `top_k`        | `Optional[int]`            | `None`                         | Top-k sampling parameter                                                                                             |
+
+`LlamaCpp` is a subclass of the [OpenAILike](/integrations/models/openai-like) class and has access to the same params.
+
+## Server Configuration
+
+The LlamaCpp server supports many configuration options:
+
+### Common Server Options
+
+- `--ctx-size`: Context size (0 for unlimited)
+- `--batch-size`, `-b`: Batch size for prompt processing
+- `--ubatch-size`, `-ub`: Physical batch size for prompt processing
+- `--threads`, `-t`: Number of threads to use
+- `--host`: IP address to listen on (default: 127.0.0.1)
+- `--port`: Port to listen on (default: 8080)
+
+### Model Options
+
+- `--model`, `-m`: Model file path
+- `--hf-repo`: HuggingFace model repository
+- `--jinja`: Use Jinja templating for chat formatting
+
+For a complete list of server options, run `llama-server --help`.
+
+## Performance Optimization
+
+### Hardware Acceleration
+
+LlamaCpp supports various acceleration backends:
+
+```bash gpu acceleration
+# NVIDIA GPU (CUDA)
+make LLAMA_CUDA=1
+
+# Apple Metal (macOS)
+make LLAMA_METAL=1
+
+# OpenCL
+make LLAMA_CLBLAST=1
+```
+
+### Model Quantization
+
+Use quantized models for better performance:
+
+- `Q4_K_M`: Balanced size and quality
+- `Q8_0`: Higher quality, larger size
+- `Q2_K`: Smallest size, lower quality
+
+## Troubleshooting
+
+### Server Connection Issues
+
+Ensure the LlamaCpp server is running and accessible:
+
+```bash check server
+curl http://127.0.0.1:8080/v1/models
+```
+
+### Model Loading Problems
+
+- Verify the model file exists and is in GGML format
+- Check available memory for large models
+- Ensure the model is compatible with your LlamaCpp version
+
+### Performance Issues
+
+- Adjust batch sizes (`-b`, `-ub`) based on your hardware
+- Use GPU acceleration if available
+- Consider using quantized models for faster inference

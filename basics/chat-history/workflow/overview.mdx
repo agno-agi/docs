@@ -1,0 +1,177 @@
+---
+title: Workflow History & Continuous Execution
+sidebarTitle: Overview
+description: Build conversational workflows that maintain context across multiple executions, creating truly intelligent and natural interactions.
+keywords: [workflow history, continuous execution, conversational workflows, multi-turn conversations]
+---
+
+<Badge icon="code-branch" color="orange">
+    <Tooltip tip="Introduced in v2.1.4" cta="View release notes" href="https://github.com/agno-agi/agno/releases/tag/v2.1.4">v2.1.4</Tooltip>
+</Badge>
+
+Workflow History enables your Agno workflows to remember and reference previous conversations, transforming isolated executions into continuous, context-aware interactions. 
+
+Instead of starting fresh each time, with Workflow History you can:
+
+- **Build on previous interactions** - Reference the context of past interactions
+- **Avoid repetitive questions** - Avoid requesting previously provided information   
+- **Maintain context continuity** - Create a conversational experience
+- **Learn from patterns** - Analyze historical data to make better decisions
+
+<Tip>
+Note that this feature is different from `add_history_to_context`. 
+This does not add the history of a particular agent or team, but the full workflow history to either all or some steps.
+</Tip>
+
+## How It Works
+
+When workflow history is enabled, previous messages are automatically injected into agent/team inputs as structured context:
+
+```xml
+<workflow_history_context>
+[run-1]
+input: Create content about AI in healthcare
+response: # AI in Healthcare: Transforming Patient Care...
+
+[run-2] 
+input: Make it more family-focused
+response: # AI in Family Healthcare: A Parent's Guide...
+</workflow_history_context>
+
+Your current input goes here...
+```
+
+Along with this, in using Steps with custom functions, you can access this history in the following ways:
+1. As a formatted context string as shown above
+2. In a structured format as well for more control
+```bash
+[
+    (<workflow input from run 1>)(<workflow output from run 1>),
+    (<workflow input from run 2>)(<workflow output from run 2>),
+]
+```
+
+<Note>
+A database is required to use Workflow history. Runs across different executions will be persisted there.
+</Note>
+
+Example-
+```python
+def custom_function(step_input: StepInput) -> StepOutput:
+    # Option 1: Structured data for analysis
+    history_tuples = step_input.get_workflow_history(num_runs=3)
+    for user_input, workflow_output in history_tuples:
+        # Process each conversation turn
+
+    # Option 2: Formatted context for agents  
+    context_string = step_input.get_workflow_history_context(num_runs=3)
+
+    return StepOutput(content="Analysis complete")
+```
+
+<Note>
+You can use these helper functions to access the history:
+- `step_input.get_workflow_history(num_runs=3)`
+- `step_input.get_workflow_history_context(num_runs=3)` 
+</Note>
+
+Refer to [StepInput](/reference/workflows/step_input) reference for more details.
+
+## Control Levels
+
+You can be specific about which Steps to add the history to:
+### Workflow-Level History
+Add workflow history to **all steps** in the workflow:
+
+```python
+workflow = Workflow(
+    steps=[research_step, analysis_step, writing_step],
+    add_workflow_history_to_steps=True  # All steps get history
+)
+```
+
+### Step-Level History
+Add workflow history to **specific steps** only:
+
+```python
+Step(
+    name="Content Creator", 
+    agent=content_agent,
+    add_workflow_history=True  # Only this step gets history
+)
+```
+
+<Note>
+You can also put `add_workflow_history=False` to disable history for a specific step.
+</Note>
+
+## Precedence Logic
+
+**Step-level settings always take precedence over workflow-level settings**:
+
+```python
+workflow = Workflow(
+    steps=[
+        Step("Research", agent=research_agent),                              # None → inherits workflow setting
+        Step("Analysis", agent=analysis_agent, add_workflow_history=False),  # False → overrides workflow  
+        Step("Writing", agent=writing_agent, add_workflow_history=True),     # True → overrides workflow
+    ],
+    add_workflow_history_to_steps=True  # Default for all steps
+)
+```
+
+### History Length Control
+
+**By default, all available history is included** (no limit). It is recommended to use a fixed history run limit to avoid bloating the LLM context window.
+
+You can control this at both levels:
+
+```python
+# Workflow-level: limit history for all steps
+workflow = Workflow(
+    add_workflow_history_to_steps=True,
+    num_history_runs=5  # Only last 5 runs
+)
+
+# Step-level: override for specific steps
+Step("Analysis", agent=analysis_agent, 
+     add_workflow_history=True,
+     num_history_runs=3  # Only last 3 runs for this step
+)
+```
+
+## Developer Resources
+<CardGroup cols={2}>
+  <Card
+    title="Single Step Continuous Execution"
+    icon="rotate"
+    iconType="duotone"
+    href="/basics/chat-history/workflow/usage/single-step-continuous-execution-workflow"
+  >
+    Single step workflow with continuous execution and history awareness.
+  </Card>
+  <Card
+    title="Workflow History for Steps"
+    icon="list-check"
+    iconType="duotone"
+    href="/basics/chat-history/workflow/usage/workflow-with-history-enabled-for-steps"
+  >
+    Add workflow history to all steps in the workflow.
+  </Card>
+  <Card
+    title="Enable History for Specific Step"
+    icon="toggle-on"
+    iconType="duotone"
+    href="/basics/chat-history/workflow/usage/enable-history-for-step"
+  >
+    Enable workflow history for a specific step only.
+  </Card>
+  <Card
+    title="Get History in Function"
+    icon="code"
+    iconType="duotone"
+    href="/basics/chat-history/workflow/usage/get-history-in-function"
+  >
+    Access workflow history in custom functions for analysis.
+  </Card>
+</CardGroup>

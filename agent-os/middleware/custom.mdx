@@ -1,0 +1,248 @@
+---
+title: Custom Middleware
+sidebarTitle: Custom
+description: Create custom middleware for rate limiting, logging, security, and monitoring in AgentOS
+keywords: [custom middleware, fastapi middleware, starlette middleware, rate limiting, request logging, security headers, middleware patterns, basehttpmiddleware, request monitoring, response headers, error handling, request id, cors middleware]
+---
+
+<Badge icon="code-branch" color="orange">
+    <Tooltip tip="Introduced in v2.1.0" cta="View release notes" href="https://github.com/agno-agi/agno/releases/tag/v2.1.0">v2.1.0</Tooltip>
+</Badge>
+
+Each middleware wraps your application to intercept requests and responses, enabling you to implement cross-cutting concerns like authentication, logging, and rate limiting. 
+
+AgentOS supports any [FastAPI/Starlette middleware](https://fastapi.tiangolo.com/tutorial/middleware/). You can create custom middleware for logging, rate limiting, monitoring, security, and more.
+
+## Creating Custom Middleware
+
+
+Middleware in AgentOS follows the FastAPI/Starlette pattern using `BaseHTTPMiddleware`. 
+
+See the following common middleware examples:
+<CodeGroup>
+    ```python Rate Limiting
+    """ Rate limiting middleware that limits requests per IP address """
+    import time
+    from collections import defaultdict, deque
+    from fastapi import Request
+    from fastapi.responses import JSONResponse
+    from starlette.middleware.base import BaseHTTPMiddleware
+
+    class RateLimitMiddleware(BaseHTTPMiddleware):
+        def __init__(self, app, requests_per_minute: int = 60):
+            super().__init__(app)
+            self.requests_per_minute = requests_per_minute
+            self.request_history = defaultdict(lambda: deque())
+
+        async def dispatch(self, request: Request, call_next):
+            client_ip = request.client.host if request.client else "unknown"
+            current_time = time.time()
+            
+            # Clean old requests
+            history = self.request_history[client_ip]
+            while history and current_time - history[0] > 60:
+                history.popleft()
+            
+            # Check rate limit
+            if len(history) >= self.requests_per_minute:
+                return JSONResponse(
+                    status_code=429,
+                    content={"detail": "Rate limit exceeded"}
+                )
+            
+            history.append(current_time)
+            return await call_next(request)
+    ```
+  
+    ```python Request Logging
+    """ Log all requests with timing and metadata """
+    import logging
+    import time
+    from fastapi import Request
+    from starlette.middleware.base import BaseHTTPMiddleware
+
+    class LoggingMiddleware(BaseHTTPMiddleware):
+        def __init__(self, app, log_body: bool = False):
+            super().__init__(app)
+            self.log_body = log_body
+            self.logger = logging.getLogger("request_logger")
+
+        async def dispatch(self, request: Request, call_next):
+            start_time = time.time()
+            client_ip = request.client.host if request.client else "unknown"
+            
+            # Log request
+            self.logger.info(f"Request: {request.method} {request.url.path} from {client_ip}")
+            
+            # Optionally log body
+            if self.log_body and request.method in ["POST", "PUT", "PATCH"]:
+                body = await request.body()
+                if body:
+                    self.logger.info(f"Body: {body.decode()}")
+            
+            response = await call_next(request)
+            
+            # Log response
+            duration = (time.time() - start_time) * 1000
+            self.logger.info(f"Response: {response.status_code} in {duration:.1f}ms")
+            
+            return response
+    ```
+  
+  ```python Security Headers
+    """ Add security headers to all responses """
+    from fastapi import Request
+    from starlette.middleware.base import BaseHTTPMiddleware
+
+    class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+        def __init__(self, app):
+            super().__init__(app)
+
+        async def dispatch(self, request: Request, call_next):
+            response = await call_next(request)
+            
+            # Add security headers
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["X-XSS-Protection"] = "1; mode=block"
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+            response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+            
+            return response
+    ```
+  
+  ```python Request ID
+    """ Add unique request IDs for tracing """
+    import uuid
+    from fastapi import Request
+    from starlette.middleware.base import BaseHTTPMiddleware
+
+    class RequestIDMiddleware(BaseHTTPMiddleware):
+        def __init__(self, app):
+            super().__init__(app)
+
+        async def dispatch(self, request: Request, call_next):
+            # Generate unique request ID
+            request_id = str(uuid.uuid4())
+            
+            # Store in request state
+            request.state.request_id = request_id
+            
+            # Process request
+            response = await call_next(request)
+            
+            # Add to response headers
+            response.headers["X-Request-ID"] = request_id
+            
+            return response
+    ```
+</CodeGroup>
+
+
+## Error Handling
+
+Handle exceptions in middleware:
+
+```python
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+class ErrorHandlingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        try:
+            response = await call_next(request)
+            return response
+        except Exception as e:
+            # Log the error
+            logger.error(f"Request failed: {e}")
+            
+            # Return error response as JSONResponse
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "Internal server error"}
+            )
+```
+
+<Note>
+Error responses must be returned as `JSONResponse` objects to ensure proper serialization and HTTP status codes.
+</Note>
+
+
+## Adding Middleware to AgentOS
+
+<Steps>
+  <Step title="Create AgentOS App">
+    ```python custom_middleware.py
+    from agno.os import AgentOS
+    from agno.agent import Agent
+    from agno.db.postgres import PostgresDb
+    from agno.models.openai import OpenAIChat
+
+    db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+    agent = Agent(
+        name="Basic Agent",
+        model=OpenAIChat(id="gpt-5-mini"),
+        db=db,
+    )
+    
+    agent_os = AgentOS(agents=[agent])
+    app = agent_os.get_app()
+    ```
+  </Step>
+  
+  <Step title="Add Custom Middleware">
+    ```python
+    # Add your custom middleware
+    app.add_middleware(
+        RateLimitMiddleware,
+        requests_per_minute=100
+    )
+    
+    app.add_middleware(
+        LoggingMiddleware,
+        log_body=False
+    )
+    
+    app.add_middleware(SecurityHeadersMiddleware)
+    ```
+  </Step>
+
+  <Step title="Serve your AgentOS">
+    ```python
+    if __name__ == "__main__":
+        agent_os.serve(app="custom_middleware:app", reload=True)
+    ```
+  </Step>
+</Steps>
+
+## Developer Resources
+
+<CardGroup cols={3}>
+  <Card
+    title="Custom Middleware"
+    icon="gear"
+    href="/agent-os/usage/middleware/custom-middleware"
+  >
+    Rate limiting and request logging middleware implementation.
+  </Card>
+  <Card
+    title="Custom FastAPI + JWT"
+    icon="code"
+    href="/agent-os/usage/middleware/custom-fastapi-jwt"
+  >
+    Custom FastAPI app with JWT middleware and AgentOS integration.
+  </Card>
+  <Card
+    title="FastAPI Middleware"
+    icon="book"
+    href="https://fastapi.tiangolo.com/tutorial/middleware/"
+  >
+    Official FastAPI middleware documentation and examples.
+  </Card>
+</CardGroup>

@@ -1,0 +1,81 @@
+---
+title: Stdio Transport
+sidebarTitle: Stdio
+---
+
+The stdio (standard input/output) transport is the default one in Agno's integration. It works best for local integrations.
+
+To use it, simply initialize the `MCPTools` class with the `command` argument.
+The command you want to pass is the one used to run the MCP server the agent will have access to.
+
+For example `uvx mcp-server-git`, which runs a [git MCP server](https://github.com/modelcontextprotocol/servers/tree/main/src/git):
+
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.tools.mcp import MCPTools
+
+# Initialize and connect to the MCP server
+# Can also use custom binaries: command="./my-mcp-server"
+mcp_tools = MCPTools(command="uvx mcp-server-git")
+await mcp_tools.connect()
+
+try:
+    agent = Agent(model=OpenAIChat(id="gpt-5-mini"), tools=[mcp_tools])
+    await agent.aprint_response("What is the license for this project?", stream=True)
+finally:
+    # Always close the connection when done
+    await mcp_tools.close()
+```
+
+
+You can also use multiple MCP servers at once, with the `MultiMCPTools` class. For example:
+
+
+```python
+import asyncio
+import os
+
+from agno.agent import Agent
+from agno.tools.mcp import MultiMCPTools
+
+
+async def run_agent(message: str) -> None:
+    """Run the Airbnb and Google Maps agent with the given message."""
+
+    env = {
+        **os.environ,
+        "GOOGLE_MAPS_API_KEY": os.getenv("GOOGLE_MAPS_API_KEY"),
+    }
+
+    # Initialize and connect to multiple MCP servers
+    mcp_tools = MultiMCPTools(
+        commands=[
+            "npx -y @openbnb/mcp-server-airbnb --ignore-robots-txt",
+            "npx -y @modelcontextprotocol/server-google-maps",
+        ],
+        env=env,
+    )
+    await mcp_tools.connect()
+
+    try:
+        agent = Agent(
+            tools=[mcp_tools],
+            markdown=True,
+        )
+
+        await agent.aprint_response(message, stream=True)
+    finally:
+        # Always close the connection when done
+        await mcp_tools.close()
+
+
+# Example usage
+if __name__ == "__main__":
+    # Pull request example
+    asyncio.run(
+        run_agent(
+            "What listings are available in Cape Town for 2 people for 3 nights from 1 to 4 August 2025?"
+        )
+    )
+```

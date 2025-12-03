@@ -1,0 +1,85 @@
+---
+title: Sessions
+sidebarTitle: Overview
+description: Learn about Agno Sessions and how they work.
+keywords: [sessions, session, session id, run]
+---
+
+When you call `Agent.run()`, it creates a single, stateless interaction. The agent responds to your message and that's it - no memory of what just happened.
+
+But most real applications need **conversations**, not just one-off exchanges. That's where sessions come in.
+
+## What's a Session?
+
+Think of a session as a conversation thread. It's a collection of back-and-forth interactions (called "runs") between a user and your Agent, Team, or Workflow. Each session gets a unique `session_id` that ties together all the runs, chat history, state, and metrics for that conversation.
+
+Here's the breakdown:
+
+- **Session**: A multi-turn conversation identified by a `session_id`. Contains all the runs, history, state, and metrics for that conversation thread.
+- **Run**: A single interaction within a session. Every time you call `Agent.run()`, `Team.run()`, or `Workflow.run()`, a new `run_id` is created. Think of it as one message-and-response pair in the conversation.
+
+<Note>
+Sessions require a database to store history and state. See [Session Storage](/basics/database/overview) for setup details.
+</Note>
+
+<Note>
+**Workflow sessions work differently:** Unlike agent and team sessions that store conversation messages, workflow sessions track complete pipeline executions (runs) with inputs and outputs. Because of these unique characteristics, we've created a [dedicated Workflow Sessions section](/basics/sessions/workflow-sessions) that covers workflow-specific features like run-based history, session state, and workflow agents.
+</Note>
+
+## Single-Run Example
+
+When you run an agent without specifying a `session_id`, Agno automatically generates both a `run_id` and a `session_id` for you:
+
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+
+agent = Agent(model=OpenAIChat(id="gpt-4o-mini"))
+
+# Run the agent - Agno auto-generates session_id and run_id
+response = agent.run("Tell me a 5 second short story about a robot")
+print(response.content)
+print(f"Run ID: {response.run_id}")        # Auto-generated UUID
+print(f"Session ID: {response.session_id}") # Auto-generated UUID
+```
+
+This creates a new session with a single run. But here's the catch: without a database configured, there's no persistence. The `session_id` exists for this single run, but you can't continue the conversation later because nothing is saved. To actually use sessions for multi-turn conversations, you need to configure a database (even an `InMemoryDb` works).
+
+## Multi-User Conversations
+
+In production, multiple users often talk to the same agent or team simultaneously. Sessions keep those threads isolated:
+
+- `user_id` distinguishes the person using your product.
+- `session_id` distinguishes conversation threads for that user (think "chat tabs").
+- Conversation history only flows into the run when you enable it via [`add_history_to_context`](/basics/chat-history/agent/overview#add-history-to-the-agent-context).
+
+For a full walkthrough that includes persistence, history, and per-user session IDs, follow the [Persisting Sessions guide](/basics/sessions/persisting-sessions#multi-user-sessions) or the [Chat History cookbook example](/examples/basics/agent/session/05_chat_history).
+
+## Learn more
+
+<CardGroup cols={3}>
+  <Card
+    title="Session Management"
+    icon="tag"
+    iconType="duotone"
+    href="/basics/sessions/session-management"
+  >
+    Learn how to manage session IDs, names, and optimize session performance for agents and teams.
+  </Card>
+  <Card
+    title="History Management"
+    icon="clock-rotate-left"
+    iconType="duotone"
+    href="/basics/sessions/history-management"
+  >
+    Control how conversation history is accessed and used in your sessions.
+  </Card>
+  <Card
+    title="Session Summaries"
+    icon="file-lines"
+    iconType="duotone"
+    href="/basics/sessions/session-summaries"
+  >
+    Automatically condense long conversations into concise summaries to reduce token costs.
+  </Card>
+</CardGroup>

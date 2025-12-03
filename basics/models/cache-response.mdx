@@ -1,0 +1,182 @@
+---
+title: Response Caching
+sidebarTitle: Response Caching
+description: Learn how to use response caching to improve performance and reduce costs during development and testing.
+keywords: [response caching, cache response, model cache, cost optimization]
+---
+
+<Badge icon="code-branch" color="orange">
+    <Tooltip tip="Introduced in v2.2.2" cta="View release notes" href="https://github.com/agno-agi/agno/releases/tag/v2.2.2">v2.2.2</Tooltip>
+</Badge>
+
+When you are developing or testing new features, it is typical to hit the model with the same query multiple times. In these cases you normally don't need the model to generate the same answer, and can cache the response to save on tokens.
+
+Response caching allows you to cache model responses locally, to avoid repeated API calls and reduce costs when the same query is made multiple times. 
+
+<Note>
+**Response Caching vs. Prompt Caching**: Response caching (covered here) caches the entire model response locally to avoid API calls. [Prompt caching](/basics/context/overview#context-caching) caches the system prompt on the model provider's side to reduce processing time and costs.
+</Note>
+
+## Why Use Response Caching?
+
+Response caching provides several benefits:
+
+- **Faster Development**: Avoid waiting for API responses during iterative development
+- **Cost Reduction**: Eliminate redundant API calls for identical queries
+- **Consistent Testing**: Ensure test cases receive the same responses across runs
+- **Offline Development**: Work with cached responses when API access is limited
+- **Rate Limit Management**: Reduce the number of API calls to stay within rate limits
+
+
+<Warning>
+Do not use response caching in production for dynamic content or when you need fresh, up-to-date responses for each query.
+</Warning>
+
+## How It Works
+
+When response caching is enabled:
+
+1. **Cache Key Generation**: A unique key is generated based on the request parameters (messages, response format, tools, etc.)
+2. **Cache Lookup**: Before making an API call, Agno checks if a cached response exists for that key
+3. **Cache Hit**: If found, the cached response is returned immediately
+4. **Cache Miss**: If not found, the API is called and the response is cached for future use
+5. **TTL Expiration**: Cached responses respect the configured time-to-live (TTL) and expire automatically
+
+The cache is stored on disk by default, persisting across sessions and program restarts.
+
+## Basic Usage
+
+Enable response caching by setting `cache_response=True` when initializing your model:
+
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+
+agent = Agent(
+    model=OpenAIChat(
+        id="gpt-4o",
+        cache_response=True  # Enable response caching
+    )
+)
+
+# First call - cache miss, calls the API
+response = agent.run("What is the capital of France?")
+
+# Second identical call - cache hit, returns cached response instantly
+response = agent.run("What is the capital of France?")
+```
+
+## Configuration Options
+
+### Cache Time-to-Live (TTL)
+
+Control how long responses remain cached using `cache_ttl` (in seconds):
+
+```python
+agent = Agent(
+    model=OpenAIChat(
+        id="gpt-4o",
+        cache_response=True,
+        cache_ttl=3600  # Cache expires after 1 hour
+    )
+)
+```
+
+If `cache_ttl` is not specified (or set to `None`), cached responses never expire.
+
+### Custom Cache Directory
+
+Store cached responses in a specific location using `cache_dir`:
+
+```python
+agent = Agent(
+    model=OpenAIChat(
+        id="gpt-4o",
+        cache_response=True,
+        cache_dir="./path/to/custom/cache"
+    )
+)
+```
+
+If not specified, Agno uses a default cache location of `~/.agno/cache/model_responses` in your home directory.
+
+
+## Usage with Agents
+
+Response caching is configured at the model level and works automatically with agents:
+
+```python
+from agno.agent import Agent
+from agno.models.anthropic import Claude
+
+# Create agent with cached responses
+agent = Agent(
+    model=Claude(
+        id="claude-sonnet-4-20250514",
+        cache_response=True,
+        cache_ttl=3600
+    ),
+    tools=[...],  # Your tools
+    instructions="Your instructions here"
+)
+
+# All agent runs will use caching
+agent.run("Your query")
+```
+
+## Usage with Teams
+
+Response caching works with `Team` as well. You can enable it on individual team members and the team leader model:
+
+```python
+from agno.agent import Agent
+from agno.team import Team
+from agno.models.openai import OpenAIChat
+
+# Create team members with cached responses
+researcher = Agent(
+    model=OpenAIChat(id="gpt-4o", cache_response=True),
+    name="Researcher",
+    role="Research information"
+)
+
+writer = Agent(
+    model=OpenAIChat(id="gpt-4o", cache_response=True),
+    name="Writer",
+    role="Write content"
+)
+
+team = Team(members=[researcher, writer], model=OpenAIChat(id="gpt-4o", cache_response=True))
+```
+
+Each team member maintains its own cache based on their specific queries.
+
+## Caching with Streaming
+
+Responses can also be cached when using streaming. On cache hits, the entire response is returned as one chunk.
+
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+
+agent = Agent(model=OpenAIChat(id="gpt-4o", cache_response=True))
+
+for i in range(1, 3):
+    print(f"\n{'=' * 60}")
+    print(
+        f"Run {i}"
+    )
+    print(f"{'=' * 60}\n")
+    agent.print_response("Write me a short story about a cat that can talk and solve problems.", stream=True)
+```
+
+## Examples
+
+For complete working examples, see:
+- [OpenAI Response Caching Example](/integrations/models/native/openai/completion/usage/cache-response)
+- [Anthropic Response Caching Example](/integrations/models/native/anthropic/usage/cache-response)
+
+## API Reference
+
+For detailed parameter documentation, see:
+- [Model Base Class Reference](/reference/models/model)

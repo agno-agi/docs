@@ -1,0 +1,138 @@
+---
+title: Building Teams
+sidebarTitle: Building Teams
+description: Learn how to build Teams with Agno.
+keywords: [teams, building teams, building teams with agno, building teams with agno agents]
+---
+
+To build effective teams, start simple -- just a model, team members, and instructions. Once that works, add more functionality as needed.
+
+Here's a minimal example of a team with specialized agents:
+
+```python news_weather_team.py
+from agno.team import Team
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.tools.duckduckgo import DuckDuckGoTools
+
+# Create specialized agents
+news_agent = Agent(
+    id="news-agent",
+    name="News Agent",
+    role="Get the latest news and provide summaries",
+    tools=[DuckDuckGoTools()]
+)
+
+weather_agent = Agent(
+    id="weather-agent",
+    name="Weather Agent",
+    role="Get weather information and forecasts",
+    tools=[DuckDuckGoTools()]
+)
+
+# Create the team
+team = Team(
+    name="News and Weather Team",
+    members=[news_agent, weather_agent],
+    model=OpenAIChat(id="gpt-4o"),
+    instructions="Coordinate with team members to provide comprehensive information. Delegate tasks based on the user's request."
+)
+
+team.print_response("What's the latest news and weather in Tokyo?", stream=True)
+```
+
+<Tip>
+  It is recommended to specify the `id`, `name` and the `role` fields of each team member, for better identification by the team leader when delegating requests.
+  The `id` is used to identify the team member in the team and in the team leader's context.
+</Tip>
+
+<Note>
+Team members inherit the `model` parameter from their parent `Team` if not specified. Members with an explicitly assigned `model` retain their own. In nested team structures, inheritance always happens from the direct parent.
+Teams without a defined model default to OpenAI `gpt-4o`.
+
+The `reasoning_model`, `parser_model`, and `output_model` must be explicitly defined for each team or team member.
+
+See the [model inheritance example](/basics/teams/usage/other/model-inheritance).
+</Note>
+
+## Run your Team
+
+When running your team, use the `Team.print_response()` method to print the response in the terminal.
+
+You can pass `show_members_responses=True` to also print the responses from the team members.
+
+For example:
+```python
+team.print_response("What's the latest news and weather in Tokyo?")
+```
+
+This is only for development purposes and not recommended for production use. In production, use the `Team.run()` or `Team.arun()` methods. 
+
+For example:
+
+```python
+from typing import Iterator
+from agno.team import Team
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.tools.duckduckgo import DuckDuckGoTools
+from agno.utils.pprint import pprint_run_response
+
+news_agent = Agent(name="News Agent", role="Get the latest news", tools=[DuckDuckGoTools()])
+weather_agent = Agent(name="Weather Agent", role="Get the weather for the next 7 days", tools=[DuckDuckGoTools()])
+
+team = Team(
+    name="News and Weather Team",
+    members=[news_agent, weather_agent],
+    model=OpenAIChat(id="gpt-4o")
+)
+
+# Run team and return the response as a variable
+response = team.run("What is the weather in Tokyo?")
+# Print the response
+print(response.content)
+
+################ STREAM RESPONSE #################
+stream = team.run("What is the weather in Tokyo?", stream=True)
+for chunk in stream:
+    print(chunk.content, end="", flush=True)
+
+# ################ STREAM AND PRETTY PRINT #################
+stream = team.run("What is the weather in Tokyo?", stream=True)
+pprint_run_response(stream, markdown=True)
+```
+
+### Modify what is show on the terminal
+
+When using `print_response`, only the team tool calls (typically all of the delegation to members) are printed. If you want to print the responses from the members, you can use the `show_members_responses` parameter.
+```python
+...
+
+team = Team(
+    name="News and Weather Team", 
+    members=[news_agent, weather_agent],
+    model=OpenAIChat(id="gpt-4o")
+    show_members_responses=True,
+)
+
+team.print_response("What is the weather in Tokyo?")
+```
+
+## The Passthrough-Team Pattern
+
+It is a common pattern to have a team that decides which member to delegate the request to, and then passes the request to the team member without any modification, and also applies no processing to the response before returning it to the user. I.e. this team is a "passthrough" team (or "router" team).
+
+In that case the team leader is effectively bypassed and all communication is directly with a team member. See the [Passthrough Teams](/basics/teams/delegation#passthrough-teams) section for more details.
+
+## Next Steps
+
+Next, continue building your team by adding functionality as needed. Common questions:
+
+- **How do I run my team?** -> See the [running teams](/basics/teams/running-teams) documentation.
+- **How do I add history to my team?** -> See the [chat history](/basics/chat-history/team/overview) documentation.
+- **How do I manage sessions?** -> See the [sessions](/basics/sessions/overview) documentation.
+- **How do I manage input and capture output?** -> See the [input and output](/basics/input-output/overview) documentation.
+- **How do I manage the team context?** -> See the [context engineering](/basics/context/team) documentation.
+- **How do I add knowledge?** -> See the [knowledge](/basics/knowledge/overview) documentation.
+- **How do I add guardrails?** -> See the [guardrails](/basics/guardrails/overview) documentation.
+- **How do I cache responses during development?** -> See the [response caching](/basics/models/cache-response) documentation.

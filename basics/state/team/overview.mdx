@@ -1,0 +1,357 @@
+---
+title: Team Session State
+sidebarTitle: Overview
+description: Share and coordinate state across multiple agents in a team
+keywords: team state, shared state, multi-agent state, team coordination, agent collaboration, session state
+---
+
+Team Session State enables sharing and updating state data across teams of agents. Teams often need to coordinate on shared information.
+
+<Check>
+Shared state propagates through nested team structures as well
+</Check>
+
+## How to use Shared State
+
+You can set the `session_state` parameter on `Team` to set initial session state data.
+This state data will be shared between the team leader and its members.
+
+This state will be available to all team members and is synchronized between them.
+
+For example:
+
+```python
+team = Team(
+    members=[agent1, agent2, agent3],
+    session_state={"shopping_list": []},
+)
+```
+
+Members can access the shared state using `run_context.session_state` in tools.
+
+For example:
+
+```python
+from agno.run import RunContext
+
+def add_item(run_context: RunContext, item: str) -> str:
+    """Add an item to the shopping list and return confirmation.
+
+    Args:
+        item (str): The item to add to the shopping list.
+    """
+    # Add the item if it's not already in the list
+    if item.lower() not in [
+        i.lower() for i in run_context.session_state["shopping_list"]
+    ]:
+        run_context.session_state["shopping_list"].append(item)
+        return f"Added '{item}' to the shopping list"
+    else:
+        return f"'{item}' is already in the shopping list"
+```
+
+<Note>
+The `run_context` object is automatically passed to the tool as an argument. Use it to access the session state.
+Any updates to `run_context.session_state` will be automatically persisted in the database and reflected in the shared state.
+See the [RunContext schema](/reference/run/run-context) for more information.
+</Note>
+
+### Example
+
+Here's a simple example of a team managing a shared shopping list:
+
+
+```python team_session_state.py
+from agno.models.openai import OpenAIChat
+from agno.agent import Agent
+from agno.team import Team
+from agno.run import RunContext
+
+
+# Define tools that work with shared team state
+def add_item(run_context: RunContext, item: str) -> str:
+    """Add an item to the shopping list."""
+    if not run_context.session_state:
+        run_context.session_state = {}
+
+    if item.lower() not in [
+        i.lower() for i in run_context.session_state["shopping_list"]
+    ]:
+        run_context.session_state["shopping_list"].append(item)
+        return f"Added '{item}' to the shopping list"
+    else:
+        return f"'{item}' is already in the shopping list"
+
+
+def remove_item(run_context: RunContext, item: str) -> str:
+    """Remove an item from the shopping list."""
+    if not run_context.session_state:
+        run_context.session_state = {}
+
+    for i, list_item in enumerate(run_context.session_state["shopping_list"]):
+        if list_item.lower() == item.lower():
+            run_context.session_state["shopping_list"].pop(i)
+            return f"Removed '{list_item}' from the shopping list"
+
+    return f"'{item}' was not found in the shopping list"
+
+
+# Create an agent that manages the shopping list
+shopping_agent = Agent(
+    name="Shopping List Agent",
+    role="Manage the shopping list",
+    model=OpenAIChat(id="gpt-5-mini"),
+    tools=[add_item, remove_item],
+)
+
+
+# Define team-level tools
+def list_items(run_context: RunContext) -> str:
+    """List all items in the shopping list."""
+    if not run_context.session_state:
+        run_context.session_state = {}
+
+    # Access shared state (not private state)
+    shopping_list = run_context.session_state["shopping_list"]
+
+    if not shopping_list:
+        return "The shopping list is empty."
+
+    items_text = "\n".join([f"- {item}" for item in shopping_list])
+    return f"Current shopping list:\n{items_text}"
+
+
+def add_chore(run_context: RunContext, chore: str) -> str:
+    """Add a completed chore to the team's private log."""
+    if not run_context.session_state:
+        run_context.session_state = {}
+
+    # Access team's private state
+    if "chores" not in run_context.session_state:
+        run_context.session_state["chores"] = []
+
+    run_context.session_state["chores"].append(chore)
+    return f"Logged chore: {chore}"
+
+
+# Create a team with both shared and private state
+shopping_team = Team(
+    name="Shopping Team",
+    model=OpenAIChat(id="gpt-5-mini"),
+    members=[shopping_agent],
+    session_state={"shopping_list": [], "chores": []},
+    tools=[list_items, add_chore],
+    instructions=[
+        "You manage a shopping list.",
+        "Forward add/remove requests to the Shopping List Agent.",
+        "Use list_items to show the current list.",
+        "Log completed tasks using add_chore.",
+    ],
+)
+
+# Example usage
+shopping_team.print_response("Add milk, eggs, and bread", stream=True)
+print(f"Shared state: {shopping_team.get_session_state()}")
+
+shopping_team.print_response("What's on my list?", stream=True)
+
+shopping_team.print_response("I got the eggs", stream=True)
+print(f"Shared state: {shopping_team.get_session_state()}")
+```
+
+<Tip>
+Notice how shared tools can access and update `run_context.session_state`.
+This allows state data to propagate and persist across the entire team — even for subteams within the team.
+</Tip>
+
+See a full example [here](/basics/state/team/usage/share-member-interactions).
+
+
+## Agentic Session State
+
+Agno provides a way to allow the team and team members to automatically update the shared session state.
+
+Simply set the `enable_agentic_state` parameter to `True`.
+
+```python agentic_session_state.py
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIChat
+from agno.team.team import Team
+
+db = SqliteDb(db_file="tmp/agents.db")
+shopping_agent = Agent(
+    name="Shopping List Agent",
+    role="Manage the shopping list",
+    model=OpenAIChat(id="gpt-5-mini"),
+    db=db,
+    add_session_state_to_context=True,  # Required so the agent is aware of the session state
+    enable_agentic_state=True,
+)
+
+team = Team(
+    members=[shopping_agent],
+    session_state={"shopping_list": []},
+    db=db,
+    add_session_state_to_context=True,  # Required so the team is aware of the session state
+    enable_agentic_state=True,
+    description="You are a team that manages a shopping list and chores",
+    show_members_responses=True,
+)
+
+
+team.print_response("Add milk, eggs, and bread to the shopping list")
+
+team.print_response("I picked up the eggs, now what's on my list?")
+
+print(f"Session state: {team.get_session_state()}")
+```
+
+<Tip>
+Don't forget to set `add_session_state_to_context=True` to make the session state available to the team's context.
+</Tip>
+
+
+## Using state in instructions
+
+You can reference variables from the session state in your instructions.
+
+<Tip>
+Don't use the f-string syntax in the instructions. Directly use the `{key}` syntax, Agno substitutes the values for you.
+</Tip>
+
+```python state_in_instructions.py
+from agno.team.team import Team
+
+team = Team(
+    members=[],
+    # Initialize the session state with a variable
+    session_state={"user_name": "John"},
+    instructions="Users name is {user_name}",
+    markdown=True,
+)
+
+team.print_response("What is my name?", stream=True)
+```
+
+## Changing state on run
+
+When you pass `session_id` to the team on `team.run()`, it will switch to the session with the given `session_id` and load any state that was set on that session.
+
+This is useful when you want to continue a session for a specific user.
+
+```python changing_state_on_run.py
+from agno.team.team import Team
+from agno.models.openai import OpenAIChat
+from agno.db.in_memory import InMemoryDb
+
+team = Team(
+    db=InMemoryDb(),
+    model=OpenAIChat(id="gpt-5-mini"),
+    members=[],
+    instructions="Users name is {user_name} and age is {age}",
+)
+
+# Sets the session state for the session with the id "user_1_session_1"
+team.print_response("What is my name?", session_id="user_1_session_1", user_id="user_1", session_state={"user_name": "John", "age": 30})
+
+# Will load the session state from the session with the id "user_1_session_1"
+team.print_response("How old am I?", session_id="user_1_session_1", user_id="user_1")
+
+# Sets the session state for the session with the id "user_2_session_1"
+team.print_response("What is my name?", session_id="user_2_session_1", user_id="user_2", session_state={"user_name": "Jane", "age": 25})
+
+# Will load the session state from the session with the id "user_2_session_1"
+team.print_response("How old am I?", session_id="user_2_session_1", user_id="user_2")
+```
+
+## Overwriting the state in the db
+
+By default, if you pass `session_state` to the run methods, this new state will be merged with the `session_state` in the db.
+
+You can change that behavior if you want to overwrite the `session_state` in the db:
+
+```python overwriting_session_state_in_db.py
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIChat
+
+# Create an Agent that maintains state
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    db=SqliteDb(db_file="tmp/agents.db"),
+    markdown=True,
+    # Set the default session_state. The values set here won't be overwritten.
+    session_state={},
+    # Adding the session_state to context for the agent to easily access it
+    add_session_state_to_context=True,
+    # Allow overwriting the stored session state with the session state provided in the run
+    overwrite_db_session_state=True,
+)
+
+# Let's run the agent providing a session_state. This session_state will be stored in the database.
+agent.print_response(
+    "Can you tell me what's in your session_state?",
+    session_state={"shopping_list": ["Potatoes"]},
+    stream=True,
+)
+print(f"Stored session state: {agent.get_session_state()}")
+
+# Now if we pass a new session_state, it will overwrite the stored session_state.
+agent.print_response(
+    "Can you tell me what is in your session_state?",
+    session_state={"secret_number": 43},
+    stream=True,
+)
+print(f"Stored session state: {agent.get_session_state()}")
+```
+
+## Team Member Interactions
+
+Agent Teams can share interactions between members, allowing agents to learn from each other's outputs:
+
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.team.team import Team
+
+from agno.db.sqlite import SqliteDb
+from agno.tools.duckduckgo import DuckDuckGoTools
+
+db = SqliteDb(db_file="tmp/agents.db")
+
+web_research_agent = Agent(
+    name="Web Research Agent",
+    model=OpenAIChat(id="gpt-5-mini"),
+    tools=[DuckDuckGoTools()],
+    instructions="You are a web research agent that can answer questions from the web.",
+)
+
+report_agent = Agent(
+    name="Report Agent",
+    model=OpenAIChat(id="gpt-5-mini"),
+    instructions="You are a report agent that can write a report from the web research.",
+)
+
+team = Team(
+    model=OpenAIChat(id="gpt-5-mini"),
+    db=db,
+    members=[web_research_agent, report_agent],
+    share_member_interactions=True,
+    instructions=[
+        "You are a team of agents that can research the web and write a report.",
+        "First, research the web for information about the topic.",
+        "Then, use your report agent to write a report from the web research.",
+    ],
+    show_members_responses=True,
+    debug_mode=True,
+)
+
+team.print_response("How are LEDs made?")
+```
+
+
+## Developer Resources
+
+- View the [Team schema](/reference/teams/team)
+- View the [RunContext schema](/reference/run/run-context)

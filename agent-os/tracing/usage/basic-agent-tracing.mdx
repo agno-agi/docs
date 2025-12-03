@@ -1,0 +1,86 @@
+---
+title: Basic Agent Tracing
+description: Learn how to trace your agents with Agno in AgentOS
+sidebarTitle: Basic Agent Tracing
+keywords: [tracing, observability, agents, agno, opentelemetry]
+mode: wide
+---
+
+This example shows how to enable tracing for an agent in AgentOS. Simply set `tracing=True` and all agent runs, model calls, and tool executions are automatically captured.
+
+<Steps>
+
+  <Step title="Create a Python file">
+    ```bash
+    touch basic_agent_tracing.py
+    ```
+  </Step>
+
+  <Step title="Add the following code to your Python file">
+    ```python basic_agent_tracing.py
+    from agno.agent import Agent
+    from agno.db.sqlite import SqliteDb
+    from agno.models.openai import OpenAIChat
+    from agno.os import AgentOS
+    from agno.tools.hackernews import HackerNewsTools
+
+    # Set up database
+    db = SqliteDb(db_file="tmp/traces.db")
+
+    agent = Agent(
+        name="HackerNews Agent",
+        model=OpenAIChat(id="gpt-5-mini"),
+        tools=[HackerNewsTools()],
+        instructions="You are a hacker news agent. Answer questions concisely.",
+        markdown=True,
+        db=db,
+    )
+
+    # Setup AgentOS with tracing enabled
+    agent_os = AgentOS(
+        description="Example app for tracing HackerNews",
+        agents=[agent],
+        tracing=True,  # Enable tracing for all agents
+    )
+    app = agent_os.get_app()
+
+    if __name__ == "__main__":
+        agent_os.serve(app="basic_agent_tracing:app", reload=True)
+    ```
+  </Step>
+
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install libraries">
+    ```bash
+    pip install -U openai agno opentelemetry-api opentelemetry-sdk openinference-instrumentation-agno
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run AgentOS">
+    <CodeGroup>
+    ```bash Mac
+    python basic_agent_tracing.py
+    ```
+
+    ```bash Windows
+    python basic_agent_tracing.py
+    ```
+    </CodeGroup>
+
+    Your AgentOS will be available at `http://localhost:7777`. View traces in the AgentOS dashboard.
+  </Step>
+
+</Steps>

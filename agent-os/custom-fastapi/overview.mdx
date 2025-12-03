@@ -1,0 +1,237 @@
+---
+title: Bring Your Own FastAPI App
+sidebarTitle: Overview
+description: Learn how to use your own FastAPI app in your AgentOS
+keywords: [fastapi, custom routes, agentos integration, middleware, asgi server, uvicorn, custom app, fastapi app]
+---
+
+AgentOS is built on FastAPI, which means you can easily integrate your existing FastAPI applications or add custom routes and routers to extend your agent's capabilities.
+
+## Quick Start
+
+The simplest way to bring your own FastAPI app is to pass it to the AgentOS constructor:
+
+```python
+from fastapi import FastAPI
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.os import AgentOS
+
+# Create your custom FastAPI app
+app = FastAPI(title="My Custom App")
+
+# Add your custom routes
+@app.get("/status")
+async def status_check():
+    return {"status": "healthy"}
+
+# Pass your app to AgentOS
+agent_os = AgentOS(
+    agents=[Agent(id="basic-agent", model=OpenAIChat(id="gpt-5-mini"))],
+    base_app=app  # Your custom FastAPI app
+)
+
+# Get the combined app with both AgentOS and your routes
+app = agent_os.get_app()
+```
+
+<Tip>
+Your custom FastAPI app can have its own middleware and dependencies.
+
+If you have your own CORS middleware, it will be updated to include the AgentOS allowed origins, to make the AgentOS instance compatible with the Control Plane.
+Otherwise, the appropriate CORS middleware will be added to the app.
+</Tip>
+
+### Adding Middleware
+
+You can add any FastAPI middleware to your custom FastAPI app and it will be respected by AgentOS.
+
+Agno also provides some built-in middleware for common use cases, including authentication.
+
+See the [Middleware](/agent-os/middleware/overview) page for more details.
+
+
+### Running with FastAPI CLI
+
+AgentOS applications are compatible with the [FastAPI CLI](https://fastapi.tiangolo.com/deployment/manually/) for development.
+
+First, install the FastAPI CLI:
+
+```bash Install FastAPI CLI
+pip install "fastapi[standard]"
+```
+
+Then run the app:
+<CodeGroup>
+
+```bash Run with FastAPI CLI
+fastapi run your_app.py
+```
+
+```bash Run with auto-reload
+fastapi run your_app.py --reload
+```
+
+```bash Custom host and port
+fastapi run your_app.py --host 0.0.0.0 --port 8000
+```
+</CodeGroup>
+
+### Running in Production
+
+For production deployments, you can use any ASGI server:
+
+<CodeGroup>
+```bash Uvicorn
+uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
+```
+
+```bash Gunicorn with Uvicorn workers
+gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+```
+
+```bash FastAPI CLI (Production)
+fastapi run main.py --host 0.0.0.0 --port 8000
+```
+</CodeGroup>
+
+
+## Adding Custom Routers
+
+For better organization, use FastAPI routers to group related endpoints:
+
+```python custom_fastapi_app.py
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.anthropic import Claude
+from agno.os import AgentOS
+from agno.tools.duckduckgo import DuckDuckGoTools
+from fastapi import FastAPI
+
+# Set up the database
+db = SqliteDb(db_file="tmp/agentos.db")
+
+# Set up the agent
+web_research_agent = Agent(
+    name="Basic Agent",
+    model=Claude(id="claude-sonnet-4-0"),
+    db=db,
+    tools=[DuckDuckGoTools()],
+    add_history_to_context=True,
+    num_history_runs=3,
+    add_datetime_to_context=True,
+    markdown=True,
+)
+
+# Create custom FastAPI app
+app: FastAPI = FastAPI(
+    title="Custom FastAPI App",
+    version="1.0.0",
+)
+
+# Add your own routes
+@app.post("/customers")
+async def get_customers():
+    return [
+        {
+            "id": 1,
+            "name": "John Doe",
+            "email": "john.doe@example.com",
+        },
+        {
+            "id": 2,
+            "name": "Jane Doe",
+            "email": "jane.doe@example.com",
+        },
+    ]
+
+
+# Set up the AgentOS app by passing your FastAPI app
+agent_os = AgentOS(
+    description="Example app with custom routers",
+    agents=[web_research_agent],
+    base_app=app,
+)
+
+# Alternatively, add all routes from AgentOS app to the current app
+# for route in agent_os.get_routes():
+#     app.router.routes.append(route)
+
+app = agent_os.get_app()
+
+
+if __name__ == "__main__":
+    """Run the AgentOS application.
+
+    You can see the docs at:
+    http://localhost:7777/docs
+
+    """
+    agent_os.serve(app="custom_fastapi_app:app", reload=True)
+```
+
+
+## Middleware and Dependencies
+
+You can add middleware and dependencies to your custom FastAPI app:
+
+```python
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer
+
+app = FastAPI()
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://yourdomain.com"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Security dependency
+security = HTTPBearer()
+
+async def verify_token(token: str = Depends(security)):
+    if token.credentials != "your-secret-token":
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return token
+
+# Protected route
+@app.get("/protected", dependencies=[Depends(verify_token)])
+async def protected_endpoint():
+    return {"message": "Access granted"}
+
+# Integrate with AgentOS
+agent_os = AgentOS(
+    agents=[Agent(id="basic-agent", model=OpenAIChat(id="gpt-5-mini"))],
+    base_app=app
+)
+
+app = agent_os.get_app()
+```
+
+## Access AgentOS Routes
+
+You can programmatically access and inspect the routes added by AgentOS:
+
+```python
+agent_os = AgentOS(agents=[agent])
+app = agent_os.get_app()
+
+# Get all routes
+routes = agent_os.get_routes()
+
+for route in routes:
+    print(f"Route: {route.path}")
+    if hasattr(route, 'methods'):
+        print(f"Methods: {route.methods}")
+```
+
+## Developer Resources
+
+- [AgentOS Reference](/reference/agent-os/agent-os)
+- [Full Example](/agent-os/usage/custom-fastapi)
+- [FastAPI Documentation](https://fastapi.tiangolo.com/)

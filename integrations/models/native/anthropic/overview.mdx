@@ -1,0 +1,152 @@
+---
+title: Anthropic Claude
+sidebarTitle: Overview
+description: Learn how to use Anthropic Claude models in Agno.
+---
+
+Claude is a family of foundational AI models by Anthropic that can be used in a variety of applications.
+See their model comparisons [here](https://docs.anthropic.com/en/docs/about-claude/models#model-comparison-table).
+
+We recommend experimenting to find the best-suited model for your use-case. Here are some general recommendations:
+
+- `claude-sonnet-4-20250514` model is good for most use-cases and supports image input.
+- `claude-opus-4-1-20250805` model is their best model.
+- `claude-3-5-haiku-20241022` model is their fastest model.
+
+Anthropic has rate limits on their APIs. See the [docs](https://docs.anthropic.com/en/api/rate-limits#response-headers) for more information.
+
+<Note>
+  Claude API expects a `max_tokens` param to be sent with each request. Unless
+  set as a param, Agno will default to 8192. See the
+  [docs](https://docs.claude.com/en/api/messages) for more information.
+</Note>
+
+## Authentication
+
+Set your `ANTHROPIC_API_KEY` environment. You can get one [from Anthropic here](https://console.anthropic.com/settings/keys).
+
+<CodeGroup>
+
+```bash Mac
+export ANTHROPIC_API_KEY=***
+```
+
+```bash Windows
+setx ANTHROPIC_API_KEY ***
+```
+
+</CodeGroup>
+
+## Example
+
+Use `Claude` with your `Agent`:
+
+<CodeGroup>
+
+```python agent.py
+from agno.agent import Agent
+from agno.models.anthropic import Claude
+
+agent = Agent(
+    model=Claude(id="claude-3-5-sonnet-20240620"),
+    markdown=True
+)
+
+# Print the response on the terminal
+agent.print_response("Share a 2 sentence horror story.")
+```
+
+</CodeGroup>
+
+## Beta Features
+
+You can use Anthropic's beta features with Agno by setting the `betas` parameter:
+
+```python
+from agno.agent import Agent
+from agno.models.anthropic import Claude
+
+agent = Agent(
+    model=Claude(
+        betas=["context-management-2025-06-27"],
+    ),
+)
+```
+
+Read more about beta features with Agno `Claude` model [here](/integrations/models/native/anthropic/usage/betas).
+
+
+## Prompt caching
+
+You can enable system prompt caching by setting `cache_system_prompt` to `True`:
+
+```python
+from agno.agent import Agent
+from agno.models.anthropic import Claude
+
+agent = Agent(
+    model=Claude(
+        id="claude-3-5-sonnet-20241022",
+        cache_system_prompt=True,
+    ),
+)
+```
+
+Read more about prompt caching with Agno's `Claude` model [here](/integrations/models/native/anthropic/usage/prompt-caching).
+
+
+## Structured Outputs
+
+Structured outputs are used to ensure that the model's response matches a defined schema. 
+
+This is useful to eliminate issues like missing fields or invalid values. Use it for production systems that need reliable, consistent responses in a specific format.
+
+Agno uses Claude's native support for structured outputs. This feature is available for `claude-sonnet-4-5-20250929` and all newer models. See Anthropic's [structured outputs documentation](https://docs.anthropic.com/en/build-with-claude/structured-outputs) for more details.
+
+```python
+from agno.agent import Agent
+from agno.models.anthropic import Claude
+from pydantic import BaseModel
+
+class User(BaseModel):
+    name: str
+    age: int
+    email: str
+
+agent = Agent(
+    model=Claude(id="claude-sonnet-4-5-20250929"),
+    description="Extract user information.",
+    output_schema=User,
+)
+```
+
+Read more about structured outputs with Agno's `Claude` model:
+- [Basic structured outputs](/integrations/models/native/anthropic/usage/structured-output)
+- [Streaming structured outputs](/integrations/models/native/anthropic/usage/structured-output-stream)
+- [Structured outputs with strict tools](/integrations/models/native/anthropic/usage/structured-output-strict-tools)
+
+
+## Params
+
+| Parameter             | Type                                     | Default                        | Description                                                                                                                      |
+| --------------------- | ---------------------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                  | `str`                                    | `"claude-3-5-sonnet-20241022"` | The id of the Anthropic Claude model to use                                                                                      |
+| `name`                | `str`                                    | `"Claude"`                     | The name of the model                                                                                                            |
+| `provider`            | `str`                                    | `"Anthropic"`                  | The provider of the model                                                                                                        |
+| `max_tokens`          | `Optional[int]`                          | `4096`                         | Maximum number of tokens to generate in the chat completion                                                                      |
+| `thinking`            | `Optional[Dict[str, Any]]`               | `None`                         | Configuration for the thinking (reasoning) process (See [their docs](https://www.anthropic.com/news/visible-extended-thinking))) |
+| `temperature`         | `Optional[float]`                        | `None`                         | Controls randomness in the model's output                                                                                        |
+| `stop_sequences`      | `Optional[List[str]]`                    | `None`                         | A list of strings that the model should stop generating text at                                                                  |
+| `top_p`               | `Optional[float]`                        | `None`                         | Controls diversity via nucleus sampling                                                                                          |
+| `top_k`               | `Optional[int]`                          | `None`                         | Controls diversity via top-k sampling                                                                                            |
+| `cache_system_prompt` | `Optional[bool]`                         | `False`                        | Whether to cache the system prompt for improved performance                                                                      |
+| `extended_cache_time` | `Optional[bool]`                         | `False`                        | Whether to use extended cache time (1 hour instead of default)                                                                   |
+| `request_params`      | `Optional[Dict[str, Any]]`               | `None`                         | Additional parameters to include in the request                                                                                  |
+| `mcp_servers`         | `Optional[List[MCPServerConfiguration]]` | `None`                         | List of MCP (Model Context Protocol) server configurations                                                                       |
+| `api_key`             | `Optional[str]`                          | `None`                         | The API key for authenticating with Anthropic                                                                                    |
+| `default_headers`     | `Optional[Dict[str, Any]]`               | `None`                         | Default headers to include in all requests                                                                                       |
+| `client_params`       | `Optional[Dict[str, Any]]`               | `None`                         | Additional parameters for client configuration                                                                                   |
+| `client`              | `Optional[AnthropicClient]`              | `None`                         | A pre-configured instance of the Anthropic client                                                                                |
+| `async_client`        | `Optional[AsyncAnthropicClient]`         | `None`                         | A pre-configured instance of the async Anthropic client                                                                          |
+
+`Claude` is a subclass of the [Model](/reference/models/model) class and has access to the same params.

@@ -1,0 +1,86 @@
+---
+title: WorkflowSession
+sidebarTitle: Workflow Session
+---
+
+## WorkflowSession Attributes
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `session_id` | `str` | Required | Session UUID - this is the workflow_session_id that gets set on agents/teams |
+| `user_id` | `Optional[str]` | `None` | ID of the user interacting with this workflow |
+| `workflow_id` | `Optional[str]` | `None` | ID of the workflow that this session is associated with |
+| `workflow_name` | `Optional[str]` | `None` | Workflow name |
+| `runs` | `Optional[List[WorkflowRunOutput]]` | `None` | List of all workflow runs in the session |
+| `session_data` | `Optional[Dict[str, Any]]` | `None` | Session Data: session_name, session_state, images, videos, audio |
+| `workflow_data` | `Optional[Dict[str, Any]]` | `None` | Workflow configuration and metadata |
+| `metadata` | `Optional[Dict[str, Any]]` | `None` | Metadata stored with this workflow session |
+| `created_at` | `Optional[int]` | `None` | The unix timestamp when this session was created |
+| `updated_at` | `Optional[int]` | `None` | The unix timestamp when this session was last updated |
+
+## WorkflowSession Methods
+
+### `upsert_run(run: WorkflowRunOutput)`
+
+Adds a WorkflowRunOutput to the runs list. If a run with the same `run_id` already exists, it updates the existing run.
+
+### `get_run(run_id: str) -> Optional[WorkflowRunOutput]`
+
+Retrieves a specific workflow run by its `run_id`.
+
+### `get_workflow_history(num_runs: Optional[int] = None) -> List[Tuple[str, str]]`
+
+Gets workflow history as structured data (input, response pairs).
+
+- `num_runs`: Number of recent runs to include. If None, returns all available history.
+
+Returns a list of tuples containing (input, response) pairs from completed workflow runs only.
+
+### `get_workflow_history_context(num_runs: Optional[int] = None) -> Optional[str]`
+
+Gets formatted workflow history context for steps.
+
+- `num_runs`: Number of recent runs to include. If None, returns all available history.
+
+Returns a formatted string containing the workflow history wrapped in `<workflow_history_context>` tags, suitable for providing context to workflow steps.
+
+### `get_messages(...) -> List[Message]`
+
+Returns the messages belonging to the session that fit the given criteria. Note: Either `agent_id` or `team_id` must be provided, but not both.
+
+**Parameters:**
+
+- `agent_id` (Optional[str]): The ID of the agent to get the messages for
+- `team_id` (Optional[str]): The ID of the team to get the messages for
+- `last_n_runs` (Optional[int]): The number of runs to return messages from, counting from the latest. Defaults to all runs
+- `limit` (Optional[int]): The number of messages to return, counting from the latest. Defaults to all messages
+- `skip_roles` (Optional[List[str]]): Skip messages with these roles
+- `skip_statuses` (Optional[List[RunStatus]]): Skip messages with these statuses
+- `skip_history_messages` (bool): Skip messages that were tagged as history in previous runs. Defaults to True
+- `skip_member_messages` (bool): Skip messages created by members of the team. Defaults to True
+
+**Returns:**
+
+- `List[Message]`: The messages for the session
+
+### `get_chat_history(last_n_runs: Optional[int] = None) -> List[WorkflowChatInteraction]`
+
+Return a list of WorkflowChatInteraction objects containing the input and output for each run in the session.
+
+**Parameters:**
+
+- `last_n_runs` (Optional[int]): Number of recent runs to include. If None, all runs will be considered
+
+**Returns:**
+
+- `List[WorkflowChatInteraction]`: The chat history for the session as a list of input/output interactions
+
+
+### `to_dict() -> Dict[str, Any]`
+
+Converts the WorkflowSession to a dictionary for storage, serializing runs to dictionaries.
+
+### `from_dict(data: Mapping[str, Any]) -> Optional[WorkflowSession]`
+
+Creates a WorkflowSession from a dictionary, deserializing runs from dictionaries back to WorkflowRunOutput objects.
+

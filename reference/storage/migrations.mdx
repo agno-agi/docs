@@ -1,0 +1,171 @@
+---
+title: MigrationManager
+sidebarTitle: MigrationManager
+description: API reference for the MigrationManager class used to handle database migrations.
+---
+
+The `MigrationManager` class provides a programmatic way to manage database schema migrations for Agno database tables.
+
+## Constructor
+
+```python
+MigrationManager(db: Union[AsyncBaseDb, BaseDb])
+```
+
+### Parameters
+
+<ResponseField name="db" type="Union[AsyncBaseDb, BaseDb]" required>
+  The database instance to run migrations on. Supports both synchronous and asynchronous database classes.
+</ResponseField>
+
+## Properties
+
+<ResponseField name="latest_schema_version" type="Version">
+  Returns the latest available schema version from the migration versions list.
+</ResponseField>
+
+<ResponseField name="available_versions" type="list[tuple[str, Version]]">
+  A list of available migration versions as tuples of (version_string, parsed_version).
+  
+  Currently available versions:
+  - `v2_0_0` (2.0.0)
+  - `v2_3_0` (2.3.0)
+</ResponseField>
+
+## Methods
+
+### up()
+
+Executes upgrade migrations to bring database tables to a target schema version.
+
+```python
+async def up(
+    target_version: Optional[str] = None,
+    table_type: Optional[str] = None,
+    force: bool = False
+)
+```
+
+#### Parameters
+
+<ResponseField name="target_version" type="str" optional>
+  The version to migrate to (e.g., "2.3.0"). If not provided, migrates to the latest available version.
+</ResponseField>
+
+<ResponseField name="table_type" type="str" optional>
+  The specific table type to migrate. If not provided, all tables will be migrated.
+  
+  Valid values: `"memory"`, `"session"`, `"metrics"`, `"eval"`, `"knowledge"`, `"culture"`
+</ResponseField>
+
+<ResponseField name="force" type="bool" default="False">
+  Force the migration even if the current version is equal to or greater than the target version.
+</ResponseField>
+
+#### Example
+
+```python
+import asyncio
+from agno.db.migrations import MigrationManager
+from agno.db.postgres import AsyncPostgresDb
+
+db = AsyncPostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+async def run_migrations():
+    # Migrate all tables to latest version
+    await MigrationManager(db).up()
+    
+    # Migrate specific table to specific version
+    await MigrationManager(db).up(
+        target_version="2.3.0",
+        table_type="memory"
+    )
+    
+    # Force migration
+    await MigrationManager(db).up(
+        table_type="session",
+        force=True
+    )
+
+if __name__ == "__main__":
+    asyncio.run(run_migrations())
+```
+
+### down()
+
+Executes downgrade migrations to revert database tables to a target schema version.
+
+```python
+async def down(
+    target_version: str,
+    table_type: Optional[str] = None,
+    force: bool = False
+)
+```
+
+#### Parameters
+
+<ResponseField name="target_version" type="str" required>
+  The version to migrate down to (e.g., "2.0.0"). This parameter is required for down migrations.
+</ResponseField>
+
+<ResponseField name="table_type" type="str" optional>
+  The specific table type to migrate. If not provided, all tables will be migrated.
+  
+  Valid values: `"memory"`, `"session"`, `"metrics"`, `"eval"`, `"knowledge"`, `"culture"`
+</ResponseField>
+
+<ResponseField name="force" type="bool" default="False">
+  Force the migration even if the current version is equal to or less than the target version.
+</ResponseField>
+
+#### Example
+
+```python
+import asyncio
+from agno.db.migrations import MigrationManager
+from agno.db.postgres import AsyncPostgresDb
+
+db = AsyncPostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+async def revert_migrations():
+    # Revert all tables to version 2.0.0
+    await MigrationManager(db).down(target_version="2.0.0")
+    
+    # Revert specific table
+    await MigrationManager(db).down(
+        target_version="2.0.0",
+        table_type="memory"
+    )
+
+if __name__ == "__main__":
+    asyncio.run(revert_migrations())
+```
+
+## Supported Databases
+
+The `MigrationManager` supports the following database types:
+
+- PostgreSQL (via `PostgresDb` or `AsyncPostgresDb`)
+- SQLite (via `SqliteDb` or `AsyncSqliteDb`)
+- MySQL (via `MySQLDb`)
+- SingleStore (via `SingleStoreDb`)
+
+## Table Types
+
+The following table types can be migrated:
+
+| Table Type | Description |
+|------------|-------------|
+| `memory` | Agent memory storage |
+| `session` | Agent session data |
+| `metrics` | Performance and usage metrics |
+| `eval` | Evaluation results |
+| `knowledge` | Knowledge base entries |
+| `culture` | Culture and behavior data |
+
+## See Also
+
+- [Database Migrations Guide](/basics/database/migrations)
+- [Migration Scripts](https://github.com/agno-agi/agno/tree/main/libs/agno/migrations)
+

@@ -4,6 +4,49 @@ info:
   description: An agent operating system.
   version: 1.0.0
 paths:
+  /:
+    get:
+      tags:
+        - Home
+      summary: API Information
+      description: |-
+        Get basic information about this AgentOS API instance, including:
+
+        - API metadata and version
+        - Available capabilities overview
+        - Links to key endpoints and documentation
+      operationId: get_api_info
+      responses:
+        '200':
+          description: API information retrieved successfully
+          content:
+            application/json:
+              schema: {}
+              examples:
+                home:
+                  summary: Example home response
+                  value:
+                    name: AgentOS API
+                    description: AI Agent Operating System API
+                    id: demo-os
+                    version: 1.0.0
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health Check
+      description: Check the health status of the AgentOS API. Returns a simple status indicator.
+      operationId: health_check
+      responses:
+        '200':
+          description: API is healthy and operational
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: ok
+                instantiated_at: '1763114241.22178'
   /config:
     get:
       tags:
@@ -1122,48 +1165,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
-  /health:
-    get:
-      tags:
-        - Health
-      summary: Health Check
-      description: Check the health status of the AgentOS API. Returns a simple status indicator.
-      operationId: health_check
-      responses:
-        '200':
-          description: API is healthy and operational
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HealthResponse'
-              example:
-                status: ok
-  /:
-    get:
-      tags:
-        - Home
-      summary: API Information
-      description: |-
-        Get basic information about this AgentOS API instance, including:
-
-        - API metadata and version
-        - Available capabilities overview
-        - Links to key endpoints and documentation
-      operationId: get_api_info
-      responses:
-        '200':
-          description: API information retrieved successfully
-          content:
-            application/json:
-              schema: {}
-              examples:
-                home:
-                  summary: Example home response
-                  value:
-                    name: AgentOS API
-                    description: AI Agent Operating System API
-                    id: demo-os
-                    version: 1.0.0
   /slack/events:
     post:
       tags:
@@ -1177,7 +1178,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SlackEventResponse'
+                anyOf:
+                  - $ref: '#/components/schemas/SlackChallengeResponse'
+                  - $ref: '#/components/schemas/SlackEventResponse'
+                title: Response Slack Events Agent
         '400':
           description: Missing Slack headers
         '403':
@@ -1410,6 +1414,16 @@ paths:
             description: Database ID to query sessions from
             title: Db Id
           description: Database ID to query sessions from
+        - name: table
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: The database table to use
+            title: Table
+          description: The database table to use
       responses:
         '200':
           description: Sessions retrieved successfully
@@ -1440,7 +1454,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/UnauthenticatedResponse'
         '404':
-          description: Not Found
+          description: Not found
           content:
             application/json:
               schema:
@@ -1453,6 +1467,96 @@ paths:
                 $ref: '#/components/schemas/ValidationErrorResponse'
         '500':
           description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+    post:
+      tags:
+        - Sessions
+      summary: Create New Session
+      description: 'Create a new empty session with optional configuration. Useful for pre-creating sessions with specific session_state, metadata, or other properties before running any agent/team/workflow interactions. The session can later be used by providing its session_id in run requests.'
+      operationId: create_session
+      security:
+        - HTTPBearer: []
+      parameters:
+        - name: type
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/SessionType'
+            description: 'Type of session to create (agent, team, or workflow)'
+            default: agent
+          description: 'Type of session to create (agent, team, or workflow)'
+        - name: db_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Database ID to create session in
+            title: Db Id
+          description: Database ID to create session in
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+              description: Session configuration data
+              default: {}
+      responses:
+        '201':
+          description: Session created successfully
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/AgentSessionDetailSchema'
+                  - $ref: '#/components/schemas/TeamSessionDetailSchema'
+                  - $ref: '#/components/schemas/WorkflowSessionDetailSchema'
+                title: Response Create Session
+              examples:
+                agent_session_example:
+                  summary: Example created agent session
+                  value:
+                    user_id: user-123
+                    agent_session_id: new-session-id
+                    session_id: new-session-id
+                    session_name: New Session
+                    session_state:
+                      key: value
+                    metadata:
+                      key: value
+                    agent_id: agent-1
+                    created_at: '2025-10-21T12:00:00Z'
+                    updated_at: '2025-10-21T12:00:00Z'
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Failed to create session
           content:
             application/json:
               schema:
@@ -1484,6 +1588,16 @@ paths:
             description: Database ID to use for deletion
             title: Db Id
           description: Database ID to use for deletion
+        - name: table
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Table to use for deletion
+            title: Table
+          description: Table to use for deletion
       requestBody:
         required: true
         content:
@@ -1569,6 +1683,16 @@ paths:
             description: Database ID to query session from
             title: Db Id
           description: Database ID to query session from
+        - name: table
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Table to query session from
+            title: Table
+          description: Table to query session from
       responses:
         '200':
           description: Session details retrieved successfully
@@ -1704,6 +1828,16 @@ paths:
             description: Database ID to use for deletion
             title: Db Id
           description: Database ID to use for deletion
+        - name: table
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Table to use for deletion
+            title: Table
+          description: Table to use for deletion
       responses:
         '204':
           description: Successful Response
@@ -1737,12 +1871,131 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+    patch:
+      tags:
+        - Sessions
+      summary: Update Session
+      description: 'Update session properties such as session_name, session_state, metadata, or summary. Use this endpoint to modify the session name, update state, add metadata, or update the session summary.'
+      operationId: update_session
+      security:
+        - HTTPBearer: []
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Session ID to update
+            title: Session Id
+          description: Session ID to update
+        - name: type
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/SessionType'
+            description: 'Session type (agent, team, or workflow)'
+            default: agent
+          description: 'Session type (agent, team, or workflow)'
+        - name: user_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: User ID
+            title: User Id
+          description: User ID
+        - name: db_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Database ID to use for update operation
+            title: Db Id
+          description: Database ID to use for update operation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSessionRequest'
+              description: Session update data
+      responses:
+        '200':
+          description: Session updated successfully
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/AgentSessionDetailSchema'
+                  - $ref: '#/components/schemas/TeamSessionDetailSchema'
+                  - $ref: '#/components/schemas/WorkflowSessionDetailSchema'
+                title: Response Update Session
+              examples:
+                update_summary:
+                  summary: Update session summary
+                  value:
+                    summary:
+                      summary: The user discussed project planning with the agent.
+                      updated_at: '2025-10-21T14:30:00Z'
+                update_metadata:
+                  summary: Update session metadata
+                  value:
+                    metadata:
+                      tags:
+                        - planning
+                        - project
+                      priority: high
+                update_session_name:
+                  summary: Update session name
+                  value:
+                    session_name: Updated Session Name
+                update_session_state:
+                  summary: Update session state
+                  value:
+                    session_state:
+                      step: completed
+                      context: Project planning finished
+                      progress: 100
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '422':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Failed to update session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
   '/sessions/{session_id}/runs':
     get:
       tags:
         - Sessions
       summary: Get Session Runs
-      description: Retrieve all runs (executions) for a specific session. Runs represent individual interactions or executions within a session. Response schema varies based on session type.
+      description: Retrieve all runs (executions) for a specific session with optional timestamp filtering. Runs represent individual interactions or executions within a session. Response schema varies based on session type.
       operationId: get_session_runs
       security:
         - HTTPBearer: []
@@ -1773,6 +2026,26 @@ paths:
             description: User ID to query runs from
             title: User Id
           description: User ID to query runs from
+        - name: created_after
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: integer
+              - type: 'null'
+            description: Filter runs created after this Unix timestamp (epoch time in seconds)
+            title: Created After
+          description: Filter runs created after this Unix timestamp (epoch time in seconds)
+        - name: created_before
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: integer
+              - type: 'null'
+            description: Filter runs created before this Unix timestamp (epoch time in seconds)
+            title: Created Before
+          description: Filter runs created before this Unix timestamp (epoch time in seconds)
         - name: db_id
           in: query
           required: false
@@ -1783,6 +2056,16 @@ paths:
             description: Database ID to query runs from
             title: Db Id
           description: Database ID to query runs from
+        - name: table
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Table to query runs from
+            title: Table
+          description: Table to query runs from
       responses:
         '200':
           description: Session runs retrieved successfully
@@ -1906,6 +2189,112 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+  '/sessions/{session_id}/runs/{run_id}':
+    get:
+      tags:
+        - Sessions
+      summary: Get Run by ID
+      description: 'Retrieve a specific run by its ID from a session. Response schema varies based on the run type (agent run, team run, or workflow run).'
+      operationId: get_session_run
+      security:
+        - HTTPBearer: []
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Session ID to get run from
+            title: Session Id
+          description: Session ID to get run from
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Run ID to retrieve
+            title: Run Id
+          description: Run ID to retrieve
+        - name: type
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/SessionType'
+            description: 'Session type (agent, team, or workflow)'
+            default: agent
+          description: 'Session type (agent, team, or workflow)'
+        - name: user_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: User ID to query run from
+            title: User Id
+          description: User ID to query run from
+        - name: db_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Database ID to query run from
+            title: Db Id
+          description: Database ID to query run from
+      responses:
+        '200':
+          description: Run retrieved successfully
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/RunSchema'
+                  - $ref: '#/components/schemas/TeamRunSchema'
+                  - $ref: '#/components/schemas/WorkflowRunSchema'
+                title: Response Get Session Run
+              examples:
+                agent_run:
+                  summary: Example agent run
+                  value:
+                    run_id: fcdf50f0-7c32-4593-b2ef-68a558774340
+                    parent_run_id: 80056af0-c7a5-4d69-b6a2-c3eba9f040e0
+                    agent_id: basic-agent
+                    user_id: user_123
+                    run_input: Which tools do you have access to?
+                    content: I don't have access to external tools.
+                    created_at: 1728499200
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Session or run not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '422':
+          description: Invalid session type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
   '/sessions/{session_id}/rename':
     post:
       tags:
@@ -1942,6 +2331,16 @@ paths:
             description: Database ID to use for rename operation
             title: Db Id
           description: Database ID to use for rename operation
+        - name: table
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Table to use for rename operation
+            title: Table
+          description: Table to use for rename operation
       requestBody:
         required: true
         content:
@@ -2076,6 +2475,16 @@ paths:
             description: Database ID to use for memory storage
             title: Db Id
           description: Database ID to use for memory storage
+        - name: table
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Table to use for memory storage
+            title: Table
+          description: Table to use for memory storage
       requestBody:
         required: true
         content:
@@ -2148,6 +2557,16 @@ paths:
             description: Database ID to use for deletion
             title: Db Id
           description: Database ID to use for deletion
+        - name: table
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Table to use for deletion
+            title: Table
+          description: Table to use for deletion
       requestBody:
         required: true
         content:
@@ -2290,6 +2709,16 @@ paths:
             description: Database ID to query memories from
             title: Db Id
           description: Database ID to query memories from
+        - name: table
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: The database table to use
+            title: Table
+          description: The database table to use
         - name: topics
           in: query
           required: false
@@ -2387,6 +2816,16 @@ paths:
             description: Database ID to use for deletion
             title: Db Id
           description: Database ID to use for deletion
+        - name: table
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Table to use for deletion
+            title: Table
+          description: Table to use for deletion
       responses:
         '204':
           description: Memory deleted successfully
@@ -2457,6 +2896,16 @@ paths:
             description: Database ID to query memory from
             title: Db Id
           description: Database ID to query memory from
+        - name: table
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Table to query memory from
+            title: Table
+          description: Table to query memory from
       responses:
         '200':
           description: Memory retrieved successfully
@@ -2528,6 +2977,16 @@ paths:
             description: Database ID to use for update
             title: Db Id
           description: Database ID to use for update
+        - name: table
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Table to use for update
+            title: Table
+          description: Table to use for update
       requestBody:
         required: true
         content:
@@ -2598,6 +3057,16 @@ paths:
             description: Database ID to query topics from
             title: Db Id
           description: Database ID to query topics from
+        - name: table
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Table to query topics from
+            title: Table
+          description: Table to query topics from
       responses:
         '200':
           description: Memory topics retrieved successfully
@@ -2690,6 +3159,16 @@ paths:
             description: Database ID to query statistics from
             title: Db Id
           description: Database ID to query statistics from
+        - name: table
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Table to query statistics from
+            title: Table
+          description: Table to query statistics from
       responses:
         '200':
           description: User memory statistics retrieved successfully
@@ -2846,6 +3325,16 @@ paths:
             description: The ID of the database to use
             title: Db Id
           description: The ID of the database to use
+        - name: table
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: The database table to use
+            title: Table
+          description: The database table to use
         - name: eval_types
           in: query
           required: false
@@ -2932,6 +3421,16 @@ paths:
             description: Database ID to use for deletion
             title: Db Id
           description: Database ID to use for deletion
+        - name: table
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Table to use for deletion
+            title: Table
+          description: Table to use for deletion
       requestBody:
         required: true
         content:
@@ -2990,6 +3489,16 @@ paths:
             description: Database ID to use for evaluation
             title: Db Id
           description: Database ID to use for evaluation
+        - name: table
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Table to use for evaluation
+            title: Table
+          description: Table to use for evaluation
       requestBody:
         required: true
         content:
@@ -3072,6 +3581,16 @@ paths:
             description: The ID of the database to use
             title: Db Id
           description: The ID of the database to use
+        - name: table
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Table to query eval run from
+            title: Table
+          description: Table to query eval run from
       responses:
         '200':
           description: Evaluation run details retrieved successfully
@@ -3151,6 +3670,16 @@ paths:
             description: The ID of the database to use
             title: Db Id
           description: The ID of the database to use
+        - name: table
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Table to use for rename operation
+            title: Table
+          description: Table to use for rename operation
       requestBody:
         required: true
         content:
@@ -3253,6 +3782,16 @@ paths:
             description: Database ID to query metrics from
             title: Db Id
           description: Database ID to query metrics from
+        - name: table
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: The database table to use
+            title: Table
+          description: The database table to use
       responses:
         '200':
           description: Metrics retrieved successfully
@@ -3337,6 +3876,16 @@ paths:
             description: Database ID to use for metrics calculation
             title: Db Id
           description: Database ID to use for metrics calculation
+        - name: table
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Table to use for metrics calculation
+            title: Table
+          description: Table to use for metrics calculation
       responses:
         '200':
           description: Metrics refreshed successfully
@@ -3998,7 +4547,7 @@ paths:
     get:
       tags:
         - Knowledge
-      summary: Get Knowledge Configuration
+      summary: Get Config
       description: 'Retrieve available readers, chunkers, and configuration options for content processing. This endpoint provides metadata about supported file types, processing strategies, and filters.'
       operationId: get_knowledge_config
       security:
@@ -4184,30 +4733,47 @@ paths:
                     key: AgenticChunker
                     name: AgenticChunker
                     description: Chunking strategy that uses an LLM to determine natural breakpoints in the text
+                    metadata:
+                      chunk_size: 5000
                   DocumentChunker:
                     key: DocumentChunker
                     name: DocumentChunker
                     description: A chunking strategy that splits text based on document structure like paragraphs and sections
-                  RecursiveChunker:
-                    key: RecursiveChunker
-                    name: RecursiveChunker
-                    description: Chunking strategy that recursively splits text into chunks by finding natural break points
-                  SemanticChunker:
-                    key: SemanticChunker
-                    name: SemanticChunker
-                    description: Chunking strategy that splits text into semantic chunks using chonkie
+                    metadata:
+                      chunk_size: 5000
+                      chunk_overlap: 0
                   FixedSizeChunker:
                     key: FixedSizeChunker
                     name: FixedSizeChunker
                     description: Chunking strategy that splits text into fixed-size chunks with optional overlap
-                  RowChunker:
-                    key: RowChunker
-                    name: RowChunker
-                    description: RowChunking chunking strategy
+                    metadata:
+                      chunk_size: 5000
+                      chunk_overlap: 0
                   MarkdownChunker:
                     key: MarkdownChunker
                     name: MarkdownChunker
                     description: 'A chunking strategy that splits markdown based on structure like headers, paragraphs and sections'
+                    metadata:
+                      chunk_size: 5000
+                      chunk_overlap: 0
+                  RecursiveChunker:
+                    key: RecursiveChunker
+                    name: RecursiveChunker
+                    description: Chunking strategy that recursively splits text into chunks by finding natural break points
+                    metadata:
+                      chunk_size: 5000
+                      chunk_overlap: 0
+                  RowChunker:
+                    key: RowChunker
+                    name: RowChunker
+                    description: RowChunking chunking strategy
+                    metadata: {}
+                  SemanticChunker:
+                    key: SemanticChunker
+                    name: SemanticChunker
+                    description: Chunking strategy that splits text into semantic chunks using chonkie
+                    metadata:
+                      chunk_size: 5000
                 vector_dbs:
                   - id: vector_db_1
                     name: Vector DB 1
@@ -4338,6 +4904,12 @@ components:
               type: object
             - type: 'null'
           title: Metadata
+        input_schema:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Input Schema
       type: object
       title: AgentResponse
     AgentSessionDetailSchema:
@@ -4347,49 +4919,66 @@ components:
             - type: string
             - type: 'null'
           title: User Id
+          description: User ID associated with the session
         agent_session_id:
           type: string
           title: Agent Session Id
+          description: Unique agent session identifier
         session_id:
           type: string
           title: Session Id
+          description: Session identifier
         session_name:
           type: string
           title: Session Name
+          description: Human-readable session name
         session_summary:
           anyOf:
             - additionalProperties: true
               type: object
             - type: 'null'
           title: Session Summary
+          description: Summary of session interactions
         session_state:
           anyOf:
             - additionalProperties: true
               type: object
             - type: 'null'
           title: Session State
+          description: Current state of the session
         agent_id:
           anyOf:
             - type: string
             - type: 'null'
           title: Agent Id
+          description: Agent ID used in this session
         total_tokens:
           anyOf:
             - type: integer
             - type: 'null'
           title: Total Tokens
+          description: Total tokens used in this session
         agent_data:
           anyOf:
             - additionalProperties: true
               type: object
             - type: 'null'
           title: Agent Data
+          description: Agent-specific data
         metrics:
           anyOf:
             - additionalProperties: true
               type: object
             - type: 'null'
           title: Metrics
+          description: Session metrics
+        metadata:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Metadata
+          description: Additional metadata
         chat_history:
           anyOf:
             - items:
@@ -4398,33 +4987,26 @@ components:
               type: array
             - type: 'null'
           title: Chat History
+          description: Complete chat history
         created_at:
           anyOf:
             - type: string
               format: date-time
             - type: 'null'
           title: Created At
+          description: Session creation timestamp
         updated_at:
           anyOf:
             - type: string
               format: date-time
             - type: 'null'
           title: Updated At
+          description: Last update timestamp
       type: object
       required:
-        - user_id
         - agent_session_id
         - session_id
         - session_name
-        - session_summary
-        - session_state
-        - agent_id
-        - total_tokens
-        - agent_data
-        - metrics
-        - chat_history
-        - created_at
-        - updated_at
       title: AgentSessionDetailSchema
     AgentSummaryResponse:
       properties:
@@ -4433,24 +5015,28 @@ components:
             - type: string
             - type: 'null'
           title: Id
+          description: Unique identifier for the agent
         name:
           anyOf:
             - type: string
             - type: 'null'
           title: Name
+          description: Name of the agent
         description:
           anyOf:
             - type: string
             - type: 'null'
           title: Description
+          description: Description of the agent
         db_id:
           anyOf:
             - type: string
             - type: 'null'
           title: Db Id
+          description: Database identifier
       type: object
       title: AgentSummaryResponse
-    Artifact-Input:
+    Artifact:
       properties:
         artifactId:
           type: string
@@ -4480,46 +5066,7 @@ components:
           title: Name
         parts:
           items:
-            $ref: '#/components/schemas/Part-Input'
-          type: array
-          title: Parts
-      type: object
-      required:
-        - artifactId
-        - parts
-      title: Artifact
-      description: 'Represents a file, data structure, or other resource generated by an agent during a task.'
-    Artifact-Output:
-      properties:
-        artifactId:
-          type: string
-          title: Artifactid
-        description:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Description
-        extensions:
-          anyOf:
-            - items:
-                type: string
-              type: array
-            - type: 'null'
-          title: Extensions
-        metadata:
-          anyOf:
-            - additionalProperties: true
-              type: object
-            - type: 'null'
-          title: Metadata
-        name:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Name
-        parts:
-          items:
-            $ref: '#/components/schemas/Part-Output'
+            $ref: '#/components/schemas/Part'
           type: array
           title: Parts
       type: object
@@ -4566,11 +5113,13 @@ components:
         detail:
           type: string
           title: Detail
+          description: Error detail message
         error_code:
           anyOf:
             - type: string
             - type: 'null'
           title: Error Code
+          description: Error code for categorization
       type: object
       required:
         - detail
@@ -4779,6 +5328,18 @@ components:
             - type: 'null'
           title: Chunker
           description: Chunking strategy to apply during processing
+        chunk_size:
+          anyOf:
+            - type: integer
+            - type: 'null'
+          title: Chunk Size
+          description: Chunk size to use for processing
+        chunk_overlap:
+          anyOf:
+            - type: integer
+            - type: 'null'
+          title: Chunk Overlap
+          description: Chunk overlap to use for processing
       type: object
       title: Body_upload_content
     ChatConfig:
@@ -4810,6 +5371,12 @@ components:
             - type: string
             - type: 'null'
           title: Description
+        metadata:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Metadata
       type: object
       required:
         - key
@@ -4819,16 +5386,19 @@ components:
         os_id:
           type: string
           title: Os Id
+          description: Unique identifier for the OS instance
         name:
           anyOf:
             - type: string
             - type: 'null'
           title: Name
+          description: Name of the OS instance
         description:
           anyOf:
             - type: string
             - type: 'null'
           title: Description
+          description: Description of the OS instance
         available_models:
           anyOf:
             - items:
@@ -4836,55 +5406,67 @@ components:
               type: array
             - type: 'null'
           title: Available Models
+          description: List of available models
         databases:
           items:
             type: string
           type: array
           title: Databases
+          description: List of database IDs
         chat:
           anyOf:
             - $ref: '#/components/schemas/ChatConfig'
             - type: 'null'
+          description: Chat configuration
         session:
           anyOf:
-            - $ref: '#/components/schemas/SessionConfig-Output'
+            - $ref: '#/components/schemas/SessionConfig'
             - type: 'null'
+          description: Session configuration
         metrics:
           anyOf:
-            - $ref: '#/components/schemas/MetricsConfig-Output'
+            - $ref: '#/components/schemas/MetricsConfig'
             - type: 'null'
+          description: Metrics configuration
         memory:
           anyOf:
-            - $ref: '#/components/schemas/MemoryConfig-Output'
+            - $ref: '#/components/schemas/MemoryConfig'
             - type: 'null'
+          description: Memory configuration
         knowledge:
           anyOf:
-            - $ref: '#/components/schemas/KnowledgeConfig-Output'
+            - $ref: '#/components/schemas/KnowledgeConfig'
             - type: 'null'
+          description: Knowledge configuration
         evals:
           anyOf:
-            - $ref: '#/components/schemas/EvalsConfig-Output'
+            - $ref: '#/components/schemas/EvalsConfig'
             - type: 'null'
+          description: Evaluations configuration
         agents:
           items:
             $ref: '#/components/schemas/AgentSummaryResponse'
           type: array
           title: Agents
+          description: List of registered agents
         teams:
           items:
             $ref: '#/components/schemas/TeamSummaryResponse'
           type: array
           title: Teams
+          description: List of registered teams
         workflows:
           items:
             $ref: '#/components/schemas/WorkflowSummaryResponse'
           type: array
           title: Workflows
+          description: List of registered workflows
         interfaces:
           items:
             $ref: '#/components/schemas/InterfaceResponse'
           type: array
           title: Interfaces
+          description: List of available interfaces
       type: object
       required:
         - os_id
@@ -4904,6 +5486,7 @@ components:
               type: object
             - type: 'null'
           title: Readers
+          description: Available content readers
         readersForType:
           anyOf:
             - additionalProperties:
@@ -4913,6 +5496,7 @@ components:
               type: object
             - type: 'null'
           title: Readersfortype
+          description: Mapping of content types to reader IDs
         chunkers:
           anyOf:
             - additionalProperties:
@@ -4920,6 +5504,7 @@ components:
               type: object
             - type: 'null'
           title: Chunkers
+          description: Available chunking strategies
         filters:
           anyOf:
             - items:
@@ -4927,6 +5512,7 @@ components:
               type: array
             - type: 'null'
           title: Filters
+          description: Available filter tags
         vector_dbs:
           anyOf:
             - items:
@@ -4934,6 +5520,7 @@ components:
               type: array
             - type: 'null'
           title: Vector Dbs
+          description: Configured vector databases
       type: object
       title: ConfigResponseSchema
     ContentResponseSchema:
@@ -4941,63 +5528,76 @@ components:
         id:
           type: string
           title: Id
+          description: Unique identifier for the content
         name:
           anyOf:
             - type: string
             - type: 'null'
           title: Name
+          description: Name of the content
         description:
           anyOf:
             - type: string
             - type: 'null'
           title: Description
+          description: Description of the content
         type:
           anyOf:
             - type: string
             - type: 'null'
           title: Type
+          description: MIME type of the content
         size:
           anyOf:
             - type: string
             - type: 'null'
           title: Size
+          description: Size of the content in bytes
         linked_to:
           anyOf:
             - type: string
             - type: 'null'
           title: Linked To
+          description: ID of related content if linked
         metadata:
           anyOf:
             - additionalProperties: true
               type: object
             - type: 'null'
           title: Metadata
+          description: Additional metadata as key-value pairs
         access_count:
           anyOf:
             - type: integer
+              minimum: 0
             - type: 'null'
           title: Access Count
+          description: Number of times content has been accessed
         status:
           anyOf:
             - $ref: '#/components/schemas/ContentStatus'
             - type: 'null'
+          description: Processing status of the content
         status_message:
           anyOf:
             - type: string
             - type: 'null'
           title: Status Message
+          description: Status message or error details
         created_at:
           anyOf:
             - type: string
               format: date-time
             - type: 'null'
           title: Created At
+          description: Timestamp when content was created
         updated_at:
           anyOf:
             - type: string
               format: date-time
             - type: 'null'
           title: Updated At
+          description: Timestamp when content was last updated
       type: object
       required:
         - id
@@ -5014,9 +5614,11 @@ components:
       properties:
         status:
           $ref: '#/components/schemas/ContentStatus'
+          description: Current processing status of the content
         status_message:
           type: string
           title: Status Message
+          description: Status message or error details
           default: ''
       type: object
       required:
@@ -5038,6 +5640,60 @@ components:
         - value
       title: Context
       description: Additional context for the agent.
+    CreateSessionRequest:
+      properties:
+        session_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Session Id
+          description: Optional session ID (generated if not provided)
+        session_name:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Session Name
+          description: Name for the session
+        session_state:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Session State
+          description: Initial session state
+        metadata:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Metadata
+          description: Additional metadata
+        user_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: User Id
+          description: User ID associated with the session
+        agent_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Agent Id
+          description: Agent ID if this is an agent session
+        team_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Team Id
+          description: Team ID if this is a team session
+        workflow_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Workflow Id
+          description: Workflow ID if this is a workflow session
+      type: object
+      title: CreateSessionRequest
     DataPart:
       properties:
         data:
@@ -5069,6 +5725,13 @@ components:
           anyOf:
             - $ref: '#/components/schemas/EvalsDomainConfig'
             - type: 'null'
+        tables:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: 'null'
+          title: Tables
       type: object
       required:
         - db_id
@@ -5082,6 +5745,13 @@ components:
           anyOf:
             - $ref: '#/components/schemas/KnowledgeDomainConfig'
             - type: 'null'
+        tables:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: 'null'
+          title: Tables
       type: object
       required:
         - db_id
@@ -5095,6 +5765,13 @@ components:
           anyOf:
             - $ref: '#/components/schemas/MemoryDomainConfig'
             - type: 'null'
+        tables:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: 'null'
+          title: Tables
       type: object
       required:
         - db_id
@@ -5108,6 +5785,13 @@ components:
           anyOf:
             - $ref: '#/components/schemas/MetricsDomainConfig'
             - type: 'null'
+        tables:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: 'null'
+          title: Tables
       type: object
       required:
         - db_id
@@ -5121,6 +5805,13 @@ components:
           anyOf:
             - $ref: '#/components/schemas/SessionDomainConfig'
             - type: 'null'
+        tables:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: 'null'
+          title: Tables
       type: object
       required:
         - db_id
@@ -5130,47 +5821,69 @@ components:
         id:
           type: string
           title: Id
+          description: Unique identifier for the metrics record
         agent_runs_count:
           type: integer
+          minimum: 0
           title: Agent Runs Count
+          description: Total number of agent runs
         agent_sessions_count:
           type: integer
+          minimum: 0
           title: Agent Sessions Count
+          description: Total number of agent sessions
         team_runs_count:
           type: integer
+          minimum: 0
           title: Team Runs Count
+          description: Total number of team runs
         team_sessions_count:
           type: integer
+          minimum: 0
           title: Team Sessions Count
+          description: Total number of team sessions
         workflow_runs_count:
           type: integer
+          minimum: 0
           title: Workflow Runs Count
+          description: Total number of workflow runs
         workflow_sessions_count:
           type: integer
+          minimum: 0
           title: Workflow Sessions Count
+          description: Total number of workflow sessions
         users_count:
           type: integer
+          minimum: 0
           title: Users Count
+          description: Total number of unique users
         token_metrics:
           additionalProperties: true
           type: object
           title: Token Metrics
+          description: 'Token usage metrics (input, output, cached, etc.)'
         model_metrics:
           items:
             additionalProperties: true
             type: object
           type: array
           title: Model Metrics
+          description: 'Metrics grouped by model (model_id, provider, count)'
         date:
           type: string
           format: date-time
           title: Date
+          description: Date for which these metrics are aggregated
         created_at:
           type: integer
+          minimum: 0
           title: Created At
+          description: Unix timestamp when metrics were created
         updated_at:
           type: integer
+          minimum: 0
           title: Updated At
+          description: Unix timestamp when metrics were last updated
       type: object
       required:
         - id
@@ -5194,7 +5907,9 @@ components:
           items:
             type: string
           type: array
+          minItems: 1
           title: Eval Run Ids
+          description: List of evaluation run IDs to delete
       type: object
       required:
         - eval_run_ids
@@ -5205,12 +5920,15 @@ components:
           items:
             type: string
           type: array
+          minItems: 1
           title: Memory Ids
+          description: List of memory IDs to delete
         user_id:
           anyOf:
             - type: string
             - type: 'null'
           title: User Id
+          description: User ID to filter memories for deletion
       type: object
       required:
         - memory_ids
@@ -5221,12 +5939,16 @@ components:
           items:
             type: string
           type: array
+          minItems: 1
           title: Session Ids
+          description: List of session IDs to delete
         session_types:
           items:
             $ref: '#/components/schemas/SessionType'
           type: array
+          minItems: 1
           title: Session Types
+          description: Types of sessions to delete
       type: object
       required:
         - session_ids
@@ -5271,57 +5993,70 @@ components:
             - type: string
             - type: 'null'
           title: Agent Id
+          description: Agent ID to evaluate
         team_id:
           anyOf:
             - type: string
             - type: 'null'
           title: Team Id
+          description: Team ID to evaluate
         model_id:
           anyOf:
             - type: string
             - type: 'null'
           title: Model Id
+          description: Model ID to use for evaluation
         model_provider:
           anyOf:
             - type: string
             - type: 'null'
           title: Model Provider
+          description: Model provider name
         eval_type:
           $ref: '#/components/schemas/EvalType'
+          description: 'Type of evaluation to run (accuracy, performance, or reliability)'
         input:
           type: string
+          minLength: 1
           title: Input
+          description: Input text/query for the evaluation
         additional_guidelines:
           anyOf:
             - type: string
             - type: 'null'
           title: Additional Guidelines
+          description: Additional guidelines for the evaluation
         additional_context:
           anyOf:
             - type: string
             - type: 'null'
           title: Additional Context
+          description: Additional context for the evaluation
         num_iterations:
-          anyOf:
-            - type: integer
-            - type: 'null'
+          type: integer
+          maximum: 100
+          minimum: 1
           title: Num Iterations
+          description: Number of times to run the evaluation
           default: 1
         name:
           anyOf:
             - type: string
             - type: 'null'
           title: Name
+          description: Name for this evaluation run
         expected_output:
           anyOf:
             - type: string
             - type: 'null'
           title: Expected Output
+          description: Expected output for accuracy evaluation
         warmup_runs:
-          anyOf:
-            - type: integer
-            - type: 'null'
+          type: integer
+          maximum: 10
+          minimum: 0
           title: Warmup Runs
+          description: Number of warmup runs before measuring performance
           default: 0
         expected_tool_calls:
           anyOf:
@@ -5330,6 +6065,7 @@ components:
               type: array
             - type: 'null'
           title: Expected Tool Calls
+          description: Expected tool calls for reliability evaluation
       type: object
       required:
         - eval_type
@@ -5340,65 +6076,78 @@ components:
         id:
           type: string
           title: Id
+          description: Unique identifier for the evaluation run
         agent_id:
           anyOf:
             - type: string
             - type: 'null'
           title: Agent Id
+          description: Agent ID that was evaluated
         model_id:
           anyOf:
             - type: string
             - type: 'null'
           title: Model Id
+          description: Model ID used in evaluation
         model_provider:
           anyOf:
             - type: string
             - type: 'null'
           title: Model Provider
+          description: Model provider name
         team_id:
           anyOf:
             - type: string
             - type: 'null'
           title: Team Id
+          description: Team ID that was evaluated
         workflow_id:
           anyOf:
             - type: string
             - type: 'null'
           title: Workflow Id
+          description: Workflow ID that was evaluated
         name:
           anyOf:
             - type: string
             - type: 'null'
           title: Name
+          description: Name of the evaluation run
         evaluated_component_name:
           anyOf:
             - type: string
             - type: 'null'
           title: Evaluated Component Name
+          description: Name of the evaluated component
         eval_type:
           $ref: '#/components/schemas/EvalType'
+          description: 'Type of evaluation (accuracy, performance, or reliability)'
         eval_data:
           additionalProperties: true
           type: object
           title: Eval Data
+          description: Evaluation results and metrics
         eval_input:
           anyOf:
             - additionalProperties: true
               type: object
             - type: 'null'
           title: Eval Input
+          description: Input parameters used for the evaluation
         created_at:
           anyOf:
             - type: string
               format: date-time
             - type: 'null'
           title: Created At
+          description: Timestamp when evaluation was created
         updated_at:
           anyOf:
             - type: string
               format: date-time
             - type: 'null'
           title: Updated At
+          description: Timestamp when evaluation was last updated
       type: object
       required:
         - id
@@ -5412,31 +6161,7 @@ components:
         - performance
         - reliability
       title: EvalType
-    EvalsConfig-Input:
-      properties:
-        display_name:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Display Name
-        available_models:
-          anyOf:
-            - items:
-                type: string
-              type: array
-            - type: 'null'
-          title: Available Models
-        dbs:
-          anyOf:
-            - items:
-                $ref: '#/components/schemas/DatabaseConfig_EvalsDomainConfig_'
-              type: array
-            - type: 'null'
-          title: Dbs
-      type: object
-      title: EvalsConfig
-      description: Configuration for the Evals domain of the AgentOS
-    EvalsConfig-Output:
+    EvalsConfig:
       properties:
         display_name:
           anyOf:
@@ -5571,23 +6296,33 @@ components:
         status:
           type: string
           title: Status
+          description: Health status of the service
+        instantiated_at:
+          type: string
+          title: Instantiated At
+          description: Unix timestamp when service was instantiated
       type: object
       required:
         - status
+        - instantiated_at
       title: HealthResponse
       example:
+        instantiated_at: '1760169236.778903'
         status: ok
     InterfaceResponse:
       properties:
         type:
           type: string
           title: Type
+          description: Type of the interface
         version:
           type: string
           title: Version
+          description: Version of the interface
         route:
           type: string
           title: Route
+          description: API route path
       type: object
       required:
         - type
@@ -5599,11 +6334,13 @@ components:
         detail:
           type: string
           title: Detail
+          description: Error detail message
         error_code:
           anyOf:
             - type: string
             - type: 'null'
           title: Error Code
+          description: Error code for categorization
       type: object
       required:
         - detail
@@ -5611,24 +6348,7 @@ components:
       example:
         detail: Internal server error
         error_code: INTERNAL_SERVER_ERROR
-    KnowledgeConfig-Input:
-      properties:
-        display_name:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Display Name
-        dbs:
-          anyOf:
-            - items:
-                $ref: '#/components/schemas/DatabaseConfig_KnowledgeDomainConfig_'
-              type: array
-            - type: 'null'
-          title: Dbs
-      type: object
-      title: KnowledgeConfig
-      description: Configuration for the Knowledge domain of the AgentOS
-    KnowledgeConfig-Output:
+    KnowledgeConfig:
       properties:
         display_name:
           anyOf:
@@ -5655,24 +6375,7 @@ components:
       type: object
       title: KnowledgeDomainConfig
       description: Configuration for the Knowledge domain of the AgentOS
-    MemoryConfig-Input:
-      properties:
-        display_name:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Display Name
-        dbs:
-          anyOf:
-            - items:
-                $ref: '#/components/schemas/DatabaseConfig_MemoryDomainConfig_'
-              type: array
-            - type: 'null'
-          title: Dbs
-      type: object
-      title: MemoryConfig
-      description: Configuration for the Memory domain of the AgentOS
-    MemoryConfig-Output:
+    MemoryConfig:
       properties:
         display_name:
           anyOf:
@@ -5699,7 +6402,7 @@ components:
       type: object
       title: MemoryDomainConfig
       description: Configuration for the Memory domain of the AgentOS
-    Message-Input:
+    Message:
       properties:
         contextId:
           anyOf:
@@ -5729,61 +6432,7 @@ components:
           title: Metadata
         parts:
           items:
-            $ref: '#/components/schemas/Part-Input'
-          type: array
-          title: Parts
-        referenceTaskIds:
-          anyOf:
-            - items:
-                type: string
-              type: array
-            - type: 'null'
-          title: Referencetaskids
-        role:
-          $ref: '#/components/schemas/Role'
-        taskId:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Taskid
-      type: object
-      required:
-        - messageId
-        - parts
-        - role
-      title: Message
-      description: Represents a single message in the conversation between a user and an agent.
-    Message-Output:
-      properties:
-        contextId:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Contextid
-        extensions:
-          anyOf:
-            - items:
-                type: string
-              type: array
-            - type: 'null'
-          title: Extensions
-        kind:
-          type: string
-          const: message
-          title: Kind
-          default: message
-        messageId:
-          type: string
-          title: Messageid
-        metadata:
-          anyOf:
-            - additionalProperties: true
-              type: object
-            - type: 'null'
-          title: Metadata
-        parts:
-          items:
-            $ref: '#/components/schemas/Part-Output'
+            $ref: '#/components/schemas/Part'
           type: array
           title: Parts
         referenceTaskIds:
@@ -5810,43 +6459,22 @@ components:
     Meta:
       properties:
         limit:
-          anyOf:
-            - type: integer
-              maximum: 100
-              minimum: 1
-            - type: 'null'
+          type: integer
+          maximum: 100
+          minimum: 1
           title: Limit
           description: Number of results per page
           default: 20
         page:
-          anyOf:
-            - type: integer
-              minimum: 1
-            - type: 'null'
+          type: integer
+          minimum: 1
           title: Page
           description: Page number
           default: 1
       type: object
       title: Meta
       description: Inline metadata schema for pagination.
-    MetricsConfig-Input:
-      properties:
-        display_name:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Display Name
-        dbs:
-          anyOf:
-            - items:
-                $ref: '#/components/schemas/DatabaseConfig_MetricsDomainConfig_'
-              type: array
-            - type: 'null'
-          title: Dbs
-      type: object
-      title: MetricsConfig
-      description: Configuration for the Metrics domain of the AgentOS
-    MetricsConfig-Output:
+    MetricsConfig:
       properties:
         display_name:
           anyOf:
@@ -5880,16 +6508,17 @@ components:
             $ref: '#/components/schemas/DayAggregatedMetrics'
           type: array
           title: Metrics
+          description: List of daily aggregated metrics
         updated_at:
           anyOf:
             - type: string
               format: date-time
             - type: 'null'
           title: Updated At
+          description: Timestamp of the most recent metrics update
       type: object
       required:
         - metrics
-        - updated_at
       title: MetricsResponse
     Model:
       properties:
@@ -5898,11 +6527,13 @@ components:
             - type: string
             - type: 'null'
           title: Id
+          description: Model identifier
         provider:
           anyOf:
             - type: string
             - type: 'null'
           title: Provider
+          description: Model provider name
       type: object
       title: Model
     ModelResponse:
@@ -5912,16 +6543,19 @@ components:
             - type: string
             - type: 'null'
           title: Name
+          description: Name of the model
         model:
           anyOf:
             - type: string
             - type: 'null'
           title: Model
+          description: Model identifier
         provider:
           anyOf:
             - type: string
             - type: 'null'
           title: Provider
+          description: Model provider name
       type: object
       title: ModelResponse
     NotFoundResponse:
@@ -5929,11 +6563,13 @@ components:
         detail:
           type: string
           title: Detail
+          description: Error detail message
         error_code:
           anyOf:
             - type: string
             - type: 'null'
           title: Error Code
+          description: Error code for categorization
       type: object
       required:
         - detail
@@ -5948,8 +6584,10 @@ components:
             $ref: '#/components/schemas/ContentResponseSchema'
           type: array
           title: Data
+          description: List of items for the current page
         meta:
           $ref: '#/components/schemas/PaginationInfo'
+          description: Pagination metadata
       type: object
       required:
         - data
@@ -5962,8 +6600,10 @@ components:
             $ref: '#/components/schemas/EvalSchema'
           type: array
           title: Data
+          description: List of items for the current page
         meta:
           $ref: '#/components/schemas/PaginationInfo'
+          description: Pagination metadata
       type: object
       required:
         - data
@@ -5976,8 +6616,10 @@ components:
             $ref: '#/components/schemas/SessionSchema'
           type: array
           title: Data
+          description: List of items for the current page
         meta:
           $ref: '#/components/schemas/PaginationInfo'
+          description: Pagination metadata
       type: object
       required:
         - data
@@ -5990,8 +6632,10 @@ components:
             $ref: '#/components/schemas/UserMemorySchema'
           type: array
           title: Data
+          description: List of items for the current page
         meta:
           $ref: '#/components/schemas/PaginationInfo'
+          description: Pagination metadata
       type: object
       required:
         - data
@@ -6004,8 +6648,10 @@ components:
             $ref: '#/components/schemas/UserStatsSchema'
           type: array
           title: Data
+          description: List of items for the current page
         meta:
           $ref: '#/components/schemas/PaginationInfo'
+          description: Pagination metadata
       type: object
       required:
         - data
@@ -6018,8 +6664,10 @@ components:
             $ref: '#/components/schemas/VectorSearchResult'
           type: array
           title: Data
+          description: List of items for the current page
         meta:
           $ref: '#/components/schemas/PaginationInfo'
+          description: Pagination metadata
       type: object
       required:
         - data
@@ -6028,44 +6676,39 @@ components:
     PaginationInfo:
       properties:
         page:
-          anyOf:
-            - type: integer
-            - type: 'null'
+          type: integer
+          minimum: 0
           title: Page
+          description: Current page number (0-indexed)
           default: 0
         limit:
-          anyOf:
-            - type: integer
-            - type: 'null'
+          type: integer
+          maximum: 100
+          minimum: 1
           title: Limit
+          description: Number of items per page
           default: 20
         total_pages:
-          anyOf:
-            - type: integer
-            - type: 'null'
+          type: integer
+          minimum: 0
           title: Total Pages
+          description: Total number of pages
           default: 0
         total_count:
-          anyOf:
-            - type: integer
-            - type: 'null'
+          type: integer
+          minimum: 0
           title: Total Count
+          description: Total count of items
           default: 0
         search_time_ms:
-          anyOf:
-            - type: number
-            - type: 'null'
+          type: number
+          minimum: 0
           title: Search Time Ms
+          description: Search execution time in milliseconds
           default: 0
       type: object
       title: PaginationInfo
-    Part-Input:
-      anyOf:
-        - $ref: '#/components/schemas/TextPart'
-        - $ref: '#/components/schemas/FilePart'
-        - $ref: '#/components/schemas/DataPart'
-      title: Part
-    Part-Output:
+    Part:
       anyOf:
         - $ref: '#/components/schemas/TextPart'
         - $ref: '#/components/schemas/FilePart'
@@ -6076,16 +6719,19 @@ components:
         id:
           type: string
           title: Id
+          description: Unique identifier for the reader
         name:
           anyOf:
             - type: string
             - type: 'null'
           title: Name
+          description: Name of the reader
         description:
           anyOf:
             - type: string
             - type: 'null'
           title: Description
+          description: Description of the reader's capabilities
         chunkers:
           anyOf:
             - items:
@@ -6093,6 +6739,7 @@ components:
               type: array
             - type: 'null'
           title: Chunkers
+          description: List of supported chunking strategies
       type: object
       required:
         - id
@@ -6161,26 +6808,31 @@ components:
         run_id:
           type: string
           title: Run Id
+          description: Unique identifier for the run
         parent_run_id:
           anyOf:
             - type: string
             - type: 'null'
           title: Parent Run Id
+          description: Parent run ID if this is a nested run
         agent_id:
           anyOf:
             - type: string
             - type: 'null'
           title: Agent Id
+          description: Agent ID that executed this run
         user_id:
           anyOf:
             - type: string
             - type: 'null'
           title: User Id
+          description: User ID associated with the run
         run_input:
           anyOf:
             - type: string
             - type: 'null'
           title: Run Input
+          description: Input provided to the run
         content:
           anyOf:
             - type: string
@@ -6188,16 +6840,19 @@ components:
               type: object
             - type: 'null'
           title: Content
+          description: Output content from the run
         run_response_format:
           anyOf:
             - type: string
             - type: 'null'
           title: Run Response Format
+          description: Format of the response (text/json)
         reasoning_content:
           anyOf:
             - type: string
             - type: 'null'
           title: Reasoning Content
+          description: Reasoning content if reasoning was enabled
         reasoning_steps:
           anyOf:
             - items:
@@ -6206,12 +6861,14 @@ components:
               type: array
             - type: 'null'
           title: Reasoning Steps
+          description: List of reasoning steps
         metrics:
           anyOf:
             - additionalProperties: true
               type: object
             - type: 'null'
           title: Metrics
+          description: Performance and usage metrics
         messages:
           anyOf:
             - items:
@@ -6220,6 +6877,7 @@ components:
               type: array
             - type: 'null'
           title: Messages
+          description: Message history for the run
         tools:
           anyOf:
             - items:
@@ -6228,6 +6886,7 @@ components:
               type: array
             - type: 'null'
           title: Tools
+          description: Tools used in the run
         events:
           anyOf:
             - items:
@@ -6236,12 +6895,14 @@ components:
               type: array
             - type: 'null'
           title: Events
+          description: Events generated during the run
         created_at:
           anyOf:
             - type: string
               format: date-time
             - type: 'null'
           title: Created At
+          description: Run creation timestamp
         references:
           anyOf:
             - items:
@@ -6250,6 +6911,7 @@ components:
               type: array
             - type: 'null'
           title: References
+          description: References cited in the run
         reasoning_messages:
           anyOf:
             - items:
@@ -6258,6 +6920,14 @@ components:
               type: array
             - type: 'null'
           title: Reasoning Messages
+          description: Reasoning process messages
+        session_state:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Session State
+          description: Session state at the end of the run
         images:
           anyOf:
             - items:
@@ -6266,6 +6936,7 @@ components:
               type: array
             - type: 'null'
           title: Images
+          description: Images included in the run
         videos:
           anyOf:
             - items:
@@ -6274,6 +6945,7 @@ components:
               type: array
             - type: 'null'
           title: Videos
+          description: Videos included in the run
         audio:
           anyOf:
             - items:
@@ -6282,6 +6954,7 @@ components:
               type: array
             - type: 'null'
           title: Audio
+          description: Audio files included in the run
         files:
           anyOf:
             - items:
@@ -6290,44 +6963,24 @@ components:
               type: array
             - type: 'null'
           title: Files
+          description: Files included in the run
         response_audio:
           anyOf:
-            - items:
-                additionalProperties: true
-                type: object
-              type: array
+            - additionalProperties: true
+              type: object
             - type: 'null'
           title: Response Audio
+          description: Audio response if generated
         input_media:
           anyOf:
             - additionalProperties: true
               type: object
             - type: 'null'
           title: Input Media
+          description: Input media attachments
       type: object
       required:
         - run_id
-        - parent_run_id
-        - agent_id
-        - user_id
-        - run_input
-        - content
-        - run_response_format
-        - reasoning_content
-        - reasoning_steps
-        - metrics
-        - messages
-        - tools
-        - events
-        - created_at
-        - references
-        - reasoning_messages
-        - images
-        - videos
-        - audio
-        - files
-        - response_audio
-        - input_media
       title: RunSchema
     SendMessageSuccessResponse:
       properties:
@@ -6344,32 +6997,15 @@ components:
           default: '2.0'
         result:
           anyOf:
-            - $ref: '#/components/schemas/Task-Output'
-            - $ref: '#/components/schemas/Message-Output'
+            - $ref: '#/components/schemas/Task'
+            - $ref: '#/components/schemas/Message'
           title: Result
       type: object
       required:
         - result
       title: SendMessageSuccessResponse
       description: Represents a successful JSON-RPC response for the `message/send` method.
-    SessionConfig-Input:
-      properties:
-        display_name:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Display Name
-        dbs:
-          anyOf:
-            - items:
-                $ref: '#/components/schemas/DatabaseConfig_SessionDomainConfig_'
-              type: array
-            - type: 'null'
-          title: Dbs
-      type: object
-      title: SessionConfig
-      description: Configuration for the Session domain of the AgentOS
-    SessionConfig-Output:
+    SessionConfig:
       properties:
         display_name:
           anyOf:
@@ -6401,34 +7037,36 @@ components:
         session_id:
           type: string
           title: Session Id
+          description: Unique identifier for the session
         session_name:
           type: string
           title: Session Name
+          description: Human-readable name for the session
         session_state:
           anyOf:
             - additionalProperties: true
               type: object
             - type: 'null'
           title: Session State
+          description: Current state data of the session
         created_at:
           anyOf:
             - type: string
               format: date-time
             - type: 'null'
           title: Created At
+          description: Timestamp when session was created
         updated_at:
           anyOf:
             - type: string
               format: date-time
             - type: 'null'
           title: Updated At
+          description: Timestamp when session was last updated
       type: object
       required:
         - session_id
         - session_name
-        - session_state
-        - created_at
-        - updated_at
       title: SessionSchema
     SessionType:
       type: string
@@ -6437,6 +7075,17 @@ components:
         - team
         - workflow
       title: SessionType
+    SlackChallengeResponse:
+      properties:
+        challenge:
+          type: string
+          title: Challenge
+          description: Challenge string to echo back to Slack
+      type: object
+      required:
+        - challenge
+      title: SlackChallengeResponse
+      description: Response model for Slack URL verification challenge
     SlackEventResponse:
       properties:
         status:
@@ -6478,12 +7127,12 @@ components:
         - content
       title: SystemMessage
       description: A system message.
-    Task-Input:
+    Task:
       properties:
         artifacts:
           anyOf:
             - items:
-                $ref: '#/components/schemas/Artifact-Input'
+                $ref: '#/components/schemas/Artifact'
               type: array
             - type: 'null'
           title: Artifacts
@@ -6493,7 +7142,7 @@ components:
         history:
           anyOf:
             - items:
-                $ref: '#/components/schemas/Message-Input'
+                $ref: '#/components/schemas/Message'
               type: array
             - type: 'null'
           title: History
@@ -6512,49 +7161,7 @@ components:
             - type: 'null'
           title: Metadata
         status:
-          $ref: '#/components/schemas/TaskStatus-Input'
-      type: object
-      required:
-        - contextId
-        - id
-        - status
-      title: Task
-      description: 'Represents a single, stateful operation or conversation between a client and an agent.'
-    Task-Output:
-      properties:
-        artifacts:
-          anyOf:
-            - items:
-                $ref: '#/components/schemas/Artifact-Output'
-              type: array
-            - type: 'null'
-          title: Artifacts
-        contextId:
-          type: string
-          title: Contextid
-        history:
-          anyOf:
-            - items:
-                $ref: '#/components/schemas/Message-Output'
-              type: array
-            - type: 'null'
-          title: History
-        id:
-          type: string
-          title: Id
-        kind:
-          type: string
-          const: task
-          title: Kind
-          default: task
-        metadata:
-          anyOf:
-            - additionalProperties: true
-              type: object
-            - type: 'null'
-          title: Metadata
-        status:
-          $ref: '#/components/schemas/TaskStatus-Output'
+          $ref: '#/components/schemas/TaskStatus'
       type: object
       required:
         - contextId
@@ -6576,31 +7183,11 @@ components:
         - unknown
       title: TaskState
       description: Defines the lifecycle states of a Task.
-    TaskStatus-Input:
+    TaskStatus:
       properties:
         message:
           anyOf:
-            - $ref: '#/components/schemas/Message-Input'
-            - type: 'null'
-        state:
-          $ref: '#/components/schemas/TaskState'
-        timestamp:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Timestamp
-          examples:
-            - '2023-10-27T10:00:00Z'
-      type: object
-      required:
-        - state
-      title: TaskStatus
-      description: Represents the status of a task at a specific point in time.
-    TaskStatus-Output:
-      properties:
-        message:
-          anyOf:
-            - $ref: '#/components/schemas/Message-Output'
+            - $ref: '#/components/schemas/Message'
             - type: 'null'
         state:
           $ref: '#/components/schemas/TaskState'
@@ -6711,6 +7298,12 @@ components:
               type: object
             - type: 'null'
           title: Metadata
+        input_schema:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Input Schema
       type: object
       title: TeamResponse
     TeamRunSchema:
@@ -6718,16 +7311,19 @@ components:
         run_id:
           type: string
           title: Run Id
+          description: Unique identifier for the team run
         parent_run_id:
           anyOf:
             - type: string
             - type: 'null'
           title: Parent Run Id
+          description: Parent run ID if this is a nested run
         team_id:
           anyOf:
             - type: string
             - type: 'null'
           title: Team Id
+          description: Team ID that executed this run
         content:
           anyOf:
             - type: string
@@ -6735,11 +7331,13 @@ components:
               type: object
             - type: 'null'
           title: Content
+          description: Output content from the team run
         reasoning_content:
           anyOf:
             - type: string
             - type: 'null'
           title: Reasoning Content
+          description: Reasoning content if reasoning was enabled
         reasoning_steps:
           anyOf:
             - items:
@@ -6748,22 +7346,26 @@ components:
               type: array
             - type: 'null'
           title: Reasoning Steps
+          description: List of reasoning steps
         run_input:
           anyOf:
             - type: string
             - type: 'null'
           title: Run Input
+          description: Input provided to the run
         run_response_format:
           anyOf:
             - type: string
             - type: 'null'
           title: Run Response Format
+          description: Format of the response (text/json)
         metrics:
           anyOf:
             - additionalProperties: true
               type: object
             - type: 'null'
           title: Metrics
+          description: Performance and usage metrics
         tools:
           anyOf:
             - items:
@@ -6772,6 +7374,7 @@ components:
               type: array
             - type: 'null'
           title: Tools
+          description: Tools used in the run
         messages:
           anyOf:
             - items:
@@ -6780,6 +7383,7 @@ components:
               type: array
             - type: 'null'
           title: Messages
+          description: Message history for the run
         events:
           anyOf:
             - items:
@@ -6788,12 +7392,14 @@ components:
               type: array
             - type: 'null'
           title: Events
+          description: Events generated during the run
         created_at:
           anyOf:
             - type: string
               format: date-time
             - type: 'null'
           title: Created At
+          description: Run creation timestamp
         references:
           anyOf:
             - items:
@@ -6802,6 +7408,7 @@ components:
               type: array
             - type: 'null'
           title: References
+          description: References cited in the run
         reasoning_messages:
           anyOf:
             - items:
@@ -6810,12 +7417,21 @@ components:
               type: array
             - type: 'null'
           title: Reasoning Messages
+          description: Reasoning process messages
+        session_state:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Session State
+          description: Session state at the end of the run
         input_media:
           anyOf:
             - additionalProperties: true
               type: object
             - type: 'null'
           title: Input Media
+          description: Input media attachments
         images:
           anyOf:
             - items:
@@ -6824,6 +7440,7 @@ components:
               type: array
             - type: 'null'
           title: Images
+          description: Images included in the run
         videos:
           anyOf:
             - items:
@@ -6832,6 +7449,7 @@ components:
               type: array
             - type: 'null'
           title: Videos
+          description: Videos included in the run
         audio:
           anyOf:
             - items:
@@ -6840,6 +7458,7 @@ components:
               type: array
             - type: 'null'
           title: Audio
+          description: Audio files included in the run
         files:
           anyOf:
             - items:
@@ -6848,80 +7467,75 @@ components:
               type: array
             - type: 'null'
           title: Files
+          description: Files included in the run
         response_audio:
           anyOf:
-            - items:
-                additionalProperties: true
-                type: object
-              type: array
+            - additionalProperties: true
+              type: object
             - type: 'null'
           title: Response Audio
+          description: Audio response if generated
       type: object
       required:
         - run_id
-        - parent_run_id
-        - team_id
-        - content
-        - reasoning_content
-        - reasoning_steps
-        - run_input
-        - run_response_format
-        - metrics
-        - tools
-        - messages
-        - events
-        - created_at
-        - references
-        - reasoning_messages
-        - input_media
-        - images
-        - videos
-        - audio
-        - files
-        - response_audio
       title: TeamRunSchema
     TeamSessionDetailSchema:
       properties:
         session_id:
           type: string
           title: Session Id
+          description: Unique session identifier
         session_name:
           type: string
           title: Session Name
+          description: Human-readable session name
         user_id:
           anyOf:
             - type: string
             - type: 'null'
           title: User Id
+          description: User ID associated with the session
         team_id:
           anyOf:
             - type: string
             - type: 'null'
           title: Team Id
+          description: Team ID used in this session
         session_summary:
           anyOf:
             - additionalProperties: true
               type: object
             - type: 'null'
           title: Session Summary
+          description: Summary of team interactions
         session_state:
           anyOf:
             - additionalProperties: true
               type: object
             - type: 'null'
           title: Session State
+          description: Current state of the session
         metrics:
           anyOf:
             - additionalProperties: true
               type: object
             - type: 'null'
           title: Metrics
+          description: Session metrics
         team_data:
           anyOf:
             - additionalProperties: true
               type: object
             - type: 'null'
           title: Team Data
+          description: Team-specific data
+        metadata:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Metadata
+          description: Additional metadata
         chat_history:
           anyOf:
             - items:
@@ -6930,37 +7544,31 @@ components:
               type: array
             - type: 'null'
           title: Chat History
+          description: Complete chat history
         created_at:
           anyOf:
             - type: string
               format: date-time
             - type: 'null'
           title: Created At
+          description: Session creation timestamp
         updated_at:
           anyOf:
             - type: string
               format: date-time
             - type: 'null'
           title: Updated At
+          description: Last update timestamp
         total_tokens:
           anyOf:
             - type: integer
             - type: 'null'
           title: Total Tokens
+          description: Total tokens used in this session
       type: object
       required:
         - session_id
         - session_name
-        - user_id
-        - team_id
-        - session_summary
-        - session_state
-        - metrics
-        - team_data
-        - chat_history
-        - created_at
-        - updated_at
-        - total_tokens
       title: TeamSessionDetailSchema
     TeamSummaryResponse:
       properties:
@@ -6969,21 +7577,25 @@ components:
             - type: string
             - type: 'null'
           title: Id
+          description: Unique identifier for the team
         name:
           anyOf:
             - type: string
             - type: 'null'
           title: Name
+          description: Name of the team
         description:
           anyOf:
             - type: string
             - type: 'null'
           title: Description
+          description: Description of the team
         db_id:
           anyOf:
             - type: string
             - type: 'null'
           title: Db Id
+          description: Database identifier
       type: object
       title: TeamSummaryResponse
     TextPart:
@@ -7078,11 +7690,13 @@ components:
         detail:
           type: string
           title: Detail
+          description: Error detail message
         error_code:
           anyOf:
             - type: string
             - type: 'null'
           title: Error Code
+          description: Error code for categorization
       type: object
       required:
         - detail
@@ -7094,21 +7708,59 @@ components:
       properties:
         name:
           type: string
+          maxLength: 255
+          minLength: 1
           title: Name
+          description: New name for the evaluation run
       type: object
       required:
         - name
       title: UpdateEvalRunRequest
+    UpdateSessionRequest:
+      properties:
+        session_name:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Session Name
+          description: Updated session name
+        session_state:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Session State
+          description: Updated session state
+        metadata:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Metadata
+          description: Updated metadata
+        summary:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Summary
+          description: Session summary
+      type: object
+      title: UpdateSessionRequest
     UserMemoryCreateSchema:
       properties:
         memory:
           type: string
+          maxLength: 5000
+          minLength: 1
           title: Memory
+          description: Memory content text
         user_id:
           anyOf:
             - type: string
             - type: 'null'
           title: User Id
+          description: User ID who owns this memory
         topics:
           anyOf:
             - items:
@@ -7116,6 +7768,7 @@ components:
               type: array
             - type: 'null'
           title: Topics
+          description: Topics or tags to categorize the memory
       type: object
       required:
         - memory
@@ -7126,9 +7779,11 @@ components:
         memory_id:
           type: string
           title: Memory Id
+          description: Unique identifier for the memory
         memory:
           type: string
           title: Memory
+          description: Memory content text
         topics:
           anyOf:
             - items:
@@ -7136,36 +7791,36 @@ components:
               type: array
             - type: 'null'
           title: Topics
+          description: Topics or tags associated with the memory
         agent_id:
           anyOf:
             - type: string
             - type: 'null'
           title: Agent Id
+          description: Agent ID associated with this memory
         team_id:
           anyOf:
             - type: string
             - type: 'null'
           title: Team Id
+          description: Team ID associated with this memory
         user_id:
           anyOf:
             - type: string
             - type: 'null'
           title: User Id
+          description: User ID who owns this memory
         updated_at:
           anyOf:
             - type: string
               format: date-time
             - type: 'null'
           title: Updated At
+          description: Timestamp when memory was last updated
       type: object
       required:
         - memory_id
         - memory
-        - topics
-        - agent_id
-        - team_id
-        - user_id
-        - updated_at
       title: UserMemorySchema
     UserMessage:
       properties:
@@ -7197,15 +7852,19 @@ components:
         user_id:
           type: string
           title: User Id
+          description: User ID
         total_memories:
           type: integer
+          minimum: 0
           title: Total Memories
+          description: Total number of memories for this user
         last_memory_updated_at:
           anyOf:
             - type: string
               format: date-time
             - type: 'null'
           title: Last Memory Updated At
+          description: Timestamp of the most recent memory update
       type: object
       required:
         - user_id
@@ -7238,11 +7897,13 @@ components:
         detail:
           type: string
           title: Detail
+          description: Error detail message
         error_code:
           anyOf:
             - type: string
             - type: 'null'
           title: Error Code
+          description: Error code for categorization
       type: object
       required:
         - detail
@@ -7255,16 +7916,19 @@ components:
         id:
           type: string
           title: Id
+          description: Unique identifier for the vector database
         name:
           anyOf:
             - type: string
             - type: 'null'
           title: Name
+          description: Name of the vector database
         description:
           anyOf:
             - type: string
             - type: 'null'
           title: Description
+          description: Description of the vector database
         search_types:
           anyOf:
             - items:
@@ -7272,6 +7936,7 @@ components:
               type: array
             - type: 'null'
           title: Search Types
+          description: 'List of supported search types (vector, keyword, hybrid)'
       type: object
       required:
         - id
@@ -7281,13 +7946,13 @@ components:
         query:
           type: string
           title: Query
-          description: The search query
+          description: The search query text
         db_id:
           anyOf:
             - type: string
             - type: 'null'
           title: Db Id
-          description: The content database id
+          description: The content database ID to search in
         vector_db_ids:
           anyOf:
             - items:
@@ -7295,16 +7960,18 @@ components:
               type: array
             - type: 'null'
           title: Vector Db Ids
-          description: List of vector database ids to search in
+          description: List of vector database IDs to search in
         search_type:
           anyOf:
             - type: string
             - type: 'null'
           title: Search Type
-          description: The type of search to perform
+          description: 'The type of search to perform (vector, keyword, hybrid)'
         max_results:
           anyOf:
             - type: integer
+              maximum: 1000
+              minimum: 1
             - type: 'null'
           title: Max Results
           description: The maximum number of results to return
@@ -7314,7 +7981,7 @@ components:
               type: object
             - type: 'null'
           title: Filters
-          description: The filters to apply to the search
+          description: Filters to apply to the search results
         meta:
           anyOf:
             - $ref: '#/components/schemas/Meta'
@@ -7330,46 +7997,58 @@ components:
         id:
           type: string
           title: Id
+          description: Unique identifier for the search result document
         content:
           type: string
           title: Content
+          description: Content text of the document
         name:
           anyOf:
             - type: string
             - type: 'null'
           title: Name
+          description: Name of the document
         meta_data:
           anyOf:
             - additionalProperties: true
               type: object
             - type: 'null'
           title: Meta Data
+          description: Metadata associated with the document
         usage:
           anyOf:
             - additionalProperties: true
               type: object
             - type: 'null'
           title: Usage
+          description: 'Usage statistics (e.g., token counts)'
         reranking_score:
           anyOf:
             - type: number
+              maximum: 1
+              minimum: 0
             - type: 'null'
           title: Reranking Score
+          description: Reranking score for relevance
         content_id:
           anyOf:
             - type: string
             - type: 'null'
           title: Content Id
+          description: ID of the source content
         content_origin:
           anyOf:
             - type: string
             - type: 'null'
           title: Content Origin
+          description: Origin URL or source of the content
         size:
           anyOf:
             - type: integer
+              minimum: 0
             - type: 'null'
           title: Size
+          description: Size of the content in bytes
       type: object
       required:
         - id
@@ -7383,27 +8062,32 @@ components:
             - type: string
             - type: 'null'
           title: Id
+          description: Unique identifier for the workflow
         name:
           anyOf:
             - type: string
             - type: 'null'
           title: Name
+          description: Name of the workflow
         db_id:
           anyOf:
             - type: string
             - type: 'null'
           title: Db Id
+          description: Database identifier
         description:
           anyOf:
             - type: string
             - type: 'null'
           title: Description
+          description: Description of the workflow
         input_schema:
           anyOf:
             - additionalProperties: true
               type: object
             - type: 'null'
           title: Input Schema
+          description: Input schema for the workflow
         steps:
           anyOf:
             - items:
@@ -7412,20 +8096,29 @@ components:
               type: array
             - type: 'null'
           title: Steps
+          description: List of workflow steps
         agent:
           anyOf:
             - $ref: '#/components/schemas/AgentResponse'
             - type: 'null'
+          description: Agent configuration if used
         team:
           anyOf:
             - $ref: '#/components/schemas/TeamResponse'
             - type: 'null'
+          description: Team configuration if used
         metadata:
           anyOf:
             - additionalProperties: true
               type: object
             - type: 'null'
           title: Metadata
+          description: Additional metadata
+        workflow_agent:
+          type: boolean
+          title: Workflow Agent
+          description: Whether this workflow uses a WorkflowAgent
+          default: false
       type: object
       title: WorkflowResponse
     WorkflowRunSchema:
@@ -7433,11 +8126,13 @@ components:
         run_id:
           type: string
           title: Run Id
+          description: Unique identifier for the workflow run
         run_input:
           anyOf:
             - type: string
             - type: 'null'
           title: Run Input
+          description: Input provided to the workflow
         events:
           anyOf:
             - items:
@@ -7446,16 +8141,19 @@ components:
               type: array
             - type: 'null'
           title: Events
+          description: Events generated during the workflow
         workflow_id:
           anyOf:
             - type: string
             - type: 'null'
           title: Workflow Id
+          description: Workflow ID that was executed
         user_id:
           anyOf:
             - type: string
             - type: 'null'
           title: User Id
+          description: User ID associated with the run
         content:
           anyOf:
             - type: string
@@ -7463,16 +8161,19 @@ components:
               type: object
             - type: 'null'
           title: Content
+          description: Output content from the workflow
         content_type:
           anyOf:
             - type: string
             - type: 'null'
           title: Content Type
+          description: Type of content returned
         status:
           anyOf:
             - type: string
             - type: 'null'
           title: Status
+          description: Status of the workflow run
         step_results:
           anyOf:
             - items:
@@ -7481,6 +8182,7 @@ components:
               type: array
             - type: 'null'
           title: Step Results
+          description: Results from each workflow step
         step_executor_runs:
           anyOf:
             - items:
@@ -7489,22 +8191,26 @@ components:
               type: array
             - type: 'null'
           title: Step Executor Runs
+          description: Executor runs for each step
         metrics:
           anyOf:
             - additionalProperties: true
               type: object
             - type: 'null'
           title: Metrics
+          description: Performance and usage metrics
         created_at:
           anyOf:
             - type: integer
             - type: 'null'
           title: Created At
+          description: Unix timestamp of run creation
         reasoning_content:
           anyOf:
             - type: string
             - type: 'null'
           title: Reasoning Content
+          description: Reasoning content if reasoning was enabled
         reasoning_steps:
           anyOf:
             - items:
@@ -7513,6 +8219,7 @@ components:
               type: array
             - type: 'null'
           title: Reasoning Steps
+          description: List of reasoning steps
         references:
           anyOf:
             - items:
@@ -7521,6 +8228,7 @@ components:
               type: array
             - type: 'null'
           title: References
+          description: References cited in the workflow
         reasoning_messages:
           anyOf:
             - items:
@@ -7529,6 +8237,7 @@ components:
               type: array
             - type: 'null'
           title: Reasoning Messages
+          description: Reasoning process messages
         images:
           anyOf:
             - items:
@@ -7537,6 +8246,7 @@ components:
               type: array
             - type: 'null'
           title: Images
+          description: Images included in the workflow
         videos:
           anyOf:
             - items:
@@ -7545,6 +8255,7 @@ components:
               type: array
             - type: 'null'
           title: Videos
+          description: Videos included in the workflow
         audio:
           anyOf:
             - items:
@@ -7553,6 +8264,7 @@ components:
               type: array
             - type: 'null'
           title: Audio
+          description: Audio files included in the workflow
         files:
           anyOf:
             - items:
@@ -7561,37 +8273,17 @@ components:
               type: array
             - type: 'null'
           title: Files
+          description: Files included in the workflow
         response_audio:
           anyOf:
-            - items:
-                additionalProperties: true
-                type: object
-              type: array
+            - additionalProperties: true
+              type: object
             - type: 'null'
           title: Response Audio
+          description: Audio response if generated
       type: object
       required:
         - run_id
-        - run_input
-        - events
-        - workflow_id
-        - user_id
-        - content
-        - content_type
-        - status
-        - step_results
-        - step_executor_runs
-        - metrics
-        - created_at
-        - reasoning_content
-        - reasoning_steps
-        - references
-        - reasoning_messages
-        - images
-        - videos
-        - audio
-        - files
-        - response_audio
       title: WorkflowRunSchema
     WorkflowSessionDetailSchema:
       properties:
@@ -7600,69 +8292,71 @@ components:
             - type: string
             - type: 'null'
           title: User Id
+          description: User ID associated with the session
         workflow_id:
           anyOf:
             - type: string
             - type: 'null'
           title: Workflow Id
+          description: Workflow ID used in this session
         workflow_name:
           anyOf:
             - type: string
             - type: 'null'
           title: Workflow Name
+          description: Name of the workflow
         session_id:
           type: string
           title: Session Id
+          description: Unique session identifier
         session_name:
           type: string
           title: Session Name
+          description: Human-readable session name
         session_data:
           anyOf:
             - additionalProperties: true
               type: object
             - type: 'null'
           title: Session Data
+          description: Complete session data
         session_state:
           anyOf:
             - additionalProperties: true
               type: object
             - type: 'null'
           title: Session State
+          description: Current workflow state
         workflow_data:
           anyOf:
             - additionalProperties: true
               type: object
             - type: 'null'
           title: Workflow Data
+          description: Workflow-specific data
         metadata:
           anyOf:
             - additionalProperties: true
               type: object
             - type: 'null'
           title: Metadata
+          description: Additional metadata
         created_at:
           anyOf:
             - type: integer
             - type: 'null'
           title: Created At
+          description: Unix timestamp of session creation
         updated_at:
           anyOf:
             - type: integer
             - type: 'null'
           title: Updated At
+          description: Unix timestamp of last update
       type: object
       required:
-        - user_id
-        - workflow_id
-        - workflow_name
         - session_id
         - session_name
-        - session_data
-        - session_state
-        - workflow_data
-        - metadata
-        - created_at
-        - updated_at
       title: WorkflowSessionDetailSchema
     WorkflowSummaryResponse:
       properties:
@@ -7671,21 +8365,25 @@ components:
             - type: string
             - type: 'null'
           title: Id
+          description: Unique identifier for the workflow
         name:
           anyOf:
             - type: string
             - type: 'null'
           title: Name
+          description: Name of the workflow
         description:
           anyOf:
             - type: string
             - type: 'null'
           title: Description
+          description: Description of the workflow
         db_id:
           anyOf:
             - type: string
             - type: 'null'
           title: Db Id
+          description: Database identifier
       type: object
       title: WorkflowSummaryResponse
   securitySchemes:

@@ -1,0 +1,80 @@
+---
+title: Redis 
+---
+
+## Code
+
+```python redis_db.py
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.knowledge.knowledge import Knowledge
+from agno.vectordb.redis import RedisVectorDB
+
+# Configure Redis connection
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+INDEX_NAME = os.getenv("REDIS_INDEX", "agno_cookbook_vectors")
+
+# Initialize Redis Vector DB
+vector_db = RedisVectorDb(
+    index_name=INDEX_NAME,
+    redis_url=REDIS_URL,
+    search_type=SearchType.vector,  # try SearchType.hybrid for hybrid search
+)
+
+contents_db = PostgresDb(
+    db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
+    knowledge_table="knowledge_contents",
+)
+
+knowledge = Knowledge(
+    name="My Qdrant Vector Knowledge Base",
+    description="This is a knowledge base that uses a Qdrant Vector DB",
+    vector_db=vector_db,
+    contents_db=contents_db,
+)
+
+knowledge.add_content(
+    name="Recipes",
+    url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
+    metadata={"doc_type": "recipe_book"},
+)
+
+
+agent = Agent(knowledge=knowledge)
+agent.print_response("List down the ingredients to make Massaman Gai", markdown=True)
+
+
+vector_db.delete_by_name("Recipes")
+
+vector_db.delete_by_metadata({"doc_type": "recipe_book"})
+```
+
+## Usage
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install libraries">
+    ```bash
+    pip install -U redis redisvl pypdf openai agno
+    ```
+  </Step>
+
+  <Step title="Run Redis">
+    ```bash
+    docker run -d --name my-redis -p 6379:6379 -p 8001:8001 redis/redis-stack:latest
+    ```
+  </Step>
+
+    <Step title="Run Agent">
+    <CodeGroup>
+    ```bash Mac
+    python redis_db.py
+    ```
+
+    ```bash Windows
+    python redis_db.py
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
