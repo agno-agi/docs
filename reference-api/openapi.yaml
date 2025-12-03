@@ -2455,6 +2455,420 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+  /traces:
+    get:
+      tags:
+        - Traces
+      summary: List Traces
+      description: |
+        Retrieve a paginated list of execution traces with optional filtering.
+
+        **Traces provide observability into:**
+        - Agent execution flows
+        - Model invocations and token usage
+        - Tool calls and their results
+        - Errors and performance bottlenecks
+
+        **Filtering Options:**
+        - By run, session, user, or agent ID
+        - By status (OK, ERROR)
+        - By time range
+
+        **Pagination:**
+        - Use `page` (1-indexed) and `limit` parameters
+        - Response includes pagination metadata (total_pages, total_count, etc.)
+
+        **Response Format:**
+        Returns summary information for each trace. Use GET `/traces/{trace_id}` for detailed hierarchy.
+      operationId: get_traces
+      security:
+        - HTTPBearer: []
+      parameters:
+        - name: run_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: Run Id
+          description: Filter by run ID
+        - name: session_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: Session Id
+          description: Filter by session ID
+        - name: user_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: User Id
+          description: Filter by user ID
+        - name: agent_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: Agent Id
+          description: Filter by agent ID
+        - name: team_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: Team Id
+          description: Filter by team ID
+        - name: workflow_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: Workflow Id
+          description: Filter by workflow ID
+        - name: status
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: Status
+          description: Filter by status (OK, ERROR)
+        - name: start_time
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: Start Time
+          description: "Filter traces starting after this time (ISO 8601 format with timezone, e.g., '2025-11-19T10:00:00Z')"
+        - name: end_time
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: End Time
+          description: "Filter traces ending before this time (ISO 8601 format with timezone, e.g., '2025-11-19T11:00:00Z')"
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+            title: Page
+          description: Page number (1-indexed)
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+            title: Limit
+          description: Number of traces per page
+        - name: db_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: Db Id
+          description: Database ID to query traces from
+      responses:
+        '200':
+          description: List of traces retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTraceSummaryResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+  /traces/{trace_id}:
+    get:
+      tags:
+        - Traces
+      summary: Get Trace Detail
+      description: |
+        Retrieve detailed trace information with hierarchical span tree, or a specific span within the trace.
+
+        **Without span_id parameter:**
+        Returns the full trace with hierarchical span tree:
+        - Trace metadata (ID, status, duration, context)
+        - Hierarchical tree of all spans
+        - Each span includes timing, status, and type-specific metadata
+
+        **With span_id parameter:**
+        Returns details for a specific span within the trace:
+        - Span metadata (ID, name, type, timing)
+        - Status and error information
+        - Type-specific attributes (model, tokens, tool params, etc.)
+
+        **Span Hierarchy:**
+        The `tree` field contains root spans, each with potential `children`.
+        This recursive structure represents the execution flow.
+
+        **Span Types:**
+        - `AGENT`: Agent execution with input/output
+        - `LLM`: Model invocations with tokens and prompts
+        - `TOOL`: Tool calls with parameters and results
+      operationId: get_trace
+      security:
+        - HTTPBearer: []
+      parameters:
+        - name: trace_id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Trace Id
+          description: Trace ID to retrieve
+        - name: span_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: Span Id
+          description: Optional span ID to retrieve specific span
+        - name: run_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: Run Id
+          description: Optional run ID to retrieve trace for
+        - name: db_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: Db Id
+          description: Database ID to query trace from
+      responses:
+        '200':
+          description: Trace or span detail retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TraceDetailResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Trace or span not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+  /trace_session_stats:
+    get:
+      tags:
+        - Traces
+      summary: Get Trace Statistics by Session
+      description: |
+        Retrieve aggregated trace statistics grouped by session ID with pagination.
+
+        **Provides insights into:**
+        - Total traces per session
+        - First and last trace timestamps per session
+        - Associated user and agent information
+
+        **Filtering Options:**
+        - By user ID
+        - By agent ID
+        - By team ID
+        - By workflow ID
+        - By time range
+
+        **Use Cases:**
+        - Monitor session-level activity
+        - Track conversation flows
+        - Identify high-activity sessions
+        - Analyze user engagement patterns
+      operationId: get_trace_stats
+      security:
+        - HTTPBearer: []
+      parameters:
+        - name: user_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: User Id
+          description: Filter by user ID
+        - name: agent_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: Agent Id
+          description: Filter by agent ID
+        - name: team_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: Team Id
+          description: Filter by team ID
+        - name: workflow_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: Workflow Id
+          description: Filter by workflow ID
+        - name: start_time
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: Start Time
+          description: "Filter sessions with traces created after this time (ISO 8601 format)"
+        - name: end_time
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: End Time
+          description: "Filter sessions with traces created before this time (ISO 8601 format)"
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+            title: Page
+          description: Page number (1-indexed)
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+            title: Limit
+          description: Number of sessions per page
+        - name: db_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: Db Id
+          description: Database ID to query statistics from
+      responses:
+        '200':
+          description: Trace statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTraceSessionStatsResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Failed to retrieve statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
   /memories:
     post:
       tags:
@@ -8386,6 +8800,349 @@ components:
           description: Database identifier
       type: object
       title: WorkflowSummaryResponse
+    TraceSummary:
+      properties:
+        trace_id:
+          type: string
+          title: Trace Id
+          description: Unique trace identifier
+        name:
+          type: string
+          title: Name
+          description: Name of the root operation (e.g., Agent.run, Team.run)
+        status:
+          type: string
+          title: Status
+          description: Overall status (OK, ERROR, UNSET)
+        duration:
+          type: string
+          title: Duration
+          description: Human-readable duration (e.g., "1.2s", "800ms")
+        start_time:
+          type: string
+          format: date-time
+          title: Start Time
+          description: When the trace started (ISO 8601)
+        total_spans:
+          type: integer
+          title: Total Spans
+          description: Number of spans in this trace
+        error_count:
+          type: integer
+          title: Error Count
+          description: Number of spans that errored
+        input:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Input
+          description: Input to the root operation
+        run_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Run Id
+          description: Associated run ID
+        session_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Session Id
+          description: Associated session ID
+        user_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: User Id
+          description: Associated user ID
+        agent_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Agent Id
+          description: Associated agent ID
+        team_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Team Id
+          description: Associated team ID
+        workflow_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Workflow Id
+          description: Associated workflow ID
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+          description: When the trace record was created
+      type: object
+      required:
+        - trace_id
+        - name
+        - status
+        - duration
+        - start_time
+      title: TraceSummary
+    TraceNode:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: Span ID
+        name:
+          type: string
+          title: Name
+          description: Operation name
+        type:
+          type: string
+          title: Type
+          description: Span type (AGENT, LLM, TOOL, etc.)
+        duration:
+          type: string
+          title: Duration
+          description: Human-readable duration
+        status:
+          type: string
+          title: Status
+          description: Span status (OK, ERROR, UNSET)
+        input:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Input
+          description: Input to the operation
+        output:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Output
+          description: Output from the operation
+        error:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Error
+          description: Error message if status is ERROR
+        metadata:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Metadata
+          description: Type-specific metadata (model, tokens, tool params, etc.)
+        spans:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/TraceNode'
+              type: array
+            - type: 'null'
+          title: Spans
+          description: Child spans (recursive hierarchy)
+      type: object
+      required:
+        - id
+        - name
+        - type
+        - duration
+        - status
+      title: TraceNode
+    TraceDetailResponse:
+      properties:
+        trace_id:
+          type: string
+          title: Trace Id
+          description: Unique trace identifier
+        name:
+          type: string
+          title: Name
+          description: Name of the root operation
+        status:
+          type: string
+          title: Status
+          description: Overall status (OK, ERROR, UNSET)
+        duration:
+          type: string
+          title: Duration
+          description: Human-readable duration
+        start_time:
+          type: string
+          format: date-time
+          title: Start Time
+          description: When the trace started
+        end_time:
+          type: string
+          format: date-time
+          title: End Time
+          description: When the trace completed
+        total_spans:
+          type: integer
+          title: Total Spans
+          description: Number of spans in this trace
+        error_count:
+          type: integer
+          title: Error Count
+          description: Number of spans that errored
+        input:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Input
+          description: Input to the root operation
+        output:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Output
+          description: Output from the root operation
+        error:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Error
+          description: Error message if status is ERROR
+        run_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Run Id
+          description: Associated run ID
+        session_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Session Id
+          description: Associated session ID
+        user_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: User Id
+          description: Associated user ID
+        agent_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Agent Id
+          description: Associated agent ID
+        team_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Team Id
+          description: Associated team ID
+        workflow_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Workflow Id
+          description: Associated workflow ID
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+          description: When the trace record was created
+        tree:
+          items:
+            $ref: '#/components/schemas/TraceNode'
+          type: array
+          title: Tree
+          description: Hierarchical span tree
+      type: object
+      required:
+        - trace_id
+        - name
+        - status
+        - duration
+        - start_time
+        - end_time
+        - tree
+      title: TraceDetailResponse
+    TraceSessionStats:
+      properties:
+        session_id:
+          type: string
+          title: Session Id
+          description: Session identifier
+        user_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: User Id
+          description: Associated user ID
+        agent_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Agent Id
+          description: Associated agent ID
+        team_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Team Id
+          description: Associated team ID
+        workflow_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Workflow Id
+          description: Associated workflow ID
+        total_traces:
+          type: integer
+          title: Total Traces
+          description: Total number of traces in this session
+        first_trace_at:
+          type: string
+          format: date-time
+          title: First Trace At
+          description: Timestamp of first trace
+        last_trace_at:
+          type: string
+          format: date-time
+          title: Last Trace At
+          description: Timestamp of last trace
+      type: object
+      required:
+        - session_id
+        - total_traces
+        - first_trace_at
+        - last_trace_at
+      title: TraceSessionStats
+    PaginatedTraceSummaryResponse:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/TraceSummary'
+          type: array
+          title: Data
+          description: List of trace summaries
+        meta:
+          $ref: '#/components/schemas/PaginationInfo'
+          description: Pagination metadata
+      type: object
+      required:
+        - data
+        - meta
+      title: PaginatedTraceSummaryResponse
+    PaginatedTraceSessionStatsResponse:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/TraceSessionStats'
+          type: array
+          title: Data
+          description: List of session statistics
+        meta:
+          $ref: '#/components/schemas/PaginationInfo'
+          description: Pagination metadata
+      type: object
+      required:
+        - data
+        - meta
+      title: PaginatedTraceSessionStatsResponse
   securitySchemes:
     HTTPBearer:
       type: http
