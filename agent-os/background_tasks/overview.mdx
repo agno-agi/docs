@@ -7,9 +7,9 @@ keywords: [background tasks, hooks, pre-hooks, post-hooks, async, non-blocking, 
 
 When serving agents or teams through AgentOS, you can configure pre-hooks and post-hooks to run as background tasks. This means the API response is returned immediately to the user while the hooks continue executing in the background.
 
-## Why Use Background Tasks?
+## Why Use Background Hooks?
 
-By default, hooks run synchronously and block the response:
+By default, hooks used by agents and teams in your AgentOS are in the execution path and block the response:
 
 ```
 Request → Pre-hooks → Agent Processing → Post-hooks → Response
@@ -17,7 +17,7 @@ Request → Pre-hooks → Agent Processing → Post-hooks → Response
                                     User waits for completion
 ```
 
-With background tasks enabled:
+With background hooks enabled, your hooks won't block the response, increasing response speed:
 
 ```
 Request → Agent Processing → Response (immediate)
@@ -27,6 +27,7 @@ Request → Agent Processing → Response (immediate)
 
 This is useful for:
 
+- **Agent Evaluation**: Evaluate the agent's responses without affecting the responses themselves
 - **Analytics and logging**: Track usage patterns without affecting response time
 - **Notifications**: Send emails, Slack messages, or webhook calls
 - **External API calls**: Sync data with third-party services
@@ -58,6 +59,12 @@ When enabled, this setting automatically propagates to:
 
 See [Global Background Hooks Example](/agent-os/usage/background-hooks-global) for an example.
 
+<Note>
+Note that pre-hooks are typically used for validation or modification of the input of a run. If you use them as background tasks, they will execute after the run has already been initiated.
+
+If you have hooks that should not run as background tasks, you should use the second option and mark only the specific hooks to run in background.
+</Note>
+
 ### Option 2: Per-Hook Setting via Decorator
 
 Mark specific hooks to run in background using the `@hook` decorator:
@@ -75,13 +82,20 @@ This approach gives you fine-grained control: critical hooks are executed during
 
 See [Per-Hook Background Example](/agent-os/usage/background-hooks-decorator) for an example.
 
+<Check>
+**Background tasks require AgentOS.** When running agents directly (not through AgentOS), the `@hook(run_in_background=True)` decorator has no effect - hooks will run synchronously.
+</Check>
+
 ## How It Works
 
 AgentOS uses FastAPI's [BackgroundTasks](https://fastapi.tiangolo.com/tutorial/background-tasks/) to schedule hooks for execution after the response is sent.
 
-<Note>
 Background tasks execute **sequentially** after the response is sent. If you have multiple background hooks, they run one after another.
-</Note>
+
+<Warning>
+**Pre- and post-hooks in background mode cannot modify the request or response.** Any modifications to `run_input` or `run_output` won't affect the agent's processing. Only use background mode for pre- and post-hooks that perform logging or monitoring. This means background mode is not suitable for Guardrails.
+</Warning>
+
 
 ### Data Isolation
 
@@ -92,15 +106,6 @@ When hooks run in the background, AgentOS automatically creates deep copies of:
 - `run_output` - The output from the agent
 
 This prevents race conditions where background hooks might accidentally modify data that's being used elsewhere.
-
-
-<Warning>
-**Pre- and post-hooks in background mode cannot modify the request or response.** Any modifications to `run_input` or `run_output` won't affect the agent's processing. Only use background mode for pre- and post-hooks that perform logging or monitoring. This means background mode is not suitable for Guardrails.
-</Warning>
-
-<Warning>
-**Background tasks require AgentOS.** When running agents directly (not through AgentOS), the `@hook(run_in_background=True)` decorator has no effect - hooks will run synchronously.
-</Warning>
 
 ### Error Handling
 
