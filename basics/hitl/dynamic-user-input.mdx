@@ -19,8 +19,8 @@ This pattern is ideal when:
 The `UserControlFlowTools` toolkit provides your agent with a special `get_user_input` tool. When the agent realizes it's missing information:
 
 1. **Agent calls `get_user_input`** with a list of fields it needs filled
-2. **Execution pauses** and `is_paused` is set to `True`
-3. **`tools_requiring_user_input` populated** with the input schema the agent created
+2. **Execution pauses** and requirements are added to the returned `RunOutput`
+3. **`user_input_schema` populated** in the requirement, with the input schema the agent created
 4. **You collect the user's input** and set field values in `user_input_schema`
 5. **Call `continue_run()`** to resume with the filled values
 6. **Repeat if needed**: Agent may request more information based on previous responses
@@ -84,27 +84,38 @@ agent = Agent(
     markdown=True,
 )
 
-run_response = agent.run("Send an email with the body 'How is it going in Tokyo?'")
+run_response = agent.run("Send an email with the body 'What is the weather in Tokyo?'")
 
-# Use a while loop to continue running until the agent is satisfied with the user input
+# We use a while loop to continue the running until the agent is satisfied with the user input
 while run_response.is_paused:
-    for tool in run_response.tools_requiring_user_input:
-        input_schema: List[UserInputField] = tool.user_input_schema
+    for requirement in run_response.active_requirements:
+        if requirement.needs_user_input:
+            input_schema: List[UserInputField] = requirement.user_input_schema  # type: ignore
 
-        for field in input_schema:
-            # Display field information to the user
-            print(f"\nField: {field.name} ({field.field_type.__name__}) -> {field.description}")
+            for field in input_schema:
+                # Get user input for each field in the schema
+                field_type = field.field_type  # type: ignore
+                field_description = field.description  # type: ignore
 
-            # Get user input (if the value is not set, it means the user needs to provide the value)
-            if field.value is None:
-                user_value = input(f"Please enter a value for {field.name}: ")
-                field.value = user_value
-            else:
-                print(f"Value provided by the agent: {field.value}")
+                # Display field information to the user
+                print(f"\nField: {field.name}")  # type: ignore
+                print(f"Description: {field_description}")
+                print(f"Type: {field_type}")
 
-    run_response = agent.continue_run(run_id=run_response.run_id, updated_tools=run_response.tools)
+                # Get user input
+                if field.value is None:  # type: ignore
+                    user_value = input(f"Please enter a value for {field.name}: ")  # type: ignore
+                else:
+                    print(f"Value: {field.value}")  # type: ignore
+                    user_value = field.value  # type: ignore
 
-    # Exit the loop once the agent finishes execution
+                # Update the field value
+                field.value = user_value  # type: ignore
+
+    run_response = agent.continue_run(
+        run_id=run_response.run_id,
+        requirements=run_response.requirements,
+    )
     if not run_response.is_paused:
         pprint.pprint_run_response(run_response)
         break
@@ -137,19 +148,20 @@ These fields then appear in `tool.user_input_schema` as `UserInputField` objects
 
 ## The While Loop Pattern
 
-Notice the `while run_response.is_paused:` loop? This is crucial for dynamic user input. The agent might need to request input multiple times:
+Notice the `while run_response.is_paused:` loop? This is crucial for dynamic user input, because the agent might request input multiple times:
 
 ```python
 run_response = agent.run("Send an email and schedule a meeting")
 
 # First iteration: Agent needs email details
 while run_response.is_paused:
-    for tool in run_response.tools_requiring_user_input:
-        for field in tool.user_input_schema:
-            if field.value is None:
-                field.value = input(f"Enter {field.name}: ")
-    
-    run_response = agent.continue_run(run_id=run_response.run_id, updated_tools=run_response.tools)
+    for requirement in run_response.requirements:
+        if requirement.needs_user_input:
+            for field in requirement.user_input_schema:
+                if field.value is None:
+                    field.value = input(f"Enter {field.name}: ")
+
+    run_response = agent.continue_run(run_id=run_response.run_id, requirements=run_response.requirements)
     # Agent might pause again if it needs meeting details!
 ```
 
@@ -242,12 +254,13 @@ agent = Agent(
 run_response = await agent.arun("Send an email")
 
 while run_response.is_paused:
-    for tool in run_response.tools_requiring_user_input:
-        for field in tool.user_input_schema:
-            if field.value is None:
-                field.value = input(f"Please enter {field.name}: ")
-    
-    run_response = await agent.acontinue_run(run_id=run_response.run_id, updated_tools=run_response.tools)
+    for requirement in run_response.active_requirements:
+        if requirement.needs_user_input:
+            for field in requirement.user_input_schema:
+                if field.value is None:
+                    field.value = input(f"Please enter {field.name}: ")
+
+    run_response = await agent.acontinue_run(run_id=run_response.run_id, requirements=run_response.requirements)
 ```
 
 ## Streaming Support
@@ -259,15 +272,16 @@ run_response = agent.run("Send an email", stream=True)
 
 for run_event in run_response:
     if run_event.is_paused:
-        for tool in run_event.tools_requiring_user_input:
-            for field in tool.user_input_schema:
-                if field.value is None:
-                    field.value = input(f"Please enter {field.name}: ")
-        
+        for requirement in run_event.active_requirements:
+            if requirement.needs_user_input:
+                for field in requirement.user_input_schema:
+                    if field.value is None:
+                        field.value = input(f"Please enter {field.name}: ")
+
         # Continue streaming
         for continued_event in agent.continue_run(
             run_id=run_event.run_id,
-            updated_tools=run_event.tools,
+            requirements=run_event.requirements,
             stream=True
         ):
             print(continued_event.content)
@@ -284,6 +298,12 @@ for run_event in run_response:
 - You know exactly which tool fields require user input upfront
 - The input requirements are always the same
 - You want more explicit control over what gets asked
+
+<Warning>
+Remember that tools marked with `@tool(requires_user_input=True)` are mutually exclusive with `@tool(requires_confirmation=True)` and `@tool(external_execution=True)`.
+
+A tool can only use one of these patterns at a time.
+</Warning>
 
 ## Usage Examples
 

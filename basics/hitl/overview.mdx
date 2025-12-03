@@ -13,11 +13,11 @@ Human-in-the-Loop (HITL) in Agno enables you to implement patterns where human o
 - Gathering user input for decision-making
 - Managing external tool execution
 
-## Types of Human-in-the-Loop
+## Types of Human-in-the-Loop Flows
 
 Agno supports four main types of human-in-the-loop flows:
 
-1. **[User Confirmation](/basics/hitl/user-confirmation)**: Require explicit user approval before executing tool calls
+1. **[User Confirmation](/basics/hitl/user-confirmation)**: Require explicit user approval before executing a tool
 2. **[User Input](/basics/hitl/user-input)**: Gather specific information from users during execution
 3. **[Dynamic User Input](/basics/hitl/dynamic-user-input)**: Have the agent collect user input as it needs it
 4. **[External Tool Execution](/basics/hitl/external-execution)**: Execute tools outside of the agent's control
@@ -26,26 +26,99 @@ Agno supports four main types of human-in-the-loop flows:
 Currently Agno only supports Human-in flows for `Agent`. `Team` and `Workflow` will be supported in the near future!
 </Note>
 
+## Resolving Human-in-the-Loop Requirements
+
+During Human-in-the-Loop flows, the agent run will pause to wait for the user to resolve whatever requirement is needed.
+
+This is how you can interact with the requirements in your code:
+
+```python
+# We run the Agent and get the run response
+run_response = agent.run("Perform sensitive operation")
+
+# In our run_response, we will find a list of active requirements:
+for requirement in run_response.active_requirements:
+
+    # We can now iterate over the requirements and resolve them:
+
+    # For example, if the requirement needs user confirmation:
+    if requirement.needs_confirmation:
+        # Ask the user for confirmation
+        confirmation = input(f"Do you approve the tool call to {requirement.tool.tool_name} with args {requirement.tool.tool_args}? (y/n): ")
+
+        # Resolve the requirement by confirming or rejecting it, based on the user's input
+        if confirmation.lower() == "y":
+            requirement.confirm()
+        else:
+            requirement.reject()
+```
+
+## Types of Human-in-the-Loop Requirements
+
+There are three types of Human-in-the-Loop requirements you can handle in your code: User confirmation, user input and external tool execution.
+
+This is how you can check the type of a requirement in your code:
+
+```python
+for requirement in run_response.active_requirements:
+
+    # If the requirement is about user confirmation:
+    if requirement.needs_confirmation:
+        ...
+
+    # If the requirement is about obtaining user input:
+    if requirement.needs_user_input:
+        ...
+
+    # If the requirement is about executing an external tool:
+    if requirement.is_external_tool_execution:
+        ...
+```
+
 ## Resuming Agent Execution
 
-Human-in-the-loop flows interrupt the agent's execution and require human oversight. The run can then be continued by calling the `continue_run` method.
+After all active requirements have been resolved, you will want to continue the run. You do this by calling the `continue_run` method:
 
-For example:
+This is how the full flow would look like in your code:
 
 ```python
 run_response = agent.run("Perform sensitive operation")
 
-if run_response.is_paused:
-    # The agent has paused and is awaiting human input
-    # ... perform other tasks, update the tools if needed
+for requirement in run_response.active_requirements:
+    # You handle any active requirements here
 
-    # Continue the run after providing the necessary input
-    response = agent.continue_run(run_id=run_response.run_id, updated_tools=run_response.tools)
-    # or response = await agent.acontinue_run(run_id=run_response.run_id, updated_tools=run_response.tools)
+# After resolving all requirements, you can continue the run:
+response = agent.continue_run(run_id=run_response.run_id, requirements=run_response.requirements)
 ```
 
-The `continue_run` method continues with the state of the agent at the time of the pause. You can also pass the `RunOutput` of a specific run to the `continue_run` method, or pass the `run_id` and list of updated tools in the `updated_tools` parameter.
+The `continue_run` method continues with the state of the agent at the time of the pause.
 
+You can also call the `continue_run` method passing the `RunOutput` of the specific run to continue:
+
+```python
+response = agent.continue_run(run_response=run_response)
+```
+
+## Streaming Human-in-the-Loop Flows
+
+You can also stream the responses you get during a Human-in-the-Loop flow. This is useful when you want to process or show the response in real-time.
+
+It works similarly to non-streaming. You will just need to handle the events you get from streaming the Agent run.
+
+If any event is paused, then you will need to handle the active requirements:
+
+```python
+for run_event in agent.run("Perform sensitive operation", stream=True):
+    if run_event.is_paused:
+        for requirement in run_event.active_requirements:
+            # You handle any active requirements here
+
+    response = agent.continue_run(run_id=run_event.run_id, requirements=run_event.requirements, stream=True)
+```
+
+<Note>
+You can also stream the events resulting from calling the `continue_run` or `acontinue_run` methods.
+</Note>
 
 ## Learn More
 

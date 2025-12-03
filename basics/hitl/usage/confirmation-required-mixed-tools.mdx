@@ -18,7 +18,9 @@ mode: wide
 
   <Step title="Add the following code to your Python file">
     ```python confirmation_required_mixed_tools.py
+    import asyncio
     import json
+
     import httpx
     from agno.agent import Agent
     from agno.models.openai import OpenAIChat
@@ -30,6 +32,7 @@ mode: wide
     console = Console()
 
 
+    @tool(requires_confirmation=True)
     def get_top_hackernews_stories(num_stories: int) -> str:
         """Fetch top stories from Hacker News.
 
@@ -56,33 +59,19 @@ mode: wide
         return json.dumps(all_stories)
 
 
-    @tool(requires_confirmation=True)
-    def send_email(to: str, subject: str, body: str) -> str:
-        """Send an email.
-
-        Args:
-            to (str): Email address to send to
-            subject (str): Subject of the email
-            body (str): Body of the email
-        """
-        return f"Email sent to {to} with subject {subject} and body {body}"
-
-
     agent = Agent(
-        model=OpenAIChat(id="gpt-5-mini"),
-        tools=[get_top_hackernews_stories, send_email],
+        model=OpenAIChat(id="gpt-4o-mini"),
+        tools=[get_top_hackernews_stories],
         markdown=True,
     )
 
-    run_response = agent.run(
-        "Fetch the top 2 hackernews stories and email them to john@doe.com."
-    )
+    run_response = asyncio.run(agent.arun("Fetch the top 2 hackernews stories"))
     if run_response.is_paused:
-        for tool in run_response.tools:  # type: ignore
-            if tool.requires_confirmation:
+        for requirement in run_response.active_requirements:
+            if requirement.needs_confirmation:
                 # Ask for confirmation
                 console.print(
-                    f"Tool name [bold blue]{tool.tool_name}({tool.tool_args})[/] requires confirmation."
+                    f"Tool name [bold blue]{requirement.tool_execution.tool_name}({requirement.tool_execution.tool_args})[/] requires confirmation."
                 )
                 message = (
                     Prompt.ask("Do you want to continue?", choices=["y", "n"], default="y")
@@ -91,20 +80,21 @@ mode: wide
                 )
 
                 if message == "n":
-                    tool.confirmed = False
+                    requirement.reject()
                 else:
-                    # We update the tools in place
-                    tool.confirmed = True
-            else:
-                console.print(
-                    f"Tool name [bold blue]{tool.tool_name}({tool.tool_args})[/] was completed in [bold green]{tool.metrics.duration:.2f}[/] seconds."  # type: ignore
-                )
+                    requirement.confirm()
 
-        run_response = agent.continue_run(run_response=run_response)
-        pprint.pprint_run_response(run_response)
+
+    run_response = asyncio.run(agent.acontinue_run(run_response=run_response))
+    # Or
+    # run_response = asyncio.run(agent.acontinue_run(run_id=run_response.run_id))
+
+    pprint.pprint_run_response(run_response)
+
 
     # Or for simple debug flow
-    # agent.print_response("Fetch the top 2 hackernews stories")
+    # asyncio.run(agent.aprint_response("Fetch the top 2 hackernews stories"))
+
     ```
   </Step>
 

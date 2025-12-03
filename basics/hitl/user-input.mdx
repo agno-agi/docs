@@ -14,7 +14,7 @@ User input flows allow you to gather specific information from users during exec
 
 ## How It Works
 
-When you mark a tool with `requires_user_input=True`, your agent will:
+When you mark a tool with `@tool(requires_user_input=True)`, your agent will:
 
 1. **Pause execution** before calling the tool
 2. **Set `is_paused` to `True`** on the run response
@@ -63,9 +63,10 @@ agent = Agent(
 run_response = agent.run(
     "Send an email with the subject 'Hello' and the body 'Hello, world!'"
 )
-if run_response.is_paused:
-    for tool in run_response.tools_requiring_user_input:  # type: ignore
-        input_schema: List[UserInputField] = tool.user_input_schema  # type: ignore
+
+for requirement in run_response.active_requirements:
+    if requirement.needs_user_input:
+        input_schema: List[UserInputField] = requirement.user_input_schema  # type: ignore
 
         for field in input_schema:
             # Get user input for each field in the schema
@@ -87,15 +88,16 @@ if run_response.is_paused:
             # Update the field value
             field.value = user_value
 
-    run_response = agent.continue_run(run_id=run_response.run_id, updated_tools=run_response.tools)
-    pprint.pprint_run_response(run_response)
+# After resolving the run requirements, you can continue the run
+run_response = agent.continue_run(run_id=run_response.run_id, requirements=run_response.requirements)
+pprint.pprint_run_response(run_response)
 ```
 
 In this example, the agent will fill in `subject` and `body` based on the user's request ("Hello" and "Hello, world!"), but will pause and ask the user for the `to_address` since it's in the `user_input_fields` list.
 
 ## Understanding UserInputField
 
-The `RunOutput` object has a list of tools. When a tool requires user input, it will have a `user_input_schema` populated with `UserInputField` objects:
+The `RunOutput` object has a list of requirements. When a tool requires user input, you will find a requirement object with a `user_input_schema` field, populated with `UserInputField` objects:
 
 ```python
 class UserInputField:
@@ -154,9 +156,9 @@ agent = Agent(
 )
 
 run_response = agent.run("Send an email with the subject 'Hello' and the body 'Hello, world!'")
-if run_response.is_paused:
-    for tool in run_response.tools_requiring_user_input:
-        input_schema: List[UserInputField] = tool.user_input_schema
+for requirement in run_response.active_requirements:
+    if requirement.needs_user_input:
+        input_schema: List[UserInputField] = requirement.user_input_schema
 
         for field in input_schema:
             # Display field information to the user
@@ -169,9 +171,9 @@ if run_response.is_paused:
             else:
                 print(f"Value provided by the agent: {field.value}")
 
-    run_response = (
-        agent.continue_run(run_id=run_response.run_id, updated_tools=run_response.tools)
-    )
+run_response = (
+    agent.continue_run(run_id=run_response.run_id, requirements=run_response.requirements)
+)
 ```
 
 ## Async Support
@@ -181,13 +183,13 @@ User input works seamlessly with async agents. Just use `arun()` and `acontinue_
 ```python
 run_response = await agent.arun("Send an email with the subject 'Hello'")
 
-if run_response.is_paused:
-    for tool in run_response.tools_requiring_user_input:
-        for field in tool.user_input_schema:
+for requirement in run_response.active_requirements:
+    if requirement.needs_user_input:
+        for field in requirement.user_input_schema:
             if field.value is None:
                 field.value = input(f"Please enter {field.name}: ")
-    
-    response = await agent.acontinue_run(run_id=run_response.run_id, updated_tools=run_response.tools)
+
+response = await agent.acontinue_run(run_id=run_response.run_id, requirements=run_response.requirements)
 ```
 
 <Note>
@@ -205,15 +207,20 @@ for run_event in agent.run("Send an email", stream=True):
             for field in tool.user_input_schema:
                 if field.value is None:
                     field.value = input(f"Please enter {field.name}: ")
-        
-        # Continue streaming
-        response = agent.continue_run(
-            run_id=run_event.run_id,
-            updated_tools=run_event.tools,
-            stream=True
-        )
+
+# Continue streaming
+response = agent.continue_run(
+    run_id=run_event.run_id,
+    updated_tools=run_event.tools,
+    stream=True
+)
 ```
 
+<Warning>
+Remember that tools marked with `@tool(requires_user_input=True)` are mutually exclusive with `@tool(requires_confirmation=True)` and `@tool(external_execution=True)`.
+
+A tool can only use one of these patterns at a time.
+</Warning>
 
 ## Usage Examples
 

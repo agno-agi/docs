@@ -18,6 +18,7 @@ mode: wide
   <Step title="Add the following code to your Python file">
     ```python user_input_required.py
     from typing import List
+
     from agno.agent import Agent
     from agno.models.openai import OpenAIChat
     from agno.tools import tool
@@ -40,7 +41,7 @@ mode: wide
 
 
     agent = Agent(
-        model=OpenAIChat(id="gpt-5-mini"),
+        model=OpenAIChat(id="gpt-4o-mini"),
         tools=[send_email],
         markdown=True,
     )
@@ -48,9 +49,10 @@ mode: wide
     run_response = agent.run(
         "Send an email with the subject 'Hello' and the body 'Hello, world!'"
     )
-    if run_response.is_paused:
-        for tool in run_response.tools_requiring_user_input:  # type: ignore
-            input_schema: List[UserInputField] = tool.user_input_schema  # type: ignore
+
+    for requirement in run_response.active_requirements:
+        if requirement.needs_user_input:
+            input_schema: List[UserInputField] = requirement.user_input_schema  # type: ignore
 
             for field in input_schema:
                 # Get user input for each field in the schema
@@ -72,13 +74,15 @@ mode: wide
                 # Update the field value
                 field.value = user_value
 
-        run_response = agent.continue_run(
-            run_response=run_response
-        )  # or agent.continue_run(run_response=run_response)
-        pprint.pprint_run_response(run_response)
+    run_response = agent.continue_run(
+        run_id=run_response.run_id,
+        requirements=run_response.requirements,
+    )  # or agent.continue_run(run_response=run_response)
+    pprint.pprint_run_response(run_response)
 
     # Or for simple debug flow
     # agent.print_response("Send an email with the subject 'Hello' and the body 'Hello, world!'")
+
     ```
   </Step>
 

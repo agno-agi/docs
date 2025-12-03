@@ -16,7 +16,7 @@ External tool execution gives you complete control over when and how certain too
 
 ## How It Works
 
-When you mark a tool with `external_execution=True`, your agent will:
+When you mark a tool with `@tool(external_execution=True)`, your agent will:
 
 1. **Pause execution** when the tool is about to be called
 2. **Set `is_paused` to `True`** on the run response
@@ -56,51 +56,60 @@ agent = Agent(
 )
 
 run_response = agent.run("What files do I have in my current directory?")
-if run_response.is_paused:
-    for tool in run_response.tools_awaiting_external_execution:
-        if tool.tool_name == execute_shell_command.name:
-            print(f"Executing {tool.tool_name} with args {tool.tool_args} externally")
+
+for requirement in run_response.active_requirements:
+    if requirement.is_external_tool_execution:
+        if requirement.tool_execution.tool_name == execute_shell_command.name:
+            print(f"Executing {requirement.tool_execution.tool_name} with args {requirement.tool_execution.tool_args} externally")
 
             # Execute the tool manually. You can execute any function or process here and use the tool_args as input.
-            result = execute_shell_command.entrypoint(**tool.tool_args)
-            # Set the result on the tool execution object so that the agent can continue
-            tool.result = result
+            result = execute_shell_command.entrypoint(**requirement.tool_execution.tool_args)
 
-    run_response = agent.continue_run(run_id=run_response.run_id, updated_tools=run_response.tools)
-    pprint.pprint_run_response(run_response)
+            # Set the result on the tool execution object so that the agent can continue
+            requirement.external_execution_result = result
+
+run_response = agent.continue_run(run_id=run_response.run_id, requirements=run_response.requirements)
+pprint.pprint_run_response(run_response)
 ```
 
 In this example, the agent identifies that it needs to run `execute_shell_command` but doesn't actually execute it. Instead, it pauses and gives you the tool name and arguments. You then execute it yourself (or something completely different!) and provide the result back.
 
-## Understanding `tools_awaiting_external_execution`
+## Understanding External Tool Execution Requirements
 
-When a run is paused for external execution, the `tools_awaiting_external_execution` property contains all tools that need to be executed externally. Each tool has:
+When a run is paused for external execution, the returned `RunOutput` will contain a list of requirement objects.
+
+These requirement objects will contain the tool executions that need to run outside of the agent's run.
+
+You can find the tool related to each requirement in `requirement.tool_execution`. Each tool execution object contains:
 
 - **`tool_name`**: The name of the tool that was called
 - **`tool_args`**: A dictionary of arguments the agent wants to pass to the tool
 - **`external_execution_required`**: A boolean flag set to `True`
 - **`result`**: Where you set the execution result (initially `None`)
 
-You can iterate through these tools, execute them however you want, and set their results:
+You can iterate through these requirements, execute the tools however you want, and set their results:
 
 ```python
-if run_response.is_paused:
-    for tool in run_response.tools_awaiting_external_execution:
-        print(f"Tool: {tool.tool_name}")
-        print(f"Args: {tool.tool_args}")
-        
+for requirement in run_response.active_requirements:
+    if requirement.is_external_tool_execution:
+        print(f"Tool: {requirement.tool_execution.tool_name}")
+        print(f"Args: {requirement.tool_execution.tool_args}")
+
         # Execute your custom logic here
-        result = my_custom_execution(tool.tool_args)
-        
+        result = my_custom_execution(requirement.tool_execution.tool_args)
+
         # Set the result so the agent can continue
-        tool.result = result
-    
-    # Continue the run with the updated tools
-    response = agent.continue_run(run_id=run_response.run_id, updated_tools=run_response.tools)
+        requirement.external_execution_result = result
+
+# After resolving the requirement, you can continue the run:
+response = agent.continue_run(run_id=run_response.run_id, requirements=run_response.requirements)
 ```
 
 <Note>
-**Important**: You *must* set `tool.result` for all tools in `tools_awaiting_external_execution` before calling `continue_run()`. If you try to continue without setting results, Agno will raise a `ValueError`.
+**Important**: You *must* resolve all external tool execution requirements before calling `continue_run()`.
+An external tool execution requirement is considered resolved when you set `requirement.external_execution_result`.
+
+Else Agno will raise a `ValueError`, letting you know that not all requirements have been resolved.
 </Note>
 
 ## Using Toolkits with External Execution
@@ -123,7 +132,7 @@ class ShellTools(Toolkit):
     def list_dir(self, directory: str):
         """Lists the contents of a directory."""
         return subprocess.check_output(f"ls {directory}", shell=True).decode("utf-8")
-    
+
     def get_env(self, var_name: str):
         """Gets an environment variable."""
         import os
@@ -136,21 +145,25 @@ agent = Agent(
 )
 
 run_response = agent.run("What files are in my current directory and what's my PATH?")
-if run_response.is_paused:
-    # Only list_dir will be here, get_env runs normally
-    for tool in run_response.tools_awaiting_external_execution:
-        if tool.tool_name == "list_dir":
-            result = ShellTools().list_dir(**tool.tool_args)
-            tool.result = result
-    
-    run_response = agent.continue_run(run_id=run_response.run_id, updated_tools=run_response.tools)
+
+for requirement in run_response.active_requirements:
+    if requirement.is_external_tool_execution:
+        # Only list_dir will be here, get_env runs normally
+        if requirement.tool_execution.tool_name == "list_dir":
+            result = ShellTools().list_dir(**requirement.tool_execution.tool_args)
+            requirement.external_execution_result = result
+
+# After resolving the requirement, you can continue the run:
+response = agent.continue_run(run_id=run_response.run_id, requirements=run_response.requirements)
 ```
 
 This lets you mix external and internal tools in the same toolkit—perfect when you only need special handling for specific operations.
 
 ## Mixed Tool Scenarios
 
-You can absolutely have a mix of regular tools and external execution tools in the same agent. When the agent wants to call multiple tools, only the ones marked with `external_execution=True` will cause a pause:
+You can absolutely have a mix of regular tools and external execution tools in the same agent.
+
+When the agent wants to call multiple tools, only the ones marked with `@tool(external_execution=True)` will cause a pause:
 
 ```python
 @tool(external_execution=True)
@@ -173,14 +186,16 @@ response = agent.run("Calculate 5 + 10 and query the users table")
 
 # Agent will pause when it tries to call sensitive_database_query
 # but safe_calculation executes normally
-if response.is_paused:
-    for tool in response.tools_awaiting_external_execution:
-        if tool.tool_name == "sensitive_database_query":
-            # Execute with your own DB connection and security checks
-            result = execute_safe_db_query(tool.tool_args["query"])
-            tool.result = result
-    
-    response = agent.continue_run(run_id=response.run_id, updated_tools=response.tools)
+
+for requirement in response.active_requirements:
+    if requirement.is_external_tool_execution:
+    if requirement.tool_execution.tool_name == "sensitive_database_query":
+        # Execute with your own DB connection and security checks
+        result = execute_safe_db_query(requirement.tool_execution.tool_args["query"])
+        requirement.external_execution_result = result
+
+# After resolving the requirement, you can continue the run:
+response = agent.continue_run(run_id=response.run_id, requirements=response.requirements)
 ```
 
 ## Async Support
@@ -203,15 +218,15 @@ agent = Agent(
 
 async def main():
     run_response = await agent.arun("Process some data")
-    
-    if run_response.is_paused:
-        for tool in run_response.tools_awaiting_external_execution:
+
+    for requirement in run_response.active_requirements:
+        if requirement.is_external_tool_execution:
             # Execute your async external logic
-            result = await my_async_external_service(tool.tool_args)
-            tool.result = result
-        
-        response = await agent.acontinue_run(run_id=run_response.run_id, updated_tools=run_response.tools)
-        print(response.content)
+            result = await my_async_external_service(requirement.tool_execution.tool_args)
+            requirement.external_execution_result = result
+
+    response = await agent.acontinue_run(run_id=run_response.run_id, requirements=run_response.requirements)
+    print(response.content)
 
 asyncio.run(main())
 ```
@@ -223,15 +238,16 @@ You can also use external execution with streaming responses:
 ```python
 for run_event in agent.run("What files are in my directory?", stream=True):
     if run_event.is_paused:
-        for tool in run_event.tools_awaiting_external_execution:
-            # Execute externally
-            result = execute_tool_externally(tool)
-            tool.result = result
-        
+        for requirement in run_event.active_requirements:
+            if requirement.is_external_tool_execution:
+                # Execute externally
+                result = execute_tool_externally(requirement.tool_execution.tool_args)
+                requirement.external_execution_result = result
+
         # Continue streaming
         for response in agent.continue_run(
-            run_id=run_event.run_id, 
-            updated_tools=run_event.tools, 
+            run_id=run_event.run_id,
+            requirements=run_event.requirements,
             stream=True
         ):
             print(response.content, end="")
@@ -241,14 +257,16 @@ for run_event in agent.run("What files are in my directory?", stream=True):
 
 ## Best Practices
 
-1. **Always set results**: Make sure you set `tool.result` for all tools in `tools_awaiting_external_execution` before continuing
+1. **Always set results**: Make sure you set `requirement.external_execution_result` for all requirements before continuing
 2. **Error handling**: Wrap your external execution in try-catch blocks and provide meaningful error messages as results
 3. **Security validation**: Use external execution to add extra security checks before running sensitive operations
 4. **Logging**: Log all external executions for audit trails
 5. **Timeouts**: Consider adding timeouts to your external execution logic to prevent hanging
 
 <Warning>
-Remember that external execution tools marked with `external_execution=True` are mutually exclusive with `requires_confirmation=True` and `requires_user_input=True`. A tool can only use one of these patterns at a time.
+Remember that external execution tools marked with `@tool(external_execution=True)` are mutually exclusive with `@tool(requires_confirmation=True)` and `@tool(requires_user_input=True)`.
+
+A tool can only use one of these patterns at a time.
 </Warning>
 
 ## Usage Examples
