@@ -1,0 +1,166 @@
+---
+title: JWTMiddleware
+sidebarTitle: JWTMiddleware
+---
+
+JWT Authentication Middleware with optional RBAC (Role-Based Access Control) for AgentOS.
+
+## Import
+
+```python
+from agno.os.middleware import JWTMiddleware
+from agno.os.middleware.jwt import TokenSource
+```
+
+## JWTMiddleware Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `verification_key` | `Optional[str]` | `JWT_VERIFICATION_KEY` env var | Key for JWT verification. For RS256, use public key. For HS256, use shared secret. |
+| `secret_key` | `Optional[str]` | `None` | **(Deprecated)** Use `verification_key` instead. |
+| `algorithm` | `str` | `"RS256"` | JWT algorithm (RS256, HS256, ES256, etc.) |
+| `validate` | `bool` | `True` | Whether to validate JWT tokens |
+| `authorization` | `Optional[bool]` | `None` | Enable RBAC scope checking |
+| `token_source` | `TokenSource` | `TokenSource.HEADER` | Where to extract JWT token from |
+| `token_header_key` | `str` | `"Authorization"` | Header key for Authorization |
+| `cookie_name` | `str` | `"access_token"` | Cookie name for JWT token |
+| `scopes_claim` | `str` | `"scopes"` | JWT claim name for scopes |
+| `user_id_claim` | `str` | `"sub"` | JWT claim name for user ID |
+| `session_id_claim` | `str` | `"session_id"` | JWT claim name for session ID |
+| `audience_claim` | `str` | `"aud"` | JWT claim name for audience/OS ID |
+| `verify_audience` | `bool` | `False` | Verify `aud` claim matches AgentOS ID |
+| `dependencies_claims` | `Optional[List[str]]` | `None` | Claims to extract for `dependencies` parameter |
+| `session_state_claims` | `Optional[List[str]]` | `None` | Claims to extract for `session_state` parameter |
+| `scope_mappings` | `Optional[Dict[str, List[str]]]` | `None` | Custom route-to-scope mappings (additive to defaults) |
+| `excluded_route_paths` | `Optional[List[str]]` | See below | Routes to skip JWT/RBAC checks |
+| `admin_scope` | `Optional[str]` | `"agent_os:admin"` | Scope that grants full admin access |
+
+## TokenSource Enum
+
+| Value | Description |
+|-------|-------------|
+| `TokenSource.HEADER` | Extract JWT from `Authorization: Bearer <token>` header |
+| `TokenSource.COOKIE` | Extract JWT from HTTP cookie |
+| `TokenSource.BOTH` | Try header first, then cookie as fallback |
+
+## Default Excluded Routes
+
+```python
+[
+    "/",
+    "/health",
+    "/docs",
+    "/redoc",
+    "/openapi.json",
+    "/docs/oauth2-redirect",
+]
+```
+
+## Usage
+
+### Basic JWT Validation
+
+```python
+from agno.os import AgentOS
+from agno.os.middleware import JWTMiddleware
+
+agent_os = AgentOS(agents=[my_agent])
+app = agent_os.get_app()
+
+app.add_middleware(
+    JWTMiddleware,
+    verification_key="your-jwt-key",
+    algorithm="RS256",
+    validate=True,
+)
+```
+
+### JWT with RBAC Authorization
+
+```python
+app.add_middleware(
+    JWTMiddleware,
+    verification_key="your-jwt-key",
+    algorithm="RS256",
+    authorization=True,
+    verify_audience=True,
+)
+```
+
+### JWT from Cookies
+
+```python
+from agno.os.middleware.jwt import TokenSource
+
+app.add_middleware(
+    JWTMiddleware,
+    verification_key="your-jwt-key",
+    token_source=TokenSource.COOKIE,
+    cookie_name="access_token",
+)
+```
+
+### Parameter Injection
+
+```python
+app.add_middleware(
+    JWTMiddleware,
+    verification_key="your-jwt-key",
+    user_id_claim="sub",
+    session_id_claim="session_id",
+    dependencies_claims=["name", "email", "roles"],
+    session_state_claims=["preferences"],
+)
+```
+
+### Custom Scope Mappings
+
+```python
+app.add_middleware(
+    JWTMiddleware,
+    verification_key="your-jwt-key",
+    authorization=True,
+    scope_mappings={
+        # Override default scope
+        "GET /agents": ["custom:agents:list"],
+        # Add new endpoint
+        "POST /custom/action": ["custom:write"],
+        # Allow without scopes
+        "GET /public": [],
+    }
+)
+```
+
+## Request State
+
+After processing, the middleware stores the following in `request.state`:
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `authenticated` | `bool` | Whether the user is authenticated |
+| `user_id` | `Optional[str]` | User ID from token claims |
+| `session_id` | `Optional[str]` | Session ID from token claims |
+| `scopes` | `List[str]` | User's permission scopes |
+| `audience` | `Optional[str]` | Audience claim value |
+| `token` | `str` | The raw JWT token |
+| `authorization_enabled` | `bool` | Whether RBAC is enabled |
+| `dependencies` | `Dict[str, Any]` | Extracted dependencies claims |
+| `session_state` | `Dict[str, Any]` | Extracted session state claims |
+| `accessible_resource_ids` | `Set[str]` | Resource IDs user can access (for listing endpoints) |
+
+## Error Responses
+
+| Status Code | Description |
+|-------------|-------------|
+| `401 Unauthorized` | Missing or invalid JWT token |
+| `401 Unauthorized` | Token has expired |
+| `401 Unauthorized` | Invalid audience (token not for this AgentOS) |
+| `403 Forbidden` | Insufficient scopes for the requested operation |
+
+## See Also
+
+- [Security Overview](/agent-os/security/overview) - AgentOS security overview
+- [JWT Middleware Guide](/agent-os/middleware/jwt) - Configuration guide
+- [RBAC Documentation](/agent-os/security/rbac) - Complete scope reference
+- [AuthorizationConfig](/reference/agent-os/authorization-config) - Authorization configuration
+

@@ -1,0 +1,198 @@
+---
+title: Custom Scope Mappings
+---
+
+This example demonstrates how to define custom scope mappings for your AgentOS endpoints, allowing you to create your own permission structure.
+
+<Steps>
+
+  <Step title="Create a Python file">
+    ```bash
+    touch custom_scope_mappings.py
+    ```
+  </Step>
+
+  <Step title="Add the following code to your Python file">
+    ```python custom_scope_mappings.py
+    import os
+    from datetime import UTC, datetime, timedelta
+
+    import jwt
+    from agno.agent import Agent
+    from agno.db.postgres import PostgresDb
+    from agno.models.openai import OpenAIChat
+    from agno.os import AgentOS
+    from agno.os.middleware import JWTMiddleware
+    from agno.tools.duckduckgo import DuckDuckGoTools
+
+    JWT_SECRET = os.getenv("JWT_VERIFICATION_KEY", "your-secret-key-at-least-256-bits-long")
+
+    db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+    research_agent = Agent(
+        id="research-agent",
+        name="Research Agent",
+        model=OpenAIChat(id="gpt-4o"),
+        db=db,
+        tools=[DuckDuckGoTools()],
+        markdown=True,
+    )
+
+    # Define custom scope mappings
+    # Format: "METHOD /path": ["scope1", "scope2"]
+    custom_scopes = {
+        # Override default agent scopes with custom ones
+        "GET /agents": ["app:read"],
+        "GET /agents/*": ["app:read"],
+        "POST /agents/*/runs": ["app:run", "app:execute"],  # Require BOTH scopes
+        
+        # Session endpoints - only admins can view
+        "GET /sessions": ["app:admin"],
+        "GET /sessions/*": ["app:read", "sessions:read"],
+        
+        # Memory endpoints with custom scopes
+        "GET /memories": ["memory:admin"],
+        "POST /memories": ["memory:write"],
+        
+        # Config endpoint - system admins only
+        "GET /config": ["app:admin"],
+    }
+
+    # Create AgentOS without built-in authorization
+    agent_os = AgentOS(
+        id="my-agent-os",
+        description="Custom Scope Mappings AgentOS",
+        agents=[research_agent],
+    )
+
+    app = agent_os.get_app()
+
+    # Add JWT middleware with custom scope mappings
+    app.add_middleware(
+        JWTMiddleware,
+        verification_key=JWT_SECRET,
+        algorithm="HS256",
+        scope_mappings=custom_scopes,  # Custom scopes enable RBAC automatically
+        admin_scope="app:superadmin",  # Custom admin scope
+    )
+
+
+    if __name__ == "__main__":
+        # Basic user - can only read
+        basic_user_token = jwt.encode(
+            {
+                "sub": "user_123",
+                "scopes": ["app:read"],
+                "exp": datetime.now(UTC) + timedelta(hours=24),
+            },
+            JWT_SECRET,
+            algorithm="HS256",
+        )
+
+        # Power user - can read and execute
+        power_user_token = jwt.encode(
+            {
+                "sub": "user_456",
+                "scopes": ["app:read", "app:run", "app:execute"],
+                "exp": datetime.now(UTC) + timedelta(hours=24),
+            },
+            JWT_SECRET,
+            algorithm="HS256",
+        )
+
+        # Admin user - has admin scope
+        admin_token = jwt.encode(
+            {
+                "sub": "admin_789",
+                "scopes": ["app:admin", "app:read", "app:run", "app:execute"],
+                "exp": datetime.now(UTC) + timedelta(hours=24),
+            },
+            JWT_SECRET,
+            algorithm="HS256",
+        )
+
+        # Super admin - bypasses all checks
+        superadmin_token = jwt.encode(
+            {
+                "sub": "superadmin",
+                "scopes": ["app:superadmin"],
+                "exp": datetime.now(UTC) + timedelta(hours=24),
+            },
+            JWT_SECRET,
+            algorithm="HS256",
+        )
+
+        print("Basic User (app:read only):")
+        print(basic_user_token)
+        print("\nPower User (app:read, app:run, app:execute):")
+        print(power_user_token)
+        print("\nAdmin (app:admin + all permissions):")
+        print(admin_token)
+        print("\nSuper Admin (app:superadmin - bypasses all):")
+        print(superadmin_token)
+
+        agent_os.serve(app="custom_scope_mappings:app", port=7777, reload=True)
+    ```
+  </Step>
+
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install libraries">
+    ```bash
+    pip install -U agno openai pyjwt "fastapi[standard]" uvicorn sqlalchemy pgvector psycopg duckduckgo-search
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Setup PostgreSQL Database">
+    ```bash
+    docker run -d \
+      --name agno-postgres \
+      -e POSTGRES_DB=ai \
+      -e POSTGRES_USER=ai \
+      -e POSTGRES_PASSWORD=ai \
+      -p 5532:5432 \
+      pgvector/pgvector:pg17
+    ```
+  </Step>
+
+  <Step title="Run the AgentOS">
+    ```bash
+    python custom_scope_mappings.py
+    ```
+  </Step>
+
+  <Step title="Test Custom Scopes">
+    ```bash
+    # Basic user can read agents
+    export BASIC_TOKEN="<basic_user_token>"
+    curl -H "Authorization: Bearer $BASIC_TOKEN" http://localhost:7777/agents
+    
+    # Basic user cannot run agents (missing app:run and app:execute)
+    curl -X POST -H "Authorization: Bearer $BASIC_TOKEN" \
+      -F "message=test" http://localhost:7777/agents/research-agent/runs
+    
+    # Power user can run agents
+    export POWER_TOKEN="<power_user_token>"
+    curl -X POST -H "Authorization: Bearer $POWER_TOKEN" \
+      -F "message=Search for news" \
+      http://localhost:7777/agents/research-agent/runs
+    
+    # Only admin can view sessions
+    export ADMIN_TOKEN="<admin_token>"
+    curl -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:7777/sessions
+    ```
+  </Step>
+
+</Steps>

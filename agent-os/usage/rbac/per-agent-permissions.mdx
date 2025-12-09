@@ -1,0 +1,173 @@
+---
+title: Per-Agent Permissions
+---
+
+This example demonstrates how to define per-agent permission scopes to control which users can run which specific agents.
+
+<Steps>
+
+  <Step title="Create a Python file">
+    ```bash
+    touch per_agent_permissions.py
+    ```
+  </Step>
+
+  <Step title="Add the following code to your Python file">
+    ```python per_agent_permissions.py
+    import os
+    from datetime import UTC, datetime, timedelta
+
+    import jwt
+    from agno.agent import Agent
+    from agno.db.postgres import PostgresDb
+    from agno.models.openai import OpenAIChat
+    from agno.os import AgentOS
+    from agno.tools.duckduckgo import DuckDuckGoTools
+    from agno.os.config import AuthorizationConfig
+
+    JWT_SECRET = os.getenv("JWT_VERIFICATION_KEY", "your-secret-key-at-least-256-bits-long")
+
+    db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+    # Create agents with different purposes
+    web_search_agent = Agent(
+        id="web-search-agent",
+        name="Web Search Agent",
+        model=OpenAIChat(id="gpt-4o"),
+        db=db,
+        tools=[DuckDuckGoTools()],
+        markdown=True,
+    )
+
+    finance_agent = Agent(
+        id="finance-agent",
+        name="Finance Agent",
+        model=OpenAIChat(id="gpt-4o"),
+        db=db,
+        markdown=True,
+    )
+
+    # Create AgentOS (without built-in authorization)
+    agent_os = AgentOS(
+        id="my-agent-os",
+        description="Per-Agent Permissions AgentOS",
+        agents=[web_search_agent, finance_agent],
+        authorization=True,
+        authorization_config=AuthorizationConfig(
+            verification_key=JWT_SECRET,
+            algorithm="HS256",
+        ),
+    )
+
+    app = agent_os.get_app()
+
+
+    if __name__ == "__main__":
+        # User who can only run web-search-agent
+        web_user_token = jwt.encode(
+            {
+                "sub": "web_user",
+                "scopes": ["agents:read", "agents:web-search-agent:run"],
+                "exp": datetime.now(UTC) + timedelta(hours=24),
+            },
+            JWT_SECRET,
+            algorithm="HS256",
+        )
+
+        # User who can only run finance-agent
+        finance_user_token = jwt.encode(
+            {
+                "sub": "finance_user",
+                "scopes": ["agents:read", "agents:finance-agent:run"],
+                "exp": datetime.now(UTC) + timedelta(hours=24),
+            },
+            JWT_SECRET,
+            algorithm="HS256",
+        )
+
+        # User who can run both agents
+        power_user_token = jwt.encode(
+            {
+                "sub": "power_user",
+                "scopes": [
+                    "agents:read",
+                    "agents:web-search-agent:run",
+                    "agents:finance-agent:run",
+                ],
+                "exp": datetime.now(UTC) + timedelta(hours=24),
+            },
+            JWT_SECRET,
+            algorithm="HS256",
+        )
+
+        print("Web User (can only run web-search-agent):")
+        print(web_user_token)
+        print("\nFinance User (can only run finance-agent):")
+        print(finance_user_token)
+        print("\nPower User (can run both):")
+        print(power_user_token)
+
+        agent_os.serve(app="per_agent_permissions:app", port=7777, reload=True)
+    ```
+  </Step>
+
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install libraries">
+    ```bash
+    pip install -U agno openai pyjwt "fastapi[standard]" uvicorn sqlalchemy pgvector psycopg duckduckgo-search
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Setup PostgreSQL Database">
+    ```bash
+    docker run -d \
+      --name agno-postgres \
+      -e POSTGRES_DB=ai \
+      -e POSTGRES_USER=ai \
+      -e POSTGRES_PASSWORD=ai \
+      -p 5532:5432 \
+      pgvector/pgvector:pg17
+    ```
+  </Step>
+
+  <Step title="Run the AgentOS">
+    ```bash
+    python per_agent_permissions.py
+    ```
+  </Step>
+
+  <Step title="Test Per-Agent Access">
+    ```bash
+    # Web user can run web-search-agent
+    export WEB_TOKEN="<web_user_token>"
+    curl -X POST -H "Authorization: Bearer $WEB_TOKEN" \
+      -F "message=Search for AI news" \
+      http://localhost:7777/agents/web-search-agent/runs
+    
+    # Web user cannot run finance-agent (403 Forbidden)
+    curl -X POST -H "Authorization: Bearer $WEB_TOKEN" \
+      -F "message=Analyze stock" \
+      http://localhost:7777/agents/finance-agent/runs
+    
+    # Finance user can only run finance-agent
+    export FINANCE_TOKEN="<finance_user_token>"
+    curl -X POST -H "Authorization: Bearer $FINANCE_TOKEN" \
+      -F "message=Analyze market trends" \
+      http://localhost:7777/agents/finance-agent/runs
+    ```
+  </Step>
+
+</Steps>

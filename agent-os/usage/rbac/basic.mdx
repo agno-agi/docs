@@ -1,0 +1,151 @@
+---
+title: Basic RBAC
+---
+
+This example demonstrates how to enable RBAC (Role-Based Access Control) with JWT token authentication in AgentOS.
+
+<Steps>
+
+  <Step title="Create a Python file">
+    ```bash
+    touch basic_rbac.py
+    ```
+  </Step>
+
+  <Step title="Add the following code to your Python file">
+    ```python basic_rbac.py
+    import os
+    from datetime import UTC, datetime, timedelta
+
+    import jwt
+    from agno.agent import Agent
+    from agno.db.postgres import PostgresDb
+    from agno.models.openai import OpenAIChat
+    from agno.os import AgentOS
+    from agno.os.config import AuthorizationConfig
+    from agno.tools.duckduckgo import DuckDuckGoTools
+
+    # JWT Secret (use environment variable in production)
+    JWT_SECRET = os.getenv("JWT_VERIFICATION_KEY", "your-secret-key-at-least-256-bits-long")
+
+    # Setup database
+    db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+    # Create agent
+    research_agent = Agent(
+        id="research-agent",
+        name="Research Agent",
+        model=OpenAIChat(id="gpt-4o"),
+        db=db,
+        tools=[DuckDuckGoTools()],
+        add_history_to_context=True,
+        markdown=True,
+    )
+
+    # Create AgentOS with RBAC enabled
+    agent_os = AgentOS(
+        id="my-agent-os",
+        description="RBAC Protected AgentOS",
+        agents=[research_agent],
+        authorization=True,
+        authorization_config=AuthorizationConfig(
+            verification_key=JWT_SECRET,
+            algorithm="HS256",
+        ),
+    )
+
+    # Get the app
+    app = agent_os.get_app()
+
+
+    if __name__ == "__main__":
+        # Create test tokens with different scopes
+        user_token = jwt.encode(
+            {
+                "sub": "user_123",
+                "session_id": "session_456",
+                "scopes": ["agents:read", "agents:run"],
+                "exp": datetime.now(UTC) + timedelta(hours=24),
+                "iat": datetime.now(UTC),
+            },
+            JWT_SECRET,
+            algorithm="HS256",
+        )
+
+        admin_token = jwt.encode(
+            {
+                "sub": "admin_789",
+                "session_id": "admin_session_123",
+                "scopes": ["agent_os:admin"],
+                "exp": datetime.now(UTC) + timedelta(hours=24),
+                "iat": datetime.now(UTC),
+            },
+            JWT_SECRET,
+            algorithm="HS256",
+        )
+
+        print("User Token (agents:read, agents:run):")
+        print(user_token)
+        print("\nAdmin Token (agent_os:admin - full access):")
+        print(admin_token)
+
+        agent_os.serve(app="basic_rbac:app", port=7777, reload=True)
+    ```
+  </Step>
+
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install libraries">
+    ```bash
+    pip install -U agno openai pyjwt "fastapi[standard]" uvicorn sqlalchemy pgvector psycopg duckduckgo-search
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Setup PostgreSQL Database">
+    ```bash
+    docker run -d \
+      --name agno-postgres \
+      -e POSTGRES_DB=ai \
+      -e POSTGRES_USER=ai \
+      -e POSTGRES_PASSWORD=ai \
+      -p 5532:5432 \
+      pgvector/pgvector:pg17
+    ```
+  </Step>
+
+  <Step title="Run the AgentOS">
+    ```bash
+    python basic_rbac.py
+    ```
+    
+    The server will start and print test JWT tokens to the console.
+  </Step>
+
+  <Step title="Test RBAC">
+    ```bash
+    # Set the token from console output
+    export TOKEN="<user_token_from_console>"
+    
+    # List agents
+    curl -H "Authorization: Bearer $TOKEN" http://localhost:7777/agents
+    
+    # Run an agent
+    curl -X POST -H "Authorization: Bearer $TOKEN" \
+      -F "message=Search for latest AI news" \
+      http://localhost:7777/agents/research-agent/runs
+    ```
+  </Step>
+
+</Steps>

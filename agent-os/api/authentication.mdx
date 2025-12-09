@@ -1,31 +1,103 @@
 ---
 title: "AgentOS Authentication"
 sidebarTitle: "Authentication"
-description: "Learn how to authenticate with AgentOS"
-keywords: [agentos authentication, bearer token, security key, api security]
+description: "Authenticate with AgentOS using RBAC and JWT tokens"
+keywords: [agentos authentication, bearer token, api security, jwt, rbac, authorization, scopes]
 ---
 
-AgentOS supports bearer-token authentication to secure your API endpoints and protect your agentic systems from unauthorized access.
+AgentOS uses Role-Based Access Control (RBAC) with JWT tokens to secure your API endpoints and provide fine-grained permission control.
 
-## Authentication Methods
+## RBAC Authentication (Recommended)
 
-When a Security Key is configured, all API routes require an `Authorization: Bearer <token>` header for access. Without a key configured, authentication is disabled and all endpoints are publicly accessible.
-
-### Using Bearer Token Authentication
-
-Include the authorization header in your API requests:
+When RBAC is enabled, include a JWT token with scopes in your requests:
 
 ```bash
 curl --location 'http://localhost:7777/agents/my-agent/runs' \
-    --header 'Authorization: Bearer your-secret-key' \
+    --header 'Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...' \
     --header 'Content-Type: application/x-www-form-urlencoded' \
     --data-urlencode 'message=Your query here'
 ```
 
-### Configuration
+### JWT Token Structure
 
-Set your security key when initializing AgentOS or through the configuration file. See the [AgentOS Security](/agent-os/security) guide for detailed setup instructions.
+Your JWT tokens should include scopes and audience claims:
+
+```json
+{
+  "sub": "user-123",
+  "aud": "my-agent-os",
+  "scopes": ["agents:read", "agents:my-agent:run", "sessions:write"],
+  "exp": 1735689600
+}
+```
+
+### Required Claims
+
+| Claim | Description |
+|-------|-------------|
+| `aud` | Must match your AgentOS `id` |
+| `scopes` | Array of permission scopes |
+
+### Common Scopes
+
+| Scope | Description |
+|-------|-------------|
+| `agents:read` | List and view agents |
+| `agents:run` | Run any agent |
+| `agents:<id>:run` | Run a specific agent |
+| `sessions:read` | View session data |
+| `sessions:write` | Create/update sessions |
+| `agent_os:admin` | Full admin access |
+
+See [RBAC Documentation](/agent-os/security/rbac) for all available scopes.
+
+### Error Responses
+
+| Status | Description |
+|--------|-------------|
+| `401 Unauthorized` | Missing or invalid JWT token |
+| `401 Unauthorized` | Invalid audience (wrong AgentOS ID) |
+| `403 Forbidden` | Insufficient scopes |
 
 ## Developer Resources
 
-- See [AgentOS Security](/agent-os/security) for comprehensive security configuration
+<CardGroup cols={3}>
+  <Card
+    title="AgentOS Security"
+    icon="shield"
+    href="/agent-os/security"
+  >
+    Enable RBAC and configure authorization.
+  </Card>
+  <Card
+    title="RBAC"
+    icon="lock"
+    href="/agent-os/security/rbac"
+  >
+    Complete scope reference and endpoint mappings.
+  </Card>
+  <Card
+    title="JWT Middleware"
+    icon="key"
+    href="/agent-os/middleware/jwt"
+  >
+    JWT configuration and parameter injection.
+  </Card>
+</CardGroup>
+
+---
+
+## Security Key Authentication (Deprecated)
+
+<Warning>
+Security Key authentication is deprecated. Use [RBAC](#rbac-authentication-recommended) instead.
+</Warning>
+
+Legacy authentication using the `OS_SECURITY_KEY` environment variable:
+
+```bash
+curl --location 'http://localhost:7777/agents/my-agent/runs' \
+    --header 'Authorization: Bearer your-security-key' \
+    --header 'Content-Type: application/x-www-form-urlencoded' \
+    --data-urlencode 'message=Your query here'
+```

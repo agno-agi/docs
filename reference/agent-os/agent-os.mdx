@@ -16,13 +16,55 @@ sidebarTitle: AgentOS
 | `workflows` | `Optional[List[Workflow]]` | `None` | List of workflows available in the AgentOS |
 | `knowledge` | `Optional[List[Knowledge]]` | `None` | List of standalone knowledge instances available in the AgentOS |
 | `interfaces` | `Optional[List[BaseInterface]]` | `None` | List of interfaces available in the AgentOS |
+| `a2a_interface` | `bool` | `False` | Whether to expose the OS agents and teams in an A2A server |
+| `authorization` | `bool` | `False` | Whether to enable RBAC authorization |
+| `authorization_config` | `Optional[AuthorizationConfig]` | `None` | Configuration for JWT verification when authorization is enabled |
+| `cors_allowed_origins` | `Optional[List[str]]` | `None` | List of allowed CORS origins (merged with default Agno domains) |
 | `config` | `Optional[Union[str, AgentOSConfig]]` | `None` | User-provided configuration for the AgentOS. Either a path to a YAML file or an `AgentOSConfig` instance. |
 | `settings` | `Optional[AgnoAPISettings]` | `None` | Settings for the AgentOS API |
 | `base_app` | `Optional[FastAPI]` | `None` | Custom FastAPI APP to use for the AgentOS |
 | `lifespan` | `Optional[Any]` | `None` | Lifespan context manager for the FastAPI app |
 | `enable_mcp_server` | `bool` | `False` | Whether to enable MCP (Model Context Protocol) |
 | `on_route_conflict` | `Literal["preserve_agentos", "preserve_base_app", "error"]` | `"preserve_agentos"` | What to do when a route conflict is detected in case a custom base_app is provided. |
+| `tracing` | `bool` | `False` | Enable OpenTelemetry tracing for all agents and teams |
+| `tracing_db` | `Optional[Union[BaseDb, AsyncBaseDb]]` | `None` | Dedicated database for storing traces |
+| `auto_provision_dbs` | `bool` | `True` | Whether to automatically provision databases |
+| `run_hooks_in_background` | `bool` | `False` | Run agent/team pre/post hooks as FastAPI background tasks |
 | `telemetry` | `bool` | `True` | Log minimal telemetry for analytics |
+
+## Authorization
+
+Enable RBAC by setting `authorization=True` and setting the `JWT_VERIFICATION_KEY` environment variable to the public key of the JWT verification key:
+
+```python
+from agno.os import AgentOS
+from agno.os.config import AuthorizationConfig
+
+agent_os = AgentOS(
+    id="my-agent-os",
+    agents=[my_agent],
+    authorization=True,
+)
+```
+
+Or for more control, you can use the `AuthorizationConfig` class:
+
+```python
+from agno.os import AgentOS
+from agno.os.config import AuthorizationConfig
+
+agent_os = AgentOS(
+    id="my-agent-os",
+    agents=[my_agent],
+    authorization=True,
+    authorization_config=AuthorizationConfig(
+        verification_key="your-jwt-verification-key",
+        algorithm="RS256",
+    ),
+)
+```
+
+See [AuthorizationConfig](/reference/agent-os/authorization-config) for configuration options.
 
 ## Functions
 
@@ -45,3 +87,11 @@ Run the app, effectively starting the AgentOS.
 - `port` (int): Port to bind. Defaults to `7777`
 - `workers` (Optional[int]): Number of workers to use. Defaults to `None`
 - `reload` (bool): Enable auto-reload for development. Defaults to `False`
+
+### `resync`
+
+Resync the AgentOS to discover, initialize and configure: agents, teams, workflows, databases and knowledge bases.
+
+**Parameters:**
+
+- `app` (FastAPI): The FastAPI app instance

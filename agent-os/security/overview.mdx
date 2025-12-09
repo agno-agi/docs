@@ -1,0 +1,119 @@
+---
+title: "AgentOS Security"
+sidebarTitle: Overview
+description: "Secure your AgentOS instance with Role-Based Access Control (RBAC)"
+keywords: [security, authorization, rbac, jwt, scopes, role-based access control]
+---
+
+## Overview
+
+AgentOS provides built-in Role-Based Access Control (RBAC) to secure your entire agentic system. RBAC validates uses [JWT tokens](https://www.jwt.io/introduction) as a way to represent the identity of the user making the request.
+Whether this user is coming from the AgentOS Control Plane or your own application, the JWT token is validated and the scopes are checked against the required permissions for each endpoint.
+
+<Tip>
+RBAC is the recommended way to secure your AgentOS instance. It provides fine-grained permissions and per-resource access control.
+</Tip>
+
+## Role-Based Access Control (RBAC)
+
+AgentOS supports built-in Role-Based Access Control (RBAC) to manage permissions for your agents, teams, and workflows. When enabled, RBAC validates JWT scopes against required permissions for each endpoint.
+
+### Enabling RBAC
+
+Enable RBAC by setting `authorization=True` when initializing AgentOS:
+
+```python rbac_enabled.py
+from agno.os import AgentOS
+from agno.os.config import AuthorizationConfig
+
+agent_os = AgentOS(
+    id="my-agent-os",
+    agents=[my_agent],
+    authorization=True,  # Enable authorization with RBAC
+)
+```
+
+You also have to set the `JWT_VERIFICATION_KEY` environment variable to the public key of the JWT verification key.
+
+<Note>
+When RBAC is enabled, requests without a valid JWT token return `401 Unauthorized` or `403 Forbidden` if the scopes are insufficient.
+</Note>
+
+
+### Key Features
+
+- **Automatic JWT Middleware**: When authorization is enabled, AgentOS automatically adds JWT middleware
+- **Scope-Based Permissions**: Validates user scopes against required permissions per endpoint. See the scopes documentation for more details.
+- **Per-Resource Access Control**: Grant access to specific agents, teams, or workflows, both on retrieval and execution.
+
+### Scope Format
+
+RBAC uses a simple scope format:
+
+| Format | Example | Description |
+|--------|---------|-------------|
+| `resource:action` | `agents:read` | Global access to all resources of type |
+| `resource:<id>:action` | `agents:my-agent:run` | Access to specific resource |
+| `resource:*:action` | `agents:*:run` | Wildcard access to any resource |
+| `agent_os:admin` | `agent_os:admin` | Full admin access |
+
+For a complete list of all available scopes and default endpoint mappings, see [RBAC Documentation](/agent-os/security/rbac).
+
+## JWT Middleware
+
+For advanced JWT configuration including custom claims extraction, parameter injection, and token sources (headers vs cookies), see [JWT Middleware](/agent-os/middleware/jwt).
+
+## Developer Resources
+
+<CardGroup cols={2}>
+  <Card
+    title="RBAC Documentation"
+    icon="lock"
+    href="/agent-os/security/rbac"
+  >
+    Complete RBAC scopes, permissions, and access control configuration.
+  </Card>
+  <Card
+    title="JWT Middleware"
+    icon="key"
+    href="/agent-os/middleware/jwt"
+  >
+    JWT authentication with parameter injection and claims extraction.
+  </Card>
+</CardGroup>
+
+---
+
+## Security Key Authentication (Deprecated)
+
+<Warning>
+Security Key authentication is deprecated. Use [RBAC](#role-based-access-control-rbac) instead for fine-grained access control.
+</Warning>
+
+Security Key authentication provides simple bearer-token authentication but lacks the fine-grained permissions of RBAC.
+
+### Configuration
+
+Set the `OS_SECURITY_KEY` environment variable:
+
+```bash
+export OS_SECURITY_KEY="OSK_...your_key..."
+```
+
+And run your AgentOS application:
+
+```python agent_os.py
+from agno.os import AgentOS
+
+agent_os = AgentOS(
+    id="my-agent-os",
+    agents=[my_agent],
+)
+
+if __name__ == "__main__":
+    agent_os.serve(app="agent_os:app", reload=True)
+```
+
+<Note>
+When `OS_SECURITY_KEY` is configured, requests without a valid `Authorization: Bearer <key>` header return `401 Unauthorized`.
+</Note>

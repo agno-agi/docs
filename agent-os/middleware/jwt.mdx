@@ -1,8 +1,8 @@
 ---
 title: JWT Middleware
 sidebarTitle: JWT
-description: Secure your AgentOS application with JWT token validation
-keywords: [jwt middleware, jwt authentication, token validation, parameter injection, authorization, bearer token, jwt claims, http only cookies, token verification, jwt secret, user authentication, session management, jwt tokens, pyjwt, token security]
+description: Secure your AgentOS application with JWT token validation and RBAC
+keywords: [jwt middleware, jwt authentication, token validation, parameter injection, authorization, bearer token, jwt claims, http only cookies, token verification, jwt secret, user authentication, session management, jwt tokens, pyjwt, token security, rbac, scopes, role-based access control]
 ---
 
 <Badge icon="code-branch" color="orange">
@@ -11,9 +11,10 @@ keywords: [jwt middleware, jwt authentication, token validation, parameter injec
 
 Authenticate and authorize requests to your AgentOS application using JWT tokens. The middleware extracts tokens from Authorization headers or cookies, validates them, and automatically injects user_id, session_id, and custom claims into your endpoints.
 
-The JWT middleware provides two main features:
+The JWT middleware provides three main features:
 1. **Token Validation**: Validates JWT tokens and handles authentication
 2. **Parameter Injection**: Automatically injects user_id, session_id, and custom claims into endpoint parameters
+3. **RBAC Authorization**: Validates scopes against required permissions for each endpoint
 
 
 ```python jwt_middleware_setup.py
@@ -22,12 +23,14 @@ from agno.os.middleware.jwt import TokenSource
 
 app.add_middleware(
     JWTMiddleware,
-    secret_key="your-jwt-secret-key", # or use JWT_SECRET_KEY environment variable
-    algorithm="HS256",
+    verification_key="your-jwt-verification-key",  # or use JWT_VERIFICATION_KEY environment variable
+    algorithm="RS256",  # RS256 for asymmetric keys, HS256 for symmetric
     user_id_claim="sub",  # Extract user_id from 'sub' claim
     session_id_claim="session_id",  # Extract session_id from claim
     dependencies_claims=["name", "email", "roles"],  # Additional claims
     validate=True,  # Enable token validation
+    authorization=True,  # Enable RBAC scope checking
+    verify_audience=True,  # Verify aud claim matches AgentOS ID
 )
 ```
 
@@ -46,9 +49,8 @@ The middleware supports three token sources:
     
     app.add_middleware(
         JWTMiddleware,
-        secret_key="your-secret",
+        verification_key="your-key",
         token_source=TokenSource.HEADER,  # Default
-        
     )
     ```
   </Tab>
@@ -59,7 +61,7 @@ The middleware supports three token sources:
     ```python
     app.add_middleware(
         JWTMiddleware,
-        secret_key="your-secret",
+        verification_key="your-key",
         token_source=TokenSource.COOKIE,
         cookie_name="access_token",  # Default
     )
@@ -72,7 +74,7 @@ The middleware supports three token sources:
     ```python
     app.add_middleware(
         JWTMiddleware,
-        secret_key="your-secret",
+        verification_key="your-key",
         token_source=TokenSource.BOTH,
         cookie_name="access_token",  # Default
         token_header_key="Authorization",  # Default
@@ -102,19 +104,76 @@ View the [full example](/agent-os/usage/middleware/jwt-middleware) for more deta
 ## Security Features
 
 <Note>
-Use strong secret keys, store them securely (not in code), and enable validation in production.
+Use strong verification keys, store them securely (not in code), and enable validation in production.
 </Note>
 
 **Token Validation**: When `validate=True`, the middleware:
-- Verifies JWT signature using the secret key
+- Verifies JWT signature using the verification key
 - Checks token expiration (`exp` claim)
 - Returns 401 errors for invalid/expired tokens
+
+**Audience Verification**: When `verify_audience=True`, the middleware:
+- Validates the `aud` claim matches the AgentOS ID
+- Ensures tokens are only valid for the intended AgentOS instance
+- Returns 401 for tokens with mismatched audience
 
 <Tip>
 **HTTP-Only Cookies**: When using cookies:
 - Set `httponly=True` to prevent JavaScript access (XSS protection)
 - Set `secure=True` for HTTPS-only transmission
 - Set `samesite="strict"` for CSRF protection
+</Tip>
+
+## RBAC Authorization
+
+Enable Role-Based Access Control (RBAC) to validate JWT scopes against required permissions:
+
+```python jwt_with_rbac.py
+app.add_middleware(
+    JWTMiddleware,
+    verification_key="your-jwt-key",
+    algorithm="RS256",
+    authorization=True,  # Enable RBAC
+    verify_audience=True,  # Verify aud matches AgentOS ID
+)
+```
+
+When `authorization=True`, the middleware:
+- Checks the `scopes` claim in JWT tokens
+- Validates scopes against required permissions for each endpoint
+- Returns 403 Forbidden for insufficient permissions
+
+### Scope Format
+
+| Format | Example | Description |
+|--------|---------|-------------|
+| `resource:action` | `agents:read` | Access all resources |
+| `resource:<id>:action` | `agents:my-agent:run` | Access specific resource |
+| `resource:*:action` | `agents:*:run` | Wildcard access |
+| `agent_os:admin` | `agent_os:admin` | Full admin access |
+
+### Custom Scope Mappings
+
+Override or extend default scope mappings:
+
+```python custom_scope_mappings.py
+app.add_middleware(
+    JWTMiddleware,
+    verification_key="your-key",
+    authorization=True,
+    scope_mappings={
+        # Override default
+        "GET /agents": ["custom:agents:list"],
+        # Add new endpoint
+        "POST /custom/action": ["custom:write"],
+        # Allow without scopes
+        "GET /public": [],
+    }
+)
+```
+
+<Tip>
+For detailed RBAC documentation including all available scopes and default mappings, see [RBAC Documentation](/agent-os/security/rbac).
 </Tip>
 
 
@@ -125,7 +184,7 @@ Skip middleware for specific routes:
 ```python jwt_excluded_routes.py
 app.add_middleware(
     JWTMiddleware,
-    secret_key="your-secret",
+    verification_key="your-key",
     excluded_route_paths=[
         "/health",
         "/auth/login", 
@@ -136,20 +195,45 @@ app.add_middleware(
 ```
 ## Configuration Options
 
+See the [JWTMiddleware Reference](/reference/agent-os/jwt-middleware) for the complete list of configuration options.
+
+### Authentication Options
+
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `secret_key` | Secret key for JWT verification | Optional, will use `JWT_SECRET_KEY` environment variable if not provided |
-| `algorithm` | JWT algorithm (HS256, RS256, etc.) | "HS256" |
-| `token_source` | Where to extract token from. `HEADER`, `COOKIE`, or `BOTH`. | `TokenSource.HEADER` |
-| `token_header_key` | Key to use for the Authorization header (only used when token_source is `HEADER` or `BOTH`) | "Authorization" |
-| `cookie_name` | Cookie name when using cookies (only used when token_source is `COOKIE` or `BOTH`) | "access_token" |
+| `verification_key` | Key for JWT verification. For RS256, use public key. For HS256, use shared secret. | `JWT_VERIFICATION_KEY` env var |
+| `secret_key` | **(Deprecated)** Use `verification_key` instead. | - |
+| `algorithm` | JWT algorithm (RS256, HS256, ES256, etc.) | `"RS256"` |
 | `validate` | Enable token validation | `True` |
-| `excluded_route_paths` | Routes to skip middleware (useful for health checks, etc.) | `None` |
-| `scopes_claim` | JWT claim for scopes | `None` |
-| `user_id_claim` | JWT claim for user ID | "sub" |
-| `session_id_claim` | JWT claim for session ID | "session_id" |
-| `dependencies_claims` | List of additional claims to extract for `dependencies` parameter | `[]` |
-| `session_state_claims` | List of additional claims to extract for `session_state` parameter | `[]` |
+
+### Token Source Options
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `token_source` | Where to extract token from: `HEADER`, `COOKIE`, or `BOTH` | `TokenSource.HEADER` |
+| `token_header_key` | Header key for Authorization (when using HEADER or BOTH) | `"Authorization"` |
+| `cookie_name` | Cookie name (when using COOKIE or BOTH) | `"access_token"` |
+
+### Claim Extraction Options
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `user_id_claim` | JWT claim for user ID | `"sub"` |
+| `session_id_claim` | JWT claim for session ID | `"session_id"` |
+| `scopes_claim` | JWT claim for scopes | `"scopes"` |
+| `audience_claim` | JWT claim for audience/OS ID | `"aud"` |
+| `dependencies_claims` | List of claims to extract for `dependencies` parameter | `[]` |
+| `session_state_claims` | List of claims to extract for `session_state` parameter | `[]` |
+
+### Authorization Options (RBAC)
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `authorization` | Enable RBAC scope checking | `False` |
+| `verify_audience` | Verify `aud` claim matches AgentOS ID | `False` |
+| `scope_mappings` | Custom route-to-scope mappings (additive to defaults) | `None` |
+| `admin_scope` | Scope that grants full admin access | `"agent_os:admin"` |
+| `excluded_route_paths` | Routes to skip JWT/RBAC checks | See below |
 
 
 ### Examples
@@ -175,6 +259,20 @@ app.add_middleware(
     href="/agent-os/usage/middleware/custom-fastapi-jwt"
   >
     Custom FastAPI app with JWT middleware and AgentOS integration.
+  </Card>
+  <Card
+    title="RBAC Documentation"
+    icon="lock"
+    href="/agent-os/security/rbac"
+  >
+    Detailed RBAC scopes, permissions, and access control configuration.
+  </Card>
+  <Card
+    title="JWTMiddleware Reference"
+    icon="code"
+    href="/reference/agent-os/jwt-middleware"
+  >
+    Complete JWT middleware class reference.
   </Card>
 </CardGroup>
 

@@ -1,0 +1,186 @@
+---
+title: Advanced Scopes
+---
+
+This example demonstrates advanced RBAC scope patterns including global scopes, per-resource scopes, and wildcards.
+
+<Steps>
+
+  <Step title="Create a Python file">
+    ```bash
+    touch advanced_scopes.py
+    ```
+  </Step>
+
+  <Step title="Add the following code to your Python file">
+    ```python advanced_scopes.py
+    import os
+    from datetime import UTC, datetime, timedelta
+
+    import jwt
+    from agno.agent import Agent
+    from agno.db.postgres import PostgresDb
+    from agno.models.openai import OpenAIChat
+    from agno.os import AgentOS
+    from agno.os.config import AuthorizationConfig
+    from agno.tools.duckduckgo import DuckDuckGoTools
+
+    JWT_SECRET = os.getenv("JWT_VERIFICATION_KEY", "your-secret-key-at-least-256-bits-long")
+
+    db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+    # Create multiple agents with different capabilities
+    web_search_agent = Agent(
+        id="web-search-agent",
+        name="Web Search Agent",
+        model=OpenAIChat(id="gpt-4o"),
+        db=db,
+        tools=[DuckDuckGoTools()],
+        markdown=True,
+    )
+
+    analyst_agent = Agent(
+        id="analyst-agent",
+        name="Data Analyst Agent",
+        model=OpenAIChat(id="gpt-4o"),
+        db=db,
+        markdown=True,
+    )
+
+    admin_agent = Agent(
+        id="admin-agent",
+        name="Admin Agent",
+        model=OpenAIChat(id="gpt-4o"),
+        db=db,
+        markdown=True,
+    )
+
+    # Create AgentOS with RBAC
+    agent_os = AgentOS(
+        id="my-agent-os",
+        name="Production AgentOS",
+        agents=[web_search_agent, analyst_agent, admin_agent],
+        authorization=True,
+        authorization_config=AuthorizationConfig(
+            verification_key=JWT_SECRET,
+            algorithm="HS256",
+        ),
+    )
+
+    app = agent_os.get_app()
+
+
+    def create_token(user_id: str, scopes: list[str], hours: int = 24) -> str:
+        """Helper function to create JWT tokens."""
+        return jwt.encode(
+            {
+                "sub": user_id,
+                "scopes": scopes,
+                "exp": datetime.now(UTC) + timedelta(hours=hours),
+                "iat": datetime.now(UTC),
+            },
+            JWT_SECRET,
+            algorithm="HS256",
+        )
+
+
+    if __name__ == "__main__":
+        # 1. ADMIN - Full access to everything
+        admin_token = create_token("admin_user", ["agent_os:admin"])
+
+        # 2. POWER USER - Global access to all agents
+        power_user_token = create_token(
+            "power_user",
+            ["system:read", "agents:read", "agents:run", "sessions:read", "sessions:write"],
+        )
+
+        # 3. LIMITED USER - Only specific agents
+        limited_user_token = create_token(
+            "limited_user",
+            [
+                "agents:web-search-agent:read",
+                "agents:web-search-agent:run",
+                "agents:analyst-agent:read",
+                "agents:analyst-agent:run",
+            ],
+        )
+
+        # 4. READ-ONLY USER - Can view but not run
+        readonly_user_token = create_token(
+            "readonly_user",
+            ["agents:*:read", "system:read"],
+        )
+
+        # 5. WILDCARD USER - Can run any agent
+        wildcard_user_token = create_token(
+            "wildcard_user",
+            ["agents:read", "agents:*:run"],
+        )
+
+        print("1. ADMIN (full access):", admin_token[:50] + "...")
+        print("2. POWER USER (global access):", power_user_token[:50] + "...")
+        print("3. LIMITED USER (specific agents):", limited_user_token[:50] + "...")
+        print("4. READ-ONLY USER (view only):", readonly_user_token[:50] + "...")
+        print("5. WILDCARD USER (run any):", wildcard_user_token[:50] + "...")
+
+        agent_os.serve(app="advanced_scopes:app", port=7777, reload=True)
+    ```
+  </Step>
+
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install libraries">
+    ```bash
+    pip install -U agno openai pyjwt "fastapi[standard]" uvicorn sqlalchemy pgvector psycopg duckduckgo-search
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Setup PostgreSQL Database">
+    ```bash
+    docker run -d \
+      --name agno-postgres \
+      -e POSTGRES_DB=ai \
+      -e POSTGRES_USER=ai \
+      -e POSTGRES_PASSWORD=ai \
+      -p 5532:5432 \
+      pgvector/pgvector:pg17
+    ```
+  </Step>
+
+  <Step title="Run the AgentOS">
+    ```bash
+    python advanced_scopes.py
+    ```
+  </Step>
+
+  <Step title="Test Different Access Levels">
+    ```bash
+    # Limited user sees only 2 agents (not admin-agent)
+    export LIMITED_TOKEN="<limited_user_token>"
+    curl -H "Authorization: Bearer $LIMITED_TOKEN" http://localhost:7777/agents
+    
+    # Read-only user cannot run agents (403 Forbidden)
+    export READONLY_TOKEN="<readonly_user_token>"
+    curl -X POST -H "Authorization: Bearer $READONLY_TOKEN" \
+      -F "message=test" http://localhost:7777/agents/web-search-agent/runs
+    
+    # Wildcard user can run any agent including admin-agent
+    export WILDCARD_TOKEN="<wildcard_user_token>"
+    curl -X POST -H "Authorization: Bearer $WILDCARD_TOKEN" \
+      -F "message=Hello" http://localhost:7777/agents/admin-agent/runs
+    ```
+  </Step>
+
+</Steps>
