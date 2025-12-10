@@ -46,7 +46,7 @@ paths:
                 $ref: '#/components/schemas/HealthResponse'
               example:
                 status: ok
-                instantiated_at: '1763114241.22178'
+                instantiated_at: '1765368546.996022'
   /config:
     get:
       tags:
@@ -191,6 +191,68 @@ paths:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
       security:
         - HTTPBearer: []
+  '/databases/{db_id}/migrate':
+    post:
+      tags:
+        - Database
+      summary: Migrate Database
+      description: 'Migrate the given database schema to the given target version. If a target version is not provided, the database will be migrated to the latest version.'
+      operationId: migrate_database
+      security:
+        - HTTPBearer: []
+      parameters:
+        - name: db_id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Db Id
+        - name: target_version
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: Target Version
+      responses:
+        '200':
+          description: Database migrated successfully
+          content:
+            application/json:
+              schema: {}
+              example:
+                message: Database migrated successfully to version 3.0.0
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Database not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Failed to migrate database
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
   '/agents/{agent_id}/runs':
     post:
       tags:
@@ -1259,6 +1321,141 @@ paths:
           content:
             application/json:
               schema: {}
+  '/a2a/agents/{id}':
+    post:
+      tags:
+        - A2A
+      summary: Run Message Agent
+      description: 'Send a message to an Agno Agent. The Agent is identified via the path parameter ''{id}''. Optional: Pass user ID via X-User-ID header (recommended) or ''userId'' in params.message.metadata.'
+      operationId: run_message_agent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Id
+      responses:
+        '200':
+          description: Message sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendMessageSuccessResponse'
+              example:
+                jsonrpc: '2.0'
+                id: request-123
+                result:
+                  task:
+                    id: task-456
+                    context_id: context-789
+                    status: completed
+                    history:
+                      - message_id: msg-1
+                        role: agent
+                        parts:
+                          - kind: text
+                            text: Response from agent
+        '400':
+          description: Invalid request or unsupported method
+        '404':
+          description: 'Agent, Team, or Workflow not found'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  '/a2a/teams/{id}':
+    post:
+      tags:
+        - A2A
+      summary: Run Message Team
+      description: 'Send a message to an Agno Team. The Team is identified via the path parameter ''{id}''. Optional: Pass user ID via X-User-ID header (recommended) or ''userId'' in params.message.metadata.'
+      operationId: run_message_team
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Id
+      responses:
+        '200':
+          description: Message sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendMessageSuccessResponse'
+              example:
+                jsonrpc: '2.0'
+                id: request-123
+                result:
+                  task:
+                    id: task-456
+                    context_id: context-789
+                    status: completed
+                    history:
+                      - message_id: msg-1
+                        role: agent
+                        parts:
+                          - kind: text
+                            text: Response from agent
+        '400':
+          description: Invalid request or unsupported method
+        '404':
+          description: 'Agent, Team, or Workflow not found'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  '/a2a/workflows/{id}':
+    post:
+      tags:
+        - A2A
+      summary: Run Message Workflow
+      description: 'Send a message to an Agno Workflow. The Workflow is identified via the path parameter ''{id}''. Optional: Pass user ID via X-User-ID header (recommended) or ''userId'' in params.message.metadata.'
+      operationId: run_message_workflow
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Id
+      responses:
+        '200':
+          description: Message sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendMessageSuccessResponse'
+              example:
+                jsonrpc: '2.0'
+                id: request-123
+                result:
+                  task:
+                    id: task-456
+                    context_id: context-789
+                    status: completed
+                    history:
+                      - message_id: msg-1
+                        role: agent
+                        parts:
+                          - kind: text
+                            text: Response from agent
+        '400':
+          description: Invalid request or unsupported method
+        '404':
+          description: 'Agent, Team, or Workflow not found'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /a2a/message/send:
     post:
       tags:
@@ -1304,10 +1501,14 @@ paths:
           content:
             application/json:
               schema: {}
-            application/x-ndjson:
-              example: |
-                {"jsonrpc":"2.0","id":"request-123","result":{"taskId":"task-456","status":"working"}}
-                {"jsonrpc":"2.0","id":"request-123","result":{"messageId":"msg-1","role":"agent","parts":[{"kind":"text","text":"Response"}]}}
+            text/event-stream:
+              example: |+
+                event: TaskStatusUpdateEvent
+                data: {"jsonrpc":"2.0","id":"request-123","result":{"taskId":"task-456","status":"working"}}
+
+                event: Message
+                data: {"jsonrpc":"2.0","id":"request-123","result":{"messageId":"msg-1","role":"agent","parts":[{"kind":"text","text":"Response"}]}}
+
         '400':
           description: Invalid request or unsupported method
         '404':
@@ -2455,420 +2656,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
-  /traces:
-    get:
-      tags:
-        - Traces
-      summary: List Traces
-      description: |
-        Retrieve a paginated list of execution traces with optional filtering.
-
-        **Traces provide observability into:**
-        - Agent execution flows
-        - Model invocations and token usage
-        - Tool calls and their results
-        - Errors and performance bottlenecks
-
-        **Filtering Options:**
-        - By run, session, user, or agent ID
-        - By status (OK, ERROR)
-        - By time range
-
-        **Pagination:**
-        - Use `page` (1-indexed) and `limit` parameters
-        - Response includes pagination metadata (total_pages, total_count, etc.)
-
-        **Response Format:**
-        Returns summary information for each trace. Use GET `/traces/{trace_id}` for detailed hierarchy.
-      operationId: get_traces
-      security:
-        - HTTPBearer: []
-      parameters:
-        - name: run_id
-          in: query
-          required: false
-          schema:
-            anyOf:
-              - type: string
-              - type: 'null'
-            title: Run Id
-          description: Filter by run ID
-        - name: session_id
-          in: query
-          required: false
-          schema:
-            anyOf:
-              - type: string
-              - type: 'null'
-            title: Session Id
-          description: Filter by session ID
-        - name: user_id
-          in: query
-          required: false
-          schema:
-            anyOf:
-              - type: string
-              - type: 'null'
-            title: User Id
-          description: Filter by user ID
-        - name: agent_id
-          in: query
-          required: false
-          schema:
-            anyOf:
-              - type: string
-              - type: 'null'
-            title: Agent Id
-          description: Filter by agent ID
-        - name: team_id
-          in: query
-          required: false
-          schema:
-            anyOf:
-              - type: string
-              - type: 'null'
-            title: Team Id
-          description: Filter by team ID
-        - name: workflow_id
-          in: query
-          required: false
-          schema:
-            anyOf:
-              - type: string
-              - type: 'null'
-            title: Workflow Id
-          description: Filter by workflow ID
-        - name: status
-          in: query
-          required: false
-          schema:
-            anyOf:
-              - type: string
-              - type: 'null'
-            title: Status
-          description: Filter by status (OK, ERROR)
-        - name: start_time
-          in: query
-          required: false
-          schema:
-            anyOf:
-              - type: string
-              - type: 'null'
-            title: Start Time
-          description: "Filter traces starting after this time (ISO 8601 format with timezone, e.g., '2025-11-19T10:00:00Z')"
-        - name: end_time
-          in: query
-          required: false
-          schema:
-            anyOf:
-              - type: string
-              - type: 'null'
-            title: End Time
-          description: "Filter traces ending before this time (ISO 8601 format with timezone, e.g., '2025-11-19T11:00:00Z')"
-        - name: page
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            default: 1
-            title: Page
-          description: Page number (1-indexed)
-        - name: limit
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-            title: Limit
-          description: Number of traces per page
-        - name: db_id
-          in: query
-          required: false
-          schema:
-            anyOf:
-              - type: string
-              - type: 'null'
-            title: Db Id
-          description: Database ID to query traces from
-      responses:
-        '200':
-          description: List of traces retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PaginatedTraceSummaryResponse'
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BadRequestResponse'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UnauthenticatedResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationErrorResponse'
-        '500':
-          description: Internal Server Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InternalServerErrorResponse'
-  /traces/{trace_id}:
-    get:
-      tags:
-        - Traces
-      summary: Get Trace Detail
-      description: |
-        Retrieve detailed trace information with hierarchical span tree, or a specific span within the trace.
-
-        **Without span_id parameter:**
-        Returns the full trace with hierarchical span tree:
-        - Trace metadata (ID, status, duration, context)
-        - Hierarchical tree of all spans
-        - Each span includes timing, status, and type-specific metadata
-
-        **With span_id parameter:**
-        Returns details for a specific span within the trace:
-        - Span metadata (ID, name, type, timing)
-        - Status and error information
-        - Type-specific attributes (model, tokens, tool params, etc.)
-
-        **Span Hierarchy:**
-        The `tree` field contains root spans, each with potential `children`.
-        This recursive structure represents the execution flow.
-
-        **Span Types:**
-        - `AGENT`: Agent execution with input/output
-        - `LLM`: Model invocations with tokens and prompts
-        - `TOOL`: Tool calls with parameters and results
-      operationId: get_trace
-      security:
-        - HTTPBearer: []
-      parameters:
-        - name: trace_id
-          in: path
-          required: true
-          schema:
-            type: string
-            title: Trace Id
-          description: Trace ID to retrieve
-        - name: span_id
-          in: query
-          required: false
-          schema:
-            anyOf:
-              - type: string
-              - type: 'null'
-            title: Span Id
-          description: Optional span ID to retrieve specific span
-        - name: run_id
-          in: query
-          required: false
-          schema:
-            anyOf:
-              - type: string
-              - type: 'null'
-            title: Run Id
-          description: Optional run ID to retrieve trace for
-        - name: db_id
-          in: query
-          required: false
-          schema:
-            anyOf:
-              - type: string
-              - type: 'null'
-            title: Db Id
-          description: Database ID to query trace from
-      responses:
-        '200':
-          description: Trace or span detail retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TraceDetailResponse'
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BadRequestResponse'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UnauthenticatedResponse'
-        '404':
-          description: Trace or span not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NotFoundResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationErrorResponse'
-        '500':
-          description: Internal Server Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InternalServerErrorResponse'
-  /trace_session_stats:
-    get:
-      tags:
-        - Traces
-      summary: Get Trace Statistics by Session
-      description: |
-        Retrieve aggregated trace statistics grouped by session ID with pagination.
-
-        **Provides insights into:**
-        - Total traces per session
-        - First and last trace timestamps per session
-        - Associated user and agent information
-
-        **Filtering Options:**
-        - By user ID
-        - By agent ID
-        - By team ID
-        - By workflow ID
-        - By time range
-
-        **Use Cases:**
-        - Monitor session-level activity
-        - Track conversation flows
-        - Identify high-activity sessions
-        - Analyze user engagement patterns
-      operationId: get_trace_stats
-      security:
-        - HTTPBearer: []
-      parameters:
-        - name: user_id
-          in: query
-          required: false
-          schema:
-            anyOf:
-              - type: string
-              - type: 'null'
-            title: User Id
-          description: Filter by user ID
-        - name: agent_id
-          in: query
-          required: false
-          schema:
-            anyOf:
-              - type: string
-              - type: 'null'
-            title: Agent Id
-          description: Filter by agent ID
-        - name: team_id
-          in: query
-          required: false
-          schema:
-            anyOf:
-              - type: string
-              - type: 'null'
-            title: Team Id
-          description: Filter by team ID
-        - name: workflow_id
-          in: query
-          required: false
-          schema:
-            anyOf:
-              - type: string
-              - type: 'null'
-            title: Workflow Id
-          description: Filter by workflow ID
-        - name: start_time
-          in: query
-          required: false
-          schema:
-            anyOf:
-              - type: string
-              - type: 'null'
-            title: Start Time
-          description: "Filter sessions with traces created after this time (ISO 8601 format)"
-        - name: end_time
-          in: query
-          required: false
-          schema:
-            anyOf:
-              - type: string
-              - type: 'null'
-            title: End Time
-          description: "Filter sessions with traces created before this time (ISO 8601 format)"
-        - name: page
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            default: 1
-            title: Page
-          description: Page number (1-indexed)
-        - name: limit
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-            title: Limit
-          description: Number of sessions per page
-        - name: db_id
-          in: query
-          required: false
-          schema:
-            anyOf:
-              - type: string
-              - type: 'null'
-            title: Db Id
-          description: Database ID to query statistics from
-      responses:
-        '200':
-          description: Trace statistics retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PaginatedTraceSessionStatsResponse'
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BadRequestResponse'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UnauthenticatedResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationErrorResponse'
-        '500':
-          description: Failed to retrieve statistics
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InternalServerErrorResponse'
   /memories:
     post:
       tags:
@@ -3625,6 +3412,97 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+  /optimize-memories:
+    post:
+      tags:
+        - Memory
+      summary: Optimize User Memories
+      description: 'Optimize all memories for a given user using the default summarize strategy. This operation combines all memories into a single comprehensive summary, achieving maximum token reduction while preserving all key information. To use a custom model, specify the model parameter in ''provider:model_id'' format (e.g., ''openai:gpt-4o-mini'', ''anthropic:claude-3-5-sonnet-20241022''). If not specified, uses MemoryManager''s default model (gpt-4o). Set apply=false to preview optimization results without saving to database.'
+      operationId: optimize_memories
+      security:
+        - HTTPBearer: []
+      parameters:
+        - name: db_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Database ID to use for optimization
+            title: Db Id
+          description: Database ID to use for optimization
+        - name: table
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Table to use for optimization
+            title: Table
+          description: Table to use for optimization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OptimizeMemoriesRequest'
+      responses:
+        '200':
+          description: Memories optimized successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OptimizeMemoriesResponse'
+              example:
+                memories:
+                  - memory_id: f9361a69-2997-40c7-ae4e-a5861d434047
+                    memory: 'User has a 3-year-old golden retriever named Max who loves fetch and walks. Lives in San Francisco''s Mission district, works as a product manager in tech. Enjoys hiking Bay Area trails, trying new restaurants (especially Japanese, Thai, Mexican), and learning piano for 1.5 years.'
+                    topics:
+                      - pets
+                      - location
+                      - work
+                      - hobbies
+                      - food_preferences
+                    user_id: user2
+                    updated_at: '2025-11-18T10:30:00Z'
+                memories_before: 4
+                memories_after: 1
+                tokens_before: 450
+                tokens_after: 180
+                tokens_saved: 270
+                reduction_percentage: 60
+        '400':
+          description: Bad request - User ID is required or invalid model string format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: No memories found for user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Failed to optimize memories
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
   /eval-runs:
     get:
       tags:
@@ -3756,11 +3634,11 @@ paths:
             anyOf:
               - type: string
               - type: 'null'
-            description: 'Comma-separated eval types (accuracy,performance,reliability)'
+            description: 'Comma-separated eval types (accuracy,agent_as_judge,performance,reliability)'
             examples:
-              - 'accuracy,performance'
+              - 'accuracy,agent_as_judge,performance,reliability'
             title: Eval Types
-          description: 'Comma-separated eval types (accuracy,performance,reliability)'
+          description: 'Comma-separated eval types (accuracy,agent_as_judge,performance,reliability)'
       responses:
         '200':
           description: Evaluation runs retrieved successfully
@@ -3888,7 +3766,7 @@ paths:
       tags:
         - Evals
       summary: Execute Evaluation
-      description: 'Run evaluation tests on agents or teams. Supports accuracy, performance, and reliability evaluations. Requires either agent_id or team_id, but not both.'
+      description: 'Run evaluation tests on agents or teams. Supports accuracy, agent-as-judge, performance, and reliability evaluations. Requires either agent_id or team_id, but not both.'
       operationId: run_eval
       security:
         - HTTPBearer: []
@@ -5229,8 +5107,562 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+  /traces:
+    get:
+      tags:
+        - Traces
+        - Traces
+      summary: List Traces
+      description: |-
+        Retrieve a paginated list of execution traces with optional filtering.
+
+        **Traces provide observability into:**
+        - Agent execution flows
+        - Model invocations and token usage
+        - Tool calls and their results
+        - Errors and performance bottlenecks
+
+        **Filtering Options:**
+        - By run, session, user, or agent ID
+        - By status (OK, ERROR)
+        - By time range
+
+        **Pagination:**
+        - Use `page` (1-indexed) and `limit` parameters
+        - Response includes pagination metadata (total_pages, total_count, etc.)
+
+        **Response Format:**
+        Returns summary information for each trace. Use GET `/traces/{trace_id}` for detailed hierarchy.
+      operationId: get_traces
+      security:
+        - HTTPBearer: []
+      parameters:
+        - name: run_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Filter by run ID
+            title: Run Id
+          description: Filter by run ID
+        - name: session_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Filter by session ID
+            title: Session Id
+          description: Filter by session ID
+        - name: user_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Filter by user ID
+            title: User Id
+          description: Filter by user ID
+        - name: agent_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Filter by agent ID
+            title: Agent Id
+          description: Filter by agent ID
+        - name: team_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Filter by team ID
+            title: Team Id
+          description: Filter by team ID
+        - name: workflow_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Filter by workflow ID
+            title: Workflow Id
+          description: Filter by workflow ID
+        - name: status
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: 'Filter by status (OK, ERROR)'
+            title: Status
+          description: 'Filter by status (OK, ERROR)'
+        - name: start_time
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: 'Filter traces starting after this time (ISO 8601 format with timezone, e.g., ''2025-11-19T10:00:00Z'' or ''2025-11-19T15:30:00+05:30''). Times are converted to UTC for comparison.'
+            title: Start Time
+          description: 'Filter traces starting after this time (ISO 8601 format with timezone, e.g., ''2025-11-19T10:00:00Z'' or ''2025-11-19T15:30:00+05:30''). Times are converted to UTC for comparison.'
+        - name: end_time
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: 'Filter traces ending before this time (ISO 8601 format with timezone, e.g., ''2025-11-19T11:00:00Z'' or ''2025-11-19T16:30:00+05:30''). Times are converted to UTC for comparison.'
+            title: End Time
+          description: 'Filter traces ending before this time (ISO 8601 format with timezone, e.g., ''2025-11-19T11:00:00Z'' or ''2025-11-19T16:30:00+05:30''). Times are converted to UTC for comparison.'
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            description: Page number (1-indexed)
+            default: 1
+            title: Page
+          description: Page number (1-indexed)
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            maximum: 100
+            minimum: 1
+            description: Number of traces per page
+            default: 20
+            title: Limit
+          description: Number of traces per page
+        - name: db_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Database ID to query traces from
+            title: Db Id
+          description: Database ID to query traces from
+      responses:
+        '200':
+          description: List of traces retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse_TraceSummary_'
+              example:
+                data:
+                  - trace_id: a1b2c3d4
+                    name: Stock_Price_Agent.run
+                    status: OK
+                    duration: 1.2s
+                    start_time: '2025-11-19T10:30:00.000000+00:00'
+                    total_spans: 4
+                    error_count: 0
+                    input: What is the stock price of NVDA?
+                    run_id: run123
+                    session_id: session456
+                    user_id: user789
+                    agent_id: agent_stock
+                    created_at: '2025-11-19T10:30:00+00:00'
+                meta:
+                  page: 1
+                  limit: 20
+                  total_pages: 5
+                  total_count: 95
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+  '/traces/{trace_id}':
+    get:
+      tags:
+        - Traces
+        - Traces
+      summary: Get Trace or Span Detail
+      description: |-
+        Retrieve detailed trace information with hierarchical span tree, or a specific span within the trace.
+
+        **Without span_id parameter:**
+        Returns the full trace with hierarchical span tree:
+        - Trace metadata (ID, status, duration, context)
+        - Hierarchical tree of all spans
+        - Each span includes timing, status, and type-specific metadata
+
+        **With span_id parameter:**
+        Returns details for a specific span within the trace:
+        - Span metadata (ID, name, type, timing)
+        - Status and error information
+        - Type-specific attributes (model, tokens, tool params, etc.)
+
+        **Span Hierarchy (full trace):**
+        The `tree` field contains root spans, each with potential `children`.
+        This recursive structure represents the execution flow:
+        ```
+        Agent.run (root)
+          ├─ LLM.invoke
+          ├─ Tool.execute
+          │   └─ LLM.invoke (nested)
+          └─ LLM.invoke
+        ```
+
+        **Span Types:**
+        - `AGENT`: Agent execution with input/output
+        - `LLM`: Model invocations with tokens and prompts
+        - `TOOL`: Tool calls with parameters and results
+      operationId: get_trace
+      security:
+        - HTTPBearer: []
+      parameters:
+        - name: trace_id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Trace Id
+        - name: span_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: 'Optional: Span ID to retrieve specific span'
+            title: Span Id
+          description: 'Optional: Span ID to retrieve specific span'
+        - name: run_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: 'Optional: Run ID to retrieve trace for'
+            title: Run Id
+          description: 'Optional: Run ID to retrieve trace for'
+        - name: db_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Database ID to query trace from
+            title: Db Id
+          description: Database ID to query trace from
+      responses:
+        '200':
+          description: Trace or span detail retrieved successfully
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/TraceDetail'
+                  - $ref: '#/components/schemas/TraceNode'
+                title: Response Get Trace
+              examples:
+                full_trace:
+                  summary: Full trace with hierarchy (no span_id)
+                  value:
+                    trace_id: a1b2c3d4
+                    name: Stock_Price_Agent.run
+                    status: OK
+                    duration: 1.2s
+                    start_time: '2025-11-19T10:30:00.000000+00:00'
+                    end_time: '2025-11-19T10:30:01.200000+00:00'
+                    total_spans: 4
+                    error_count: 0
+                    input: What is Tesla stock price?
+                    output: The current price of Tesla (TSLA) is $245.67.
+                    run_id: run123
+                    session_id: session456
+                    user_id: user789
+                    agent_id: stock_agent
+                    created_at: '2025-11-19T10:30:00+00:00'
+                    tree:
+                      - id: span1
+                        name: Stock_Price_Agent.run
+                        type: AGENT
+                        duration: 1.2s
+                        status: OK
+                        spans: []
+                single_span:
+                  summary: Single span detail (with span_id)
+                  value:
+                    id: span2
+                    name: gpt-4o-mini.invoke
+                    type: LLM
+                    duration: 800ms
+                    status: OK
+                    metadata:
+                      model: gpt-4o-mini
+                      input_tokens: 120
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Trace or span not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+  /trace_session_stats:
+    get:
+      tags:
+        - Traces
+        - Traces
+      summary: Get Trace Statistics by Session
+      description: |-
+        Retrieve aggregated trace statistics grouped by session ID with pagination.
+
+        **Provides insights into:**
+        - Total traces per session
+        - First and last trace timestamps per session
+        - Associated user and agent information
+
+        **Filtering Options:**
+        - By user ID
+        - By agent ID
+
+        **Use Cases:**
+        - Monitor session-level activity
+        - Track conversation flows
+        - Identify high-activity sessions
+        - Analyze user engagement patterns
+      operationId: get_trace_stats
+      security:
+        - HTTPBearer: []
+      parameters:
+        - name: user_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Filter by user ID
+            title: User Id
+          description: Filter by user ID
+        - name: agent_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Filter by agent ID
+            title: Agent Id
+          description: Filter by agent ID
+        - name: team_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Filter by team ID
+            title: Team Id
+          description: Filter by team ID
+        - name: workflow_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Filter by workflow ID
+            title: Workflow Id
+          description: Filter by workflow ID
+        - name: start_time
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: 'Filter sessions with traces created after this time (ISO 8601 format with timezone, e.g., ''2025-11-19T10:00:00Z'' or ''2025-11-19T15:30:00+05:30''). Times are converted to UTC for comparison.'
+            title: Start Time
+          description: 'Filter sessions with traces created after this time (ISO 8601 format with timezone, e.g., ''2025-11-19T10:00:00Z'' or ''2025-11-19T15:30:00+05:30''). Times are converted to UTC for comparison.'
+        - name: end_time
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: 'Filter sessions with traces created before this time (ISO 8601 format with timezone, e.g., ''2025-11-19T11:00:00Z'' or ''2025-11-19T16:30:00+05:30''). Times are converted to UTC for comparison.'
+            title: End Time
+          description: 'Filter sessions with traces created before this time (ISO 8601 format with timezone, e.g., ''2025-11-19T11:00:00Z'' or ''2025-11-19T16:30:00+05:30''). Times are converted to UTC for comparison.'
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            description: Page number (1-indexed)
+            default: 1
+            title: Page
+          description: Page number (1-indexed)
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            maximum: 100
+            minimum: 1
+            description: Number of sessions per page
+            default: 20
+            title: Limit
+          description: Number of sessions per page
+        - name: db_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Database ID to query statistics from
+            title: Db Id
+          description: Database ID to query statistics from
+      responses:
+        '200':
+          description: Trace statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse_TraceSessionStats_'
+              example:
+                data:
+                  - session_id: 37029bc6-1794-4ba8-a629-1efedc53dcad
+                    user_id: kaustubh@agno.com
+                    agent_id: hackernews-agent
+                    total_traces: 5
+                    first_trace_at: '2025-11-19T10:15:16+00:00'
+                    last_trace_at: '2025-11-19T10:21:30+00:00'
+                meta:
+                  page: 1
+                  limit: 20
+                  total_pages: 3
+                  total_count: 45
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Failed to retrieve statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
 components:
   schemas:
+    ActivityMessage:
+      properties:
+        id:
+          type: string
+          title: Id
+        role:
+          type: string
+          const: activity
+          title: Role
+          default: activity
+        activityType:
+          type: string
+          title: Activitytype
+        content:
+          additionalProperties: true
+          type: object
+          title: Content
+      additionalProperties: true
+      type: object
+      required:
+        - id
+        - activityType
+        - content
+      title: ActivityMessage
+      description: An activity progress message emitted between chat messages.
     AgentResponse:
       properties:
         id:
@@ -5306,6 +5738,11 @@ components:
               type: object
             - type: 'null'
           title: Response Settings
+        introduction:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Introduction
         streaming:
           anyOf:
             - additionalProperties: true
@@ -5516,7 +5953,7 @@ components:
               type: array
             - type: 'null'
           title: Toolcalls
-      additionalProperties: false
+      additionalProperties: true
       type: object
       required:
         - id
@@ -5541,6 +5978,42 @@ components:
       example:
         detail: Bad request
         error_code: BAD_REQUEST
+    BinaryInputContent:
+      properties:
+        type:
+          type: string
+          const: binary
+          title: Type
+          default: binary
+        mimeType:
+          type: string
+          title: Mimetype
+        id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Id
+        url:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Url
+        data:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Data
+        filename:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Filename
+      additionalProperties: true
+      type: object
+      required:
+        - mimeType
+      title: BinaryInputContent
+      description: A binary payload reference in a multimodal user message.
     Body_continue_agent_run:
       properties:
         tools:
@@ -5857,6 +6330,11 @@ components:
             - $ref: '#/components/schemas/EvalsConfig'
             - type: 'null'
           description: Evaluations configuration
+        traces:
+          anyOf:
+            - $ref: '#/components/schemas/TracesConfig'
+            - type: 'null'
+          description: Traces configuration
         agents:
           items:
             $ref: '#/components/schemas/AgentSummaryResponse'
@@ -6047,7 +6525,7 @@ components:
         value:
           type: string
           title: Value
-      additionalProperties: false
+      additionalProperties: true
       type: object
       required:
         - description
@@ -6230,6 +6708,26 @@ components:
       required:
         - db_id
       title: 'DatabaseConfig[SessionDomainConfig]'
+    DatabaseConfig_TracesDomainConfig_:
+      properties:
+        db_id:
+          type: string
+          title: Db Id
+        domain_config:
+          anyOf:
+            - $ref: '#/components/schemas/TracesDomainConfig'
+            - type: 'null'
+        tables:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: 'null'
+          title: Tables
+      type: object
+      required:
+        - db_id
+      title: 'DatabaseConfig[TracesDomainConfig]'
     DayAggregatedMetrics:
       properties:
         id:
@@ -6386,7 +6884,7 @@ components:
             - type: string
             - type: 'null'
           title: Name
-      additionalProperties: false
+      additionalProperties: true
       type: object
       required:
         - id
@@ -6465,6 +6963,31 @@ components:
             - type: 'null'
           title: Expected Output
           description: Expected output for accuracy evaluation
+        criteria:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Criteria
+          description: Evaluation criteria for agent-as-judge evaluation
+        scoring_strategy:
+          anyOf:
+            - type: string
+              enum:
+                - numeric
+                - binary
+            - type: 'null'
+          title: Scoring Strategy
+          description: 'Scoring strategy: ''numeric'' (1-10 with threshold) or ''binary'' (PASS/FAIL)'
+          default: binary
+        threshold:
+          anyOf:
+            - type: integer
+              maximum: 10
+              minimum: 1
+            - type: 'null'
+          title: Threshold
+          description: 'Score threshold for pass/fail (1-10), only used with numeric scoring'
+          default: 7
         warmup_runs:
           type: integer
           maximum: 10
@@ -6572,6 +7095,7 @@ components:
       type: string
       enum:
         - accuracy
+        - agent_as_judge
         - performance
         - reliability
       title: EvalType
@@ -6689,7 +7213,7 @@ components:
         arguments:
           type: string
           title: Arguments
-      additionalProperties: false
+      additionalProperties: true
       type: object
       required:
         - name
@@ -6991,6 +7515,78 @@ components:
       example:
         detail: Not found
         error_code: NOT_FOUND
+    OptimizeMemoriesRequest:
+      properties:
+        user_id:
+          type: string
+          title: User Id
+          description: User ID to optimize memories for
+        model:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Model
+          description: 'Model to use for optimization in format ''provider:model_id'' (e.g., ''openai:gpt-4o-mini'', ''anthropic:claude-3-5-sonnet-20241022'', ''google:gemini-2.0-flash-exp''). If not specified, uses MemoryManager''s default model (gpt-4o).'
+        apply:
+          type: boolean
+          title: Apply
+          description: 'If True, apply optimization changes to database. If False, return preview only without saving.'
+          default: true
+      type: object
+      required:
+        - user_id
+      title: OptimizeMemoriesRequest
+      description: Schema for memory optimization request
+    OptimizeMemoriesResponse:
+      properties:
+        memories:
+          items:
+            $ref: '#/components/schemas/UserMemorySchema'
+          type: array
+          title: Memories
+          description: List of optimized memory objects
+        memories_before:
+          type: integer
+          minimum: 0
+          title: Memories Before
+          description: Number of memories before optimization
+        memories_after:
+          type: integer
+          minimum: 0
+          title: Memories After
+          description: Number of memories after optimization
+        tokens_before:
+          type: integer
+          minimum: 0
+          title: Tokens Before
+          description: Token count before optimization
+        tokens_after:
+          type: integer
+          minimum: 0
+          title: Tokens After
+          description: Token count after optimization
+        tokens_saved:
+          type: integer
+          minimum: 0
+          title: Tokens Saved
+          description: Number of tokens saved through optimization
+        reduction_percentage:
+          type: number
+          maximum: 100
+          minimum: 0
+          title: Reduction Percentage
+          description: Percentage of token reduction achieved
+      type: object
+      required:
+        - memories
+        - memories_before
+        - memories_after
+        - tokens_before
+        - tokens_after
+        - tokens_saved
+        - reduction_percentage
+      title: OptimizeMemoriesResponse
+      description: Schema for memory optimization response
     PaginatedResponse_ContentResponseSchema_:
       properties:
         data:
@@ -7039,6 +7635,38 @@ components:
         - data
         - meta
       title: 'PaginatedResponse[SessionSchema]'
+    PaginatedResponse_TraceSessionStats_:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/TraceSessionStats'
+          type: array
+          title: Data
+          description: List of items for the current page
+        meta:
+          $ref: '#/components/schemas/PaginationInfo'
+          description: Pagination metadata
+      type: object
+      required:
+        - data
+        - meta
+      title: 'PaginatedResponse[TraceSessionStats]'
+    PaginatedResponse_TraceSummary_:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/TraceSummary'
+          type: array
+          title: Data
+          description: List of items for the current page
+        meta:
+          $ref: '#/components/schemas/PaginationInfo'
+          description: Pagination metadata
+      type: object
+      required:
+        - data
+        - meta
+      title: 'PaginatedResponse[TraceSummary]'
     PaginatedResponse_UserMemorySchema_:
       properties:
         data:
@@ -7173,6 +7801,11 @@ components:
         runId:
           type: string
           title: Runid
+        parentRunId:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Parentrunid
         state:
           title: State
         messages:
@@ -7183,9 +7816,11 @@ components:
               - $ref: '#/components/schemas/AssistantMessage'
               - $ref: '#/components/schemas/UserMessage'
               - $ref: '#/components/schemas/ToolMessage'
+              - $ref: '#/components/schemas/ActivityMessage'
             discriminator:
               propertyName: role
               mapping:
+                activity: '#/components/schemas/ActivityMessage'
                 assistant: '#/components/schemas/AssistantMessage'
                 developer: '#/components/schemas/DeveloperMessage'
                 system: '#/components/schemas/SystemMessage'
@@ -7205,7 +7840,7 @@ components:
           title: Context
         forwardedProps:
           title: Forwardedprops
-      additionalProperties: false
+      additionalProperties: true
       type: object
       required:
         - threadId
@@ -7326,6 +7961,13 @@ components:
             - type: 'null'
           title: References
           description: References cited in the run
+        citations:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Citations
+          description: 'Citations from the model (e.g., from Gemini grounding/search)'
         reasoning_messages:
           anyOf:
             - items:
@@ -7534,7 +8176,7 @@ components:
             - type: string
             - type: 'null'
           title: Name
-      additionalProperties: false
+      additionalProperties: true
       type: object
       required:
         - id
@@ -7691,6 +8333,11 @@ components:
               type: object
             - type: 'null'
           title: Response Settings
+        introduction:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Introduction
         streaming:
           anyOf:
             - additionalProperties: true
@@ -7823,6 +8470,13 @@ components:
             - type: 'null'
           title: References
           description: References cited in the run
+        citations:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Citations
+          description: 'Citations from the model (e.g., from Gemini grounding/search)'
         reasoning_messages:
           anyOf:
             - items:
@@ -8012,6 +8666,22 @@ components:
           description: Database identifier
       type: object
       title: TeamSummaryResponse
+    TextInputContent:
+      properties:
+        type:
+          type: string
+          const: text
+          title: Type
+          default: text
+        text:
+          type: string
+          title: Text
+      additionalProperties: true
+      type: object
+      required:
+        - text
+      title: TextInputContent
+      description: A text fragment in a multimodal user message.
     TextPart:
       properties:
         kind:
@@ -8043,7 +8713,7 @@ components:
           title: Description
         parameters:
           title: Parameters
-      additionalProperties: false
+      additionalProperties: true
       type: object
       required:
         - name
@@ -8063,7 +8733,7 @@ components:
           default: function
         function:
           $ref: '#/components/schemas/FunctionCall'
-      additionalProperties: false
+      additionalProperties: true
       type: object
       required:
         - id
@@ -8091,7 +8761,7 @@ components:
             - type: string
             - type: 'null'
           title: Error
-      additionalProperties: false
+      additionalProperties: true
       type: object
       required:
         - id
@@ -8099,6 +8769,385 @@ components:
         - toolCallId
       title: ToolMessage
       description: A tool result message.
+    TraceDetail:
+      properties:
+        trace_id:
+          type: string
+          title: Trace Id
+          description: Unique trace identifier
+        name:
+          type: string
+          title: Name
+          description: Trace name (usually root span name)
+        status:
+          type: string
+          title: Status
+          description: 'Overall status (OK, ERROR)'
+        duration:
+          type: string
+          title: Duration
+          description: Human-readable total duration
+        start_time:
+          type: string
+          format: date-time
+          title: Start Time
+          description: Trace start time (Pydantic auto-serializes to ISO 8601)
+        end_time:
+          type: string
+          format: date-time
+          title: End Time
+          description: Trace end time (Pydantic auto-serializes to ISO 8601)
+        total_spans:
+          type: integer
+          title: Total Spans
+          description: Total number of spans in this trace
+        error_count:
+          type: integer
+          title: Error Count
+          description: Number of spans with errors
+        input:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Input
+          description: Input to the agent/workflow
+        output:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Output
+          description: Output from the agent/workflow
+        error:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Error
+          description: Error message if status is ERROR
+        run_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Run Id
+          description: Associated run ID
+        session_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Session Id
+          description: Associated session ID
+        user_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: User Id
+          description: Associated user ID
+        agent_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Agent Id
+          description: Associated agent ID
+        team_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Team Id
+          description: Associated team ID
+        workflow_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Workflow Id
+          description: Associated workflow ID
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+          description: Time when trace was created (Pydantic auto-serializes to ISO 8601)
+        tree:
+          items:
+            $ref: '#/components/schemas/TraceNode'
+          type: array
+          title: Tree
+          description: Hierarchical tree of spans (root nodes)
+      type: object
+      required:
+        - trace_id
+        - name
+        - status
+        - duration
+        - start_time
+        - end_time
+        - total_spans
+        - error_count
+        - created_at
+        - tree
+      title: TraceDetail
+      description: Detailed trace information with hierarchical span tree
+    TraceNode:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: Span ID
+        name:
+          type: string
+          title: Name
+          description: 'Span name (e.g., ''agent.run'', ''llm.invoke'')'
+        type:
+          type: string
+          title: Type
+          description: 'Span kind (AGENT, TEAM, WORKFLOW, LLM, TOOL)'
+        duration:
+          type: string
+          title: Duration
+          description: 'Human-readable duration (e.g., ''123ms'', ''1.5s'')'
+        start_time:
+          type: string
+          format: date-time
+          title: Start Time
+          description: Start time (Pydantic auto-serializes to ISO 8601)
+        end_time:
+          type: string
+          format: date-time
+          title: End Time
+          description: End time (Pydantic auto-serializes to ISO 8601)
+        status:
+          type: string
+          title: Status
+          description: 'Status code (OK, ERROR)'
+        input:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Input
+          description: Input to the span
+        output:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Output
+          description: Output from the span
+        error:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Error
+          description: Error message if status is ERROR
+        spans:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/TraceNode'
+              type: array
+            - type: 'null'
+          title: Spans
+          description: Child spans in the trace hierarchy
+        step_type:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Step Type
+          description: 'Workflow step type (Step, Condition, function, Agent, Team)'
+        metadata:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Metadata
+          description: Additional span attributes and data
+        extra_data:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Extra Data
+          description: Flexible field for custom attributes and additional data
+      type: object
+      required:
+        - id
+        - name
+        - type
+        - duration
+        - start_time
+        - end_time
+        - status
+      title: TraceNode
+      description: Recursive node structure for rendering trace hierarchy in the frontend
+    TraceSessionStats:
+      properties:
+        session_id:
+          type: string
+          title: Session Id
+          description: Session identifier
+        user_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: User Id
+          description: User ID associated with the session
+        agent_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Agent Id
+          description: Agent ID(s) used in the session
+        team_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Team Id
+          description: Team ID associated with the session
+        workflow_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Workflow Id
+          description: Workflow ID associated with the session
+        total_traces:
+          type: integer
+          title: Total Traces
+          description: Total number of traces in this session
+        first_trace_at:
+          type: string
+          format: date-time
+          title: First Trace At
+          description: Time of first trace (Pydantic auto-serializes to ISO 8601)
+        last_trace_at:
+          type: string
+          format: date-time
+          title: Last Trace At
+          description: Time of last trace (Pydantic auto-serializes to ISO 8601)
+      type: object
+      required:
+        - session_id
+        - total_traces
+        - first_trace_at
+        - last_trace_at
+      title: TraceSessionStats
+      description: Aggregated trace statistics grouped by session
+    TraceSummary:
+      properties:
+        trace_id:
+          type: string
+          title: Trace Id
+          description: Unique trace identifier
+        name:
+          type: string
+          title: Name
+          description: Trace name (usually root span name)
+        status:
+          type: string
+          title: Status
+          description: 'Overall status (OK, ERROR, UNSET)'
+        duration:
+          type: string
+          title: Duration
+          description: Human-readable total duration
+        start_time:
+          type: string
+          format: date-time
+          title: Start Time
+          description: Trace start time (Pydantic auto-serializes to ISO 8601)
+        end_time:
+          type: string
+          format: date-time
+          title: End Time
+          description: Trace end time (Pydantic auto-serializes to ISO 8601)
+        total_spans:
+          type: integer
+          title: Total Spans
+          description: Total number of spans in this trace
+        error_count:
+          type: integer
+          title: Error Count
+          description: Number of spans with errors
+        input:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Input
+          description: Input to the agent
+        run_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Run Id
+          description: Associated run ID
+        session_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Session Id
+          description: Associated session ID
+        user_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: User Id
+          description: Associated user ID
+        agent_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Agent Id
+          description: Associated agent ID
+        team_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Team Id
+          description: Associated team ID
+        workflow_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Workflow Id
+          description: Associated workflow ID
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+          description: Time when trace was created (Pydantic auto-serializes to ISO 8601)
+      type: object
+      required:
+        - trace_id
+        - name
+        - status
+        - duration
+        - start_time
+        - end_time
+        - total_spans
+        - error_count
+        - created_at
+      title: TraceSummary
+      description: Summary information for trace list view
+    TracesConfig:
+      properties:
+        display_name:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Display Name
+        dbs:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/DatabaseConfig_TracesDomainConfig_'
+              type: array
+            - type: 'null'
+          title: Dbs
+      type: object
+      title: TracesConfig
+      description: Configuration for the Traces domain of the AgentOS
+    TracesDomainConfig:
+      properties:
+        display_name:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Display Name
+      type: object
+      title: TracesDomainConfig
+      description: Configuration for the Traces domain of the AgentOS
     UnauthenticatedResponse:
       properties:
         detail:
@@ -8247,20 +9296,31 @@ components:
           title: Role
           default: user
         content:
-          type: string
+          anyOf:
+            - type: string
+            - items:
+                oneOf:
+                  - $ref: '#/components/schemas/TextInputContent'
+                  - $ref: '#/components/schemas/BinaryInputContent'
+                discriminator:
+                  propertyName: type
+                  mapping:
+                    binary: '#/components/schemas/BinaryInputContent'
+                    text: '#/components/schemas/TextInputContent'
+              type: array
           title: Content
         name:
           anyOf:
             - type: string
             - type: 'null'
           title: Name
-      additionalProperties: false
+      additionalProperties: true
       type: object
       required:
         - id
         - content
       title: UserMessage
-      description: A user message.
+      description: A user message supporting text or multimodal content.
     UserStatsSchema:
       properties:
         user_id:
@@ -8643,6 +9703,13 @@ components:
             - type: 'null'
           title: References
           description: References cited in the workflow
+        citations:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Citations
+          description: 'Citations from the model (e.g., from Gemini grounding/search)'
         reasoning_messages:
           anyOf:
             - items:
@@ -8800,349 +9867,6 @@ components:
           description: Database identifier
       type: object
       title: WorkflowSummaryResponse
-    TraceSummary:
-      properties:
-        trace_id:
-          type: string
-          title: Trace Id
-          description: Unique trace identifier
-        name:
-          type: string
-          title: Name
-          description: Name of the root operation (e.g., Agent.run, Team.run)
-        status:
-          type: string
-          title: Status
-          description: Overall status (OK, ERROR, UNSET)
-        duration:
-          type: string
-          title: Duration
-          description: Human-readable duration (e.g., "1.2s", "800ms")
-        start_time:
-          type: string
-          format: date-time
-          title: Start Time
-          description: When the trace started (ISO 8601)
-        total_spans:
-          type: integer
-          title: Total Spans
-          description: Number of spans in this trace
-        error_count:
-          type: integer
-          title: Error Count
-          description: Number of spans that errored
-        input:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Input
-          description: Input to the root operation
-        run_id:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Run Id
-          description: Associated run ID
-        session_id:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Session Id
-          description: Associated session ID
-        user_id:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: User Id
-          description: Associated user ID
-        agent_id:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Agent Id
-          description: Associated agent ID
-        team_id:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Team Id
-          description: Associated team ID
-        workflow_id:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Workflow Id
-          description: Associated workflow ID
-        created_at:
-          type: string
-          format: date-time
-          title: Created At
-          description: When the trace record was created
-      type: object
-      required:
-        - trace_id
-        - name
-        - status
-        - duration
-        - start_time
-      title: TraceSummary
-    TraceNode:
-      properties:
-        id:
-          type: string
-          title: Id
-          description: Span ID
-        name:
-          type: string
-          title: Name
-          description: Operation name
-        type:
-          type: string
-          title: Type
-          description: Span type (AGENT, LLM, TOOL, etc.)
-        duration:
-          type: string
-          title: Duration
-          description: Human-readable duration
-        status:
-          type: string
-          title: Status
-          description: Span status (OK, ERROR, UNSET)
-        input:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Input
-          description: Input to the operation
-        output:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Output
-          description: Output from the operation
-        error:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Error
-          description: Error message if status is ERROR
-        metadata:
-          anyOf:
-            - additionalProperties: true
-              type: object
-            - type: 'null'
-          title: Metadata
-          description: Type-specific metadata (model, tokens, tool params, etc.)
-        spans:
-          anyOf:
-            - items:
-                $ref: '#/components/schemas/TraceNode'
-              type: array
-            - type: 'null'
-          title: Spans
-          description: Child spans (recursive hierarchy)
-      type: object
-      required:
-        - id
-        - name
-        - type
-        - duration
-        - status
-      title: TraceNode
-    TraceDetailResponse:
-      properties:
-        trace_id:
-          type: string
-          title: Trace Id
-          description: Unique trace identifier
-        name:
-          type: string
-          title: Name
-          description: Name of the root operation
-        status:
-          type: string
-          title: Status
-          description: Overall status (OK, ERROR, UNSET)
-        duration:
-          type: string
-          title: Duration
-          description: Human-readable duration
-        start_time:
-          type: string
-          format: date-time
-          title: Start Time
-          description: When the trace started
-        end_time:
-          type: string
-          format: date-time
-          title: End Time
-          description: When the trace completed
-        total_spans:
-          type: integer
-          title: Total Spans
-          description: Number of spans in this trace
-        error_count:
-          type: integer
-          title: Error Count
-          description: Number of spans that errored
-        input:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Input
-          description: Input to the root operation
-        output:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Output
-          description: Output from the root operation
-        error:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Error
-          description: Error message if status is ERROR
-        run_id:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Run Id
-          description: Associated run ID
-        session_id:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Session Id
-          description: Associated session ID
-        user_id:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: User Id
-          description: Associated user ID
-        agent_id:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Agent Id
-          description: Associated agent ID
-        team_id:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Team Id
-          description: Associated team ID
-        workflow_id:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Workflow Id
-          description: Associated workflow ID
-        created_at:
-          type: string
-          format: date-time
-          title: Created At
-          description: When the trace record was created
-        tree:
-          items:
-            $ref: '#/components/schemas/TraceNode'
-          type: array
-          title: Tree
-          description: Hierarchical span tree
-      type: object
-      required:
-        - trace_id
-        - name
-        - status
-        - duration
-        - start_time
-        - end_time
-        - tree
-      title: TraceDetailResponse
-    TraceSessionStats:
-      properties:
-        session_id:
-          type: string
-          title: Session Id
-          description: Session identifier
-        user_id:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: User Id
-          description: Associated user ID
-        agent_id:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Agent Id
-          description: Associated agent ID
-        team_id:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Team Id
-          description: Associated team ID
-        workflow_id:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Workflow Id
-          description: Associated workflow ID
-        total_traces:
-          type: integer
-          title: Total Traces
-          description: Total number of traces in this session
-        first_trace_at:
-          type: string
-          format: date-time
-          title: First Trace At
-          description: Timestamp of first trace
-        last_trace_at:
-          type: string
-          format: date-time
-          title: Last Trace At
-          description: Timestamp of last trace
-      type: object
-      required:
-        - session_id
-        - total_traces
-        - first_trace_at
-        - last_trace_at
-      title: TraceSessionStats
-    PaginatedTraceSummaryResponse:
-      properties:
-        data:
-          items:
-            $ref: '#/components/schemas/TraceSummary'
-          type: array
-          title: Data
-          description: List of trace summaries
-        meta:
-          $ref: '#/components/schemas/PaginationInfo'
-          description: Pagination metadata
-      type: object
-      required:
-        - data
-        - meta
-      title: PaginatedTraceSummaryResponse
-    PaginatedTraceSessionStatsResponse:
-      properties:
-        data:
-          items:
-            $ref: '#/components/schemas/TraceSessionStats'
-          type: array
-          title: Data
-          description: List of session statistics
-        meta:
-          $ref: '#/components/schemas/PaginationInfo'
-          description: Pagination metadata
-      type: object
-      required:
-        - data
-        - meta
-      title: PaginatedTraceSessionStatsResponse
   securitySchemes:
     HTTPBearer:
       type: http
