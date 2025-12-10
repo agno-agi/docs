@@ -55,7 +55,7 @@ Context compression follows a simple pattern:
 
 <Steps>
     <Step title="Enable Compression">
-        Set `compress_tool_results=True` on your agent or team. This comes with a default threshold of 3 tool calls. The system monitors tool call results as they come in.
+        Set `compress_tool_results=True` on your agent or team, or provide a `CompressionManager`. The system monitors tool call results as they come in.
     </Step>
     <Step title="Threshold Reached">
         After the threshold is reached, compression is triggered. Each uncompressed tool call result is individually summarized.
@@ -174,6 +174,75 @@ team.print_response("Find recent funding rounds for AI startups")
 <Tip>
 Use a faster, cheaper model like `gpt-4o-mini` for compression to reduce latency and cost while using a more capable model as your Agent's main model.
 </Tip>
+
+## Compression Triggers
+
+The `CompressionManager` supports two types of thresholds for triggering compression:
+
+| Mode | Parameter | Use Case |
+|------|-----------|----------|
+| **Count-Based** | `compress_tool_results_limit` | Predictable tool call patterns. Triggers after N uncompressed tool results. |
+| **Token-Based** | `compress_token_limit` | Variable result sizes or strict context limits. Triggers when context exceeds a token threshold. |
+
+<Note>
+If neither threshold is set, `compress_tool_results_limit` defaults to `3`.
+</Note>
+
+### Token-Based Compression
+
+Use `compress_token_limit` when you need precise control over context size, especially when tool results vary significantly in size:
+
+<CodeGroup>
+```python Agent
+from agno.agent import Agent
+from agno.compression.manager import CompressionManager
+from agno.models.openai import OpenAIChat
+from agno.tools.duckduckgo import DuckDuckGoTools
+
+compression_manager = CompressionManager(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    compress_token_limit=5000,  # Compress when context exceeds 5000 tokens
+)
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o"),
+    tools=[DuckDuckGoTools()],
+    compression_manager=compression_manager,
+)
+
+agent.print_response("Research AI companies: OpenAI, Anthropic, Google DeepMind, Meta AI")
+```
+
+```python Team
+from agno.agent import Agent
+from agno.compression.manager import CompressionManager
+from agno.models.openai import OpenAIChat
+from agno.team import Team
+from agno.tools.duckduckgo import DuckDuckGoTools
+
+compression_manager = CompressionManager(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    compress_token_limit=5000,  # Compress when context exceeds 5000 tokens
+)
+
+web_agent = Agent(
+    name="Web Researcher",
+    tools=[DuckDuckGoTools()],
+)
+
+team = Team(
+    model=OpenAIChat(id="gpt-4o"),
+    members=[web_agent],
+    compression_manager=compression_manager,
+)
+
+team.print_response("Research AI companies: OpenAI, Anthropic, Google DeepMind, Meta AI")
+```
+</CodeGroup>
+
+<Info>
+Token counting includes messages, tool definitions, and output schemas.
+</Info>
 
 ## When to Use Context Compression
 
