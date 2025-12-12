@@ -1,0 +1,112 @@
+---
+title: Token Counting
+sidebarTitle: Token Counting
+description: Learn how we estimate tokens for context planning and token-based compression.
+keywords:
+  [
+    token counting,
+    tokens,
+    context window,
+    compression,
+    tiktoken,
+    tokenizers,
+    tools,
+    schema,
+    multimodal,
+  ]
+---
+
+Token counting helps you estimate context token count for an Agent run. Token counting can be used for features like token-based context compression and memory optimization.
+
+##
+
+Context can include:
+
+- **Messages**
+  - Content of the message - Includes the system message, user message, and the assistant message content.
+  - Tool call arguments and results
+  - Optional reasoning content
+  - Multimodal content blocks
+- **Tools**
+  - Tool definitions can be a meaningful part of the total token count, especially with large parameter schemas or long descriptions.
+- **Output schema**
+  - If you use an Output Schema, the schema is included in the token count.
+- **Multimodal attachments**
+  - Images, audio, video, and files attached to messages are counted using conservative estimates.
+
+<Warning>
+  Token counts are **estimates**. Provider billing and exact tokenization can
+  differ due to model/provider behavior, hidden/system prompts, and how
+  tools/schemas are serialized internally.
+</Warning>
+## Optional dependencies (recommended)
+
+For better local token-count estimates, install tokenizers:
+
+```bash
+pip install -U tiktoken tokenizers
+```
+
+- `tiktoken`: used when available for OpenAI-style tokenization.
+- `tokenizers`: used for certain open-source tokenizers when available.
+- If neither is available for the given model, we fall back to heuristic estimates.
+
+## Example: counting tokens
+
+```python
+from pydantic import BaseModel
+
+from agno.models.message import Message
+from agno.models.openai import OpenAIChat
+
+
+class Answer(BaseModel):
+    answer: str
+
+
+model = OpenAIChat(id="gpt-4o")
+
+messages = [
+    Message(role="system", content="You are a concise assistant."),
+    Message(role="user", content="Summarize context compression in 2 sentences."),
+]
+
+# Tool definitions can be passed as OpenAI-style tool dicts
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "search_web",
+            "description": "Search the web for a query.",
+            "parameters": {
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+                "required": ["query"],
+            },
+        },
+    }
+]
+
+tokens = model.count_tokens(messages=messages, tools=tools, output_schema=Answer)
+print(f"Estimated tokens: {tokens}")
+```
+
+## Token counting in token-based context compression
+
+When you set `compress_token_limit`, Agno checks the estimated token count during the run loop and triggers compression when the threshold is reached.
+
+Because token counting can include **message history**, **tool definitions**, and the **output schema/response format**, it more closely matches the “true” request size than counting only message text.
+
+## Multimodal estimates
+
+Agno uses conservative estimates for multimodal inputs to support context planning:
+
+- **Images**: estimated via a tile-based approach (vision-style counting)
+- **Audio**: estimated using tokens-per-second
+- **Video**: estimated as frames counted similarly to images (with conservative defaults if fps/dimensions are unknown)
+- **Files**: estimated based on file type/size
+
+## Notes:
+
+- Token counting is still in Beta. We do our best to provide an estimate but we do not claim it be be 100% accurate across all providers and models. Please be wary of using this token count for calculating costs.
+- For some providers like Claude we are able to call the exact endpoint and get an exact token count. This is not supported for all providers yet.
