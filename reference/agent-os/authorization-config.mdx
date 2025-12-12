@@ -15,7 +15,8 @@ from agno.os.config import AuthorizationConfig
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `verification_key` | `Optional[str]` | `None` | Key used to verify JWT signatures. For asymmetric algorithms (e.g. RS256), use the public key. For symmetric algorithms (e.g. HS256), use the shared secret. |
+| `verification_keys` | `Optional[List[str]]` | `None` | List of keys used to verify JWT signatures. For asymmetric algorithms (e.g. RS256), use public keys. For symmetric algorithms (e.g. HS256), use shared secrets. Each key is tried in order until one succeeds - useful for accepting tokens from multiple issuers. |
+| `jwks_file` | `Optional[str]` | `None` | Path to a static JWKS (JSON Web Key Set) file containing public keys. Keys are matched by `kid` (key ID) from the JWT header. Alternative to `verification_keys` for RSA key management. |
 | `algorithm` | `Optional[str]` | `RS256` | JWT algorithm for token verification. Common options: `RS256` (asymmetric), `HS256` (symmetric). |
 | `verify_audience` | `Optional[bool]` | `False` | Whether to verify the audience claim of the JWT token. This should not be enabled for AgentOS Control Plane traffic. |
 
@@ -30,7 +31,7 @@ agent_os = AgentOS(
     agents=[my_agent],
     authorization=True,
     authorization_config=AuthorizationConfig(
-        verification_key="your-public-key-or-secret",
+        verification_keys=["your-public-key-or-secret"],
         algorithm="RS256",
     ),
 )
@@ -57,9 +58,9 @@ agent_os = AgentOS(
 ```python
 # RS256 with a public key
 authorization_config = AuthorizationConfig(
-    verification_key="""-----BEGIN PUBLIC KEY-----
+    verification_keys=["""-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...
------END PUBLIC KEY-----""",
+-----END PUBLIC KEY-----"""],
     algorithm="RS256",
 )
 ```
@@ -69,9 +70,36 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...
 ```python
 # HS256 with a shared secret
 authorization_config = AuthorizationConfig(
-    verification_key="your-256-bit-secret-key",
+    verification_keys=["your-256-bit-secret-key"],
     algorithm="HS256",
 )
+```
+
+### Using JWKS File
+
+```python
+# RS256 with a JWKS file
+authorization_config = AuthorizationConfig(
+    jwks_file="/path/to/jwks.json",
+    algorithm="RS256",
+)
+```
+
+The JWKS file should follow the standard format:
+
+```json
+{
+  "keys": [
+    {
+      "kty": "RSA",
+      "kid": "my-key-id",
+      "use": "sig",
+      "alg": "RS256",
+      "n": "0vx7agoebGc...",
+      "e": "AQAB"
+    }
+  ]
+}
 ```
 
 ## See Also

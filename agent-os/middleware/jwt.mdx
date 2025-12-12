@@ -23,7 +23,7 @@ from agno.os.middleware.jwt import TokenSource
 
 app.add_middleware(
     JWTMiddleware,
-    verification_key="your-jwt-verification-key",  # or use JWT_VERIFICATION_KEY environment variable
+    verification_keys=["your-jwt-verification-key"],  # or use JWT_VERIFICATION_KEY environment variable
     algorithm="RS256",  # RS256 for asymmetric keys, HS256 for symmetric
     user_id_claim="sub",  # Extract user_id from 'sub' claim
     session_id_claim="session_id",  # Extract session_id from claim
@@ -48,7 +48,7 @@ The middleware supports three token sources:
     
     app.add_middleware(
         JWTMiddleware,
-        verification_key="your-key",
+        verification_keys=["your-key"],
         token_source=TokenSource.HEADER,  # Default
     )
     ```
@@ -60,7 +60,7 @@ The middleware supports three token sources:
     ```python
     app.add_middleware(
         JWTMiddleware,
-        verification_key="your-key",
+        verification_keys=["your-key"],
         token_source=TokenSource.COOKIE,
         cookie_name="access_token",  # Default
     )
@@ -73,7 +73,7 @@ The middleware supports three token sources:
     ```python
     app.add_middleware(
         JWTMiddleware,
-        verification_key="your-key",
+        verification_keys=["your-key"],
         token_source=TokenSource.BOTH,
         cookie_name="access_token",  # Default
         token_header_key="Authorization",  # Default
@@ -81,6 +81,55 @@ The middleware supports three token sources:
     ```
   </Tab>
 </Tabs>
+
+## JWKS File Support
+
+For environments using RSA keys managed via JWKS (JSON Web Key Set), you can point to a static JWKS file instead of providing raw public keys:
+
+```python jwks_file_setup.py
+app.add_middleware(
+    JWTMiddleware,
+    jwks_file="/path/to/jwks.json",
+    algorithm="RS256",
+    authorization=True,
+)
+```
+
+The middleware will:
+1. Load public keys from the JWKS file at startup
+2. Match incoming tokens by their `kid` (key ID) header claim
+3. Validate signatures using the appropriate key
+
+### JWKS File Format
+
+The JWKS file should follow the standard format:
+
+```json
+{
+  "keys": [
+    {
+      "kty": "RSA",
+      "kid": "my-key-id",
+      "use": "sig",
+      "alg": "RS256",
+      "n": "0vx7agoebGc...",
+      "e": "AQAB"
+    }
+  ]
+}
+```
+
+### Environment Variable
+
+You can also set the JWKS file path via environment variable:
+
+```bash
+export JWT_JWKS_FILE="/path/to/jwks.json"
+```
+
+<Note>
+JWKS keys are tried first (matched by `kid`). If no matching key is found, the middleware falls back to `verification_keys` if provided.
+</Note>
 
 ## Parameter Injection
 
@@ -130,7 +179,7 @@ Enable Role-Based Access Control (RBAC) to validate JWT scopes against required 
 ```python jwt_with_rbac.py
 app.add_middleware(
     JWTMiddleware,
-    verification_key="your-jwt-key",
+    verification_keys=["your-jwt-key"],
     algorithm="RS256",
     authorization=True,  # Enable RBAC
     verify_audience=True,  # Verify aud matches AgentOS ID
@@ -158,7 +207,7 @@ Override or extend default scope mappings:
 ```python custom_scope_mappings.py
 app.add_middleware(
     JWTMiddleware,
-    verification_key="your-key",
+    verification_keys=["your-key"],
     authorization=True,
     scope_mappings={
         # Override default
@@ -183,7 +232,7 @@ Skip middleware for specific routes:
 ```python jwt_excluded_routes.py
 app.add_middleware(
     JWTMiddleware,
-    verification_key="your-key",
+    verification_keys=["your-key"],
     excluded_route_paths=[
         "/health",
         "/auth/login", 
@@ -200,8 +249,9 @@ See the [JWTMiddleware Reference](/reference/agent-os/jwt-middleware) for the co
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `verification_key` | Key for JWT verification. For RS256, use public key. For HS256, use shared secret. | `JWT_VERIFICATION_KEY` env var |
-| `secret_key` | **(Deprecated)** Use `verification_key` instead. | - |
+| `verification_keys` | List of keys for JWT verification. For RS256, use public keys. For HS256, use shared secrets. Each key is tried in order until one succeeds. | `JWT_VERIFICATION_KEY` env var |
+| `jwks_file` | Path to a static JWKS file containing public keys. Keys are matched by `kid` from the JWT header. | `JWT_JWKS_FILE` env var |
+| `secret_key` | **(Deprecated)** Use `verification_keys` instead. | - |
 | `algorithm` | JWT algorithm (RS256, HS256, ES256, etc.) | `"RS256"` |
 | `validate` | Enable token validation | `True` |
 

@@ -16,8 +16,9 @@ from agno.os.middleware.jwt import TokenSource
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `verification_key` | `Optional[str]` | `JWT_VERIFICATION_KEY` env var | Key for JWT verification. For RS256, use public key. For HS256, use shared secret. |
-| `secret_key` | `Optional[str]` | `None` | **(Deprecated)** Use `verification_key` instead. |
+| `verification_keys` | `Optional[List[str]]` | `JWT_VERIFICATION_KEY` env var | List of keys for JWT verification. For RS256, use public keys. For HS256, use shared secrets. Each key is tried in order until one succeeds - useful for accepting tokens from multiple issuers. |
+| `jwks_file` | `Optional[str]` | `JWT_JWKS_FILE` env var | Path to a static JWKS (JSON Web Key Set) file. Keys are looked up by `kid` (key ID) from the JWT header. |
+| `secret_key` | `Optional[str]` | `None` | **(Deprecated)** Use `verification_keys` instead. |
 | `algorithm` | `str` | `"RS256"` | JWT algorithm (RS256, HS256, ES256, etc.) |
 | `validate` | `bool` | `True` | Whether to validate JWT tokens |
 | `authorization` | `Optional[bool]` | `None` | Enable RBAC scope checking |
@@ -69,7 +70,7 @@ app = agent_os.get_app()
 
 app.add_middleware(
     JWTMiddleware,
-    verification_key="your-jwt-key",
+    verification_keys=["your-jwt-key"],
     algorithm="RS256",
     validate=True,
 )
@@ -80,7 +81,7 @@ app.add_middleware(
 ```python
 app.add_middleware(
     JWTMiddleware,
-    verification_key="your-jwt-key",
+    verification_keys=["your-jwt-key"],
     algorithm="RS256",
     authorization=True,
     verify_audience=True,
@@ -94,7 +95,7 @@ from agno.os.middleware.jwt import TokenSource
 
 app.add_middleware(
     JWTMiddleware,
-    verification_key="your-jwt-key",
+    verification_keys=["your-jwt-key"],
     token_source=TokenSource.COOKIE,
     cookie_name="access_token",
 )
@@ -105,7 +106,7 @@ app.add_middleware(
 ```python
 app.add_middleware(
     JWTMiddleware,
-    verification_key="your-jwt-key",
+    verification_keys=["your-jwt-key"],
     user_id_claim="sub",
     session_id_claim="session_id",
     dependencies_claims=["name", "email", "roles"],
@@ -113,12 +114,41 @@ app.add_middleware(
 )
 ```
 
+### Using JWKS File
+
+```python
+# Using a static JWKS file (e.g., from your identity provider)
+app.add_middleware(
+    JWTMiddleware,
+    jwks_file="/path/to/jwks.json",
+    algorithm="RS256",
+    authorization=True,
+)
+```
+
+The JWKS file should have the standard format:
+
+```json
+{
+  "keys": [
+    {
+      "kty": "RSA",
+      "kid": "my-key-id",
+      "use": "sig",
+      "alg": "RS256",
+      "n": "0vx7agoebGc...",
+      "e": "AQAB"
+    }
+  ]
+}
+```
+
 ### Custom Scope Mappings
 
 ```python
 app.add_middleware(
     JWTMiddleware,
-    verification_key="your-jwt-key",
+    verification_keys=["your-jwt-key"],
     authorization=True,
     scope_mappings={
         # Override default scope
