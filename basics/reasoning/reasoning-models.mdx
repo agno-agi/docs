@@ -111,6 +111,80 @@ deepseek_plus_claude = Agent(
 deepseek_plus_claude.print_response("9.11 and 9.9 -- which is bigger?", stream=True)
 ```
 
+## Streaming Reasoning Content
+
+When using a `reasoning_model`, you can stream the reasoning content as it's being generated. This allows you to see the model's thought process in real-time.
+
+To enable streaming reasoning, set `stream=True` and `stream_events=True` when running the agent:
+
+```python streaming_reasoning.py
+from agno.agent import Agent
+from agno.models.anthropic import Claude
+
+# Create an agent with a reasoning model
+agent = Agent(
+    reasoning_model=Claude(
+        id="claude-sonnet-4-5",
+        thinking={"type": "enabled", "budget_tokens": 1024},
+    ),
+    reasoning=True,
+    instructions="Think step by step about the problem.",
+)
+
+# Stream the response with reasoning events
+agent.print_response(
+    "What is 25 * 37? Show your reasoning.",
+    stream=True,
+    stream_events=True,
+)
+```
+
+### Capturing Reasoning Events
+
+You can also capture individual reasoning events. This gives you fine-grained control over how reasoning content is displayed:
+
+```python capture_reasoning_events.py
+from agno.agent import Agent
+from agno.models.anthropic import Claude
+from agno.run.agent import RunEvent
+
+agent = Agent(
+    reasoning_model=Claude(
+        id="claude-sonnet-4-5",
+        thinking={"type": "enabled", "budget_tokens": 1024},
+    ),
+    reasoning=True,
+    instructions="Think step by step about the problem.",
+)
+
+for run_output_event in agent.run(
+    "What is 25 * 37? Show your reasoning.",
+    stream=True,
+    stream_events=True,
+):
+    if run_output_event.event == RunEvent.run_started:
+        print(f"EVENT: {run_output_event.event}")
+    elif run_output_event.event == RunEvent.reasoning_started:
+        print(f"EVENT: {run_output_event.event}")
+        print("Reasoning started...\n")
+    elif run_output_event.event == RunEvent.reasoning_content_delta:
+        # Stream reasoning content as it's being generated
+        print(run_output_event.reasoning_content, end="", flush=True)
+    elif run_output_event.event == RunEvent.run_content:
+        if run_output_event.content:
+            print(run_output_event.content, end="", flush=True)
+    elif run_output_event.event == RunEvent.run_completed:
+        print(f"EVENT: {run_output_event.event}")
+```
+
+The key events for streaming reasoning are:
+
+| Event | Description |
+|-------|-------------|
+| `RunEvent.reasoning_started` | Emitted when reasoning begins |
+| `RunEvent.reasoning_content_delta` | Emitted for each chunk of reasoning content as it streams |
+| `RunEvent.run_content` | Emitted for the final response content |
+
 ## Developer Resources
 
 
