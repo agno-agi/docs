@@ -316,51 +316,23 @@ See more in [Agent State](/basics/state/agent).
 
 ### Using the Agent or Team
 
-You can access the `Agent` or `Team` instance directly in your tool function by adding `agent` or `team` as a parameter. This gives you full access to the agent's or team's properties like `dependencies`, `session_state`, `model`, and more.
+You can access the `Agent` or `Team` instance directly in your tool function by adding `agent` or `team` as a parameter. This gives you full access to the agent's or team's properties like model, instructions, etc.
 
 ```python
-import json
-
-import httpx
-
 from agno.agent import Agent
+from agno.models.openai import OpenAIChat
 
-
-def get_top_hackernews_stories(agent: Agent) -> str:
-    """Get the top stories from Hacker News.
-
-    Returns:
-        str: JSON string of top stories.
-    """
-    num_stories = agent.dependencies.get("num_stories", 5) if agent.dependencies else 5
-
-    # Fetch top story IDs
-    response = httpx.get("https://hacker-news.firebaseio.com/v0/topstories.json")
-    story_ids = response.json()
-
-    # Fetch story details
-    stories = []
-    for story_id in story_ids[:num_stories]:
-        story_response = httpx.get(
-            f"https://hacker-news.firebaseio.com/v0/item/{story_id}.json"
-        )
-        story = story_response.json()
-        if "text" in story:
-            story.pop("text", None)
-        stories.append(story)
-
-    return json.dumps(stories)
-
+def get_agent_instructions(agent: Agent) -> str:
+    """Get the model of the agent."""
+    return agent.instructions
 
 agent = Agent(
-    dependencies={
-        "num_stories": 3,
-    },
-    tools=[get_top_hackernews_stories],
-    markdown=True,
+    model=OpenAIChat(id="gpt-5-mini"),
+    instructions="You are a helpful assistant that can answer questions about the model.",
+    tools=[get_agent_instructions],
 )
 
-agent.print_response("What are the top hackernews stories?", stream=True)
+agent.print_response("What is the instructions of the agent?", stream=True)
 ```
 
 <Note>
