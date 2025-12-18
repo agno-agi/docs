@@ -16,24 +16,34 @@ Semantic chunking is a method of splitting documents into smaller chunks by anal
   <Step title="Add the following code to your Python file">
     ```python semantic_chunking.py
     import asyncio
+
     from agno.agent import Agent
+    from agno.db.postgres import PostgresDb
     from agno.knowledge.chunking.semantic import SemanticChunking
+    from agno.knowledge.embedder.openai import OpenAIEmbedder
     from agno.knowledge.knowledge import Knowledge
     from agno.knowledge.reader.pdf_reader import PDFReader
     from agno.vectordb.pgvector import PgVector
 
     db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
-
+    embedder = OpenAIEmbedder(id="text-embedding-3-small", dimensions=1536)
     knowledge = Knowledge(
-        vector_db=PgVector(table_name="recipes_semantic_chunking", db_url=db_url),
+        vector_db=PgVector(table_name="recipes_semantic_chunking", db_url=db_url, embedder=embedder),
+        contents_db=PostgresDb(db_url=db_url, knowledge_table="recipe_contents"),
     )
-    asyncio.run(knowledge.add_content_async(
-        url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
-        reader=PDFReader(
-            name="Semantic Chunking Reader",
-            chunking_strategy=SemanticChunking(similarity_threshold=0.5),
-        ),
-    ))
+    asyncio.run(
+        knowledge.add_content_async(
+            url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
+            reader=PDFReader(
+                name="Semantic Chunking Reader",
+                chunking_strategy=SemanticChunking(
+                    embedder=embedder,
+                    chunk_size=500,
+                    similarity_threshold=0.5,
+                ),
+            ),
+        )
+    )
 
     agent = Agent(
         knowledge=knowledge,
@@ -41,6 +51,7 @@ Semantic chunking is a method of splitting documents into smaller chunks by anal
     )
 
     agent.print_response("How to make Thai curry?", markdown=True)
+
     ```
   </Step>
 
@@ -48,9 +59,11 @@ Semantic chunking is a method of splitting documents into smaller chunks by anal
 
   <Step title="Install libraries">
     ```bash
-    pip install -U sqlalchemy psycopg pgvector agno chonkie
+    pip install -U sqlalchemy psycopg pgvector agno chonkie openai
     ```
   </Step>
+
+  <Snippet file="set-openai-key.mdx" />
 
   <Snippet file="run-pgvector-step.mdx" />
 
