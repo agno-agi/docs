@@ -37,18 +37,18 @@ git push
 
 1. In your local `agno` repo, run the `AgentOS` cookbook containing all supported interfaces, using the latest version of Agno.
    ```bash
-   python cookbook/agent_os/all_interfaces.py
+   python cookbook/06_agent_os/all_interfaces.py
    ```
 
 2. Download the latest API reference files:
    ```bash
    curl -o reference-api/openapi.json http://localhost:7777/openapi.json
-   ```      
-   Using swagger-cli to create openapi.yaml counterpart: 
+   ```
+   Using swagger-cli to create openapi.yaml counterpart:
    ```bash
    swagger-cli bundle reference-api/openapi.json --outfile reference-api/openapi.yaml --type yaml
    ```
-   
+
 3. Delete all files in the `reference-api/schema/` folder (the auto-generated files)
 4. Run `npx @mintlify/scraping@latest openapi-file reference-api/openapi.json -o reference-api/schema` to generate the new API reference
 5. Update the `docs.json` file to include any new pages.
