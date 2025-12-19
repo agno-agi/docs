@@ -1,0 +1,131 @@
+---
+title: Running Workflows
+sidebarTitle: Run Workflows
+description: Execute workflow runs with streaming and non-streaming responses
+mode: wide
+---
+
+<Steps>
+
+  <Step title="Create a Python file">
+    ```bash
+    touch run_workflows.py
+    ```
+  </Step>
+
+  <Step title="Add the following code to your Python file">
+    ```python run_workflows.py
+    import asyncio
+
+    from agno.client import AgentOSClient
+
+
+    async def run_workflow_non_streaming():
+        """Execute a non-streaming workflow run."""
+        print("=" * 60)
+        print("Non-Streaming Workflow Run")
+        print("=" * 60)
+
+        client = AgentOSClient(base_url="http://localhost:7777")
+
+        # Get available workflows
+        config = await client.aget_config()
+        if not config.workflows:
+            print("No workflows available")
+            return
+
+        workflow_id = config.workflows[0].id
+        print(f"Running workflow: {workflow_id}")
+
+        try:
+            result = await client.run_workflow(
+                workflow_id=workflow_id,
+                message="What are the benefits of using Python for data science?",
+            )
+
+            print(f"\nRun ID: {result.run_id}")
+            print(f"Content: {result.content}")
+        except Exception as e:
+            print(f"Error: {e}")
+
+
+    async def run_workflow_streaming():
+        """Execute a streaming workflow run."""
+        print("\n" + "=" * 60)
+        print("Streaming Workflow Run")
+        print("=" * 60)
+
+        client = AgentOSClient(base_url="http://localhost:7777")
+
+        # Get available workflows
+        config = await client.aget_config()
+        if not config.workflows:
+            print("No workflows available")
+            return
+
+        workflow_id = config.workflows[0].id
+        print(f"Streaming from workflow: {workflow_id}")
+        print("\nResponse: ", end="", flush=True)
+
+        try:
+            async for event in client.run_workflow_stream(
+                workflow_id=workflow_id,
+                message="Explain machine learning in simple terms.",
+            ):
+                if event.event == "RunContent" and hasattr(event, "content"):
+                    print(event.content, end="", flush=True)
+                elif event.event == "WorkflowAgentCompleted" and hasattr(event, "content") and event.content:
+                    print(event.content, end="", flush=True)
+
+            print("\n")
+        except Exception as e:
+            print(f"\nError: {type(e).__name__}: {e}")
+
+
+    async def main():
+        await run_workflow_non_streaming()
+        await run_workflow_streaming()
+
+
+    if __name__ == "__main__":
+        asyncio.run(main())
+    ```
+  </Step>
+
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install libraries">
+    ```bash
+    pip install -U agno openai
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Start an AgentOS Server">
+    Make sure you have an AgentOS server running with workflows configured. See [Creating Your First OS](/agent-os/creating-your-first-os) for setup instructions.
+  </Step>
+
+  <Step title="Run the Client">
+    <CodeGroup>
+    ```bash Mac
+    python run_workflows.py
+    ```
+
+    ```bash Windows
+    python run_workflows.py
+    ```
+    </CodeGroup>
+  </Step>
+
+</Steps>

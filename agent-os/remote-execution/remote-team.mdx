@@ -1,0 +1,138 @@
+---
+title: "Remote Team"
+sidebarTitle: "Remote Team"
+description: "Execute teams hosted on remote AgentOS instances"
+---
+
+`RemoteTeam` allows you to execute teams that are running on a remote AgentOS instance. This enables you to leverage complex multi-agent teams without hosting them locally.
+
+## Prerequisites
+
+You need a running AgentOS instance with at least one team configured. See [Creating Your First OS](/agent-os/creating-your-first-os) to set one up.
+
+## Basic Usage
+
+```python
+import asyncio
+from agno.team import RemoteTeam
+
+async def main():
+    # Connect to a remote team
+    team = RemoteTeam(
+        base_url="http://remote-server:7778",  # Use localhost for local testing
+        team_id="research-team",
+    )
+    
+    # Run the team
+    response = await team.arun("Research the latest trends in AI")
+    print(response.content)
+
+asyncio.run(main())
+```
+
+## Streaming Responses
+
+Stream team responses in real-time:
+
+```python
+from agno.team import RemoteTeam
+from agno.run.team import RunContentEvent
+
+team = RemoteTeam(
+    base_url="http://remote-server:7778",  # Use localhost for local testing
+    team_id="research-team",
+)
+
+print("Team Response: ", end="", flush=True)
+async for event in team.arun(
+    "Analyze the current state of quantum computing",
+    stream=True,
+):
+    if isinstance(event, RunContentEvent):
+        print(event.content, end="", flush=True)
+```
+
+## Configuration Access
+
+Access the remote team's configuration:
+
+```python
+from agno.team import RemoteTeam
+
+team = RemoteTeam(
+    base_url="http://localhost:7777",
+    team_id="research-team",
+)
+
+# Access cached properties
+print(f"Name: {team.name}")
+print(f"Description: {team.description}")
+print(f"Role: {team.role}")
+
+# Get fresh configuration
+config = await team.get_team_config()
+print(f"Members: {config.members}")
+
+# Force refresh cache
+team.refresh_config()
+```
+
+## Using in Gateway
+
+Register remote teams in an AgentOS gateway:
+
+```python
+from agno.team import RemoteTeam
+from agno.os import AgentOS
+
+gateway = AgentOS(
+    id="api-gateway",
+    teams=[
+        RemoteTeam(base_url="http://server-1:7777", team_id="research-team"),
+        RemoteTeam(base_url="http://server-2:7777", team_id="analysis-team"),
+    ],
+)
+
+gateway.serve(port=7777)
+```
+
+## Authentication
+
+For authenticated AgentOS instances:
+
+```python
+from agno.team import RemoteTeam
+
+team = RemoteTeam(
+    base_url="http://localhost:7777",
+    team_id="research-team",
+)
+
+response = await team.arun(
+    "Research this topic",
+    auth_token="your-jwt-token",
+)
+```
+
+## Error Handling
+
+```python
+from agno.team import RemoteTeam
+from agno.exceptions import RemoteServerUnavailableError
+
+team = RemoteTeam(
+    base_url="http://localhost:7777",
+    team_id="research-team",
+)
+
+try:
+    response = await team.arun("Hello")
+except RemoteServerUnavailableError as e:
+    print(f"Cannot connect to server: {e.message}")
+    # Handle fallback logic
+```
+
+## Developer Resources
+
+- [RemoteTeam Reference](/reference/teams/remote-team) for complete API documentation.
+- [RemoteTeam Example](/agent-os/usage/remote-execution/remote-team) for a complete example.

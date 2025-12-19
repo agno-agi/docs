@@ -1,0 +1,117 @@
+---
+title: "Remote Agent"
+sidebarTitle: "Remote Agent"
+description: "Execute agents hosted on remote AgentOS instances"
+---
+
+`RemoteAgent` allows you to execute agents that are running on a remote AgentOS instance as if they were local agents. This enables distributed architectures where specialized agents run on different servers.
+
+## Prerequisites
+
+You need a running AgentOS instance with at least one agent. See [Creating Your First OS](/agent-os/creating-your-first-os) to set one up.
+
+## Basic Usage
+
+```python
+import asyncio
+from agno.agent import RemoteAgent
+
+async def main():
+    # Connect to a remote agent
+    agent = RemoteAgent(
+        base_url="http://remote-server:7778",  # Use localhost for local testing
+        agent_id="assistant-agent",
+    )
+    
+    # Run the agent
+    response = await agent.arun("What is the capital of France?")
+    print(response.content)
+
+asyncio.run(main())
+```
+
+## Streaming Responses
+
+Stream responses in real-time for a better user experience:
+
+```python
+from agno.agent import RemoteAgent
+
+agent = RemoteAgent(
+    base_url="http://remote-server:7778",  # Use localhost for local testing
+    agent_id="assistant-agent",
+)
+
+async for event in agent.arun(
+    "Tell me a story about a brave knight",
+    stream=True,
+):
+    if hasattr(event, "content") and event.content:
+        print(event.content, end="", flush=True)
+```
+
+## Configuration Access
+
+Access the remote agent's configuration:
+
+```python
+from agno.agent import RemoteAgent
+
+agent = RemoteAgent(
+    base_url="http://localhost:7777",
+    agent_id="assistant-agent",
+)
+
+# Access cached properties
+print(f"Name: {agent.name}")
+print(f"Description: {agent.description}")
+print(f"Tools: {agent.tools}")
+
+# Get fresh configuration
+config = await agent.get_agent_config()
+print(f"Model: {config.model}")
+
+# Force refresh cache
+agent.refresh_config()
+```
+
+## Authentication
+
+For authenticated AgentOS instances:
+
+```python
+from agno.agent import RemoteAgent
+
+agent = RemoteAgent(
+    base_url="http://localhost:7777",
+    agent_id="assistant-agent",
+)
+
+response = await agent.arun(
+    "Hello",
+    auth_token="your-jwt-token",
+)
+```
+
+## Error Handling
+
+```python
+from agno.agent import RemoteAgent
+from agno.exceptions import RemoteServerUnavailableError
+
+agent = RemoteAgent(
+    base_url="http://localhost:7777",
+    agent_id="assistant-agent",
+)
+
+try:
+    response = await agent.arun("Hello")
+except RemoteServerUnavailableError as e:
+    print(f"Cannot connect to server: {e.message}")
+    # Handle fallback logic
+```
+
+## Developer Resources
+
+- [RemoteAgent Reference](/reference/agents/remote-agent) for complete API documentation.
+- [RemoteAgent Example](/agent-os/usage/remote-execution/remote-agent) for a complete example.

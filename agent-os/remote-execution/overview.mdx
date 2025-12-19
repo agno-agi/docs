@@ -1,0 +1,165 @@
+---
+title: "Remote Execution"
+sidebarTitle: "Overview"
+description: "Execute agents, teams, and workflows hosted on remote AgentOS instances"
+---
+
+Remote execution enables you to run agents, teams, and workflows that are hosted on remote AgentOS instances. This is useful for:
+
+- **Distributed architectures**: Run specialized agents on different servers
+- **Microservices**: Decompose your agentic system into independent services
+- **Gateway pattern**: Create a unified API for multiple AgentOS instances
+
+## Core Components
+
+<CardGroup cols={2}>
+  <Card title="AgentOSClient" icon="plug" href="/reference/agent-os/client">
+    Low-level client for direct API access to any AgentOS endpoint
+  </Card>
+  <Card title="RemoteAgent" icon="robot" href="/agent-os/remote-execution/remote-agent">
+    Execute agents on remote AgentOS instances
+  </Card>
+  <Card title="RemoteTeam" icon="users" href="/agent-os/remote-execution/remote-team">
+    Execute teams on remote AgentOS instances
+  </Card>
+  <Card title="RemoteWorkflow" icon="diagram-project" href="/agent-os/remote-execution/remote-workflow">
+    Execute workflows on remote AgentOS instances
+  </Card>
+</CardGroup>
+
+## Quick Start
+
+### 1. Set Up a Remote AgentOS Server
+
+First, create and run an AgentOS instance that will host your agents:
+
+```python
+# server.py
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.os import AgentOS
+
+agent = Agent(
+    name="Assistant",
+    id="assistant-agent",
+    model=OpenAIChat(id="gpt-5-mini"),
+    instructions="You are a helpful assistant.",
+)
+
+agent_os = AgentOS(
+    id="remote-server",
+    agents=[agent],
+)
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="server:app", port=7778)
+```
+
+Run the server:
+```bash
+python server.py
+```
+
+### 2. Connect and Execute Remotely
+
+Use `RemoteAgent` to execute the agent from another application:
+
+```python
+import asyncio
+from agno.agent import RemoteAgent
+
+async def main():
+    agent = RemoteAgent(
+        base_url="http://remote-server:7778",  # Use localhost for local testing
+        agent_id="assistant-agent",
+    )
+    
+    response = await agent.arun("Hello, how are you?")
+    print(response.content)
+
+asyncio.run(main())
+```
+
+### 3. Create an AgentOS Gateway
+
+Create a gateway that aggregates multiple AgentOS instances:
+
+```python
+from agno.agent import RemoteAgent
+from agno.team import RemoteTeam
+from agno.workflow import RemoteWorkflow
+from agno.os import AgentOS
+
+local_agent = Agent(
+    name="Research Agent",
+    id="research-agent",
+    model=OpenAIChat(id="gpt-5-mini"),
+    instructions="You are a research assistant.",
+)
+
+gateway = AgentOS(
+    id="api-gateway",
+    agents=[
+        local_agent,
+        RemoteAgent(base_url="http://remote-server:7778", agent_id="assistant-agent"),
+    ],
+)
+app = gateway.get_app()
+
+if __name__ == "__main__":
+    gateway.serve(app="gateway:app", port=7777)
+```
+
+See [Gateway Pattern](/agent-os/remote-execution/gateway) for more details.
+
+## Authentication
+
+When connecting to authenticated AgentOS instances, pass the `auth_token` parameter:
+
+```python
+response = await agent.arun(
+    "Hello",
+    auth_token="your-jwt-token",
+)
+```
+
+For the `AgentOSClient`, use the `headers` parameter:
+
+```python
+from agno.client import AgentOSClient
+
+client = AgentOSClient(base_url="http://localhost:7777")
+config = await client.aget_config(headers={"Authorization": "Bearer your-token"})
+```
+
+## Error Handling
+
+Remote execution can fail due to network issues or server unavailability:
+
+```python
+from agno.exceptions import RemoteServerUnavailableError
+
+try:
+    response = await agent.arun("Hello")
+except RemoteServerUnavailableError as e:
+    print(f"Server unavailable: {e.message}")
+    print(f"Base URL: {e.base_url}")
+```
+
+## Learn More
+
+<CardGroup cols={2}>
+  <Card title="Remote Agent" icon="robot" href="/agent-os/remote-execution/remote-agent">
+    Detailed guide on using RemoteAgent
+  </Card>
+  <Card title="Remote Team" icon="users" href="/agent-os/remote-execution/remote-team">
+    Detailed guide on using RemoteTeam
+  </Card>
+  <Card title="Remote Workflow" icon="diagram-project" href="/agent-os/remote-execution/remote-workflow">
+    Detailed guide on using RemoteWorkflow
+  </Card>
+  <Card title="Gateway Pattern" icon="server" href="/agent-os/remote-execution/gateway">
+    Create a unified API gateway for multiple AgentOS instances
+  </Card>
+</CardGroup>

@@ -1,0 +1,255 @@
+---
+title: RemoteTeam
+sidebarTitle: RemoteTeam
+description: Execute teams hosted on a remote AgentOS instance
+---
+
+`RemoteTeam` allows you to run teams that are hosted on a remote AgentOS instance. It provides the same interface as a local team, making it easy to integrate remote teams into your applications.
+
+## Installation
+
+```bash
+pip install agno
+```
+
+## Basic Usage
+
+```python
+from agno.team import RemoteTeam
+
+# Create a remote team pointing to a remote AgentOS instance
+team = RemoteTeam(
+    base_url="http://localhost:7777",
+    team_id="research-team",
+)
+
+# Run the team (async)
+response = await team.arun("Research the latest AI trends")
+print(response.content)
+```
+
+## Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `base_url` | `str` | Required | Base URL of the remote AgentOS instance (e.g., `"http://localhost:7777"`) |
+| `team_id` | `str` | Required | ID of the remote team to execute |
+| `timeout` | `float` | `300.0` | Request timeout in seconds |
+| `config_ttl` | `float` | `300.0` | Time-to-live for cached configuration in seconds |
+
+## Properties
+
+### `id`
+
+Returns the team ID.
+
+```python
+print(team.id)  # "research-team"
+```
+
+### `name`
+
+Returns the team's name from the remote configuration.
+
+```python
+print(team.name)  # "Research Team"
+```
+
+### `description`
+
+Returns the team's description from the remote configuration.
+
+```python
+print(team.description)  # "A team of research specialists"
+```
+
+### `role`
+
+Returns the team's role from the remote configuration.
+
+```python
+print(team.role)  # "researcher"
+```
+
+### `tools`
+
+Returns the team's tools as a list of dictionaries.
+
+```python
+tools = team.tools
+if tools:
+    for tool in tools:
+        print(tool["name"])
+```
+
+### `db`
+
+Returns a `RemoteDb` instance if the team has a database configured.
+
+```python
+if team.db:
+    print(f"Database ID: {team.db.id}")
+```
+
+### `knowledge`
+
+Returns a `RemoteKnowledge` instance if the team has knowledge configured.
+
+```python
+if team.knowledge:
+    print("Team has knowledge enabled")
+```
+
+## Methods
+
+### `arun`
+
+Execute the remote team asynchronously.
+
+```python
+# Non-streaming
+response = await team.arun(
+    "Research AI trends",
+    user_id="user-123",
+    session_id="session-456",
+)
+print(response.content)
+
+# Streaming
+async for event in team.arun(
+    "Analyze this topic",
+    stream=True,
+    user_id="user-123",
+):
+    if hasattr(event, "content") and event.content:
+        print(event.content, end="", flush=True)
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `input` | `str \| List \| Dict \| Message \| BaseModel` | Required | The input message for the team |
+| `stream` | `bool` | `False` | Whether to stream the response |
+| `user_id` | `Optional[str]` | `None` | User ID for the run |
+| `session_id` | `Optional[str]` | `None` | Session ID for context persistence |
+| `session_state` | `Optional[Dict]` | `None` | Session state dictionary |
+| `images` | `Optional[Sequence[Image]]` | `None` | Images to include |
+| `audio` | `Optional[Sequence[Audio]]` | `None` | Audio to include |
+| `videos` | `Optional[Sequence[Video]]` | `None` | Videos to include |
+| `files` | `Optional[Sequence[File]]` | `None` | Files to include |
+| `stream_events` | `Optional[bool]` | `None` | Whether to stream events |
+| `retries` | `Optional[int]` | `None` | Number of retries |
+| `knowledge_filters` | `Optional[Dict]` | `None` | Filters for knowledge search |
+| `add_history_to_context` | `Optional[bool]` | `None` | Add history to context |
+| `dependencies` | `Optional[Dict]` | `None` | Dependencies dictionary |
+| `metadata` | `Optional[Dict]` | `None` | Metadata dictionary |
+| `auth_token` | `Optional[str]` | `None` | JWT token for authentication |
+
+**Returns:**
+- `TeamRunOutput` when `stream=False`
+- `AsyncIterator[TeamRunOutputEvent]` when `stream=True`
+
+### `cancel_run`
+
+Cancel a running team execution.
+
+```python
+success = await team.cancel_run(run_id="run-123")
+if success:
+    print("Run cancelled")
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `run_id` | `str` | Required | ID of the run to cancel |
+| `auth_token` | `Optional[str]` | `None` | JWT token for authentication |
+
+**Returns:** `bool` - True if successfully cancelled
+
+### `get_team_config`
+
+Get the team configuration from the remote server (always fetches fresh).
+
+```python
+config = await team.get_team_config()
+print(f"Team name: {config.name}")
+print(f"Members: {config.members}")
+```
+
+**Returns:** `TeamResponse`
+
+### `refresh_config`
+
+Force refresh the cached team configuration.
+
+```python
+config = team.refresh_config()
+```
+
+**Returns:** `TeamResponse`
+
+## Using in AgentOS Gateway
+
+Remote teams can be registered in a local AgentOS to create a gateway:
+
+```python
+from agno.team import RemoteTeam
+from agno.os import AgentOS
+
+agent_os = AgentOS(
+    teams=[
+        RemoteTeam(base_url="http://server-1:7777", team_id="research-team"),
+        RemoteTeam(base_url="http://server-2:7777", team_id="analysis-team"),
+    ],
+)
+```
+
+See [AgentOS Gateway](/agent-os/remote-execution/gateway) for more details.
+
+## Streaming Example
+
+```python
+from agno.team import RemoteTeam
+from agno.run.team import RunContentEvent, RunCompletedEvent
+
+team = RemoteTeam(
+    base_url="http://localhost:7777",
+    team_id="research-team",
+)
+
+print("Response: ", end="", flush=True)
+async for event in team.arun(
+    "Analyze the current state of AI",
+    stream=True,
+    user_id="user-123",
+):
+    if isinstance(event, RunContentEvent):
+        print(event.content, end="", flush=True)
+    elif isinstance(event, RunCompletedEvent):
+        print(f"\n\nCompleted: {event.run_id}")
+```
+
+## Error Handling
+
+```python
+from agno.exceptions import RemoteServerUnavailableError
+
+try:
+    response = await team.arun("Hello")
+except RemoteServerUnavailableError as e:
+    print(f"Remote server unavailable: {e.message}")
+```
+
+## Authentication
+
+For authenticated AgentOS instances, pass the `auth_token` parameter:
+
+```python
+response = await team.arun(
+    "Research this topic",
+    auth_token="your-jwt-token",
+)
+```

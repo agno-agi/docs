@@ -1,0 +1,169 @@
+---
+title: AgentOS Gateway
+sidebarTitle: Gateway
+description: Create a unified API gateway for multiple AgentOS instances
+mode: wide
+---
+
+<Steps>
+
+  <Step title="Create the remote server file">
+    First, create a server that will host agents remotely:
+    ```bash
+    touch remote_server.py
+    ```
+  </Step>
+
+  <Step title="Add the remote server code">
+    ```python remote_server.py
+    from agno.agent import Agent
+    from agno.db.sqlite import SqliteDb
+    from agno.models.openai import OpenAIChat
+    from agno.os import AgentOS
+    from agno.team import Team
+    from agno.tools.duckduckgo import DuckDuckGoTools
+
+    db = SqliteDb(id="remote-db", db_file="tmp/remote.db")
+
+    assistant = Agent(
+        name="Assistant",
+        id="assistant-agent",
+        model=OpenAIChat(id="gpt-4o-mini"),
+        instructions="You are a helpful assistant.",
+        db=db,
+    )
+
+    researcher = Agent(
+        name="Researcher",
+        id="researcher-agent",
+        model=OpenAIChat(id="gpt-4o-mini"),
+        tools=[DuckDuckGoTools()],
+        db=db,
+    )
+
+    research_team = Team(
+        name="Research Team",
+        id="research-team",
+        model=OpenAIChat(id="gpt-4o-mini"),
+        members=[assistant, researcher],
+        db=db,
+    )
+
+    agent_os = AgentOS(
+        id="remote-server",
+        agents=[assistant, researcher],
+        teams=[research_team],
+    )
+
+    app = agent_os.get_app()
+
+    if __name__ == "__main__":
+        agent_os.serve(app="remote_server:app", reload=True, port=7778)
+    ```
+  </Step>
+
+  <Step title="Create the gateway file">
+    ```bash
+    touch gateway.py
+    ```
+  </Step>
+
+  <Step title="Add the gateway code">
+    ```python gateway.py
+    from agno.agent import RemoteAgent
+    from agno.os import AgentOS
+    from agno.team import RemoteTeam
+
+    # Create the gateway that proxies to remote agents
+    gateway = AgentOS(
+        id="api-gateway",
+        description="Gateway for remote agents and teams",
+        agents=[
+            RemoteAgent(base_url="http://localhost:7778", agent_id="assistant-agent"),
+            RemoteAgent(base_url="http://localhost:7778", agent_id="researcher-agent"),
+        ],
+        teams=[
+            RemoteTeam(base_url="http://localhost:7778", team_id="research-team"),
+        ],
+    )
+
+    app = gateway.get_app()
+
+    if __name__ == "__main__":
+        gateway.serve(app="gateway:app", reload=True, port=7777)
+    ```
+  </Step>
+
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install libraries">
+    ```bash
+    pip install -U agno openai duckduckgo-search
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Start the Remote Server">
+    In terminal 1, start the remote server:
+    <CodeGroup>
+    ```bash Mac
+    python remote_server.py
+    ```
+
+    ```bash Windows
+    python remote_server.py
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Start the Gateway">
+    In terminal 2, start the gateway:
+    <CodeGroup>
+    ```bash Mac
+    python gateway.py
+    ```
+
+    ```bash Windows
+    python gateway.py
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Use the Gateway">
+    Now you can access all agents through the gateway at `http://localhost:7777`:
+    ```python
+    from agno.client import AgentOSClient
+    import asyncio
+
+    async def main():
+        client = AgentOSClient(base_url="http://localhost:7777")
+        config = await client.aget_config()
+        print(f"Available agents: {[a.id for a in config.agents]}")
+        
+        # Run a remote agent through the gateway
+        response = await client.run_agent(
+            agent_id="assistant-agent",
+            message="Hello from the gateway!",
+        )
+        print(response.content)
+
+    asyncio.run(main())
+    ```
+  </Step>
+
+</Steps>
+
+<Note>
+If authorization is enabled on remote servers and all endpoints are protected, not all of the functions work correctly on the gateway. Specifically `/config`, `/workflows`, `/workflows/{workflow_id}`, `/agents`, `/teams`, `/agent/{agent_id}`, `/team/{team_id}` need to be unprotected for the gateway to work correctly.
+</Note>

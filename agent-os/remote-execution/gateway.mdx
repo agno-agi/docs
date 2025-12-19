@@ -1,0 +1,173 @@
+---
+title: "AgentOS Gateway"
+sidebarTitle: "Gateway Pattern"
+description: "Create a unified API gateway for multiple AgentOS instances"
+---
+
+The gateway pattern allows you to create a single AgentOS instance that aggregates agents, teams, and workflows from multiple remote AgentOS instances. This provides a unified API endpoint for your distributed agentic infrastructure.
+
+## Use Cases
+
+- **Unified API**: Single endpoint for all your agents across different servers
+- **Load distribution**: Spread specialized agents across multiple servers
+- **Microservices architecture**: Each service hosts its own agents
+- **Hybrid deployments**: Combine local and remote agents in one interface
+
+## Basic Gateway Setup
+
+Create a gateway that aggregates remote agents from multiple servers:
+
+```python
+from agno.agent import RemoteAgent
+from agno.team import RemoteTeam
+from agno.workflow import RemoteWorkflow
+from agno.os import AgentOS
+
+# Create the gateway AgentOS
+gateway = AgentOS(
+    id="api-gateway",
+    description="Unified API gateway for distributed agents",
+    agents=[
+        RemoteAgent(base_url="http://server-1:7778", agent_id="assistant-agent"),
+        RemoteAgent(base_url="http://server-2:7778", agent_id="researcher-agent"),
+    ],
+    teams=[
+        RemoteTeam(base_url="http://server-3:7778", team_id="research-team"),
+    ],
+    workflows=[
+        RemoteWorkflow(base_url="http://server-4:7778", workflow_id="qa-workflow"),
+    ],
+)
+
+app = gateway.get_app()
+if __name__ == "__main__":
+    gateway.serve(app="gateway:app", port=7777)
+```
+
+## Combining Local and Remote
+
+Mix local agents with remote agents in the same gateway:
+
+```python
+from agno.agent import Agent, RemoteAgent
+from agno.models.openai import OpenAIChat
+from agno.os import AgentOS
+from agno.db.postgres import PostgresDb
+
+db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+# Local agent
+local_agent = Agent(
+    name="Q&A Agent",
+    id="question-answer-agent",
+    model=OpenAIChat(id="gpt-5-mini"),
+    instructions="You are a helpful question and answer assistant.",
+    db=db,
+)
+
+# Remote agents from other servers
+remote_assistant = RemoteAgent(
+    base_url="http://assistant-server:7778",
+    agent_id="assistant-agent",
+)
+
+remote_researcher = RemoteAgent(
+    base_url="http://research-server:7778",
+    agent_id="researcher-agent",
+)
+
+# Gateway combining both
+gateway = AgentOS(
+    id="hybrid-gateway",
+    agents=[local_agent, remote_assistant, remote_researcher],
+)
+
+app = gateway.get_app()
+
+if __name__ == "__main__":
+    gateway.serve(app="gateway:app", port=7777)
+```
+
+## Complete Gateway Example
+
+Here's a complete example with agents, teams, workflows, and a local workflow that uses remote agents:
+
+```python
+from agno.agent import Agent, RemoteAgent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+from agno.os import AgentOS
+from agno.team import RemoteTeam
+from agno.workflow import RemoteWorkflow, Workflow
+from agno.workflow.step import Step
+
+# Database for local components
+db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+# Local agents for a local workflow
+story_writer = Agent(
+    name="Story Writer",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    instructions="Write a 100 word story based on the given topic",
+)
+
+story_editor = Agent(
+    name="Story Editor",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    instructions="Review and improve the story's grammar and flow",
+)
+
+# Local workflow using local agents
+story_workflow = Workflow(
+    name="Story Generation",
+    id="story-workflow",
+    description="Generate and edit stories",
+    db=db,
+    steps=[
+        Step(name="write_story", agent=story_writer),
+        Step(name="edit_story", agent=story_editor),
+    ],
+)
+
+# Gateway combining local and remote components
+gateway = AgentOS(
+    id="content-gateway",
+    description="Gateway for content generation services",
+    agents=[
+        # Remote agents from specialized servers
+        RemoteAgent(base_url="http://server-1:7778", agent_id="assistant-agent"),
+        RemoteAgent(base_url="http://server-1:7778", agent_id="researcher-agent"),
+    ],
+    teams=[
+        # Remote team
+        RemoteTeam(base_url="http://server-1:7778", team_id="research-team"),
+    ],
+    workflows=[
+        # Remote workflow
+        RemoteWorkflow(base_url="http://server-1:7778", workflow_id="qa-workflow"),
+        # Local workflow
+        story_workflow,
+    ],
+)
+
+app = gateway.get_app()
+
+if __name__ == "__main__":
+    gateway.serve(app="gateway:app", reload=True, port=7777)
+```
+
+See the [full example](/agent-os/usage/remote-execution/gateway) for more information.
+
+## Authentication Considerations
+
+<Warning>
+If authorization is enabled on remote servers and all endpoints are protected, not all gateway functions will work correctly. 
+Specifically, the following endpoints need to be unprotected on remote servers for the gateway to work:
+- `/config`
+- `/agents`
+- `/agents/{agent_id}`
+- `/teams`
+- `/teams/{team_id}`
+- `/workflows`
+- `/workflows/{workflow_id}`
+</Warning>

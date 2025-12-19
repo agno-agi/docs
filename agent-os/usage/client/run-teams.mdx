@@ -1,0 +1,127 @@
+---
+title: Running Teams
+sidebarTitle: Run Teams
+description: Execute team runs with streaming and non-streaming responses
+mode: wide
+---
+
+<Steps>
+
+  <Step title="Create a Python file">
+    ```bash
+    touch run_teams.py
+    ```
+  </Step>
+
+  <Step title="Add the following code to your Python file">
+    ```python run_teams.py
+    import asyncio
+
+    from agno.client import AgentOSClient
+    from agno.run.team import RunCompletedEvent, RunContentEvent
+
+
+    async def run_team_non_streaming():
+        """Execute a non-streaming team run."""
+        print("=" * 60)
+        print("Non-Streaming Team Run")
+        print("=" * 60)
+
+        client = AgentOSClient(base_url="http://localhost:7777")
+
+        # Get available teams
+        config = await client.aget_config()
+        if not config.teams:
+            print("No teams available")
+            return
+
+        team_id = config.teams[0].id
+        print(f"Running team: {team_id}")
+
+        # Execute the team
+        result = await client.run_team(
+            team_id=team_id,
+            message="What is the capital of France and what is 15 * 7?",
+        )
+
+        print(f"\nRun ID: {result.run_id}")
+        print(f"Content: {result.content}")
+
+
+    async def run_team_streaming():
+        """Execute a streaming team run."""
+        print("\n" + "=" * 60)
+        print("Streaming Team Run")
+        print("=" * 60)
+
+        client = AgentOSClient(base_url="http://localhost:7777")
+
+        # Get available teams
+        config = await client.aget_config()
+        if not config.teams:
+            print("No teams available")
+            return
+
+        team_id = config.teams[0].id
+        print(f"Streaming from team: {team_id}")
+        print("\nResponse: ", end="", flush=True)
+
+        async for event in client.run_team_stream(
+            team_id=team_id,
+            message="Tell me about Python programming in 2 sentences.",
+        ):
+            if isinstance(event, RunContentEvent):
+                print(event.content, end="", flush=True)
+            elif isinstance(event, RunCompletedEvent):
+                pass
+
+        print("\n")
+
+
+    async def main():
+        await run_team_non_streaming()
+        await run_team_streaming()
+
+
+    if __name__ == "__main__":
+        asyncio.run(main())
+    ```
+  </Step>
+
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install libraries">
+    ```bash
+    pip install -U agno openai
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Start an AgentOS Server">
+    Make sure you have an AgentOS server running with teams configured. See [Creating Your First OS](/agent-os/creating-your-first-os) for setup instructions.
+  </Step>
+
+  <Step title="Run the Client">
+    <CodeGroup>
+    ```bash Mac
+    python run_teams.py
+    ```
+
+    ```bash Windows
+    python run_teams.py
+    ```
+    </CodeGroup>
+  </Step>
+
+</Steps>
