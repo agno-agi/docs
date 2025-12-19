@@ -1,0 +1,135 @@
+---
+title: Speech-to-Text Agent
+mode: wide
+---
+
+Build an AI agent that transcribes audio files into structured data with speaker identification and conversation metadata. This agent uses multimodal capabilities to convert audio content into typed, machine-readable transcription output.
+
+## What You'll Learn
+
+By building this agent, you'll understand:
+- How to use Pydantic schemas for structured transcription output
+- How to configure multimodal agents for audio processing
+- How to identify speakers in audio conversations
+- How to handle various audio formats and sources
+
+## Use Cases
+
+Transcribe meeting recordings with speaker identification, convert podcast episodes into searchable text, create subtitles for video content, or build voice note analyzers with metadata extraction.
+
+## How It Works
+
+The agent uses Gemini's multimodal capabilities to process audio directly and output structured data:
+
+1. **Input**: Accepts audio files (WAV, MP3) from URLs or local files
+2. **Process**: Gemini model analyzes audio content and identifies speakers
+3. **Structure**: Output is validated against a Pydantic schema
+4. **Output**: Returns typed data with transcript, description, and speaker list
+
+The structured output makes transcriptions immediately usable in downstream applications without additional parsing.
+
+## Code
+
+```python speech_to_text_agent.py
+import httpx
+from agno.agent import Agent
+from agno.media import Audio
+from agno.models.google import Gemini
+from pydantic import BaseModel, Field
+
+
+class Transcription(BaseModel):
+    transcript: str = Field(..., description="The transcript of the audio conversation")
+    description: str = Field(..., description="A description of the audio conversation")
+    speakers: list[str] = Field(
+        ..., description="The speakers in the audio conversation"
+    )
+
+
+# Fetch the audio file
+url = "https://agno-public.s3.us-east-1.amazonaws.com/demo_data/sample_audio.wav"
+
+response = httpx.get(url)
+response.raise_for_status()
+wav_data = response.content
+
+# Create agent with structured output
+agent = Agent(
+    model=Gemini(id="gemini-3-flash-preview"),
+    markdown=True,
+    instructions="""Your task is to accurately transcribe the audio into text. You will be given an audio file and you need to transcribe it into text.
+    In the transcript, make sure to identify the speakers. If a name is mentioned, use the name in the transcript. If a name is not mentioned, use a placeholder like 'Speaker 1', 'Speaker 2', etc.
+    Make sure to include all the content of the audio in the transcript.
+    For any audio that is not speech, use the placeholder 'background noise' or 'silence' or 'music' or 'other'.
+    Only return the transcript, no other text or formatting.
+    """,
+    output_schema=Transcription,
+)
+
+agent.print_response(
+    "Give a transcript of the audio conversation",
+    audio=[Audio(content=wav_data)],
+)
+
+# More example prompts to explore:
+"""
+Transcription Tasks:
+1. "Transcribe this meeting recording and identify all participants"
+2. "Convert this podcast episode to text with speaker labels"
+3. "Create a transcript from this interview audio"
+4. "Transcribe this voice memo and summarize the key points"
+
+Analysis Tasks:
+1. "Transcribe and identify the main topics discussed"
+2. "Convert to text and extract any action items mentioned"
+3. "Transcribe and identify any questions asked"
+4. "Create a transcript and note any technical terms used"
+"""
+```
+
+## What to Expect
+
+The agent processes audio files and returns a structured `Transcription` object containing:
+
+- **transcript**: Full text transcription of the audio content
+- **description**: A summary describing what the audio is about
+- **speakers**: List of identified speakers (names if mentioned, otherwise "Speaker 1", "Speaker 2", etc.)
+
+Processing time depends on audio length, typically 10-30 seconds for files under 5 minutes.
+
+## Usage
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Set your API key">
+    ```bash
+    export GOOGLE_API_KEY=xxx
+    ```
+  </Step>
+
+  <Step title="Install libraries">
+    ```bash
+    pip install -U agno google-genai httpx
+    ```
+  </Step>
+
+  <Step title="Run Agent">
+    <CodeGroup>
+    ```bash Mac
+    python speech_to_text_agent.py
+    ```
+
+    ```bash Windows
+    python speech_to_text_agent.py
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+## Next Steps
+
+- Try processing different audio formats (MP3, WAV, M4A)
+- Extend the `Transcription` schema with additional fields like `sentiment` or `topics`
+- Combine with other tools for enhanced analysis
+- Explore [Workflows](/basics/workflows/overview) for multi-step audio processing pipelines
