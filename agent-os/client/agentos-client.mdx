@@ -1,0 +1,209 @@
+---
+title: "AgentOS Client"
+sidebarTitle: "AgentOS Client"
+description: "Connect to Agno AgentOS instances via REST API"
+---
+
+The `AgentOSClient` provides a Python interface for interacting with running AgentOS instances. It enables you to:
+
+- **Run agents, teams, and workflows** programmatically with streaming support
+- **Manage sessions** for conversation persistence across runs
+- **Search and manage knowledge** in connected knowledge bases
+- **Access memories** stored for users
+- **Monitor traces** for debugging and observability
+
+## Installation
+
+```bash
+pip install agno httpx
+```
+
+## Quick Start
+
+```python
+import asyncio
+from agno.client import AgentOSClient
+
+async def main():
+    # Connect to AgentOS
+    client = AgentOSClient(base_url="http://localhost:7777")
+
+    # Get configuration and available agents
+    config = await client.aget_config()
+    print(f"Connected to: {config.name or config.os_id}")
+    print(f"Available agents: {[a.id for a in config.agents]}")
+
+    # Run an agent
+    if config.agents:
+        result = await client.run_agent(
+            agent_id=config.agents[0].id,
+            message="Hello, how can you help me?",
+        )
+        print(f"Response: {result.content}")
+
+asyncio.run(main())
+```
+
+## Streaming Responses
+
+Stream responses in real-time for a better user experience:
+
+```python
+from agno.client import AgentOSClient
+from agno.run.agent import RunContentEvent, RunCompletedEvent
+
+client = AgentOSClient(base_url="http://localhost:7777")
+
+async for event in client.run_agent_stream(
+    agent_id="my-agent",
+    message="Tell me a story",
+):
+    if isinstance(event, RunContentEvent):
+        print(event.content, end="", flush=True)
+    elif isinstance(event, RunCompletedEvent):
+        print(f"\nCompleted! Run ID: {event.run_id}")
+```
+
+## Running Teams
+
+```python
+result = await client.run_team(
+    team_id="research-team",
+    message="Research the latest AI trends",
+    user_id="user-123",
+)
+print(f"Response: {result.content}")
+```
+
+## Running Workflows
+
+```python
+result = await client.run_workflow(
+    workflow_id="qa-workflow",
+    message="What are the benefits of Python?",
+    user_id="user-123",
+)
+print(f"Response: {result.content}")
+```
+
+## Session Management
+
+Maintain conversation context across multiple runs:
+
+```python
+from agno.db.base import SessionType
+
+# Create a session
+session = await client.create_session(
+    session_type=SessionType.AGENT,
+    agent_id="my-agent",
+    user_id="user-123",
+    session_name="My Chat Session",
+)
+print(f"Session ID: {session.session_id}")
+
+# Run agent with session
+result = await client.run_agent(
+    agent_id="my-agent",
+    message="Remember my name is Alice",
+    session_id=session.session_id,
+)
+
+# Continue the conversation
+result = await client.run_agent(
+    agent_id="my-agent",
+    message="What is my name?",
+    session_id=session.session_id,
+)
+print(result.content)  # Should remember "Alice"
+```
+
+## Knowledge Operations
+
+Search and upload content to the knowledge base:
+
+```python
+# Search knowledge
+results = await client.search_knowledge(
+    query="What is Agno?",
+    limit=5,
+)
+for result in results.data:
+    print(f"Score: {result.score}")
+    print(f"Content: {result.content[:100]}...")
+
+# Upload content
+from agno.media import File
+
+content = await client.upload_knowledge_content(
+    name="My Document",
+    description="Important documentation",
+    file=File(content=b"...", filename="doc.pdf", mime_type="application/pdf"),
+)
+print(f"Content ID: {content.id}")
+```
+
+## Memory Operations
+
+Store and retrieve user memories:
+
+```python
+# Create a memory
+memory = await client.create_memory(
+    memory="User prefers dark mode",
+    user_id="user-123",
+    topics=["preferences", "ui"],
+)
+print(f"Created: {memory.memory_id}")
+
+# List memories
+memories = await client.list_memories(
+    user_id="user-123",
+    topics=["preferences"],
+    limit=10,
+)
+for mem in memories.data:
+    print(f"{mem.memory_id}: {mem.memory}")
+```
+
+## Authentication
+
+When connecting to authenticated AgentOS instances:
+
+```python
+headers = {"Authorization": "Bearer your-jwt-token"}
+
+config = await client.aget_config(headers=headers)
+result = await client.run_agent(
+    agent_id="my-agent",
+    message="Hello",
+    headers=headers,
+)
+```
+
+## Error Handling
+
+```python
+from agno.client import AgentOSClient
+from agno.exceptions import RemoteServerUnavailableError
+
+client = AgentOSClient(base_url="http://localhost:7777")
+
+try:
+    config = await client.aget_config()
+except RemoteServerUnavailableError as e:
+    print(f"Server unavailable: {e.message}")
+    print(f"URL: {e.base_url}")
+```
+
+## API Reference
+
+For complete method documentation, parameters, and response types, see the [AgentOSClient Reference](/reference/agent-os/client).
+
+## Developer Resources
+
+- [Basic Client Example](/agent-os/usage/client/basic-client)
+- [Run Agents Example](/agent-os/usage/client/run-agents)
+- [Session Management Example](/agent-os/usage/client/session-management)
+- [Knowledge Search Example](/agent-os/usage/client/knowledge-search)
+- [Memory Operations Example](/agent-os/usage/client/memory-operations)
