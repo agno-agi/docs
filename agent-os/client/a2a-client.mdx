@@ -18,6 +18,8 @@ pip install agno httpx
 
 ## Quick Start
 
+### Connecting to Agno AgentOS
+
 ```python
 import asyncio
 from agno.client.a2a import A2AClient
@@ -33,39 +35,20 @@ async def main():
 asyncio.run(main())
 ```
 
-## Connecting to Different Servers
+### Connecting to Google ADK
 
-### Agno AgentOS
-
-For Agno servers with A2A interface enabled, include the full agent path in the URL:
+Google ADK uses JSON-RPC mode:
 
 ```python
 from agno.client.a2a import A2AClient
 
-# The URL includes the A2A path to the specific agent
-client = A2AClient("http://localhost:7003/a2a/agents/my-agent")
-
-result = await client.send_message(message="What can you help me with?")
-print(result.content)
-```
-
-### Google ADK
-
-Google ADK uses pure JSON-RPC mode. Set `protocol="json-rpc"`:
-
-```python
-from agno.client.a2a import A2AClient
-
-# Google ADK uses JSON-RPC at the root endpoint
 client = A2AClient("http://localhost:8001/", protocol="json-rpc")
-
-result = await client.send_message(message="Tell me an interesting fact")
-print(result.content)
+result = await client.send_message(message="Hello!")
 ```
 
 ## Streaming Responses
 
-Stream responses in real-time for a better user experience:
+Stream responses in real-time:
 
 ```python
 from agno.client.a2a import A2AClient
@@ -75,99 +58,11 @@ client = A2AClient("http://localhost:7003/a2a/agents/my-agent")
 async for event in client.stream_message(message="Tell me a story"):
     if event.is_content and event.content:
         print(event.content, end="", flush=True)
-
-    if event.is_final:
-        print("\n--- Stream complete ---")
 ```
-
-## Multi-Turn Conversations
-
-Use `context_id` to maintain conversation context across multiple messages:
-
-```python
-from agno.client.a2a import A2AClient
-
-client = A2AClient("http://localhost:7003/a2a/agents/my-agent")
-
-# First message - no context_id
-result1 = await client.send_message(
-    message="My name is Alice and I love Python.",
-)
-print(f"Agent: {result1.content}")
-
-# Get context_id from response
-context_id = result1.context_id
-
-# Follow-up message - include context_id
-result2 = await client.send_message(
-    message="What is my name?",
-    context_id=context_id,
-)
-print(f"Agent: {result2.content}")  # Should remember "Alice"
-```
-
-## Error Handling
-
-```python
-from agno.client.a2a import A2AClient
-from agno.exceptions import RemoteServerUnavailableError
-from httpx import HTTPStatusError
-
-client = A2AClient("http://localhost:7003/a2a/agents/my-agent")
-
-try:
-    result = await client.send_message(message="Hello")
-except RemoteServerUnavailableError as e:
-    print(f"Server unavailable: {e.message}")
-    print(f"URL: {e.base_url}")
-except HTTPStatusError as e:
-    print(f"HTTP error: {e.response.status_code}")
-```
-
-## Complete Example
-
-```python
-import asyncio
-from agno.client.a2a import A2AClient
-
-async def chat_with_agent():
-    """Interactive chat with an A2A agent."""
-    client = A2AClient("http://localhost:7003/a2a/agents/assistant")
-    context_id = None
-
-    print("Chat with the agent (type 'quit' to exit)")
-    print("-" * 40)
-
-    while True:
-        user_input = input("\nYou: ")
-        if user_input.lower() == 'quit':
-            break
-
-        print("Agent: ", end="", flush=True)
-
-        async for event in client.stream_message(
-            message=user_input,
-            context_id=context_id,
-        ):
-            if event.is_content and event.content:
-                print(event.content, end="", flush=True)
-
-            # Capture context_id for follow-up messages
-            if event.context_id and not context_id:
-                context_id = event.context_id
-
-        print()  # Newline after response
-
-if __name__ == "__main__":
-    asyncio.run(chat_with_agent())
-```
-
-## API Reference
-
-For complete method documentation, parameters, and response types, see the [A2AClient Reference](/reference/agent-os/a2a-client).
 
 ## Developer Resources
 
 - [A2A Protocol Documentation](https://a2a-protocol.org/)
+- [A2AClient Reference](/reference/agent-os/a2a-client)
 - [Agno A2A Interface](/agent-os/interfaces/a2a/introduction)
 - [Cookbook Examples](https://github.com/agno-agi/agno/tree/main/cookbook/06_agent_os/client_a2a)
