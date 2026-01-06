@@ -12,7 +12,7 @@ The `A2AClient` provides an async interface for communicating with any [A2A prot
 from agno.client.a2a import A2AClient
 
 # Connect to an Agno AgentOS A2A endpoint
-client = A2AClient("http://localhost:7003/a2a/agents/my-agent")
+client = A2AClient("http://localhost:7001/a2a/agents/my-agent")
 
 # Send a message
 result = await client.send_message(message="Hello!")
@@ -37,7 +37,7 @@ For Agno servers with A2A interface enabled, include the full agent path in the 
 from agno.client.a2a import A2AClient
 
 # The URL includes the A2A path to the specific agent
-client = A2AClient("http://localhost:7003/a2a/agents/my-agent")
+client = A2AClient("http://localhost:7001/a2a/agents/my-agent")
 
 result = await client.send_message(message="What can you help me with?")
 print(result.content)
@@ -93,8 +93,6 @@ print(f"Context ID: {result.context_id}")
 - `HTTPStatusError`: If the server returns an HTTP error (4xx, 5xx)
 - `RemoteServerUnavailableError`: If connection fails or times out
 
----
-
 ### `stream_message`
 
 Stream a message response in real-time.
@@ -119,14 +117,12 @@ async for event in client.stream_message(
 - `HTTPStatusError`: If the server returns an HTTP error (4xx, 5xx)
 - `RemoteServerUnavailableError`: If connection fails or times out
 
----
-
 ### `get_agent_card`
 
 Get the agent card for capability discovery.
 
 ```python
-card = await client.get_agent_card()
+card = client.get_agent_card()
 if card:
     print(f"Agent: {card.name}")
     print(f"Description: {card.description}")
@@ -136,6 +132,19 @@ if card:
 **Returns:** `AgentCard` if available, `None` otherwise
 
 ---
+### `aget_agent_card`
+
+Get the agent card for capability discovery asynchronously.
+
+```python
+card = await client.aget_agent_card()
+if card:
+    print(f"Agent: {card.name}")
+    print(f"Description: {card.description}")
+    print(f"Capabilities: {card.capabilities}")
+```
+
+**Returns:** `AgentCard` if available, `None` otherwise
 
 ## Response Types
 
@@ -198,7 +207,6 @@ Describes the capabilities of an A2A agent:
 | `capabilities` | `List[str]` | List of agent capabilities |
 | `metadata` | `Optional[Dict]` | Additional metadata |
 
----
 
 ## Multi-Turn Conversations
 
@@ -226,7 +234,6 @@ result2 = await client.send_message(
 print(f"Agent: {result2.content}")  # Should remember "Alice"
 ```
 
----
 
 ## Error Handling
 
@@ -244,44 +251,4 @@ except RemoteServerUnavailableError as e:
     print(f"URL: {e.base_url}")
 except HTTPStatusError as e:
     print(f"HTTP error: {e.response.status_code}")
-```
-
----
-
-## Complete Example
-
-```python
-import asyncio
-from agno.client.a2a import A2AClient
-
-async def chat_with_agent():
-    """Interactive chat with an A2A agent."""
-    client = A2AClient("http://localhost:7003/a2a/agents/assistant")
-    context_id = None
-
-    print("Chat with the agent (type 'quit' to exit)")
-    print("-" * 40)
-
-    while True:
-        user_input = input("\nYou: ")
-        if user_input.lower() == 'quit':
-            break
-
-        print("Agent: ", end="", flush=True)
-
-        async for event in client.stream_message(
-            message=user_input,
-            context_id=context_id,
-        ):
-            if event.is_content and event.content:
-                print(event.content, end="", flush=True)
-
-            # Capture context_id for follow-up messages
-            if event.context_id and not context_id:
-                context_id = event.context_id
-
-        print()  # Newline after response
-
-if __name__ == "__main__":
-    asyncio.run(chat_with_agent())
 ```
