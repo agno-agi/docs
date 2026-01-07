@@ -83,10 +83,132 @@ agent.print_response("List all the files in my home directory.")
 
 ```
 
+## Async Toolkits
+
+For toolkits that need to perform async operations (like HTTP requests, database queries, or browser automation), you can provide both sync and async variants of your tools. The framework automatically uses the appropriate version based on the execution context:
+- `agent.run()` / `agent.print_response()` → uses sync tools
+- `agent.arun()` / `agent.aprint_response()` → uses async tools
+
+To create an async-capable toolkit, pass async tool variants using the `async_tools` parameter:
+
+```python
+from typing import Any, Dict
+
+from agno.agent import Agent
+from agno.tools import Toolkit
+
+try:
+    import httpx
+except ImportError:
+    raise ImportError("`httpx` not installed. Run `pip install httpx`")
+
+
+class APITools(Toolkit):
+    def __init__(self, base_url: str, timeout: float = 30.0, **kwargs):
+        self.base_url = base_url
+        self.timeout = timeout
+
+        # Sync tools for agent.run() and agent.print_response()
+        tools = [
+            self.fetch_data,
+            self.post_data,
+        ]
+
+        # Async tools for agent.arun() and agent.aprint_response()
+        # Format: (async_method, "tool_name")
+        async_tools = [
+            (self.afetch_data, "fetch_data"),
+            (self.apost_data, "post_data"),
+        ]
+
+        super().__init__(name="api_tools", tools=tools, async_tools=async_tools, **kwargs)
+
+    # Sync methods
+    def fetch_data(self, endpoint: str) -> Dict[str, Any]:
+        """
+        Fetch data from an API endpoint.
+
+        Args:
+            endpoint: The API endpoint to fetch data from (e.g., "/users/123")
+        Returns:
+            The JSON response from the API
+        """
+        url = f"{self.base_url}{endpoint}"
+        with httpx.Client(timeout=self.timeout) as client:
+            response = client.get(url)
+            response.raise_for_status()
+            return response.json()
+
+    def post_data(self, endpoint: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Post data to an API endpoint.
+
+        Args:
+            endpoint: The API endpoint to post data to
+            data: The data to post as JSON
+        Returns:
+            The JSON response from the API
+        """
+        url = f"{self.base_url}{endpoint}"
+        with httpx.Client(timeout=self.timeout) as client:
+            response = client.post(url, json=data)
+            response.raise_for_status()
+            return response.json()
+
+    # Async methods (used automatically in async contexts)
+    async def afetch_data(self, endpoint: str) -> Dict[str, Any]:
+        """
+        Fetch data from an API endpoint asynchronously.
+
+        Args:
+            endpoint: The API endpoint to fetch data from (e.g., "/users/123")
+        Returns:
+            The JSON response from the API
+        """
+        url = f"{self.base_url}{endpoint}"
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            return response.json()
+
+    async def apost_data(self, endpoint: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Post data to an API endpoint asynchronously.
+
+        Args:
+            endpoint: The API endpoint to post data to
+            data: The data to post as JSON
+        Returns:
+            The JSON response from the API
+        """
+        url = f"{self.base_url}{endpoint}"
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.post(url, json=data)
+            response.raise_for_status()
+            return response.json()
+
+# Create the agent with the toolkit (using JSONPlaceholder - a free fake API for testing)
+agent = Agent(tools=[APITools(base_url="https://jsonplaceholder.typicode.com")], markdown=True)
+
+# Sync usage - uses fetch_data
+agent.print_response("Fetch the user with ID 1")
+
+# Async usage - uses afetch_data automatically
+import asyncio
+asyncio.run(agent.aprint_response("Fetch the post with ID 1"))
+```
+
+<Note>
+The `async_tools` parameter takes a list of tuples where each tuple contains:
+- The async method reference
+- The tool name (should match the sync tool name for automatic switching)
+</Note>
+
 <Tip>
 Important Tips:
 - Fill in the docstrings for each function with detailed descriptions of the function and its arguments.
 - Remember that this function is provided to the LLM and is not used elsewhere in code, so the docstring should make sense to an LLM and the name of the functions need to be descriptive.
+- For async toolkits, keep the sync and async method signatures identical (same parameters) so the LLM-generated tool calls work with both variants.
 </Tip>
 
 See the [Toolkit Reference](/reference/tools/toolkit) for more details.
