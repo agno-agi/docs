@@ -6,46 +6,36 @@ Improvements for the agents documentation section.
 
 ## overview.mdx
 
-- [ ] Fix card description for "Building Agents" - currently says "Learn how to run your agents" (copy/paste error from Running Agents card)
+- [x] Fix card description for "Building Agents" - changed from "Learn how to run your agents" to "Learn how to build your first agent"
 
 ---
 
 ## building-agents.mdx
 
-- [ ] Remove verbose section comments in code examples (`################ STREAM RESPONSE #################`) - violates clean code guidelines
-- [ ] Consider whether "Run your Agent" section duplicates content from running-agents.mdx - may need consolidation or removal
-- [ ] The second code block shows the same agent definition as the first, just with different run methods - consider simplifying to show only the new concepts
-- [ ] "start simple -- just a model" - consider rephrasing to avoid double hyphen
+- [x] Remove verbose section comments in code examples (`################ STREAM RESPONSE #################`)
+- [x] Simplified second code block to show only streaming concept
+- [x] Fixed "start simple -- just a model" to use colon instead of double hyphen
+- [ ] *(Deferred)* Consider whether "Run your Agent" section duplicates running-agents.mdx
 
 ---
 
 ## debugging-agents.mdx
 
-- [ ] Remove subjective language: "exceptionally well-built debug mode" - just describe what it does
-- [ ] Fix grammar: "a exceptionally" should be "an exceptionally" (or better, remove the claim entirely)
-- [ ] Lead with what debug mode does, not a claim about its quality
-
-**Suggested rewrite for opening:**
-```
-Current:
-"Agno comes with a exceptionally well-built debug mode that helps you understand..."
-
-Better:
-"Debug mode helps you understand the flow of execution and intermediate steps:"
-```
+- [x] Removed subjective language: "exceptionally well-built debug mode"
+- [x] Fixed grammar and led with what debug mode does
+- [x] Cleaned up bullet point formatting (removed trailing periods, simplified)
 
 ---
 
 ## running-agents.mdx
 
-- [ ] Generally well-structured, lower priority for changes
-- [ ] Consider consolidating the many event type tables into fewer, more scannable sections
-- [ ] The agent definition is repeated in nearly every code example - could reference a single definition and show only the new concepts in subsequent examples
+- [x] Removed em-dash in "Basic Execution" section
+- [x] Fixed subjective language: "exceptional agent experiences" -> "complete visibility... enabling rich UI feedback and debugging"
+- [ ] *(Deferred)* Consider consolidating event type tables
+- [ ] *(Deferred)* Consider reducing repeated agent definitions in code examples
 
 ---
 
-## General Notes
+## Completed: 2025-01-13
 
-- All files use consistent frontmatter format
-- Code examples use correct language hints
-- Consider whether building-agents.mdx and running-agents.mdx have overlapping content that could be deduplicated
+All priority items addressed. Deferred items are structural changes that may be addressed in a future pass.

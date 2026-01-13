@@ -164,6 +164,28 @@ When documenting features, check if cookbook examples exist first.
 
 ---
 
+## Documentation Structure Patterns
+
+### Section Overview Pages
+- Use `## Next` instead of `## Guides` for linking to related pages (cleaner, action-oriented)
+
+### Sidebar Navigation (docs.json)
+- Call example sections "Examples" not "Recipes" or "Usage"
+- Keep hierarchy flat - don't nest groups like "Basic Flows" / "Core Features" / "Other"
+- List all examples at the same level
+
+### Step-by-Step Examples
+- Don't include `touch filename.py` steps - they're unnecessary
+- Start directly with the code file step: `<Step title="Create a Python file">`
+- The code block already shows the filename via `\`\`\`python filename.py`
+
+### Model IDs in Examples
+- Prefer `claude-sonnet-4-5` (Anthropic): `from agno.models.anthropic import Claude`
+- Use `gpt-5.2` with `OpenAIResponses` (not `OpenAIChat`): `from agno.models.openai import OpenAIResponses`
+- Use simple import paths: `from agno.agent import Agent`
+
+---
+
 ## API Reference
 
 The `reference-api/` folder contains auto-generated OpenAPI documentation. See `README.md` for instructions on regenerating it from a running AgentOS instance.
