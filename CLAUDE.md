@@ -178,6 +178,10 @@ When documenting features, check if cookbook examples exist first.
 - Don't include `touch filename.py` steps - they're unnecessary
 - Start directly with the code file step: `<Step title="Create a Python file">`
 - The code block already shows the filename via `\`\`\`python filename.py`
+- Use `uv` for virtual environments and package installation:
+  - Venv: `uv venv --python 3.12` (snippet handles this)
+  - Install: `uv pip install -U agno ...`
+- Step titles: "Set up your virtual environment", "Install dependencies", "Run Agent"
 
 ### Model IDs in Examples
 - Prefer `claude-sonnet-4-5` (Anthropic): `from agno.models.anthropic import Claude`
