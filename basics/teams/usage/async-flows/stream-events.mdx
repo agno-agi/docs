@@ -7,28 +7,15 @@ description: This example demonstrates how to handle and monitor team events asy
 <Steps>
 
   <Step title="Create a Python file">
-    ```bash
-    touch stream_events.py
-    ```
-  </Step>
-
-  <Step title="Add the following code to your Python file">
 
     ```python stream_events.py
-    """
-    This example demonstrates how to handle and monitor team events asynchronously.
-
-    Shows how to capture and respond to various events during async team execution,
-    including tool calls, run states, and content generation events.
-    """
-
     import asyncio
     from uuid import uuid4
 
     from agno.agent import RunEvent
-    from agno.agent.agent import Agent
-    from agno.models.anthropic.claude import Claude
-    from agno.models.openai import OpenAIChat
+    from agno.agent import Agent
+    from agno.models.anthropic import Claude
+    from agno.models.openai import OpenAIResponses
     from agno.team.team import Team, TeamRunEvent
     from agno.tools.duckduckgo import DuckDuckGoTools
     from agno.tools.hackernews import HackerNewsTools
@@ -49,7 +36,7 @@ description: This example demonstrates how to handle and monitor team events asy
         id="website-agent",
         name="Website Agent",
         role="Search the website for information",
-        model=OpenAIChat(id="gpt-5-mini"),
+        model=OpenAIResponses(id="gpt-5.2"),
         tools=[DuckDuckGoTools()],
         instructions=[
             "Search the website for information",
@@ -64,7 +51,7 @@ description: This example demonstrates how to handle and monitor team events asy
     company_info_team = Team(
         name="Company Info Team",
         id=id,
-        model=Claude(id="claude-3-7-sonnet-latest"),
+        model=Claude(id="claude-sonnet-4-5"),
         members=[
             hacker_news_agent,
             website_agent,
@@ -80,14 +67,6 @@ description: This example demonstrates how to handle and monitor team events asy
 
 
     async def run_team_with_events(prompt: str):
-        """
-        Run the team and capture all events for monitoring and debugging.
-
-        This function demonstrates how to handle different types of events:
-        - Team-level events (run start/completion, tool calls)
-        - Member-level events (agent tool calls)
-        - Content generation events
-        """
         content_started = False
 
         async for run_response_event in company_info_team.arun(
@@ -100,25 +79,25 @@ description: This example demonstrates how to handle and monitor team events asy
                 TeamRunEvent.run_started,
                 TeamRunEvent.run_completed,
             ]:
-                print(f"\n🎯 TEAM EVENT: {run_response_event.event}")
+                print(f"\nTEAM EVENT: {run_response_event.event}")
 
             # Handle team tool call events
             if run_response_event.event in [TeamRunEvent.tool_call_started]:
-                print(f"\n🔧 TEAM TOOL STARTED: {run_response_event.tool.tool_name}")
+                print(f"\nTEAM TOOL STARTED: {run_response_event.tool.tool_name}")
                 print(f"   Args: {run_response_event.tool.tool_args}")
 
             if run_response_event.event in [TeamRunEvent.tool_call_completed]:
-                print(f"\n✅ TEAM TOOL COMPLETED: {run_response_event.tool.tool_name}")
+                print(f"\nTEAM TOOL COMPLETED: {run_response_event.tool.tool_name}")
                 print(f"   Result: {run_response_event.tool.result}")
 
             # Handle member-level events
             if run_response_event.event in [RunEvent.tool_call_started]:
-                print(f"\n🤖 MEMBER TOOL STARTED: {run_response_event.agent_id}")
+                print(f"\nMEMBER TOOL STARTED: {run_response_event.agent_id}")
                 print(f"   Tool: {run_response_event.tool.tool_name}")
                 print(f"   Args: {run_response_event.tool.tool_args}")
 
             if run_response_event.event in [RunEvent.tool_call_completed]:
-                print(f"\n✅ MEMBER TOOL COMPLETED: {run_response_event.agent_id}")
+                print(f"\nMEMBER TOOL COMPLETED: {run_response_event.agent_id}")
                 print(f"   Tool: {run_response_event.tool.tool_name}")
                 print(
                     f"   Result: {run_response_event.tool.result[:100]}..."
@@ -127,7 +106,7 @@ description: This example demonstrates how to handle and monitor team events asy
             # Handle content generation
             if run_response_event.event in [TeamRunEvent.run_content]:
                 if not content_started:
-                    print("\n📝 CONTENT:")
+                    print("\nCONTENT:")
                     content_started = True
                 else:
                     print(run_response_event.content, end="")
@@ -145,9 +124,9 @@ description: This example demonstrates how to handle and monitor team events asy
 
   <Snippet file="create-venv-step.mdx" />
 
-  <Step title="Install libraries">
+  <Step title="Install dependencies">
     ```bash
-    pip install -U agno openai ddgs anthropic
+    uv pip install -U agno openai ddgs anthropic
     ```
   </Step>
 
