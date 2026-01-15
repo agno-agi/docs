@@ -1,0 +1,82 @@
+---
+title: Agent with Structured Output
+sidebarTitle: Structured Output
+description: "Get typed Pydantic responses instead of free-form text."
+---
+
+Instead of parsing free-form text, use `output_schema` to get structured, typed responses you can trust.
+
+<Steps>
+
+  <Step title="Create a Python file">
+    ```python structured_output.py
+    from typing import List
+
+    from agno.agent import Agent
+    from agno.models.openai import OpenAIResponses
+    from agno.tools.duckduckgo import DuckDuckGoTools
+    from pydantic import BaseModel, Field
+
+
+    class StockReport(BaseModel):
+        ticker: str = Field(..., description="Stock ticker symbol")
+        company_name: str = Field(..., description="Full company name")
+        current_price: float = Field(..., description="Current price in USD")
+        summary: str = Field(..., description="One-line summary")
+        key_points: List[str] = Field(..., description="3 key points about the stock")
+
+
+    agent = Agent(
+        model=OpenAIResponses(id="gpt-5.2"),
+        tools=[DuckDuckGoTools()],
+        output_schema=StockReport,
+        markdown=True,
+    )
+
+    response = agent.run("Analyze NVIDIA stock")
+
+    # Access typed data directly
+    report: StockReport = response.content
+    print(f"{report.company_name} ({report.ticker})")
+    print(f"Price: ${report.current_price}")
+    print(f"Summary: {report.summary}")
+    for point in report.key_points:
+        print(f"  - {point}")
+    ```
+  </Step>
+
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai duckduckgo-search
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+
+    <CodeGroup>
+
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run Agent">
+    <CodeGroup>
+    ```bash Mac
+    python structured_output.py
+    ```
+
+    ```bash Windows
+    python structured_output.py
+    ```
+    </CodeGroup>
+  </Step>
+
+</Steps>
