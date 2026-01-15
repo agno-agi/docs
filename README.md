@@ -33,7 +33,17 @@ git commit -m "update message"
 git push
 ```
 
-## How to generate a new API reference
+## Generating New API Reference
+
+**Note:**
+
+Before generating a new API Reference, ensure that the following packages are installed in your dev environment
+
+```bash
+pip install fastapi uvicorn sqlalchemy pgvector psycopg openai ddgs yfinance a2a a2a-types a2a-sdk ag-ui-protocol slack-sdk
+```
+
+### Steps
 
 1. In your local `agno` repo, run the `AgentOS` cookbook containing all supported interfaces, using the latest version of Agno.
    ```bash
