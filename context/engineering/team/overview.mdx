@@ -30,42 +30,42 @@ The system message is built from the team’s description, instructions, member 
 ```python instructions.py
 from agno.agent import Agent
 from agno.team import Team
-from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.tools.hackernews import HackerNewsTools
+from agno.tools.yfinance import YFinanceTools
 
-web_agent = Agent(
-    name="Web Researcher",
-    role="You are a web researcher that can find information on the web.",
+news_agent = Agent(
+    name="News Researcher",
+    role="You are a news researcher that can find information on HackerNews.",
     instructions=[
-        "Use your web search tool to find information on the web.",
-        "Provide a summary of the information found.",
-    ],
-    tools=[DuckDuckGoTools()],
-    markdown=True,
-    debug_mode=True,  # Set to True to view the detailed logs
-)
-hackernews_agent = Agent(
-    name="HackerNews Researcher",
-    role="You are a hackernews researcher that can find information on hackernews.",
-    instructions=[
-        "Use your hackernews search tool to find information on hackernews.",
+        "Use your HackerNews tool to find tech news and discussions.",
         "Provide a summary of the information found.",
     ],
     tools=[HackerNewsTools()],
     markdown=True,
-    debug_mode=True,  # Set to True to view the detailed logs
+    debug_mode=True,
+)
+finance_agent = Agent(
+    name="Finance Researcher",
+    role="You are a finance researcher that can get stock prices and market data.",
+    instructions=[
+        "Use your finance tools to get stock prices and financial data.",
+        "Provide a summary of the information found.",
+    ],
+    tools=[YFinanceTools()],
+    markdown=True,
+    debug_mode=True,
 )
 
 team = Team(
-    members=[web_agent, hackernews_agent],
+    members=[news_agent, finance_agent],
     instructions=[
-        "You are a team of researchers that can find information on the web and hackernews.",
+        "You are a team of researchers that can find tech news and financial data.",
         "After finding information about the topic, compile a joint report."
     ],
     markdown=True,
-    debug_mode=True,   # Set to True to view the detailed logs and see the compiled system message
+    debug_mode=True,
 )
-team.print_response("What is the latest news on the crypto market?", stream=True)
+team.print_response("What is the latest news on AI and how is NVDA performing?", stream=True)
 ```
 
 Will produce the following system message:
@@ -77,19 +77,19 @@ Your task is to coordinate the team to complete the user's request.
 Here are the members in your team:
 <team_members>
 - Agent 1:
-    - ID: web-researcher
-    - Name: Web Researcher
-    - Role: You are a web researcher that can find information on the web.
-    - Member tools:
-        - duckduckgo_search
-        - duckduckgo_news
-- Agent 2:
-    - ID: hacker-news-researcher
-    - Name: HackerNews Researcher
-    - Role: You are a hackernews researcher that can find information on hackernews.
+    - ID: news-researcher
+    - Name: News Researcher
+    - Role: You are a news researcher that can find information on HackerNews.
     - Member tools:
         - get_top_hackernews_stories
         - get_user_details
+- Agent 2:
+    - ID: finance-researcher
+    - Name: Finance Researcher
+    - Role: You are a finance researcher that can get stock prices and market data.
+    - Member tools:
+        - get_stock_price
+        - get_analyst_recommendations
 </team_members>
 
 <how_to_respond>
@@ -444,38 +444,36 @@ You can now add the history of the conversation to the context using `add_histor
 
 ```python
 from agno.agent import Agent
-from agno.team import Team
-from agno.tools.duckduckgo import DuckDuckGoTools
-from agno.db.postgres import PostgresDb
+from agno.db.sqlite import SqliteDb
 from agno.models.openai import OpenAIResponses
+from agno.team import Team
+from agno.tools.hackernews import HackerNewsTools
 
-db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
+db = SqliteDb(db_file="tmp/team.db")
 
-db = PostgresDb(db_url=db_url)
-
-web_researcher = Agent(
-    name="Web Researcher",
-    role="You are a web researcher that can find information on the web.",
-    tools=[DuckDuckGoTools()],
+news_researcher = Agent(
+    name="News Researcher",
+    role="You are a news researcher that can find information on HackerNews.",
+    tools=[HackerNewsTools()],
     instructions=[
-        "Use your web search tool to find information on the web.",
+        "Use your HackerNews tool to find tech news and discussions.",
         "Provide a summary of the information found.",
     ],
 )
 
 team = Team(
-    members=[web_researcher],
+    members=[news_researcher],
     model=OpenAIResponses(id="gpt-5.2"),
     db=db,
     session_id="chat_history",
-    instructions="You are a helpful assistant that can answer questions about space and oceans.",
+    instructions="You are a helpful assistant that can answer questions about technology.",
     add_history_to_context=True,
-    num_history_runs=2,  # Optionally limit the number of history responses to add to the context
+    num_history_runs=2,
 )
 
-team.print_response("Where is the sea of tranquility?")
+team.print_response("What are the top stories on HackerNews?", stream=True)
 
-team.print_response("What was my first question?")
+team.print_response("What was my first question?", stream=True)
 ```
 
 This will add the history of the conversation to the context, which can be used to provide context for the next message.
@@ -499,32 +497,39 @@ from agno.agent import Agent
 from agno.db.sqlite import SqliteDb
 from agno.models.openai import OpenAIResponses
 from agno.team import Team
-from agno.tools.duckduckgo import DuckDuckGoTools
+from agno.tools.hackernews import HackerNewsTools
+from agno.tools.yfinance import YFinanceTools
 
-web_agent = Agent(
-    name="Web Researcher",
+news_agent = Agent(
+    name="News Researcher",
     model=OpenAIResponses(id="gpt-5.2"),
-    instructions="You are a web researcher. Search the web for comprehensive information on given topics.",
-    tools=[DuckDuckGoTools()],
+    instructions="You are a news researcher. Search HackerNews for tech news and discussions.",
+    tools=[HackerNewsTools()],
+)
+
+finance_agent = Agent(
+    name="Finance Researcher",
+    model=OpenAIResponses(id="gpt-5.2"),
+    instructions="You are a finance researcher. Get stock prices and financial data.",
+    tools=[YFinanceTools()],
 )
 
 team = Team(
-    members=[web_agent],
+    members=[news_agent, finance_agent],
     model=OpenAIResponses(id="gpt-5.2"),
     db=SqliteDb(db_file="tmp/filter_history_tool_calls_team.db"),
     add_history_to_context=True,
-    max_tool_calls_from_history=5,  # Keep only last 5 tool calls in context
+    max_tool_calls_from_history=5,
     show_members_responses=True,
 )
 
-team.print_response("Search for AI news")
-team.print_response("Search for crypto trends")
-team.print_response("Search for tech stocks")
+team.print_response("Search for AI news on HackerNews", stream=True)
+team.print_response("Get the stock price for NVDA", stream=True)
+team.print_response("Search for LLM discussions", stream=True)
 # Older searches will be filtered from context
-team.print_response("Search for startups")
-team.print_response("Search for weather in Mumbai")
-team.print_response("Search for latest startup fundraises")
-team.print_response("What topics did I search for recently?")
+team.print_response("Get the stock price for AAPL", stream=True)
+team.print_response("Search for startup news", stream=True)
+team.print_response("What topics did I search for recently?", stream=True)
 ```
 In this example:
 - **Run 1-3:** Team sees tool calls [1], [1,2], [1,2,3,4,5]

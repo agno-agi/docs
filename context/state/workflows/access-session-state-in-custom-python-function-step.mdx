@@ -1,6 +1,6 @@
 ---
-title: Access Run Context and Session State in Custom Python Function Step
-sidebarTitle: Session State in Custom Function
+title: State in Custom Function
+sidebarTitle: State in Custom Function
 description: This example demonstrates how to access the run context in a custom python function step
 mode: wide
 ---
@@ -16,12 +16,12 @@ Create a file named `access_session_state_in_custom_python_function_step.py`
 from agno.agent import Agent
 from agno.db.sqlite import SqliteDb
 from agno.models.openai import OpenAIResponses
+from agno.run import RunContext
 from agno.team import Team
-from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.tools.hackernews import HackerNewsTools
+from agno.tools.yfinance import YFinanceTools
 from agno.workflow.step import Step, StepInput, StepOutput
 from agno.workflow.workflow import Workflow
-from agno.run import RunContext
 
 # Define agents
 hackernews_agent = Agent(
@@ -31,18 +31,18 @@ hackernews_agent = Agent(
     instructions="Extract key insights and content from Hackernews posts",
 )
 
-web_agent = Agent(
-    name="Web Agent",
+finance_agent = Agent(
+    name="Finance Agent",
     model=OpenAIResponses(id="gpt-5.2"),
-    tools=[DuckDuckGoTools()],
-    instructions="Search the web for the latest news and trends",
+    tools=[YFinanceTools()],
+    instructions="Get financial data and market trends",
 )
 
 # Define research team for complex analysis
 research_team = Team(
     name="Research Team",
     model=OpenAIResponses(id="gpt-5.2"),
-    members=[hackernews_agent, web_agent],
+    members=[hackernews_agent, finance_agent],
     instructions="Analyze content and create comprehensive social media strategy",
 )
 
@@ -116,7 +116,7 @@ def custom_content_planning_function(
 
             **Planning Topic:** {message}
 
-            **Research Integration:** {"✓ Research-based" if previous_step_content else "✗ No research foundation"}
+            **Research Integration:** {"Research-based" if previous_step_content else "No research foundation"}
             **Total Plans Created:** {len(run_context.session_state["content_plans"])}
 
             **Content Strategy:**
@@ -165,7 +165,7 @@ def content_summary_function(step_input: StepInput, run_context: RunContext) -> 
         summary += f"""
 
         ### Plan #{plan["id"]} - {plan["topic"]}
-        - Research Available: {"✓" if plan["has_research"] else "✗"}
+        - Research Available: {"Yes" if plan["has_research"] else "No"}
         - Status: Completed
         """
 
@@ -236,27 +236,21 @@ if __name__ == "__main__":
 
 <Snippet file="create-venv-step.mdx" />
 
-<Step title="Install libraries">
+<Step title="Install dependencies">
 
 ```bash
-uv pip install -U agno openai ddgs
+uv pip install -U agno openai yfinance
 ```
 
 </Step>
 
-<Step title="Set OpenAI Key">
+<Step title="Export your OpenAI API key">
 <Snippet file="set-openai-key.mdx" />
 </Step>
 
-<Step title="Run the workflow">
-<CodeGroup>
-```bash Mac
+<Step title="Run Workflow">
+```bash
 python access_session_state_in_custom_python_function_step.py
 ```
-
-```bash Windows
-python access_session_state_in_custom_python_function_step.py
-```
-</CodeGroup>
 </Step>
 </Steps>
