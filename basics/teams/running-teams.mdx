@@ -44,29 +44,31 @@ The `Team.run()` function runs the team and returns the output — either as a `
 from agno.team import Team
 from agno.agent import Agent
 from agno.models.openai import OpenAIResponses
+from agno.tools.hackernews import HackerNewsTools
+from agno.tools.yfinance import YFinanceTools
 from agno.utils.pprint import pprint_run_response
 
 news_agent = Agent(
     name="News Agent",
     model=OpenAIResponses(id="gpt-5.2"),
-    role="Get the latest news",
-    tools=[DuckDuckGoTools()]
+    role="Get the latest tech news from HackerNews",
+    tools=[HackerNewsTools()]
 )
-weather_agent = Agent(
-    name="Weather Agent",
+finance_agent = Agent(
+    name="Finance Agent",
     model=OpenAIResponses(id="gpt-5.2"),
-    role="Get the weather for the next 7 days",
-    tools=[DuckDuckGoTools()]
+    role="Get stock prices and financial data",
+    tools=[YFinanceTools()]
 )
 
 team = Team(
-    name="News and Weather Team",
-    members=[news_agent, weather_agent],
+    name="Research Team",
+    members=[news_agent, finance_agent],
     model=OpenAIResponses(id="gpt-5.2")
 )
 
 # Run team and return the response as a variable
-response = team.run(input="What is the weather in Tokyo?")
+response = team.run(input="What are the trending AI stories and how are AI stocks doing?")
 # Print the response in markdown format
 pprint_run_response(response, markdown=True)
 ```
@@ -98,18 +100,20 @@ from typing import Iterator
 from agno.team import Team
 from agno.agent import Agent
 from agno.models.openai import OpenAIResponses
+from agno.tools.hackernews import HackerNewsTools
+from agno.tools.yfinance import YFinanceTools
 
-news_agent = Agent(name="News Agent", role="Get the latest news")
-weather_agent = Agent(name="Weather Agent", role="Get the weather for the next 7 days")
+news_agent = Agent(name="News Agent", role="Get tech news from HackerNews", tools=[HackerNewsTools()])
+finance_agent = Agent(name="Finance Agent", role="Get stock data", tools=[YFinanceTools()])
 
 team = Team(
-    name="News and Weather Team",
-    members=[news_agent, weather_agent],
+    name="Research Team",
+    members=[news_agent, finance_agent],
     model=OpenAIResponses(id="gpt-5.2")
 )
 
 # Run team and return the response as a stream
-stream: Iterator[TeamRunOutputEvent] = team.run("What is the weather in Tokyo?", stream=True)
+stream: Iterator[TeamRunOutputEvent] = team.run("What are the top AI stories?", stream=True)
 for chunk in stream:
     print(chunk.content, end="", flush=True)
 ```
@@ -126,7 +130,7 @@ This will provide real-time updates about the team's internal processes, like to
 ```python
 # Stream all events
 response_stream = team.run(
-    "What is the weather in Tokyo?",
+    "What are the trending AI stories?",
     stream=True,
     stream_events=True
 )
@@ -146,14 +150,14 @@ You can disable this by setting `stream_member_events=False`.
 ...
 
 team = Team(
-    name="News and Weather Team",
-    members=[news_agent, weather_agent],
+    name="Research Team",
+    members=[news_agent, finance_agent],
     model=OpenAIResponses(id="gpt-5.2"),
     stream_member_events=False
 )
 
 response_stream = team.run(
-    "What is the weather in Tokyo?",
+    "What are the trending AI stories?",
     stream=True,
     stream_events=True)
 ```
@@ -168,16 +172,16 @@ from agno.run.team import TeamRunEvent
 from agno.run.agent import RunEvent
 from agno.models.openai import OpenAIResponses
 from agno.agent import Agent
-from agno.tools.duckduckgo import DuckDuckGoTools
+from agno.tools.hackernews import HackerNewsTools
 
-weather_agent = Agent(name="Weather Agent", role="Get the weather for the next 7 days", tools=[DuckDuckGoTools()])
+news_agent = Agent(name="News Agent", role="Get tech news from HackerNews", tools=[HackerNewsTools()])
 team = Team(
-    name="Test Team",
-    members=[weather_agent],
+    name="News Team",
+    members=[news_agent],
     model=OpenAIResponses(id="gpt-5.2")
 )
 
-response_stream = team.run("What is the weather in Tokyo?", stream=True, stream_events=True)
+response_stream = team.run("What are the top stories?", stream=True, stream_events=True)
 
 for event in response_stream:
     if event.event == TeamRunEvent.run_content:

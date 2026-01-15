@@ -1,68 +1,58 @@
 ---
 title: Agent with Memory
-description: Learn how to give your agent persistent memory
+description: "Give your agent persistent memory of user preferences."
 mode: wide
 ---
 
-This example shows you how to use persistent memory with an Agent.
-
-After each run, user memories are created/updated.
-
-To enable this, set `enable_user_memories=True` in the Agent config.
+Memory lets your agent remember facts about users across conversations. Different from storage (which persists conversation history), memory stores user-level information like preferences and context.
 
 <Steps>
 
   <Step title="Create a Python file">
     ```python agent_with_memory.py
-    from uuid import uuid4
-
     from agno.agent import Agent
-    from agno.db.postgres import PostgresDb
+    from agno.db.sqlite import SqliteDb
+    from agno.memory import MemoryManager
     from agno.models.openai import OpenAIResponses
+    from agno.tools.yfinance import YFinanceTools
     from rich.pretty import pprint
 
-    db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
+    db = SqliteDb(db_file="tmp/agents.db")
 
-    db = PostgresDb(db_url=db_url)
-
-    db.clear_memories()
-
-    session_id = str(uuid4())
-    john_doe_id = "john_doe@example.com"
+    memory_manager = MemoryManager(
+        model=OpenAIResponses(id="gpt-5.2"),
+        db=db,
+    )
 
     agent = Agent(
         model=OpenAIResponses(id="gpt-5.2"),
+        tools=[YFinanceTools()],
         db=db,
-        enable_user_memories=True,
+        memory_manager=memory_manager,
+        enable_agentic_memory=True,
+        markdown=True,
     )
 
+    user_id = "investor@example.com"
+
+    # Tell the agent about yourself
     agent.print_response(
-        "My name is John Doe and I like to hike in the mountains on weekends.",
+        "I'm interested in AI and semiconductor stocks. My risk tolerance is moderate.",
+        user_id=user_id,
         stream=True,
-        user_id=john_doe_id,
-        session_id=session_id,
     )
 
+    # The agent now knows your preferences
     agent.print_response(
-        "What are my hobbies?", stream=True, user_id=john_doe_id, session_id=session_id
-    )
-
-    memories = agent.get_user_memories(user_id=john_doe_id)
-    print("John Doe's memories:")
-    pprint(memories)
-
-    agent.print_response(
-        "Ok i dont like hiking anymore, i like to play soccer instead.",
+        "What stocks would you recommend for me?",
+        user_id=user_id,
         stream=True,
-        user_id=john_doe_id,
-        session_id=session_id,
     )
 
-    # You can also get the user memories from the agent
-    memories = agent.get_user_memories(user_id=john_doe_id)
-    print("John Doe's memories:")
+    # View stored memories
+    memories = agent.get_user_memories(user_id=user_id)
+    print("\nStored Memories:")
     pprint(memories)
-
     ```
   </Step>
 
@@ -70,7 +60,7 @@ To enable this, set `enable_user_memories=True` in the Agent config.
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U agno openai psycopg rich
+    uv pip install -U agno openai yfinance sqlalchemy rich
     ```
   </Step>
 
@@ -79,25 +69,34 @@ To enable this, set `enable_user_memories=True` in the Agent config.
     <CodeGroup>
 
     ```bash Mac/Linux
-      export OPENAI_API_KEY="your_openai_api_key_here"
+    export OPENAI_API_KEY="your_openai_api_key_here"
     ```
 
     ```bash Windows
-      $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
     ```
     </CodeGroup>
   </Step>
 
   <Step title="Run Agent">
-    <CodeGroup>
-    ```bash Mac
+    ```bash
     python agent_with_memory.py
     ```
-
-    ```bash Windows
-    python agent_with_memory.py
-    ```
-    </CodeGroup>
   </Step>
 
 </Steps>
+
+## Memory vs Storage
+
+| Feature | Storage | Memory |
+|---------|---------|--------|
+| What it stores | Conversation history | User preferences and facts |
+| Scope | Per session | Per user (across all sessions) |
+| Use case | "What did we discuss?" | "What do you know about me?" |
+
+## Enabling Memory
+
+Two ways to enable memory:
+
+1. **`enable_agentic_memory=True`** (used above): Agent decides when to store/recall via tool calls. More efficient.
+2. **`enable_user_memories=True`**: Memory manager runs after every response. Guaranteed capture, higher latency.

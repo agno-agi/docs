@@ -1,17 +1,18 @@
 ---
-title: "Pydantic Models as Team Output"
+title: Team with Structured Output
+description: "Return validated Pydantic models from team responses."
 ---
 
-This example demonstrates how to use Pydantic models as output from teams, showing how structured data can be returned as responses for more precise and validated output handling.
+Use `output_schema` to ensure team responses are structured as Pydantic models. This provides type-safe, validated output.
 
 ## Code
 
-```python cookbook/02_examples/teams/structured_input_output/00_pydantic_model_output.py
+```python pydantic_model_output.py
 from agno.agent import Agent
 from agno.models.openai import OpenAIResponses
 from agno.team import Team
-from agno.tools.duckduckgo import DuckDuckGoTools
-from agno.utils.pprint import pprint_run_response
+from agno.tools.hackernews import HackerNewsTools
+from agno.tools.yfinance import YFinanceTools
 from pydantic import BaseModel
 
 
@@ -21,71 +22,81 @@ class StockAnalysis(BaseModel):
     analysis: str
 
 
-class CompanyAnalysis(BaseModel):
-    company_name: str
-    analysis: str
+class NewsAnalysis(BaseModel):
+    topic: str
+    summary: str
 
 
-stock_searcher = Agent(
-    name="Stock Searcher",
-    model=OpenAIResponses("gpt-5.2"),
+class ResearchReport(BaseModel):
+    title: str
+    stock_analysis: str
+    news_summary: str
+
+
+news_agent = Agent(
+    name="News Agent",
+    model=OpenAIResponses(id="gpt-5.2"),
+    tools=[HackerNewsTools()],
+    role="Research tech news from HackerNews",
+    output_schema=NewsAnalysis,
+)
+
+stock_agent = Agent(
+    name="Stock Agent",
+    model=OpenAIResponses(id="gpt-5.2"),
+    tools=[YFinanceTools()],
+    role="Analyze stock prices and financial data",
     output_schema=StockAnalysis,
-    role="Searches for information on stocks and provides price analysis.",
-    tools=[DuckDuckGoTools()],
 )
-
-company_info_agent = Agent(
-    name="Company Info Searcher",
-    model=OpenAIResponses("gpt-5.2"),
-    role="Searches for information about companies and recent news.",
-    output_schema=CompanyAnalysis,
-    tools=[DuckDuckGoTools()],
-)
-
-
-class StockReport(BaseModel):
-    symbol: str
-    company_name: str
-    analysis: str
-
 
 team = Team(
-    name="Stock Research Team",
-    model=OpenAIResponses("gpt-5.2"),
-    members=[stock_searcher, company_info_agent],
-    output_schema=StockReport,
+    name="Research Team",
+    model=OpenAIResponses(id="gpt-5.2"),
+    members=[news_agent, stock_agent],
+    output_schema=ResearchReport,
     markdown=True,
 )
 
-# This should route to the stock_searcher
-response = team.run("What is the current stock price of NVDA?")
-assert isinstance(response.content, StockReport)
-pprint_run_response(response)
+response = team.run("Research NVIDIA - get stock data and recent news")
+print(f"Title: {response.content.title}")
+print(f"Stock Analysis: {response.content.stock_analysis}")
+print(f"News Summary: {response.content.news_summary}")
 ```
 
 ## Usage
 
 <Steps>
 
-    <Snippet file="create-venv-step.mdx" />
+  <Step title="Create a Python file">
+    Create `pydantic_model_output.py` with the code above.
+  </Step>
 
-    <Step title="Install required libraries">
-        ```bash
-        uv pip install agno openai ddgs
-        ```
-    </Step>
+  <Snippet file="create-venv-step.mdx" />
 
-    <Step title="Set environment variables">
-        ```bash
-        export OPENAI_API_KEY=****
-        ```
-    </Step>
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai yfinance
+    ```
+  </Step>
 
-    <Step title="Run the agent">
-        ```bash
-        python cookbook/02_examples/teams/structured_input_output/00_pydantic_model_output.py
-        ```
-    </Step>
+  <Step title="Export your OpenAI API key">
+
+    <CodeGroup>
+
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run Team">
+    ```bash
+    python pydantic_model_output.py
+    ```
+  </Step>
 
 </Steps>
-

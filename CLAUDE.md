@@ -167,7 +167,7 @@ When documenting features, check if cookbook examples exist first.
 ## Documentation Structure Patterns
 
 ### Section Overview Pages
-- Use `## Next` instead of `## Guides` for linking to related pages (cleaner, action-oriented)
+- Use `## Guides` for linking to related pages (clear, standard documentation convention)
 
 ### Sidebar Navigation (docs.json)
 - Call example sections "Examples" not "Recipes" or "Usage"
