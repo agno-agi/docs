@@ -1,0 +1,241 @@
+---
+title: User Profile Store
+description: Capture structured profile information about users.
+sidebarTitle: User Profile
+---
+
+The User Profile Store captures structured fields about users - their name, preferred name, and custom profile fields you define.
+
+## Overview
+
+| Aspect | Details |
+|--------|---------|
+| **Data Type** | Structured fields (name, preferred_name, custom) |
+| **Scope** | Per user (identified by `user_id`) |
+| **Persistence** | Forever (updated as new info is learned) |
+| **Default Mode** | ALWAYS |
+| **Supported Modes** | ALWAYS, AGENTIC |
+
+## Basic Usage
+
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.learn import LearningMachine, UserProfileConfig
+from agno.models.openai import OpenAIResponses
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai"),
+    learning=LearningMachine(
+        user_profile=True,  # Use defaults
+    ),
+)
+
+# Session 1: Share information
+agent.print_response(
+    "Hi! I'm Alice Chen, but please call me Ali.",
+    user_id="alice@example.com",
+    session_id="session_1",
+)
+
+# Session 2: Profile is recalled automatically
+agent.print_response(
+    "What's my name?",
+    user_id="alice@example.com",
+    session_id="session_2",
+)
+# Agent responds: "Your name is Alice Chen, and you prefer to be called Ali."
+```
+
+## ALWAYS Mode (Default)
+
+In ALWAYS mode, profile information is extracted automatically after each conversation turn:
+
+```python
+from agno.learn import LearningMachine, LearningMode, UserProfileConfig
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        user_profile=UserProfileConfig(
+            mode=LearningMode.ALWAYS,
+        ),
+    ),
+)
+```
+
+**Behavior:**
+- Extraction happens in parallel with the agent's response
+- No tools are visible to the agent
+- All conversations are analyzed for profile info
+- Extra LLM call per interaction
+
+## AGENTIC Mode
+
+In AGENTIC mode, the agent gets an `update_user_profile` tool and decides when to update:
+
+```python
+from agno.learn import LearningMachine, LearningMode, UserProfileConfig
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        user_profile=UserProfileConfig(
+            mode=LearningMode.AGENTIC,
+        ),
+    ),
+)
+
+# Agent calls update_user_profile tool when appropriate
+agent.print_response(
+    "Please remember that my name is Bob Smith.",
+    user_id="bob@example.com",
+)
+```
+
+**Behavior:**
+- Agent receives `update_user_profile` tool
+- Agent decides when profile updates are warranted
+- No extra LLM calls
+- More selective updates
+
+## Default Profile Fields
+
+The base `UserProfile` schema includes:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | `str` | User's full name |
+| `preferred_name` | `str` | Name they prefer to be called |
+
+## Custom Profile Schemas
+
+Extend the base schema for your domain:
+
+```python
+from dataclasses import dataclass, field
+from typing import Optional
+from agno.learn.schemas import UserProfile
+
+@dataclass
+class CustomerProfile(UserProfile):
+    """Extended user profile for customer support."""
+
+    company: Optional[str] = field(
+        default=None,
+        metadata={"description": "Company or organization"}
+    )
+    plan_tier: Optional[str] = field(
+        default=None,
+        metadata={"description": "Subscription tier: free | pro | enterprise"}
+    )
+    role: Optional[str] = field(
+        default=None,
+        metadata={"description": "Job title or role"}
+    )
+    timezone: Optional[str] = field(
+        default=None,
+        metadata={"description": "User's timezone"}
+    )
+
+# Use custom schema
+from agno.learn import LearningMachine, UserProfileConfig
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        user_profile=UserProfileConfig(
+            schema=CustomerProfile,
+        ),
+    ),
+)
+```
+
+## Accessing Profile Data
+
+### Via Agent
+
+```python
+# Get the learning machine
+learning = agent.get_learning_machine()
+
+# Access the user profile store
+profile_store = learning.user_profile_store
+
+# Get profile for a user
+profile = profile_store.get(user_id="alice@example.com")
+print(profile.name)
+print(profile.preferred_name)
+```
+
+### Debug Output
+
+```python
+# Print profile for debugging
+learning.user_profile_store.print(user_id="alice@example.com")
+```
+
+## Context Injection
+
+When a user interacts with the agent, their profile is automatically injected into the system prompt:
+
+```
+<user_profile>
+Name: Alice Chen
+Preferred Name: Ali
+Company: Acme Corp
+Role: Data Scientist
+</user_profile>
+```
+
+This happens automatically - no manual context building needed.
+
+## User Profile vs User Memory
+
+| User Profile | User Memory |
+|--------------|-------------|
+| Structured fields | Unstructured text |
+| Fixed schema | Flexible observations |
+| Updated in place | Appended over time |
+| Exact recall | Semantic search |
+
+**Use User Profile for:** Name, company, role, preferences with defined values.
+
+**Use User Memory for:** Observations like "prefers detailed explanations", "works on ML projects", "mentioned struggling with async code".
+
+## Example: Support Agent
+
+```python
+from dataclasses import dataclass, field
+from typing import Optional
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.learn import LearningMachine, UserProfileConfig
+from agno.learn.schemas import UserProfile
+from agno.models.openai import OpenAIResponses
+
+@dataclass
+class SupportProfile(UserProfile):
+    company: Optional[str] = field(default=None, metadata={"description": "Company name"})
+    plan: Optional[str] = field(default=None, metadata={"description": "Subscription plan"})
+    expertise: Optional[str] = field(default=None, metadata={"description": "Technical expertise level"})
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai"),
+    learning=LearningMachine(
+        user_profile=UserProfileConfig(schema=SupportProfile),
+    ),
+    instructions="You are a helpful support agent. Use the user's profile to personalize responses.",
+)
+
+# Profile is learned and recalled across sessions
+agent.print_response(
+    "Hi, I'm John from TechCorp, we're on the enterprise plan.",
+    user_id="john@techcorp.com",
+)
+```

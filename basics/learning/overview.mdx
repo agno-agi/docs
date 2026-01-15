@@ -1,0 +1,234 @@
+---
+title: Learning Machine
+description: Build agents that learn and improve from every interaction with a unified learning system.
+sidebarTitle: Overview
+keywords: [learning, learning machine, user profile, user memory, session context, entity memory, learned knowledge, agent learning]
+---
+
+Imagine an agent that remembers not just what you said, but *learns* from every interaction - understanding your preferences, tracking project context, building knowledge about entities, and capturing reusable insights. This is the power of the Learning Machine.
+
+## What is Learning Machine?
+
+Learning Machine is a unified learning system that coordinates multiple **learning stores**, each handling a different type of knowledge:
+
+| Store | What It Captures | Scope | Use Case |
+|-------|------------------|-------|----------|
+| **User Profile** | Structured fields (name, preferences) | Per user | Personalization |
+| **User Memory** | Unstructured observations about users | Per user | Context, preferences |
+| **Session Context** | Goal, plan, progress, summary | Per session | Task continuity |
+| **Entity Memory** | Facts, events, relationships | Configurable | CRM, knowledge graph |
+| **Learned Knowledge** | Insights, patterns, best practices | Configurable | Collective intelligence |
+
+<Tip>
+**The Goal:** An agent on interaction 1000 is fundamentally better than it was on interaction 1.
+</Tip>
+
+## Quick Start
+
+The simplest way to enable learning:
+
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIResponses
+
+db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=True,  # Enable all learning stores
+)
+
+agent.print_response(
+    "I'm Alex, I prefer concise answers.",
+    user_id="alex@example.com",
+    session_id="session_1",
+)
+```
+
+With `learning=True`, your agent automatically:
+- Captures user profile information (name, preferences)
+- Stores unstructured observations about users
+- Tracks session context (summary, goals)
+- Recalls relevant context in future interactions
+
+## Three Levels of Control
+
+### Level 1: Simple Toggle
+
+```python
+agent = Agent(
+    model=model,
+    db=db,
+    learning=True,  # Enable everything with defaults
+)
+```
+
+### Level 2: Pick What You Want
+
+```python
+from agno.learn import LearningMachine
+
+agent = Agent(
+    model=model,
+    db=db,
+    learning=LearningMachine(
+        user_profile=True,
+        user_memory=True,
+        session_context=True,
+        entity_memory=False,
+        learned_knowledge=False,
+    ),
+)
+```
+
+### Level 3: Full Configuration
+
+```python
+from agno.learn import (
+    LearningMachine,
+    LearningMode,
+    UserProfileConfig,
+    SessionContextConfig,
+)
+
+agent = Agent(
+    model=model,
+    db=db,
+    learning=LearningMachine(
+        user_profile=UserProfileConfig(
+            mode=LearningMode.AGENTIC,
+        ),
+        session_context=SessionContextConfig(
+            enable_planning=True,
+        ),
+    ),
+)
+```
+
+## Learning Modes
+
+Each store can operate in different modes:
+
+| Mode | Behavior | Best For |
+|------|----------|----------|
+| **ALWAYS** | Automatic extraction after conversations | Consistent, predictable learning |
+| **AGENTIC** | Agent decides when to save via tools | More control, less noise |
+| **PROPOSE** | Agent proposes, user confirms | High-stakes knowledge |
+
+```python
+from agno.learn import LearningMode
+
+# ALWAYS: Extraction happens automatically (default for user_profile, session_context)
+user_profile=UserProfileConfig(mode=LearningMode.ALWAYS)
+
+# AGENTIC: Agent uses tools to save (default for learned_knowledge)
+learned_knowledge=LearnedKnowledgeConfig(mode=LearningMode.AGENTIC)
+
+# PROPOSE: Human-in-the-loop approval
+learned_knowledge=LearnedKnowledgeConfig(mode=LearningMode.PROPOSE)
+```
+
+## How It Works
+
+### 1. Context Building (Before Response)
+
+When you call `agent.run()` or `agent.print_response()`, the Learning Machine automatically:
+- Retrieves the user's profile
+- Recalls relevant user memories
+- Loads session context (summary, goals)
+- Searches for relevant learned knowledge
+
+This context is injected into the agent's system prompt.
+
+### 2. Processing (After Response)
+
+After the agent responds, stores in ALWAYS mode automatically:
+- Extract new profile information
+- Save new observations about the user
+- Update session summary and progress
+
+### 3. Tool-Based Learning (During Response)
+
+Stores in AGENTIC mode provide tools the agent can call:
+- `update_user_profile` - Update structured profile fields
+- `save_user_memory` - Store an observation
+- `save_learning` - Capture a reusable insight
+- `search_learnings` - Find relevant past knowledge
+
+## Requirements
+
+Learning Machine requires:
+- **Database**: For persisting learning data (PostgresDb, SqliteDb, etc.)
+- **Model**: For extraction in ALWAYS mode (uses same model as agent)
+- **Knowledge Base** (optional): For learned knowledge store (requires vector DB)
+
+## Learn More
+
+<CardGroup cols={2}>
+  <Card
+    title="Getting Started"
+    icon="rocket"
+    iconType="duotone"
+    href="/basics/learning/getting-started"
+  >
+    Step-by-step guide to set up learning.
+  </Card>
+  <Card
+    title="Learning Modes"
+    icon="sliders"
+    iconType="duotone"
+    href="/basics/learning/learning-modes"
+  >
+    Understand ALWAYS, AGENTIC, and PROPOSE modes.
+  </Card>
+  <Card
+    title="User Profile Store"
+    icon="user"
+    iconType="duotone"
+    href="/basics/learning/stores/user-profile"
+  >
+    Capture structured user information.
+  </Card>
+  <Card
+    title="User Memory Store"
+    icon="brain"
+    iconType="duotone"
+    href="/basics/learning/stores/user-memory"
+  >
+    Store unstructured observations.
+  </Card>
+  <Card
+    title="Session Context Store"
+    icon="clock"
+    iconType="duotone"
+    href="/basics/learning/stores/session-context"
+  >
+    Track session state and progress.
+  </Card>
+  <Card
+    title="Entity Memory Store"
+    icon="database"
+    iconType="duotone"
+    href="/basics/learning/stores/entity-memory"
+  >
+    Build knowledge graphs about entities.
+  </Card>
+  <Card
+    title="Learned Knowledge Store"
+    icon="lightbulb"
+    iconType="duotone"
+    href="/basics/learning/stores/learned-knowledge"
+  >
+    Capture reusable insights across users.
+  </Card>
+  <Card
+    title="Custom Schemas"
+    icon="code"
+    iconType="duotone"
+    href="/basics/learning/custom-schemas"
+  >
+    Extend stores with custom fields.
+  </Card>
+</CardGroup>
