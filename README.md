@@ -68,3 +68,17 @@ pip install fastapi uvicorn sqlalchemy pgvector psycopg openai ddgs yfinance a2a
 
 - Mintlify dev isn't running - Run `mint update` it'll update dependencies.
 - Page loads as a 404 - Make sure you are running in a folder with `docs.json`
+
+## AI Powered Development
+
+First, symlink the `agno` repo (gitignored):
+
+```
+ln -s ~/code/agno agno
+```
+
+For agno engineers, also symlink the `specs` repo:
+
+```
+ln -s ~/code/specs specs
+```
