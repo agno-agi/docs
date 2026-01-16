@@ -1,40 +1,88 @@
 ---
 title: "What is AgentOS?"
 sidebarTitle: "Introduction"
-description: "The production runtime and control plane for your agentic systems"
+description: "The runtime and control plane for multi-agent systems."
 ---
 
-AgentOS is Agno's production-ready runtime that runs entirely within your own infrastructure, ensuring complete data privacy and control of your agentic system.
-Agno also provides a beautiful web interface for managing, monitoring, and interacting with your AgentOS, with no data ever being persisted outside of your environment.
+AgentOS turns our agents into a production service we can deploy anywhere.
 
-<Check>
-Behind the scenes, AgentOS is a FastAPI app that you can run locally or in your cloud. It is designed to be easy to deploy and scale.
-</Check>
+## The Problem
 
-## Getting Started
+Frameworks help us build agents. But production is a beast of its own. Engineering teams reach for FastAPI and discover they need:
+- SSE-compatible streaming that handles disconnects.
+- Session persistence across containers.
+- Request-level isolation so state doesn't bleed between users.
+- Recovery from mid-conversation failures.
+- Horizontal scaling for stateful processes.
+- Authentication and authorization.
 
-Ready to get started with AgentOS? Here's what you need to do:
+**Agents are stateful by nature. Scalable infrastructure is stateless by design.** This mismatch is one of the hardest problems in distributed systems. Every AI team solves it from scratch.
 
-<CardGroup cols={2}>
-  <Card
-    title="Create Your First OS"
-    icon="plus"
-    href="/agent-os/creating-your-first-os"
+AgentOS solves it once.
+
+## The Solution
+
+In ~20 lines: an agent with memory, state, and MCP tools, served as a FastAPI app.
+```python agno_agent.py
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.anthropic import Claude
+from agno.os import AgentOS
+from agno.tools.mcp import MCPTools
+
+agno_agent = Agent(
+    name="Agno Agent",
+    model=Claude(id="claude-sonnet-4-5"),
+    db=SqliteDb(db_file="agno.db"),
+    tools=[MCPTools(url="https://docs.agno.com/mcp")],
+    add_history_to_context=True,
+    markdown=True,
+)
+
+agent_os = AgentOS(agents=[agno_agent])
+app = agent_os.get_app()
+```
+
+Run it, and you get:
+
+| Feature | What it does |
+|---------|-------------|
+| **REST API** | Endpoints for chat, streaming, and async runs |
+| **Session Management** | Conversation history, user isolation, session persistence |
+| **Knowledge Bases** | Upload documents, websites, or text. Agents search automatically |
+| **Memory** | Long-term user memory across sessions |
+| **Authentication** | API keys for dev, JWT + RBAC for production |
+| **Recovery** | Checkpointed state, graceful failure handling |
+
+The infrastructure layer that takes teams months to build. Live in minutes.
+
+## Control Plane
+
+The AgentOS comes with a built-in [control plane](https://os.agno.com) that connects directly to your runtime from your browser. Monitor sessions. Debug with full traces. Manage users and permissions.
+
+<Frame>
+  <video
+    autoPlay
+    muted
+    loop
+    playsInline
+    controls
+    style={{ borderRadius: "0.5rem", width: "100%", height: "auto" }}
   >
-    Set up a new AgentOS instance from scratch using our templates
-  </Card>
-  <Card
-    title="Connect Your AgentOS"
-    icon="link"
-    href="/agent-os/connecting-your-os"
-  >
-    Learn how to connect your local development environment to the platform
-  </Card>
-</CardGroup>
+    <source src="/videos/agno-agent-chat.mp4" type="video/mp4" />
+  </video>
+</Frame>
 
-## Security & Privacy First
+## Private by Design
 
-AgentOS is designed with enterprise security and data privacy as foundational principles, not afterthoughts.
+Most AI tooling has a fundamental flaw: your data lives on their servers. You pay retention costs, deal with egress fees, and hope their security is as good as yours.
+
+AgentOS is architecturally different. Everything runs in your infrastructure.
+- **Your data lives in your infrastructure**: Agents run in your cloud, data in your database.
+- **Zero data transmission**: No conversations, logs, or metrics sent to Agno.
+- **Nothing stored on our end**: The control plane reads from your database, displays in your browser, stores nothing, anywhere. You get complete privacy and control.
+
+When you close the tab, there's no trace of your data anywhere but your own systems.
 
 <Frame>
   <img
@@ -44,30 +92,37 @@ AgentOS is designed with enterprise security and data privacy as foundational pr
   />
 </Frame>
 
-### Complete Data Ownership
+See [AgentOS Security](/agent-os/security) for details.
 
-- **Your Infrastructure, Your Data**: AgentOS runs entirely within your cloud environment
-- **Zero Data Transmission**: No conversations, logs, or metrics are sent to external services
-- **Private by Default**: All processing, storage, and analytics happen locally
-
-To learn more about AgentOS Security, check out the [AgentOS Security](/agent-os/security) page.
-
-## Learn more
+## Get Started
 
 <CardGroup cols={2}>
+  <Card
+    title="Create Your First OS"
+    icon="plus"
+    href="/agent-os/creating-your-first-os"
+  >
+    Set up a new AgentOS
+  </Card>
+  <Card
+    title="Connect Your AgentOS"
+    icon="link"
+    href="/agent-os/connecting-your-os"
+  >
+    Connect to the control plane
+  </Card>
   <Card
     title="Control Plane"
     icon="desktop"
     href="/agent-os/control-plane"
   >
-    Learn how to use the AgentOS control plane to manage and monitor your OSs
+    Monitor and manage deployments
   </Card>
   <Card
-    title="Create Your First OS"
-    icon="rocket"
-    href="/agent-os/creating-your-first-os"
+    title="Configuration"
+    icon="gear"
+    href="/agent-os/config"
   >
-    Get started by creating your first AgentOS instance
+    Configure your AgentOS
   </Card>
 </CardGroup>
-
