@@ -1,0 +1,55 @@
+---
+title: Usage Patterns
+sidebarTitle: "Usage"
+---
+
+Following are some of the basic usage patterns for the Agno Agent Builder SDK.
+
+## Pattern 1: Development Workflow
+
+```python
+# 1. Create agent
+agent = Agent(id="dev-agent", model=OpenAIChat(id="gpt-4"), db=db)
+
+# 2. Test locally
+response = agent.run("test query")
+
+# 3. Save when satisfied
+agent.save()
+
+# 4. Later: Load in production
+prod_agent = get_agent_by_id(db=db, id="dev-agent", registry=registry)
+```
+
+## Pattern 2: Iterate on Existing Agent
+
+```python
+# Load existing agent
+agent = get_agent_by_id(db=db, id="my-agent", registry=registry)
+
+# Modify
+agent.instructions = "New instructions"
+agent.model = OpenAIChat(id="gpt-4-turbo")
+
+# Save new version
+agent.save()
+```
+
+## Usage Notes
+
+<Accordion title="Note:">
+    **Registry is Critical**
+    - Without a registry, tools will NOT be rehydrated when loading agents
+    - Always create a registry with all tools and models before loading agents
+    - Tools are stored as function signatures in JSON but need live references to work
+
+    **Database Connections**
+    - Each `PostgresDb.from_dict()` creates a new connection pool
+    - In v0, loading multiple agents may create multiple pools
+    - This is acceptable for initial usage but may need optimization for production
+
+    **Versioning Behavior**
+    - Default `save()` uses `stage="published"` and creates immutable configs
+    - Every save increments the version number automatically
+    - Current version pointer updates to latest published config
+</Accordion>

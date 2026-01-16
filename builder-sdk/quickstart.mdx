@@ -1,0 +1,177 @@
+---
+title: Agent Builder SDK
+sidebarTitle: "Quickstart"
+---
+
+The Agno Agent Builder SDK provides a comprehensive set of tools for 
+building, managing, and scaling AI agents. 
+
+This guide will walk you through the initial setup and core concepts needed to start building with this SDK.
+
+## Prerequisites
+
+### System Requirements
+- Python 3.8 or higher
+- PostgreSQL 12 or higher (running instance with connection access)
+
+### Required Knowledge
+- Basic Python programming
+- Understanding of AI agents and LLMs
+- Familiarity with database concepts
+
+## Installation
+
+```bash
+# Install the Agno SDK package
+pip install agno  # or appropriate package name
+
+# Install database dependencies
+pip install sqlalchemy psycopg2-binary
+
+# Install model provider (example: OpenAI)
+pip install openai
+```
+
+## Database Setup
+
+### 1. Create PostgreSQL Database
+
+```sql
+CREATE DATABASE agno_agents;
+```
+
+### 2. Initialize Schema
+
+The SDK will automatically create these tables on first use:
+- `agno_components` - Stores agent/team/workflow metadata
+- `agno_component_configs` - Stores versioned configurations
+- `agno_component_links` - Stores component relationships
+
+## Basic Usage
+
+### 1. Create a Database Connection
+
+```python
+from agno import PostgresDb
+
+# Initialize database connection
+db = PostgresDb(
+    host="localhost",
+    port=5432,
+    database="agno_agents",
+    user="your_username",
+    password="your_password"
+)
+```
+
+### 2. Create and Save an Agent
+
+```python
+from agno import Agent
+from agno.models import OpenAIChat
+
+# Create an agent
+agent = Agent(
+    id="my-first-agent",
+    name="Customer Support Agent",
+    model=OpenAIChat(id="gpt-4"),
+    instructions="You are a helpful customer support assistant.",
+    db=db
+)
+
+# Save the agent to database
+agent.save()
+# This creates:
+# - Row in agno_components with id="my-first-agent"
+# - Version 1 in agno_component_configs with full config
+```
+
+### 3. Set Up a Registry for Tools
+
+```python
+from agno import Registry
+from agno.tools import DuckDuckGoTools
+
+# Define custom tool
+def sample_tool(query: str) -> str:
+    """A custom tool that does something."""
+    return f"Processed: {query}"
+
+# Create registry with live references
+registry = Registry(
+    tools=[DuckDuckGoTools(), sample_tool],
+    models=[OpenAIChat(id="gpt-4")],
+    dbs=[db]
+)
+```
+
+### 4. Create Agent with Tools
+
+```python
+# Create agent with tools
+agent = Agent(
+    id="agent-with-tools",
+    name="Research Agent",
+    model=OpenAIChat(id="gpt-4"),
+    tools=[DuckDuckGoTools(), sample_tool],
+    instructions="You can search the web and process queries.",
+    db=db
+)
+
+# Save agent
+agent.save()
+```
+
+### 5. Load an Existing Agent
+
+```python
+from agno import get_agent_by_id
+
+# Load agent from database
+# Registry is REQUIRED to restore tools
+loaded_agent = get_agent_by_id(
+    db=db,
+    id="agent-with-tools",
+    registry=registry
+)
+
+# Use the loaded agent
+response = loaded_agent.run("Search for latest AI news")
+```
+
+## Working with Teams and Workflows
+
+```python
+from agno import Team
+
+# Create individual agents first
+agent1 = Agent(id="researcher", model=OpenAIChat(id="gpt-4"), db=db)
+agent2 = Agent(id="writer", model=OpenAIChat(id="gpt-4"), db=db)
+
+agent1.save()
+agent2.save()
+
+# Create a team
+team = Team(
+    id="content-team",
+    name="Content Creation Team",
+    members=[agent1, agent2],
+    db=db
+)
+
+# Save team (creates entries in agno_component_links)
+team.save()
+```
+## See Also
+
+- [Usage Patterns](./usage-patterns.mdx)
+- [Version Management](./version.mdx)
+- [Working with Teams and Workflows](./wflow-teams.mdx)
+- [Troubleshooting](./troubleshooting.mdx)
+
+## Next Steps
+
+- Explore advanced team configurations with multiple agents
+- Implement custom tools and register them properly
+- Set up workflow orchestration using the links table
+- Monitor version history in `agno_component_configs` table

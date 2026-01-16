@@ -1,0 +1,81 @@
+---
+title: "Agent Builder SDK"
+sidebarTitle: "Overview"
+---
+
+Agno Agent Builder SDK is a system for building, saving, and managing AI agents with a database-backed architecture.
+Think of it like a version control system for AI agents. Instead of losing your agent configurations when your program closes, Agno saves everything to a PostgreSQL database so you can reload agents later with all their settings intact.
+
+## How It Works:
+The system uses three database tables working together:
+
+1. **Components Table** - Stores basic information about each agent, team, or workflow (like a contact card with a name and type)
+2. **Configs Table** - Stores actual settings for each version (instructions, model choice, parameters)
+3. **Links Table** - Tracks relationships between components (which agents belong to which teams)
+
+## Architecture
+
+```mermaid
+graph TD
+    subgraph "Developer Code"
+        A[Agent Instance]
+        R[Registry<br/>Tools, Models, DBs]
+        T[Tools: DuckDuckGo, Custom]
+        M[Models: OpenAIChat]
+    end
+
+    subgraph "SDK Core"
+        S[save method]
+        L[load/get_agent_by_id]
+        TD[to_dict serialization]
+        FD[from_dict deserialization]
+        RH[rehydrate_function]
+    end
+
+    subgraph "PostgreSQL Database"
+        C1[(agno_components<br/>ID, Type, Name<br/>current_version)]
+        C2[(agno_component_configs<br/>version, config JSONB<br/>stage, label)]
+        C3[(agno_component_links<br/>parent-child relationships<br/>position, metadata)]
+    end
+
+    subgraph "Stored Configuration JSONB"
+        SC[Model Config<br/>Tools as Function dicts<br/>Instructions<br/>Memory flags<br/>DB connection info]
+    end
+
+    A -->|"agent.save()"| S
+    S -->|to_dict| TD
+    TD -->|Serializes| SC
+    S -->|upsert_component| C1
+    S -->|upsert_config| C2
+    C1 -.->|1:N| C2
+    C2 -.->|1:N for teams/workflows| C3
+
+    L -->|Lookup component| C1
+    C1 -->|Get current_version| C2
+    C2 -->|Fetch config JSONB| SC
+    SC -->|from_dict| FD
+    R -->|Provides live objects| RH
+    FD -->|Rehydrate tools/models| RH
+    RH -->|Rebuild| A
+
+    T -.->|Registered in| R
+    M -.->|Registered in| R
+
+    style A fill:#e1f5ff
+    style R fill:#fff4e1
+    style C1 fill:#e8f5e9
+    style C2 fill:#e8f5e9
+    style C3 fill:#e8f5e9
+    style SC fill:#f3e5f5
+```
+## The Challenge
+AI agents use functions and tools (like web search or calculators) that can't be saved as text in a database. The SDK solves this with a **Registry** - a lookup table that holds references to all live tools and models. When loading an agent, the Registry reconnects the saved configuration to the actual working code.
+
+## Key Features
+
+- **Version Control**: Every save creates a new immutable version
+- **Reusability**: Load saved agents across different sessions
+- **Composability**: Build teams and workflows from individual agents
+- **Persistence**: All configurations survive restarts
+
+The SDK handles serialization (converting agents to saveable format) and deserialization (rebuilding agents from saved data) automatically through `save()` and `load()` methods.
