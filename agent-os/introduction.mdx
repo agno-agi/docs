@@ -4,57 +4,46 @@ sidebarTitle: "Introduction"
 description: "The runtime and control plane for multi-agent systems."
 ---
 
-AgentOS turns our agents into a production service we can deploy anywhere.
+**AgentOS turns our multi-agent system into a FastAPI app we can deploy anywhere.**
 
-## The Problem
+## Example
 
-Frameworks help us build agents. But production is a beast of its own. Engineering teams reach for FastAPI and discover they need:
-- SSE-compatible streaming that handles disconnects.
-- Session persistence across containers.
-- Request-level isolation so state doesn't bleed between users.
-- Recovery from mid-conversation failures.
-- Horizontal scaling for stateful processes.
-- Authentication and authorization.
-
-**Agents are stateful by nature. Scalable infrastructure is stateless by design.** This mismatch is one of the hardest problems in distributed systems. Every AI team solves it from scratch.
-
-AgentOS solves it once.
-
-## The Solution
-
-In ~20 lines: an agent with memory, state, and MCP tools, served as a FastAPI app.
 ```python agno_agent.py
-from agno.agent import Agent
-from agno.db.sqlite import SqliteDb
-from agno.models.anthropic import Claude
 from agno.os import AgentOS
+from agno.agent import Agent
 from agno.tools.mcp import MCPTools
+from agno.db.postgres import PostgresDb
+from agno.models.anthropic import Claude
 
-agno_agent = Agent(
-    name="Agno Agent",
+agent = Agent(
     model=Claude(id="claude-sonnet-4-5"),
-    db=SqliteDb(db_file="agno.db"),
+    db=PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai"),
     tools=[MCPTools(url="https://docs.agno.com/mcp")],
     add_history_to_context=True,
     markdown=True,
 )
 
-agent_os = AgentOS(agents=[agno_agent])
+agent_os = AgentOS(agents=[agent], tracing=True)
 app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="agno_agent:app", reload=True)
 ```
 
-Run it, and you get:
+This code gives us:
 
-| Feature | What it does |
-|---------|-------------|
-| **REST API** | Endpoints for chat, streaming, and async runs |
-| **Session Management** | Conversation history, user isolation, session persistence |
-| **Knowledge Bases** | Upload documents, websites, or text. Agents search automatically |
-| **Memory** | Long-term user memory across sessions |
-| **Authentication** | API keys for dev, JWT + RBAC for production |
-| **Recovery** | Checkpointed state, graceful failure handling |
+- 50+ API endpoints with durable SSE streaming.
+- Sessions, memory, knowledge stored in your database.
+- Request-level isolation. No state bleed.
+- JWT-based RBAC with hierarchical scopes.
+- Tracing built-in, stored in your database.
+- Guardrails, human in the loop, learning machines, the full Agno framework.
 
-The infrastructure layer that takes teams months to build. Live in minutes.
+<Check>
+
+In ~20 lines: an Agent with memory, state, and MCP tools, served as a FastAPI application.
+
+</Check>
 
 ## Control Plane
 
@@ -126,3 +115,22 @@ See [AgentOS Security](/agent-os/security) for details.
     Configure your AgentOS
   </Card>
 </CardGroup>
+
+## Architecture
+
+AgentOS is architecturally different. Everything runs in your infrastructure:
+- Your AgentOS runs as a container in your cloud
+- Your data is stored in your database (sessions, memory, knowledge, traces)
+- The control plane connects directly to your AgentOS from your browser
+
+<img
+  className="block dark:hidden"
+  src="/images/agent-os/agentos-architecture-light.png"
+  alt="AgentOS Architecture"
+/>
+
+<img
+  className="hidden dark:block"
+  src="/images/agent-os/agentos-architecture-dark.png"
+  alt="AgentOS Architecture"
+/>
