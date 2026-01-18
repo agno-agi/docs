@@ -1,0 +1,473 @@
+---
+title: Building a Documentation Assistant
+sidebarTitle: Agentic RAG
+description: Build a documentation assistant that uses RAG to answer questions
+keywords: [agentic rag, rag tutorial, documentation assistant, hybrid search, chunking, filtering, vector database, pgvector, knowledge base, embeddings, retrieval augmented generation]
+---
+
+## What You'll Build
+
+A documentation assistant that answers questions by searching through real docs:
+
+> **You:** How do I create an agent in Agno?
+
+> **Assistant:** To create an agent in Agno, use the Agent class:
+>
+> ```python
+> from agno.agent import Agent
+> from agno.models.openai import OpenAIChat
+>
+> agent = Agent(
+>     model=OpenAIChat(id="gpt-4o-mini"),
+>     instructions="You are a helpful assistant.",
+> )
+>
+> agent.print_response("Hello!")
+> ```
+>
+> The agent automatically handles conversation history, tool execution, and response streaming.
+
+**Without RAG**, the model might hallucinate incorrect APIs. **With RAG**, it searches your actual documentation first and gives accurate, up-to-date answers.
+
+## Why RAG?
+
+Large Language Models are trained on static data and can hallucinate. RAG (Retrieval Augmented Generation) fixes this by:
+
+1. **Searching** your documents for relevant information
+2. **Injecting** that context into the prompt
+3. **Generating** a grounded response
+
+**Agentic RAG** goes further - the agent decides *when* to search and *what* to filter, rather than searching blindly on every query.
+
+## How It Works
+
+<img src="/images/agentic-rag-flow.png" alt="Agentic RAG flow diagram showing indexing and querying phases" style={{ maxWidth: '600px' }} />
+
+## Prerequisites
+
+Before starting, make sure you have:
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop) installed and running
+- An [OpenAI API key](https://platform.openai.com/api-keys)
+
+<Note>
+This tutorial takes approximately **30 minutes** to complete.
+</Note>
+
+## Quick Start
+
+<Steps>
+  <Step title="Clone and configure">
+    ```bash
+    git clone https://github.com/agno-agi/agno.git
+    cd agno/tutorials/agentic-rag
+    cp .env.example .env
+    ```
+
+    Add your `OPENAI_API_KEY` to the `.env` file.
+  </Step>
+
+  <Step title="Start the app">
+    ```bash
+    docker compose down  # Stop any existing containers
+    docker compose up -d --build
+    ```
+
+    This starts the API server and PgVector database.
+  </Step>
+
+  <Step title="Load the knowledge base">
+    Index the documentation into the vector database:
+
+    ```bash
+    docker exec -it agentic-rag-os python -m agents.docs_assistant
+    ```
+
+    This takes about 30 seconds. You'll see the agent respond to a test query when complete.
+  </Step>
+
+  <Step title="Use the UI">
+    Open [os.agno.com](https://os.agno.com) and connect to `http://localhost:8000`.
+  </Step>
+</Steps>
+
+Now let's understand how each piece works.
+
+---
+
+## Building It Step by Step
+
+In the following steps, we'll build this RAG system from scratch:
+
+1. **Step 1** - Create a basic knowledge base and connect it to an agent
+2. **Step 2** - Improve search quality with hybrid search and better chunking
+3. **Step 3** - Add filters to narrow down search results
+4. **Step 4** - Set up AgentOS for serving and UI
+
+Each step builds on the previous one. By the end, you'll understand every component in the Quick Start app.
+
+---
+
+## Step 1: Set Up the Knowledge Base
+
+The knowledge base stores your documents as searchable embeddings. Here's the minimal setup:
+
+```python title="Minimal Example"
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.knowledge.knowledge import Knowledge
+from agno.vectordb.pgvector import PgVector
+
+# Create knowledge base with vector storage
+knowledge = Knowledge(
+    vector_db=PgVector(
+        table_name="docs",
+        db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
+    ),
+)
+
+# Load a document
+knowledge.add_content(url="https://docs.agno.com/llms-full.txt")
+
+# Create agent with knowledge
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    knowledge=knowledge,
+    search_knowledge=True,  # Enable RAG
+)
+
+agent.print_response("What models does Agno support?")
+```
+
+That's it! The agent will now search the knowledge base before answering.
+
+### What's Happening Under the Hood?
+
+<AccordionGroup>
+  <Accordion title="Vector Database">
+    Stores text as numerical vectors (embeddings) for similarity search. When you ask a question, it finds the most semantically similar chunks.
+
+    **Agno supports 20+ vector databases** including PgVector, Qdrant, Pinecone, and ChromaDB. We use PgVector here because it's easy to run locally with Docker.
+  </Accordion>
+
+  <Accordion title="Embeddings">
+    Text is converted to vectors using an embedding model. By default, Agno uses OpenAI's `text-embedding-3-small`.
+
+    Similar text → similar vectors → found by search.
+  </Accordion>
+
+  <Accordion title="Contents Database">
+    Optionally store original document content alongside embeddings:
+
+    ```python
+    from agno.db.postgres import PostgresDb
+
+    docs_db = PostgresDb(id="docs-db", db_url=db_url)
+
+    knowledge = Knowledge(
+        vector_db=PgVector(...),
+        contents_db=docs_db,  # Stores original text
+    )
+    ```
+
+    This enables document retrieval and prevents re-processing unchanged content.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Step 2: Improve Search Quality
+
+The basic setup works, but we can do better. Two improvements make a big difference:
+
+### Hybrid Search
+
+Combine semantic search with keyword matching:
+
+```python title="docs_assistant.py"
+from agno.vectordb.pgvector import PgVector, SearchType
+
+knowledge = Knowledge(
+    vector_db=PgVector(
+        table_name="docs",
+        db_url=db_url,
+        search_type=SearchType.hybrid,  # Semantic + keyword
+    ),
+)
+```
+
+**Why?** Semantic search finds "How do I make an agent?" when docs say "create an Agent". Keyword search catches exact terms like "Agent class". Hybrid gets both.
+
+### Chunking
+
+Agno automatically chunks documents using sensible defaults. For more control, specify a chunking strategy:
+
+```python title="Optional: Explicit Chunking"
+from agno.knowledge.reader.text_reader import TextReader
+from agno.knowledge.chunking.recursive import RecursiveChunking
+
+reader = TextReader(
+    chunking_strategy=RecursiveChunking()  # Respects document structure
+)
+
+knowledge.add_content(url="https://docs.agno.com/llms-full.txt", reader=reader)
+```
+
+**Why customize?** Different strategies work better for different content. RecursiveChunking preserves paragraphs and sections, while SemanticChunking groups by meaning.
+
+<Accordion title="All Chunking Strategies">
+  | Strategy | Best For |
+  |----------|----------|
+  | **FixedSizeChunking** | Uniform processing |
+  | **RecursiveChunking** | Hierarchical docs |
+  | **SemanticChunking** | Meaning-based splits |
+  | **MarkdownChunking** | Markdown with headers |
+  | **AgenticChunking** | AI-powered detection |
+
+  See [Chunking Strategies](/basics/knowledge/chunking/overview) for details.
+</Accordion>
+
+---
+
+## Step 3: Add Filters to Narrow Results
+
+When you have many documents, filters help the agent search only the relevant ones. Add metadata when loading:
+
+```python title="agents/docs_assistant.py"
+knowledge.add_content(
+    url="https://docs.agno.com/llms-full.txt",
+    reader=reader,
+    metadata={"category": "llms", "doc_type": "reference"},
+)
+```
+
+Now you can filter in three ways:
+
+### Manual Filters
+
+Hardcode which docs to search:
+
+```python title="agents/docs_assistant.py (example usage)"
+agent.print_response(
+    "What models are available?",
+    knowledge_filters={"category": "llms"},
+)
+```
+
+**Use when:** Building specialized endpoints, user context is known upfront.
+
+### Agentic Filters
+
+Let the agent decide based on the query:
+
+```python title="agents/docs_assistant.py"
+agent = Agent(
+    knowledge=knowledge,
+    search_knowledge=True,
+    enable_agentic_knowledge_filters=True,  # Agent picks filters
+)
+
+# Agent automatically infers category="llms" from the question
+agent.print_response("Tell me about LLM providers")
+```
+
+**Use when:** Conversational interfaces, natural user experience.
+
+### Filter Expressions
+
+Complex logic with AND/OR/NOT:
+
+```python title="agents/docs_assistant.py (example usage)"
+from agno.filters import AND, OR, NOT, EQ, IN
+
+agent.print_response(
+    "What reference docs exist?",
+    knowledge_filters=[
+        AND(
+            EQ("category", "llms"),
+            NOT(EQ("status", "draft"))
+        )
+    ],
+)
+```
+
+**Use when:** Role-based access control, complex business rules.
+
+<Accordion title="More Filter Examples">
+  ```python
+  # Multiple categories
+  OR(EQ("category", "llms"), EQ("category", "tools"))
+
+  # List of values
+  IN("category", ["llms", "agents", "tools"])
+
+  # Exclude drafts
+  NOT(EQ("status", "draft"))
+  ```
+
+  See [Advanced Filtering](/basics/knowledge/filters/advanced-filtering) for the complete reference.
+</Accordion>
+
+---
+
+## Step 4: AgentOS Setup
+
+Wrap your agent in AgentOS with a config file for UI customization:
+
+```yaml title="app/config.yaml"
+chat:
+  quick_prompts:
+    docs-assistant:
+      - "What is Agno?"
+      - "How do I create an agent with tools?"
+```
+
+```python title="app/main.py"
+from pathlib import Path
+from agno.os import AgentOS
+
+from agents.docs_assistant import knowledge_agent
+
+os_config_path = str(Path(__file__).parent.joinpath("config.yaml"))
+
+agent_os = AgentOS(
+    id="docs-assistant-os",
+    agents=[knowledge_agent],
+    config=os_config_path,
+)
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="main:app", reload=True)
+```
+
+Run it:
+
+```bash
+python -m app.main
+```
+
+Let's now start interacting with our Agent using [AgentOS](https://os.agno.com)
+
+---
+
+## Complete Implementation
+
+Here's everything together in [`agents/docs_assistant.py`](https://github.com/agno-agi/agno/blob/main/tutorials/agentic-rag/agents/docs_assistant.py):
+
+### Knowledge Agent
+
+```python title="agents/docs_assistant.py"
+import asyncio
+from textwrap import dedent
+
+from agno.agent import Agent
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.knowledge.knowledge import Knowledge
+from agno.models.openai import OpenAIChat
+from agno.vectordb.pgvector import PgVector, SearchType
+
+from db.session import docs_db
+from db.url import get_db_url
+
+# Knowledge Base
+knowledge = Knowledge(
+    name="Agno Documentation",
+    vector_db=PgVector(
+        table_name="agno_docs",
+        db_url=get_db_url(),
+        search_type=SearchType.hybrid,
+        embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+    ),
+    contents_db=docs_db,
+)
+
+# Knowledge Agent
+knowledge_agent = Agent(
+    id="docs-assistant",
+    name="Agno Docs Assistant",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    knowledge=knowledge,
+    search_knowledge=True,
+    enable_agentic_knowledge_filters=True,
+    description="You are a helpful assistant that answers questions about Agno.",
+    instructions=dedent("""\
+        Always search the knowledge base before answering.
+        If you can't find relevant information, say so clearly.
+        Include code examples when available.
+    """),
+    markdown=True,
+)
+
+if __name__ == "__main__":
+    # Load content into knowledge base
+    asyncio.run(
+        knowledge.add_content_async(
+            url="https://docs.agno.com/llms-full.txt",
+        )
+    )
+
+    # Test the agent
+    knowledge_agent.print_response("How do I create an agent in Agno?", stream=True)
+```
+
+<Note>
+The filtering examples in Step 3 show how to add metadata for filtered searches. The complete implementation uses agentic filters (`enable_agentic_knowledge_filters=True`) which let the agent decide what to search.
+</Note>
+
+---
+
+## Deploy to Production
+
+Deploy to Railway with a single command:
+
+```bash
+./scripts/railway_up.sh
+```
+
+This script:
+1. Creates a new Railway project
+2. Provisions a PgVector database
+3. Deploys your application
+4. Outputs the production URL
+
+<Note>
+For local development, the Quick Start section uses Docker Compose.
+</Note>
+
+---
+
+## Summary
+
+You built a RAG system with:
+
+| Component | What We Used | Why |
+|-----------|--------------|-----|
+| **Vector DB** | PgVector + hybrid search | Semantic + keyword matching |
+| **Chunking** | Default (auto) | Sensible defaults, customizable |
+| **Embeddings** | OpenAI text-embedding-3-small | Quality + cost balance |
+| **Contents DB** | PostgresDb | Stores original documents |
+| **Filters** | Manual, Agentic, Expressions | Flexible access control |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Knowledge Deep Dive" icon="book-open" href="/basics/knowledge/overview">
+    Learn more about the Knowledge system
+  </Card>
+  <Card title="More Readers" icon="file" href="/basics/knowledge/readers/overview">
+    PDF, CSV, websites, YouTube, and more
+  </Card>
+  <Card title="More Embedders" icon="microchip" href="/basics/knowledge/embedder/overview">
+    Ollama, Cohere, Voyage AI, local models
+  </Card>
+  <Card title="Filter Reference" icon="filter" href="/basics/knowledge/filters/overview">
+    Complete filtering documentation
+  </Card>
+</CardGroup>
+
+## Resources
+
+- [Full source code](https://github.com/agno-agi/agno/tree/main/tutorials/agentic-rag)
+- [Knowledge cookbook examples](https://github.com/agno-agi/agno/tree/main/cookbook/knowledge)
+- [Filter cookbook examples](https://github.com/agno-agi/agno/tree/main/cookbook/knowledge/filters)
