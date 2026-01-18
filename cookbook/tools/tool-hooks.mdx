@@ -1,0 +1,210 @@
+---
+title: Tool Hooks
+description: Run custom logic before and after tool execution for logging, validation, and more.
+---
+
+Tool hooks let you run custom logic before and after tool execution. Use them for logging, validation, transformation, or side effects.
+
+```python
+from agno.agent import Agent
+from agno.tools import FunctionCall, tool
+
+def log_call(fc: FunctionCall):
+    print(f"Calling {fc.function.name} with {fc.arguments}")
+
+def log_result(fc: FunctionCall):
+    print(f"Result: {fc.result}")
+
+@tool(pre_hook=log_call, post_hook=log_result)
+def get_weather(city: str) -> str:
+    return f"Weather in {city}: 72°F"
+
+agent = Agent(tools=[get_weather])
+agent.print_response("What's the weather in SF?")
+```
+
+## Capabilities
+
+### Pre and Post Hooks
+
+```python cookbook/90_tools/tool_hooks/pre_and_post_hooks.py
+import json
+from typing import Iterator
+import httpx
+from agno.agent import Agent
+from agno.tools import FunctionCall, tool
+
+def pre_hook(fc: FunctionCall):
+    print(f"Pre-hook: {fc.function.name}")
+    print(f"Arguments: {fc.arguments}")
+
+def post_hook(fc: FunctionCall):
+    print(f"Post-hook: {fc.function.name}")
+    print(f"Result: {fc.result}")
+
+@tool(pre_hook=pre_hook, post_hook=post_hook)
+def get_top_hackernews_stories(agent: Agent) -> Iterator[str]:
+    num_stories = agent.dependencies.get("num_stories", 5) if agent.dependencies else 5
+    response = httpx.get("https://hacker-news.firebaseio.com/v0/topstories.json")
+    story_ids = response.json()
+
+    for story_id in story_ids[:num_stories]:
+        story = httpx.get(f"https://hacker-news.firebaseio.com/v0/item/{story_id}.json").json()
+        story.pop("text", None)
+        yield json.dumps(story)
+
+agent = Agent(
+    dependencies={"num_stories": 2},
+    tools=[get_top_hackernews_stories],
+    markdown=True,
+)
+agent.print_response("What are the top hackernews stories?")
+```
+
+### Async Hooks
+
+```python cookbook/90_tools/tool_hooks/async_pre_and_post_hooks.py
+import asyncio
+from agno.agent import Agent
+from agno.tools import FunctionCall, tool
+
+async def async_pre_hook(fc: FunctionCall):
+    print(f"[Async Pre] Starting: {fc.function.name}")
+    await asyncio.sleep(0.1)  # Async operation
+
+async def async_post_hook(fc: FunctionCall):
+    print(f"[Async Post] Completed: {fc.function.name}")
+    await asyncio.sleep(0.1)
+
+@tool(pre_hook=async_pre_hook, post_hook=async_post_hook)
+async def fetch_data(url: str) -> str:
+    """Fetch data from a URL."""
+    return f"Data from {url}"
+
+agent = Agent(tools=[fetch_data])
+await agent.aprint_response("Fetch data from example.com")
+```
+
+### Hooks in Toolkits
+
+Add hooks to entire toolkits for consistent behavior.
+
+```python cookbook/90_tools/tool_hooks/tool_hook_in_toolkit.py
+from agno.agent import Agent
+from agno.tools import FunctionCall, Toolkit
+
+def toolkit_pre_hook(fc: FunctionCall):
+    print(f"[Toolkit] Calling: {fc.function.name}")
+
+def toolkit_post_hook(fc: FunctionCall):
+    print(f"[Toolkit] Completed: {fc.function.name}")
+
+class MathToolkit(Toolkit):
+    def __init__(self):
+        super().__init__(
+            name="math",
+            pre_hook=toolkit_pre_hook,
+            post_hook=toolkit_post_hook,
+        )
+
+    def add(self, a: float, b: float) -> float:
+        """Add two numbers."""
+        return a + b
+
+    def multiply(self, a: float, b: float) -> float:
+        """Multiply two numbers."""
+        return a * b
+
+agent = Agent(tools=[MathToolkit()])
+agent.print_response("Add 5 and 3, then multiply the result by 2")
+```
+
+### Hooks with State
+
+Track state across tool calls using hooks.
+
+```python cookbook/90_tools/tool_hooks/tool_hook_in_toolkit_with_state.py
+from agno.agent import Agent
+from agno.tools import FunctionCall, Toolkit
+
+class AuditedToolkit(Toolkit):
+    def __init__(self):
+        super().__init__(name="audited")
+        self.call_log = []
+
+    def _pre_hook(self, fc: FunctionCall):
+        self.call_log.append({
+            "function": fc.function.name,
+            "arguments": fc.arguments,
+            "timestamp": "now",
+        })
+
+    def _post_hook(self, fc: FunctionCall):
+        self.call_log[-1]["result"] = fc.result
+
+    def get_user(self, user_id: int) -> dict:
+        """Get user by ID."""
+        return {"id": user_id, "name": f"User {user_id}"}
+
+    def get_audit_log(self) -> list:
+        """Get the audit log of all calls."""
+        return self.call_log
+
+toolkit = AuditedToolkit()
+toolkit.pre_hook = toolkit._pre_hook
+toolkit.post_hook = toolkit._post_hook
+
+agent = Agent(tools=[toolkit])
+agent.print_response("Get user 123, then show me the audit log")
+```
+
+### Nested Toolkit Hooks
+
+Hooks in nested toolkit structures.
+
+```python cookbook/90_tools/tool_hooks/tool_hook_in_toolkit_with_state_nested.py
+from agno.agent import Agent
+from agno.tools import FunctionCall, Toolkit
+
+class ParentToolkit(Toolkit):
+    def __init__(self):
+        super().__init__(name="parent")
+        self.children = []
+
+    def add_child(self, child_toolkit: Toolkit):
+        self.children.append(child_toolkit)
+        # Hooks propagate to children
+        child_toolkit.pre_hook = self.pre_hook
+        child_toolkit.post_hook = self.post_hook
+
+# Hooks on parent apply to all child toolkits
+```
+
+## Use Cases
+
+| Use Case | Hook Type |
+|----------|-----------|
+| Logging | Pre + Post |
+| Input validation | Pre |
+| Result transformation | Post |
+| Rate limiting | Pre |
+| Caching | Pre + Post |
+| Audit trails | Pre + Post |
+| Error handling | Post |
+
+## Run Examples
+
+```bash
+git clone https://github.com/agno-agi/agno.git
+cd agno/cookbook/90_tools/tool_hooks
+
+# Basic hooks
+python pre_and_post_hooks.py
+
+# Toolkit hooks
+python tool_hook_in_toolkit.py
+
+# Stateful hooks
+python tool_hook_in_toolkit_with_state.py
+```
+

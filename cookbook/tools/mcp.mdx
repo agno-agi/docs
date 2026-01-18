@@ -1,0 +1,241 @@
+---
+title: MCP Integration
+sidebarTitle: MCP
+description: Connect agents to external tools and data sources via the Model Context Protocol.
+---
+
+The Model Context Protocol (MCP) is an open standard for connecting AI agents to external tools and data sources. Agno provides first-class MCP support.
+
+```python
+import asyncio
+from agno.agent import Agent
+from agno.tools.mcp import MCPTools
+
+async def main():
+    async with MCPTools("npx -y @modelcontextprotocol/server-filesystem .") as mcp:
+        agent = Agent(tools=[mcp])
+        await agent.aprint_response("List all Python files")
+
+asyncio.run(main())
+```
+
+## Capabilities
+
+### Filesystem Server
+
+Access local files and directories through MCP.
+
+```python cookbook/90_tools/mcp/filesystem.py
+import asyncio
+from pathlib import Path
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.tools.mcp import MCPTools
+
+async def run_agent(message: str):
+    async with MCPTools(
+        f"npx -y @modelcontextprotocol/server-filesystem {Path.cwd()}"
+    ) as mcp_tools:
+        agent = Agent(
+            model=OpenAIChat(id="gpt-4o"),
+            tools=[mcp_tools],
+            instructions="You are a filesystem assistant.",
+            markdown=True,
+        )
+        await agent.aprint_response(message, stream=True)
+
+asyncio.run(run_agent("What is the license for this project?"))
+```
+
+### Brave Search Server
+
+Web search through the Brave Search MCP server.
+
+```python cookbook/90_tools/mcp/brave.py
+import asyncio
+from agno.agent import Agent
+from agno.tools.mcp import MCPTools
+
+async def main():
+    async with MCPTools(
+        "npx -y @anthropic-ai/mcp-server-brave-search",
+        env={"BRAVE_API_KEY": "your-key"},
+    ) as mcp:
+        agent = Agent(tools=[mcp])
+        await agent.aprint_response("Search for recent AI news")
+
+asyncio.run(main())
+```
+
+### Supabase Server
+
+Database operations through Supabase MCP.
+
+```python cookbook/90_tools/mcp/supabase.py
+import asyncio
+from agno.agent import Agent
+from agno.tools.mcp import MCPTools
+
+async def main():
+    async with MCPTools(
+        "npx -y @supabase/mcp-server",
+        env={
+            "SUPABASE_URL": "https://your-project.supabase.co",
+            "SUPABASE_KEY": "your-key",
+        },
+    ) as mcp:
+        agent = Agent(tools=[mcp])
+        await agent.aprint_response("List all tables in the database")
+
+asyncio.run(main())
+```
+
+### Qdrant Vector Database
+
+Vector search through Qdrant MCP.
+
+```python cookbook/90_tools/mcp/qdrant.py
+import asyncio
+from agno.agent import Agent
+from agno.tools.mcp import MCPTools
+
+async def main():
+    async with MCPTools(
+        "npx -y @qdrant/mcp-server",
+        env={"QDRANT_URL": "http://localhost:6333"},
+    ) as mcp:
+        agent = Agent(tools=[mcp])
+        await agent.aprint_response("Search for documents about machine learning")
+
+asyncio.run(main())
+```
+
+### Multiple MCP Servers
+
+Combine multiple MCP servers in one agent.
+
+```python cookbook/90_tools/mcp/multiple_servers.py
+import asyncio
+from agno.agent import Agent
+from agno.tools.mcp import MCPTools
+
+async def main():
+    async with MCPTools("npx -y @modelcontextprotocol/server-filesystem .") as fs_mcp:
+        async with MCPTools("npx -y @anthropic-ai/mcp-server-brave-search") as search_mcp:
+            agent = Agent(tools=[fs_mcp, search_mcp])
+            await agent.aprint_response(
+                "Find Python files in this directory and search for their documentation online"
+            )
+
+asyncio.run(main())
+```
+
+### Tool Filtering
+
+Include or exclude specific tools from an MCP server.
+
+```python cookbook/90_tools/mcp/include_tools.py
+import asyncio
+from agno.agent import Agent
+from agno.tools.mcp import MCPTools
+
+async def main():
+    async with MCPTools(
+        "npx -y @modelcontextprotocol/server-filesystem .",
+        include_tools=["read_file", "list_directory"],
+    ) as mcp:
+        agent = Agent(tools=[mcp])
+        await agent.aprint_response("What files are here?")
+
+asyncio.run(main())
+```
+
+### Local MCP Server
+
+Build and run your own MCP server.
+
+```python cookbook/90_tools/mcp/local_server/server.py
+from mcp.server import Server
+from mcp.types import Tool, TextContent
+
+server = Server("my-server")
+
+@server.tool()
+async def hello(name: str) -> list[TextContent]:
+    """Say hello to someone."""
+    return [TextContent(type="text", text=f"Hello, {name}!")]
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(server.run())
+```
+
+```python cookbook/90_tools/mcp/local_server/client.py
+import asyncio
+from agno.agent import Agent
+from agno.tools.mcp import MCPTools
+
+async def main():
+    async with MCPTools("python server.py") as mcp:
+        agent = Agent(tools=[mcp])
+        await agent.aprint_response("Say hello to the world")
+
+asyncio.run(main())
+```
+
+### SSE Transport
+
+Use Server-Sent Events transport for MCP.
+
+```python cookbook/90_tools/mcp/sse_transport/client.py
+import asyncio
+from agno.agent import Agent
+from agno.tools.mcp import MCPTools
+
+async def main():
+    async with MCPTools(
+        transport="sse",
+        url="http://localhost:8000/mcp",
+    ) as mcp:
+        agent = Agent(tools=[mcp])
+        await agent.aprint_response("Use the remote tools")
+
+asyncio.run(main())
+```
+
+### Pipedream Integrations
+
+Connect to 1000+ APIs through Pipedream MCP servers.
+
+```python cookbook/90_tools/mcp/pipedream_slack.py
+import asyncio
+from agno.agent import Agent
+from agno.tools.mcp import MCPTools
+
+async def main():
+    async with MCPTools(
+        "npx -y @anthropic-ai/mcp-server-pipedream",
+        env={"PIPEDREAM_API_KEY": "your-key"},
+    ) as mcp:
+        agent = Agent(tools=[mcp])
+        await agent.aprint_response("Send a message to #general on Slack")
+
+asyncio.run(main())
+```
+
+## Run Examples
+
+```bash
+git clone https://github.com/agno-agi/agno.git
+cd agno/cookbook/90_tools/mcp
+
+# Filesystem
+python filesystem.py
+
+# Multiple servers
+python multiple_servers.py
+
+# Custom server
+cd local_server && python client.py
+```
+

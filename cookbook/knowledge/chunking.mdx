@@ -1,0 +1,216 @@
+---
+title: Chunking Strategies
+sidebarTitle: Chunking
+description: Semantic, fixed-size, recursive, and custom chunking strategies for documents.
+---
+
+Chunking strategies control how documents are split into smaller pieces for embedding. The right strategy improves retrieval accuracy.
+
+```python
+from agno.knowledge.chunking.semantic import SemanticChunking
+from agno.knowledge.reader.pdf_reader import PDFReader
+
+reader = PDFReader(
+    chunking_strategy=SemanticChunking(
+        chunk_size=500,
+        similarity_threshold=0.5,
+    ),
+)
+```
+
+## Chunking Strategies
+
+| Strategy | Best For | Description |
+|----------|----------|-------------|
+| Semantic | General text | Groups semantically similar sentences |
+| Fixed Size | Simple docs | Splits by character/token count |
+| Recursive | Structured docs | Hierarchical splitting |
+| Document | Natural sections | Preserves document structure |
+| Code | Source code | Respects code syntax |
+| Markdown | MD files | Splits by headers |
+| CSV Row | Tabular data | One chunk per row |
+| Agentic | Complex docs | AI-driven chunking |
+
+## Examples by Strategy
+
+### Semantic Chunking
+
+Groups semantically related sentences together.
+
+```python cookbook/07_knowledge/chunking/semantic_chunking.py
+from agno.agent import Agent
+from agno.knowledge.chunking.semantic import SemanticChunking
+from agno.knowledge.knowledge import Knowledge
+from agno.knowledge.reader.pdf_reader import PDFReader
+from agno.vectordb.pgvector import PgVector
+
+knowledge = Knowledge(
+    vector_db=PgVector(table_name="semantic_docs", db_url="postgresql://..."),
+)
+
+knowledge.add_content(
+    url="https://example.com/document.pdf",
+    reader=PDFReader(
+        chunking_strategy=SemanticChunking(
+            embedder="text-embedding-3-small",
+            chunk_size=500,
+            similarity_threshold=0.5,
+            similarity_window=3,
+            min_sentences_per_chunk=1,
+        ),
+    ),
+)
+
+agent = Agent(knowledge=knowledge, search_knowledge=True)
+agent.print_response("What is the main topic?", markdown=True)
+```
+
+### Fixed Size Chunking
+
+Simple chunking by character or token count.
+
+```python cookbook/07_knowledge/chunking/fixed_size_chunking.py
+from agno.knowledge.chunking.fixed import FixedSizeChunking
+from agno.knowledge.reader.pdf_reader import PDFReader
+
+reader = PDFReader(
+    chunking_strategy=FixedSizeChunking(
+        chunk_size=1000,
+        overlap=200,
+    ),
+)
+```
+
+### Recursive Chunking
+
+Hierarchical splitting that preserves structure.
+
+```python cookbook/07_knowledge/chunking/recursive_chunking.py
+from agno.knowledge.chunking.recursive import RecursiveChunking
+from agno.knowledge.reader.pdf_reader import PDFReader
+
+reader = PDFReader(
+    chunking_strategy=RecursiveChunking(
+        chunk_size=500,
+        chunk_overlap=50,
+        separators=["\n\n", "\n", ". ", " "],
+    ),
+)
+```
+
+### Document Chunking
+
+Preserves natural document boundaries.
+
+```python cookbook/07_knowledge/chunking/document_chunking.py
+from agno.knowledge.chunking.document import DocumentChunking
+from agno.knowledge.reader.pdf_reader import PDFReader
+
+reader = PDFReader(
+    chunking_strategy=DocumentChunking(
+        max_chunk_size=2000,
+        preserve_sections=True,
+    ),
+)
+```
+
+### Code Chunking
+
+Respects code structure and syntax.
+
+```python cookbook/07_knowledge/chunking/code_chunking.py
+from agno.knowledge.chunking.code import CodeChunking
+from agno.knowledge.reader.text import TextReader
+
+reader = TextReader(
+    chunking_strategy=CodeChunking(
+        language="python",
+        chunk_by="function",
+    ),
+)
+```
+
+### Markdown Chunking
+
+Splits markdown by headers.
+
+```python cookbook/07_knowledge/chunking/markdown_chunking.py
+from agno.knowledge.chunking.markdown import MarkdownChunking
+from agno.knowledge.reader.markdown import MarkdownReader
+
+reader = MarkdownReader(
+    chunking_strategy=MarkdownChunking(
+        split_by_header=True,
+        header_levels=[1, 2],
+    ),
+)
+```
+
+### CSV Row Chunking
+
+One chunk per row.
+
+```python cookbook/07_knowledge/chunking/csv_row_chunking.py
+from agno.knowledge.chunking.csv import CSVRowChunking
+from agno.knowledge.reader.csv import CSVReader
+
+reader = CSVReader(
+    chunking_strategy=CSVRowChunking(
+        include_headers=True,
+    ),
+)
+```
+
+### Agentic Chunking
+
+AI-driven chunking for complex documents.
+
+```python cookbook/07_knowledge/chunking/agentic_chunking.py
+from agno.knowledge.chunking.agentic import AgenticChunking
+from agno.knowledge.reader.pdf_reader import PDFReader
+
+reader = PDFReader(
+    chunking_strategy=AgenticChunking(
+        model="gpt-4o-mini",
+        instructions="Group related concepts together",
+    ),
+)
+```
+
+### Custom Chunking Strategy
+
+Build your own chunking logic.
+
+```python cookbook/07_knowledge/chunking/custom_strategy_example.py
+from agno.knowledge.chunking.base import ChunkingStrategy
+from agno.knowledge.document import Document
+
+class MyChunking(ChunkingStrategy):
+    def chunk(self, document: Document) -> list[Document]:
+        # Custom logic
+        chunks = document.content.split("---")
+        return [
+            Document(content=chunk.strip(), metadata=document.metadata)
+            for chunk in chunks
+            if chunk.strip()
+        ]
+
+reader = PDFReader(chunking_strategy=MyChunking())
+```
+
+## Run Examples
+
+```bash
+git clone https://github.com/agno-agi/agno.git
+cd agno/cookbook/07_knowledge/chunking
+
+# Semantic chunking
+python semantic_chunking.py
+
+# Fixed size
+python fixed_size_chunking.py
+
+# Custom strategy
+python custom_strategy_example.py
+```
+

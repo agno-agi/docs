@@ -1,0 +1,105 @@
+---
+title: Personal Assistant
+description: A personal assistant that learns about the user over time without being asked.
+---
+
+## Overview
+
+A personal assistant that becomes increasingly personalized through the Learning Machine. Combines user profile tracking, session context, and entity memory to remember preferences, people, and events.
+
+## Code
+
+```python personal_assistant.py
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.learn import (
+    EntityMemoryConfig,
+    LearningMachine,
+    LearningMode,
+    SessionContextConfig,
+    UserProfileConfig,
+)
+from agno.models.openai import OpenAIResponses
+
+db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+
+def create_personal_assistant(user_id: str, session_id: str) -> Agent:
+    """Create a personal assistant for a specific user."""
+    return Agent(
+        model=OpenAIResponses(id="gpt-5.2"),
+        db=db,
+        instructions=(
+            "You are a helpful personal assistant. "
+            "Remember user preferences without being asked. "
+            "Keep track of important people and events in their life."
+        ),
+        learning=LearningMachine(
+            user_profile=UserProfileConfig(mode=LearningMode.ALWAYS),
+            session_context=SessionContextConfig(enable_planning=True),
+            entity_memory=EntityMemoryConfig(
+                mode=LearningMode.ALWAYS,
+                namespace=f"user:{user_id}:personal",
+            ),
+        ),
+        user_id=user_id,
+        session_id=session_id,
+        markdown=True,
+    )
+
+
+if __name__ == "__main__":
+    user_id = "alex@example.com"
+
+    # Conversation 1: Introduction
+    agent = create_personal_assistant(user_id, "conv_1")
+    agent.print_response(
+        "Hi! I'm Alex Chen. I work as a product manager at Stripe. "
+        "I prefer concise responses. My sister Sarah is visiting next month.",
+        stream=True,
+    )
+
+    # Conversation 2: New session - agent remembers
+    agent = create_personal_assistant(user_id, "conv_2")
+    agent.print_response(
+        "What do you remember about me and my sister?",
+        stream=True,
+    )
+
+    # Conversation 3: Planning with context
+    agent = create_personal_assistant(user_id, "conv_3")
+    agent.print_response(
+        "Help me plan activities for Sarah's visit. She likes hiking.",
+        stream=True,
+    )
+```
+
+## How It Works
+
+- **User Profile** (ALWAYS mode): Automatically extracts name, workplace, and communication preferences
+- **Session Context** (with planning): Tracks goals and progress across multi-turn conversations
+- **Entity Memory** (ALWAYS mode): Records people (Sarah), places, and events with relationships
+
+The namespace `user:{user_id}:personal` isolates each user's entity memory.
+
+## Run This Example
+
+```bash
+git clone https://github.com/agno-agi/agno.git
+cd agno/cookbook/08_learning
+
+# Setup (requires Docker for Postgres)
+./setup_venv.sh
+./cookbook/scripts/run_pgvector.sh
+
+# Run
+python 07_patterns/personal_assistant.py
+```
+
+Full source: [agno/cookbook/08_learning/07_patterns/personal_assistant.py](https://github.com/agno-agi/agno/blob/main/cookbook/08_learning/07_patterns/personal_assistant.py)
+
+## Related
+
+- [Learning Overview](/cookbook/learning/overview) - All learning stores explained
+- [Support Agent](/cookbook/learning/support-agent) - Multi-tenant learning pattern
+- [Agent with Memory](/basics/agents/usage/agent-with-memory) - Simpler memory patterns
