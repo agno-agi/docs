@@ -49,7 +49,7 @@ Two independent clauses joined by a comma need a period.
 | "The `input` parameter is the input to send to the agent. It can be..." | "The `input` parameter can be..." |
 | "If this is your first time using Agno, you can start here" | "New to Agno? Start with the quickstart." |
 | "After getting familiarized with" | "After getting familiar with" |
-| "View the X" / "View X" | Just link: "[X](/path)" |
+| "View the X" / "View X" | Just link: "X" |
 | "This example shows how to..." | Remove or tighten |
 | "Here's how it looks:" | Remove (let the visual speak) |
 
