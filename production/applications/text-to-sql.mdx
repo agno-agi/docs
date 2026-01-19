@@ -1,0 +1,236 @@
+---
+title: "Text-to-SQL Agent"
+sidebarTitle: "Text-to-SQL"
+description: "Self-learning SQL agent that translates natural language to PostgreSQL queries and improves with validated query storage."
+---
+
+A self-learning agent that translates natural language questions into SQL queries, executes them against a PostgreSQL database, and improves over time by storing validated queries in a knowledge base. Uses Formula 1 historical data (1950-2020) as the demo dataset.
+
+## What It Does
+
+- Converts natural language questions to PostgreSQL queries
+- Uses a semantic model to understand database structure
+- Searches a knowledge base for similar queries and patterns
+- Validates results and explains query logic
+- Saves successful queries to improve future responses
+
+## Prerequisites
+
+- Python 3.12+
+- Docker (for PostgreSQL with pgvector)
+- OpenAI API key (for embeddings)
+- Anthropic API key (for Claude)
+
+## Setup
+
+<Steps>
+<Step title="Clone the repository">
+
+```bash
+git clone https://github.com/agno-agi/agno.git
+cd agno
+```
+
+</Step>
+
+<Step title="Create and activate virtual environment">
+
+```bash
+uv venv --python 3.12
+source .venv/bin/activate
+```
+
+</Step>
+
+<Step title="Install dependencies">
+
+```bash
+uv pip install -r cookbook/01_showcase/01_agents/text_to_sql/requirements.in
+```
+
+</Step>
+
+<Step title="Set environment variables">
+
+```bash
+export OPENAI_API_KEY=sk-***
+export ANTHROPIC_API_KEY=sk-ant-***
+```
+
+</Step>
+
+<Step title="Start PostgreSQL with pgvector">
+
+```bash
+./cookbook/scripts/run_pgvector.sh
+```
+
+This starts a PostgreSQL container with pgvector on port 5532.
+
+</Step>
+
+<Step title="Load F1 data and knowledge base">
+
+```bash
+python cookbook/01_showcase/01_agents/text_to_sql/scripts/load_f1_data.py
+python cookbook/01_showcase/01_agents/text_to_sql/scripts/load_knowledge.py
+```
+
+</Step>
+</Steps>
+
+## Run the Agent
+
+### Basic Queries
+
+Run simple aggregation and filtering queries:
+
+```bash
+python cookbook/01_showcase/01_agents/text_to_sql/examples/01_basic_queries.py
+```
+
+Demonstrates:
+- Simple aggregation queries (counts, sums)
+- Filtering by year or driver
+- Using the semantic model to find relevant tables
+
+### Self-Learning Loop
+
+See how the agent saves validated queries to improve:
+
+```bash
+python cookbook/01_showcase/01_agents/text_to_sql/examples/02_learning_loop.py
+```
+
+Demonstrates:
+- Query execution and validation
+- Saving queries to the knowledge base
+- How saved queries improve future responses
+
+### Edge Cases
+
+Test complex queries and error handling:
+
+```bash
+python cookbook/01_showcase/01_agents/text_to_sql/examples/03_edge_cases.py
+```
+
+## Agent Configuration
+
+```python
+sql_agent = Agent(
+    name="SQL Agent",
+    model=Claude(id="claude-sonnet-4-5"),
+    db=demo_db,
+    knowledge=sql_agent_knowledge,
+    system_message=system_message,
+    tools=[
+        SQLTools(db_url=DB_URL),
+        ReasoningTools(add_instructions=True),
+        save_validated_query,
+    ],
+    add_datetime_to_context=True,
+    enable_agentic_memory=True,
+    search_knowledge=True,
+    add_history_to_context=True,
+    num_history_runs=5,
+    read_chat_history=True,
+    read_tool_call_history=True,
+    markdown=True,
+)
+```
+
+| Parameter | Purpose |
+|-----------|---------|
+| `model` | Claude Sonnet for query generation and reasoning |
+| `db` | PostgreSQL connection for query execution |
+| `knowledge` | Vector database storing query patterns and table metadata |
+| `SQLTools` | Execute SQL queries against the database |
+| `ReasoningTools` | Think step-by-step before query construction |
+| `save_validated_query` | Custom tool to persist successful queries |
+| `enable_agentic_memory` | Remember user preferences across sessions |
+| `search_knowledge` | Search knowledge base before writing SQL |
+| `add_history_to_context` | Include recent conversation for context |
+
+## How It Works
+
+### Query Workflow
+
+```
+1. User asks a question
+2. Agent searches knowledge base for similar queries
+3. Agent identifies tables from semantic model
+4. Agent constructs and executes SQL
+5. Agent validates results and presents answer
+6. Agent offers to save the query for future use
+```
+
+### Knowledge Base
+
+The knowledge base stores three types of information:
+
+| Type | Purpose |
+|------|---------|
+| Table metadata | Column names, types, and descriptions |
+| Query patterns | Reusable SQL patterns for common operations |
+| Validated queries | User-approved queries saved for retrieval |
+
+### Semantic Model
+
+The semantic model provides high-level context about available tables:
+
+```python
+{
+    "tables": [
+        {
+            "table_name": "drivers_championship",
+            "table_description": "Driver championship standings (1950 to 2020).",
+            "use_cases": [
+                "Driver standings by year",
+                "Comparing driver points across seasons"
+            ]
+        }
+    ]
+}
+```
+
+### Self-Learning Loop
+
+1. Agent executes a query and validates results
+2. Agent asks: "Would you like to save this query?"
+3. If confirmed, stores the question, SQL, and explanation
+4. Future similar questions retrieve this pattern automatically
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Database connection refused">
+    Ensure PostgreSQL is running:
+    ```bash
+    docker ps | grep pgvector
+    ```
+    If not running:
+    ```bash
+    ./cookbook/scripts/run_pgvector.sh
+    ```
+  </Accordion>
+  <Accordion title="Query returns wrong results for position">
+    The `position` column in `drivers_championship` is TEXT, not INT. Use string comparison:
+    ```sql
+    WHERE position = '1'  -- Correct
+    WHERE position = 1    -- Incorrect
+    ```
+  </Accordion>
+  <Accordion title="Knowledge base not found">
+    Ensure you've loaded the knowledge base:
+    ```bash
+    python cookbook/01_showcase/01_agents/text_to_sql/scripts/load_knowledge.py
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Source Code
+
+- [Agent implementation](https://github.com/agno-agi/agno/tree/main/cookbook/01_showcase/01_agents/text_to_sql/agent.py)
+- [Semantic model](https://github.com/agno-agi/agno/tree/main/cookbook/01_showcase/01_agents/text_to_sql/semantic_model.py)
+- [Example scripts](https://github.com/agno-agi/agno/tree/main/cookbook/01_showcase/01_agents/text_to_sql/examples/)
