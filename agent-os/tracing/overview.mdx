@@ -32,8 +32,8 @@ How you configure tracing depends on your database setup:
 | Scenario | Configuration | Where Traces Are Stored |
 |----------|---------------|------------------------|
 | Single shared database | `tracing=True` | The shared database |
-| Multiple databases | `tracing=True` + `tracing_db=...` | The dedicated `tracing_db` |
-| No `tracing_db` specified | `tracing=True` | First database found (not recommended) |
+| Multiple databases | `tracing=True` + `db=...` | The dedicated `db` |
+| No `db` specified | `tracing=True` | First database found (not recommended) |
 
 <Note>
 It is recommended to use a seperate dedicated database for traces. This ensures all traces are stored in one central location, making it easier to query and analyze.
@@ -73,7 +73,7 @@ In this setup, traces are automatically stored in the shared database alongside 
 ## Multiple Databases Setup
 
 <Warning>
-  When agents or teams have **different databases**, it is highly recommended that you specify a dedicated `tracing_db` to ensure all traces are stored in one central location.
+  When agents or teams have **different databases**, it is highly recommended that you specify a dedicated `db` to ensure all traces are stored in one central location.
 </Warning>
 
 If you have multiple agents with their own databases, traces need a dedicated database:
@@ -91,7 +91,7 @@ agent1_db = SqliteDb(db_file="tmp/agent1.db", id="agent1_db")
 agent2_db = SqliteDb(db_file="tmp/agent2.db", id="agent2_db")
 
 # Dedicated database for traces (separate from agent databases)
-tracing_db = SqliteDb(db_file="tmp/traces.db", id="traces_db")
+db = SqliteDb(db_file="tmp/traces.db", id="traces_db")
 
 # Agent 1 with its own database
 hackernews_agent = Agent(
@@ -113,7 +113,7 @@ search_agent = Agent(
 agent_os = AgentOS(
     agents=[hackernews_agent, search_agent],
     tracing=True,
-    tracing_db=tracing_db,  # All traces go here
+    db=db,  # All traces go here
 )
 
 app = agent_os.get_app()
@@ -121,13 +121,13 @@ app = agent_os.get_app()
 
 ### Why Use a Dedicated Tracing Database?
 
-Without `tracing_db`, AgentOS will store traces in the **first database it finds** from your agents or teams. This leads to:
+Without `db`, AgentOS will store traces in the **first database it finds** from your agents or teams. This leads to:
 
 - **Fragmented traces**: Traces scattered across different databases
 - **Incomplete observability**: Can't query all traces from one place  
 - **Unpredictable behavior**: Which database gets traces depends on agent order
 
-With a dedicated `tracing_db`:
+With a dedicated `db`:
 
 - **Unified observability**: All traces in one queryable location
 - **Cross-agent analysis**: Compare performance across agents
@@ -150,11 +150,11 @@ agent1_db = SqliteDb(db_file="tmp/agent1.db", id="agent1_db")
 agent2_db = SqliteDb(db_file="tmp/agent2.db", id="agent2_db")
 
 # Dedicated tracing database
-tracing_db = SqliteDb(db_file="tmp/traces.db", id="traces_db")
+db = SqliteDb(db_file="tmp/traces.db", id="traces_db")
 
 # Set up tracing with custom configuration
 setup_tracing(
-    db=tracing_db,
+    db=db,
     batch_processing=True,
     max_queue_size=2048,
     schedule_delay_millis=3000,
@@ -164,20 +164,20 @@ setup_tracing(
 agent1 = Agent(name="Agent 1", model=OpenAIResponses(id="gpt-5.2"), db=agent1_db)
 agent2 = Agent(name="Agent 2", model=OpenAIResponses(id="gpt-5.2"), db=agent2_db)
 
-# Pass tracing_db to AgentOS for trace querying via API
+# Pass db to AgentOS for trace querying via API
 agent_os = AgentOS(
     agents=[agent1, agent2],
-    tracing_db=tracing_db,  # Makes traces queryable via AgentOS API
+    db=db,  # Makes traces queryable via AgentOS API
 )
 
 app = agent_os.get_app()
 ```
 
 <Note>
-  Even when using `setup_tracing()`, pass `tracing_db` to AgentOS so traces are accessible through the AgentOS API and UI.
+  Even when using `setup_tracing()`, pass `db` to AgentOS so traces are accessible through the AgentOS API and UI.
 </Note>
 
 <Tip>
-  **Best Practice**: Always use a dedicated `tracing_db` in production, even with a single agent. This keeps observability data separate and makes it easier to scale or migrate later.
+  **Best Practice**: Always use a dedicated `db` in production, even with a single agent. This keeps observability data separate and makes it easier to scale or migrate later.
 </Tip>
 
