@@ -155,13 +155,42 @@ The Team creates a default system message that can be customized using the follo
 | `add_knowledge_to_context`       | `bool`      | `False` | If True, add retrieved knowledge to the context, to enable RAG. See [knowledge](/context/knowledge/overview) for more information.                                          |
 | `enable_agentic_knowledge_filters` | `bool`      | `False` | If True, let the team choose the knowledge filters. See [knowledge](/context/knowledge/filters/overview) for more information.                                       |
 | `system_message`                 | `str`       | `None`  | Override the default system message.                                                                                                                                       |
-| `respond_directly`               | `bool`      | `False` | If True, the team leader won't process responses from members and instead will return them directly.                                                                       |
-| `delegate_to_all_members`        | `bool`      | `False` | If True, the team leader will delegate the task to all members simultaneously, instead of one by one. When running async (using `arun`) members will run concurrently.                                                                         |
+| `respond_directly`               | `bool`      | `False` | If True, the team leader won't process responses from members and instead will return them directly. Cannot be used with `delegate_to_all_members=True`.                   |
+| `delegate_to_all_members`        | `bool`      | `False` | If True, the team leader will delegate the task to all members simultaneously, instead of one by one. When running async (using `arun`) members will run concurrently. Cannot be used with `respond_directly=True`. |
+| `member_timeout`                 | `float`     | `None`  | Timeout in seconds for member delegations. Prevents hanging on unresponsive members.                                                                                       |
 | `determine_input_for_members`    | `bool`      | `True`  | Set to false if you want to send the run input directly to the member agents.                                                                                             |
 | `share_member_interactions`      | `bool`      | `False` | If True, send all previous member interactions to members.                                                                                                                 |
+| `max_interactions_to_share`      | `int`       | `None`  | Maximum number of member interactions to share when `share_member_interactions=True`. Limits context size.                                                                 |
 | `get_member_information_tool`    | `bool`      | `False` | If True, add a tool to get information about the team members.                                                                                                             |
 
 See the full [Team reference](/reference/teams/team) for more information.
+
+<Warning>
+**Configuration Validation**: Setting `delegate_to_all_members=True` and `respond_directly=True` together is not allowed and will raise a `ValueError`. These settings are incompatible because `delegate_to_all_members` requires the team leader to coordinate responses, while `respond_directly` bypasses that coordination.
+</Warning>
+
+### Orchestration Parameters
+
+The Team class provides several parameters to control how the team leader orchestrates work across members:
+
+| Parameter                     | Type    | Default | Description                                                                                                    |
+| ----------------------------- | ------- | ------- | -------------------------------------------------------------------------------------------------------------- |
+| `member_timeout`              | `float` | `None`  | Timeout in seconds for member delegations. Useful for preventing the team from hanging on unresponsive members |
+| `max_interactions_to_share`   | `int`   | `None`  | Limits the number of member interactions shared when `share_member_interactions=True` to prevent context explosion |
+| `share_member_interactions`   | `bool`  | `False` | When True, previous member interactions are shared with members receiving new delegations                      |
+
+```python
+from agno.agent import Agent
+from agno.team import Team
+
+# Create a team with orchestration controls
+team = Team(
+    members=[research_agent, analysis_agent],
+    member_timeout=30.0,  # 30 second timeout for member responses
+    share_member_interactions=True,
+    max_interactions_to_share=5,  # Only share the last 5 interactions to limit context size
+)
+```
 
 ### How the system message is built
 
