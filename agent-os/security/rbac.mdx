@@ -1,54 +1,37 @@
 ---
-title: Role-Based Access Control (RBAC)
-sidebarTitle: RBAC
-description: Secure your AgentOS with fine-grained permission scopes for agents, teams, and workflows
-keywords: [rbac, role-based access control, scopes, permissions, authorization, jwt scopes, access control, security, agent permissions, team permissions]
-tag: beta
+title: "Role-Based Access Control (RBAC)"
+sidebarTitle: "RBAC"
+description: "Secure your AgentOS with fine-grained permissions."
 ---
 
-<Badge icon="code-branch" color="orange">
-    <Tooltip tip="Introduced in v2.3.13" cta="View release notes" href="https://github.com/agno-agi/agno/releases/tag/v2.3.13">v2.3.13</Tooltip>
-</Badge>
+AgentOS validates JWT scopes against required permissions for each endpoint. Control who can access and run your agents, teams, and workflows.
 
-AgentOS provides built-in Role-Based Access Control (RBAC) that validates JWT scopes against required permissions for each endpoint of the API. This allows you to control who can access and run your agents, teams, and workflows, as well as other functions on the AgentOS API.
-
-This functionality enables you to control access when building your own applications on AgentOS.
-
-Visualize how identity and authorization flow in AgentOS RBAC:
-
-<img 
-  className="block dark:hidden" 
-  src="/images/jwt-verification-light.png" 
+<img
+  className="block dark:hidden"
+  src="/images/jwt-verification-light.png"
   alt="JWT verification flow"
 />
 
-<img 
-  className="hidden dark:block" 
-  src="/images/jwt-verification-dark.png" 
+<img
+  className="hidden dark:block"
+  src="/images/jwt-verification-dark.png"
   alt="JWT verification flow"
 />
-
-- The **Control Plane** (or your auth system) generates signed JWT tokens which encode user identity and permissions.
-- JWT tokens are presented on every API call from your application's backend, UI, or integrations.
-- **AgentOS** validates each JWT and checks for the required scopes before granting access to agents, teams, or workflows, and other internal resources.
-
 
 ## Quick Start
 
 Enable RBAC when initializing AgentOS:
-
-```python 
+```python
 from agno.agent import Agent
 from agno.db.postgres import PostgresDb
-from agno.models.openai import OpenAIChat
+from agno.models.openai import OpenAIResponses
 from agno.os import AgentOS
-from agno.os.config import AuthorizationConfig
 
 db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
 
 agent = Agent(
     id="my-agent",
-    model=OpenAIChat(id="gpt-4o"),
+    model=OpenAIResponses(id="gpt-5.2"),
     db=db,
 )
 
@@ -61,116 +44,35 @@ agent_os = AgentOS(
 app = agent_os.get_app()
 ```
 
-<Note>
-It is required to set the `JWT_VERIFICATION_KEY` environment variable to the public key of the JWT verification key in the default case.
-
-If you want more control, you can use the [AuthorizationConfig](/reference/agent-os/authorization-config) class:
-
-```python
-from agno.os.config import AuthorizationConfig
-
-agent_os = AgentOS(
-    id="my-agent-os",
-    agents=[agent],
-    authorization=True,
-    authorization_config=AuthorizationConfig(
-      verification_keys=["your-jwt-verification-key"],
-      algorithm="RS256",
-  ),
-)
-```
-</Note>
-
-<Note>
-You can also use a JWKS (JSON Web Key Set) file to verify JWTs instead of directly passing verification keys. To do this, provide the `jwks_file` parameter in the `AuthorizationConfig`:
-
-```python
-from agno.os.config import AuthorizationConfig
-
-agent_os = AgentOS(
-    id="my-agent-os",
-    agents=[agent],
-    authorization=True,
-    authorization_config=AuthorizationConfig(
-        jwks_file="/path/to/jwks.json",
-        algorithm="RS256",
-    ),
-)
-```
-
-or set the `JWT_JWKS_FILE` environment variable to point to a JWKS file.
-
+Set the `JWT_VERIFICATION_KEY` environment variable to your public key:
 ```bash
-export JWT_JWKS_FILE="/path/to/jwks.json"
+export JWT_VERIFICATION_KEY="your-public-key"
 ```
-</Note>
 
 ## Scope Format
 
-RBAC uses a hierarchical scope format with three levels:
+RBAC uses a hierarchical scope format:
 
-### Global Resource Scopes
-
-Format: `resource:action`
-
-Grants access to all resources of a type.
-
-```
-agents:read      # Read/list all agents
-agents:run       # Run any agent
-teams:read       # Read/list all teams
-workflows:run    # Run any workflow
-sessions:write   # Create/update any session
-```
-
-### Per-Resource Scopes
-
-Format: `resource:<resource-id>:action`
-
-Grants access to a specific resource.
-
-```
-agents:my-agent:read      # Read specific agent
-agents:web-search:run     # Run specific agent
-teams:research-team:run   # Run specific team
-workflows:etl-pipeline:run # Run specific workflow
-```
-
-### Wildcard Scopes
-
-Format: `resource:*:action`
-
-Grants access to any resource of a type (equivalent to global).
-
-```
-agents:*:read     # Read any agent
-teams:*:run       # Run any team
-```
-
-### Admin Scope
-
-The `agent_os:admin` scope grants full access to all endpoints.
-
-```
-agent_os:admin    # Full admin access
-```
+| Format | Example | Description |
+|--------|---------|-------------|
+| `resource:action` | `agents:read` | Access all resources of a type |
+| `resource:<id>:action` | `agents:my-agent:run` | Access a specific resource |
+| `resource:*:action` | `agents:*:read` | Wildcard (equivalent to global) |
+| `agent_os:admin` | - | Full access to all endpoints |
 
 ## Complete Scope Reference
-
-All available scopes for AgentOS RBAC. Scopes follow the format `resource:action` for global access or `resource:<id>:action` for per-resource access.
-
 
 ### Admin Scopes
 
 | Scope | Description |
 |-------|-------------|
-| `agent_os:admin` | **Full admin access** - grants access to all endpoints |
+| `agent_os:admin` | Full admin access to all endpoints |
 
 ### System Scopes
 
 | Scope | Description |
 |-------|-------------|
-| `system:read` | View system configuration and available models (`GET /config`, `GET /models`) |
+| `system:read` | View system configuration and available models |
 
 ### Agent Scopes
 
@@ -182,8 +84,6 @@ All available scopes for AgentOS RBAC. Scopes follow the format `resource:action
 | `agents:run` | Run any agent |
 | `agents:<agent-id>:read` | View a specific agent |
 | `agents:<agent-id>:run` | Run a specific agent |
-| `agents:*:read` | View any agent (wildcard) |
-| `agents:*:run` | Run any agent (wildcard) |
 
 ### Team Scopes
 
@@ -195,8 +95,6 @@ All available scopes for AgentOS RBAC. Scopes follow the format `resource:action
 | `teams:run` | Run any team |
 | `teams:<team-id>:read` | View a specific team |
 | `teams:<team-id>:run` | Run a specific team |
-| `teams:*:read` | View any team (wildcard) |
-| `teams:*:run` | Run any team (wildcard) |
 
 ### Workflow Scopes
 
@@ -208,8 +106,6 @@ All available scopes for AgentOS RBAC. Scopes follow the format `resource:action
 | `workflows:run` | Run any workflow |
 | `workflows:<workflow-id>:read` | View a specific workflow |
 | `workflows:<workflow-id>:run` | Run a specific workflow |
-| `workflows:*:read` | View any workflow (wildcard) |
-| `workflows:*:run` | Run any workflow (wildcard) |
 
 ### Session Scopes
 
@@ -223,7 +119,7 @@ All available scopes for AgentOS RBAC. Scopes follow the format `resource:action
 
 | Scope | Description |
 |-------|-------------|
-| `memories:read` | View memories, memory topics, and user memory stats |
+| `memories:read` | View memories and memory topics |
 | `memories:write` | Create, update, and optimize memories |
 | `memories:delete` | Delete memories |
 
@@ -231,7 +127,7 @@ All available scopes for AgentOS RBAC. Scopes follow the format `resource:action
 
 | Scope | Description |
 |-------|-------------|
-| `knowledge:read` | View knowledge content, config, and search knowledge |
+| `knowledge:read` | View and search knowledge content |
 | `knowledge:write` | Add and update knowledge content |
 | `knowledge:delete` | Delete knowledge content |
 
@@ -252,7 +148,7 @@ All available scopes for AgentOS RBAC. Scopes follow the format `resource:action
 
 ## Default Scope Mappings
 
-AgentOS automatically maps endpoints to required scopes. Here are all default mappings:
+AgentOS automatically maps endpoints to required scopes.
 
 <Tabs>
   <Tab title="System">
@@ -263,8 +159,6 @@ AgentOS automatically maps endpoints to required scopes. Here are all default ma
   </Tab>
 
   <Tab title="Agents">
-    For all of the following endpoints, the specific Agent scopes (e.g. `agents:<agent-id>:read`) are respected.
-
     | Endpoint | Required Scope |
     |----------|----------------|
     | `GET /agents` | `agents:read` |
@@ -276,10 +170,8 @@ AgentOS automatically maps endpoints to required scopes. Here are all default ma
     | `POST /agents/*/runs/*/continue` | `agents:run` |
     | `POST /agents/*/runs/*/cancel` | `agents:run` |
   </Tab>
-  
-  <Tab title="Teams">
-    For all of the following endpoints, the specific Team scopes (e.g. `teams:<team-id>:read`) are respected.
 
+  <Tab title="Teams">
     | Endpoint | Required Scope |
     |----------|----------------|
     | `GET /teams` | `teams:read` |
@@ -291,10 +183,8 @@ AgentOS automatically maps endpoints to required scopes. Here are all default ma
     | `POST /teams/*/runs/*/continue` | `teams:run` |
     | `POST /teams/*/runs/*/cancel` | `teams:run` |
   </Tab>
-  
+
   <Tab title="Workflows">
-    For all of the following endpoints, the specific Workflow scopes (e.g. `workflows:<workflow-id>:read`) are respected.
-    
     | Endpoint | Required Scope |
     |----------|----------------|
     | `GET /workflows` | `workflows:read` |
@@ -306,7 +196,7 @@ AgentOS automatically maps endpoints to required scopes. Here are all default ma
     | `POST /workflows/*/runs/*/continue` | `workflows:run` |
     | `POST /workflows/*/runs/*/cancel` | `workflows:run` |
   </Tab>
-  
+
   <Tab title="Sessions">
     | Endpoint | Required Scope |
     |----------|----------------|
@@ -332,7 +222,7 @@ AgentOS automatically maps endpoints to required scopes. Here are all default ma
     | `DELETE /memories` | `memories:delete` |
     | `DELETE /memories/*` | `memories:delete` |
   </Tab>
-  
+
   <Tab title="Knowledge">
     | Endpoint | Required Scope |
     |----------|----------------|
@@ -366,45 +256,36 @@ AgentOS automatically maps endpoints to required scopes. Here are all default ma
 
 ## Custom Scope Mappings
 
-You can customize or extend the default scope mappings using the JWT middleware directly:
-
-```python custom_scopes.py
+Customize or extend the default scope mappings using the JWT middleware:
+```python
 from agno.os import AgentOS
 from agno.os.middleware import JWTMiddleware
 
 agent_os = AgentOS(
     id="my-agent-os",
     agents=[my_agent],
-    # Don't use built-in authorization - we'll configure JWT middleware manually
 )
 
 app = agent_os.get_app()
 
-# Add JWT middleware with custom scope mappings
 app.add_middleware(
     JWTMiddleware,
     verification_keys=["your-jwt-key"],
     algorithm="RS256",
-    authorization=True,  # Enable RBAC
+    authorization=True,
     scope_mappings={
-        # Override default scope for this endpoint
         "GET /agents": ["custom:read"],
-        # Add scope for custom endpoint
         "POST /custom/endpoint": ["custom:write"],
-        # Allow access without scopes (empty list)
-        "GET /public/stats": [],
+        "GET /public/stats": [],  # No scopes required
     }
 )
 ```
 
-<Note>
-Custom scope mappings are **additive** to the default mappings. To override a default mapping, specify the same route pattern with your custom scopes.
-</Note>
+Custom scope mappings are additive to the defaults. To override a default, specify the same route pattern with your custom scopes.
 
 ## JWT Token Structure
 
-When using RBAC, your JWT tokens should include:
-
+Your JWT tokens should include:
 ```json
 {
   "sub": "user-123",
@@ -414,71 +295,80 @@ When using RBAC, your JWT tokens should include:
 }
 ```
 
-### Required Claims
+| Claim | Required | Description |
+|-------|----------|-------------|
+| `scopes` | Yes | Array of permission scopes |
+| `sub` | No | User ID (extracted as `user_id`) |
+| `session_id` | No | Session ID for session tracking |
+| `aud` | No | Audience (must match AgentOS `id` when `verify_audience=True`) |
 
-| Claim | Description |
-|-------|-------------|
-| `scopes` | Array of permission scopes |
+### Example Tokens
 
-### Optional Claims
-
-| Claim | Description |
-|-------|-------------|
-| `sub` | User ID (extracted as `user_id`) |
-| `session_id` | Session ID for session tracking |
-| `aud` | Audience - must match AgentOS `id` (when `verify_audience=True`) |
-
-### Examples
-
-#### Grant Read-Only Access
-
+**Read-only access:**
 ```json
 {
   "scopes": ["agents:read", "teams:read", "sessions:read"]
 }
 ```
 
-#### Grant Run and Read Access to Specific Agent
-
+**Run a specific agent:**
 ```json
 {
   "scopes": ["agents:my-agent:run", "agents:my-agent:read", "sessions:write"]
 }
 ```
 
-#### Grant Full Access to All Agents
-
-```json
-{
-  "scopes": ["agents:read", "agents:run", "sessions:read", "sessions:write"]
-}
-```
-
-#### Admin Access
-
+**Admin access:**
 ```json
 {
   "scopes": ["agent_os:admin"]
 }
 ```
 
+## Configuration Options
+
+Configure JWT verification using `AuthorizationConfig`:
+```python
+from agno.os import AgentOS
+from agno.os.config import AuthorizationConfig
+
+agent_os = AgentOS(
+    id="my-agent-os",
+    agents=[agent],
+    authorization=True,
+    authorization_config=AuthorizationConfig(
+        verification_keys=["your-jwt-verification-key"],
+        algorithm="RS256",
+    ),
+)
+```
+
+You can also use a JWKS file:
+```python
+authorization_config=AuthorizationConfig(
+    jwks_file="/path/to/jwks.json",
+    algorithm="RS256",
+)
+```
+
+Or set environment variables:
+```bash
+export JWT_VERIFICATION_KEY="your-public-key"
+# or
+export JWT_JWKS_FILE="/path/to/jwks.json"
+```
+
 ## Excluded Routes
 
-The following routes are excluded from RBAC checks by default:
+These routes are excluded from RBAC checks by default:
 
-- `/` (home)
-- `/health`
-- `/docs`
-- `/redoc`
-- `/openapi.json`
-- `/docs/oauth2-redirect`
+`/`, `/health`, `/docs`, `/redoc`, `/openapi.json`, `/docs/oauth2-redirect`
 
 ## Error Responses
 
 | Status Code | Description |
 |-------------|-------------|
 | `401 Unauthorized` | Missing or invalid JWT token |
-| `401 Unauthorized` | Invalid audience (token not for this AgentOS) |
 | `403 Forbidden` | Insufficient scopes for the requested operation |
 
 ## Examples
@@ -489,28 +379,14 @@ The following routes are excluded from RBAC checks by default:
     icon="lock"
     href="/agent-os/usage/rbac/basic"
   >
-    Basic RBAC example.
-  </Card>
-  <Card
-    title="Advanced Scopes"
-    icon="lock"
-    href="/agent-os/usage/rbac/advanced-scopes"
-  >
-    Advanced RBAC example.
+    Basic RBAC example
   </Card>
   <Card
     title="Per-Agent Permissions"
     icon="user"
     href="/agent-os/usage/rbac/per-agent-permissions"
   >
-    Grant specific permissions to specific agents.
-  </Card>
-  <Card
-    title="Custom Scope Mappings"
-    icon="gear"
-    href="/agent-os/usage/rbac/custom-scope-mappings"
-  >
-    Customize or extend the default scope mappings.
+    Grant specific permissions to specific agents
   </Card>
 </CardGroup>
 
@@ -522,14 +398,13 @@ The following routes are excluded from RBAC checks by default:
     icon="gear"
     href="/reference/agent-os/authorization-config"
   >
-    Configuration options for JWT verification.
+    Configuration options for JWT verification
   </Card>
   <Card
     title="JWTMiddleware Reference"
     icon="code"
     href="/reference/agent-os/jwt-middleware"
   >
-    Complete JWT middleware class reference.
+    Complete JWT middleware class reference
   </Card>
 </CardGroup>
-

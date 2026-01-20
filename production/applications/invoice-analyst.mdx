@@ -1,0 +1,201 @@
+---
+title: "Invoice Analyst"
+sidebarTitle: "Invoice Analyst"
+description: "Vision-based invoice data extraction from PDFs and images with validation and confidence scoring."
+---
+
+An intelligent invoice processing agent that extracts structured data from invoice documents (PDF, images) using vision capabilities.
+
+## What You'll Learn
+
+| Concept | Description |
+|:--------|:------------|
+| **Vision Extraction** | Using LLM vision to understand document layouts |
+| **Structured Output** | Extracting complex nested data (vendor, line items, totals) |
+| **Data Validation** | Verifying extracted data for accuracy |
+| **Document Processing** | Handling PDFs and images |
+
+## Prerequisites
+
+- Python 3.12+
+- OpenAI API key
+- poppler (system dependency for PDF to image conversion)
+
+## Setup
+
+<Steps>
+<Step title="Clone the repository">
+
+```bash
+git clone https://github.com/agno-agi/agno.git
+cd agno
+```
+
+</Step>
+
+<Step title="Create and activate virtual environment">
+
+```bash
+uv venv --python 3.12
+source .venv/bin/activate
+```
+
+</Step>
+
+<Step title="Install system dependencies">
+
+```bash
+# macOS
+brew install poppler
+
+# Ubuntu/Debian
+apt-get install poppler-utils
+```
+
+</Step>
+
+<Step title="Install Python dependencies">
+
+```bash
+uv pip install -r cookbook/01_showcase/01_agents/invoice_analyst/requirements.in
+```
+
+</Step>
+
+<Step title="Set environment variables">
+
+```bash
+export OPENAI_API_KEY=your-openai-key
+```
+
+</Step>
+</Steps>
+
+## Run the Agent
+
+### Single Invoice Extraction
+
+Extract data from a single invoice:
+
+```bash
+python cookbook/01_showcase/01_agents/invoice_analyst/examples/extract_invoice.py path/to/invoice.pdf
+```
+
+Demonstrates:
+- Loading an invoice document
+- Extracting structured data
+- Accessing vendor, line items, and totals
+
+### Data Validation
+
+Validate extracted invoice data:
+
+```bash
+python cookbook/01_showcase/01_agents/invoice_analyst/examples/validate_data.py
+```
+
+Demonstrates:
+- Validating line item math
+- Checking subtotal and total calculations
+- Identifying data quality issues
+
+### Batch Processing
+
+Process multiple invoices:
+
+```bash
+python cookbook/01_showcase/01_agents/invoice_analyst/examples/batch_process.py
+```
+
+## Agent Configuration
+
+```python
+invoice_agent = Agent(
+    name="Invoice Analyst",
+    model=OpenAIResponses(id="gpt-5.2"),
+    system_message=SYSTEM_MESSAGE,
+    output_schema=InvoiceData,
+    tools=[
+        ReasoningTools(add_instructions=True),
+    ],
+    add_datetime_to_context=True,
+    add_history_to_context=True,
+    num_history_runs=5,
+    enable_agentic_memory=True,
+    markdown=True,
+)
+```
+
+| Parameter | Purpose |
+|-----------|---------|
+| `model` | GPT-5.2 with vision capabilities |
+| `output_schema` | Pydantic model for structured invoice data |
+| `ReasoningTools` | Plan extraction approach and validate data |
+
+The agent uses GPT-5.2's native vision capabilities. No additional vision tools are needed.
+
+## How It Works
+
+### Extraction Workflow
+
+```
+1. Load invoice document
+2. Convert to image(s) if PDF
+3. Send to Claude with vision capabilities
+4. Extract fields using visual understanding
+5. Parse line items table
+6. Validate totals and calculations
+7. Return structured data with confidence score
+```
+
+### Output Schema
+
+```python
+class InvoiceData(BaseModel):
+    invoice_number: str
+    invoice_date: date
+    due_date: date | None
+    vendor: Vendor
+    line_items: list[LineItem]
+    subtotal: Decimal
+    tax_amount: Decimal | None
+    total_amount: Decimal
+    currency: str
+    confidence_score: float
+    warnings: list[str]
+```
+
+### Validation Rules
+
+| Check | Formula |
+|-------|---------|
+| Line item math | `quantity × unit_price = amount` |
+| Subtotal | Sum of line items ≈ subtotal |
+| Total | `subtotal + tax - discount + shipping ≈ total` |
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="PDF conversion fails">
+    Ensure poppler is installed:
+    ```bash
+    # macOS
+    brew install poppler
+
+    # Ubuntu
+    apt-get install poppler-utils
+    ```
+  </Accordion>
+  <Accordion title="Low confidence on scanned invoices">
+    Scanned documents may have poor image quality, skewed alignment, or background noise. Try improving the scan quality.
+  </Accordion>
+  <Accordion title="Math validation warnings">
+    Common causes: rounding differences, hidden fees, or multi-page invoices with partial totals. Review warnings and verify manually if needed.
+  </Accordion>
+</AccordionGroup>
+
+## Source Code
+
+- [Agent implementation](https://github.com/agno-agi/agno/tree/main/cookbook/01_showcase/01_agents/invoice_analyst/agent.py)
+- [Output schemas](https://github.com/agno-agi/agno/tree/main/cookbook/01_showcase/01_agents/invoice_analyst/schemas.py)
+- [Example scripts](https://github.com/agno-agi/agno/tree/main/cookbook/01_showcase/01_agents/invoice_analyst/examples/)

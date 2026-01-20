@@ -1,0 +1,59 @@
+---
+title: Teams with Knowledge
+sidebarTitle: Overview
+description: Use knowledge bases with teams.
+mode: wide
+keywords: [knowledge, team, agentic rag, agentic search]
+---
+
+Teams can use a knowledge base to store and retrieve information, just like agents:
+
+```python
+from pathlib import Path
+
+from agno.agent import Agent
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.knowledge import Knowledge
+from agno.models.openai import OpenAIResponses
+from agno.team import Team
+from agno.tools.hackernews import HackerNewsTools
+from agno.vectordb.lancedb import LanceDb
+
+# Setup paths
+cwd = Path(__file__).parent
+tmp_dir = cwd.joinpath("tmp")
+tmp_dir.mkdir(parents=True, exist_ok=True)
+
+# Initialize knowledge base
+agno_docs_knowledge = Knowledge(
+    vector_db=LanceDb(
+        uri=str(tmp_dir.joinpath("lancedb")),
+        table_name="agno_docs",
+        embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+    ),
+)
+
+agno_docs_knowledge.add_content(url="https://docs.agno.com/llms-full.txt")
+
+hackernews_agent = Agent(
+    name="HackerNews Agent",
+    role="Search HackerNews for tech news",
+    model=OpenAIResponses(id="gpt-5.2"),
+    tools=[HackerNewsTools()],
+    instructions=["Always include sources"],
+)
+
+team_with_knowledge = Team(
+    name="Team with Knowledge",
+    members=[hackernews_agent],
+    model=OpenAIResponses(id="gpt-5.2"),
+    knowledge=agno_docs_knowledge,
+    show_members_responses=True,
+    markdown=True,
+)
+
+if __name__ == "__main__":
+    team_with_knowledge.print_response("Tell me about the Agno framework", stream=True)
+```
+
+See more in the [Knowledge](/context/knowledge/overview) section.

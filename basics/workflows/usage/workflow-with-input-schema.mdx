@@ -17,10 +17,10 @@ from typing import List
 
 from agno.agent import Agent
 from agno.db.sqlite import SqliteDb
-from agno.models.openai import OpenAIChat
+from agno.models.openai import OpenAIResponses
 from agno.team import Team
-from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.tools.hackernews import HackerNewsTools
+from agno.tools.yfinance import YFinanceTools
 from agno.workflow.step import Step
 from agno.workflow.workflow import Workflow
 from pydantic import BaseModel, Field
@@ -42,27 +42,27 @@ class ResearchTopic(BaseModel):
 # Define agents
 hackernews_agent = Agent(
     name="Hackernews Agent",
-    model=OpenAIChat(id="gpt-5-mini"),
+    model=OpenAIResponses(id="gpt-5.2"),
     tools=[HackerNewsTools()],
     role="Extract key insights and content from Hackernews posts",
 )
-web_agent = Agent(
-    name="Web Agent",
-    model=OpenAIChat(id="gpt-5-mini"),
-    tools=[DuckDuckGoTools()],
-    role="Search the web for the latest news and trends",
+finance_agent = Agent(
+    name="Finance Agent",
+    model=OpenAIResponses(id="gpt-5.2"),
+    tools=[YFinanceTools()],
+    role="Get stock prices and financial data",
 )
 
 # Define research team for complex analysis
 research_team = Team(
     name="Research Team",
-    members=[hackernews_agent, web_agent],
+    members=[hackernews_agent, finance_agent],
     instructions="Research tech topics from Hackernews and the web",
 )
 
 content_planner = Agent(
     name="Content Planner",
-    model=OpenAIChat(id="gpt-5-mini"),
+    model=OpenAIResponses(id="gpt-5.2"),
     instructions=[
         "Plan a content schedule over 4 weeks for the provided topic and research content",
         "Ensure that I have posts for 3 posts per week",
@@ -105,14 +105,14 @@ if __name__ == "__main__":
         target_audience="Tech professionals and business leaders",
     )
 
-    # ✅ This will work properly - input matches the schema
+    # This will work properly - input matches the schema
     content_creation_workflow.print_response(
         input=research_topic,
         markdown=True,
     )
 
     print("\n=== Example 2: Valid Dictionary Input ===")
-    # ✅ This will also work - dict matches ResearchTopic structure
+    # This will also work - dict matches ResearchTopic structure
     content_creation_workflow.print_response(
         input={
             "topic": "AI trends in 2024",
@@ -124,7 +124,7 @@ if __name__ == "__main__":
     )
 
     print("\n=== Example 3: Missing Required Fields (Commented - Would Fail) ===")
-    # ❌ This would fail - missing required 'target_audience' field
+    # This would fail - missing required 'target_audience' field
     # Uncomment to see validation error:
     # content_creation_workflow.print_response(
     #     input=ResearchTopic(
@@ -141,7 +141,7 @@ if __name__ == "__main__":
     # )
 
     print("\n=== Example 4: Wrong Model Type (Commented - Would Fail) ===")
-    # ❌ This would fail - different Pydantic model provided
+    # This would fail - different Pydantic model provided
     # Uncomment to see validation error:
     # content_creation_workflow.print_response(
     #     input=DifferentModel(name="test"),
@@ -149,7 +149,7 @@ if __name__ == "__main__":
     # )
 
     print("\n=== Example 5: Type Mismatch (Commented - Would Fail) ===")
-    # ❌ This would fail - wrong data types
+    # This would fail - wrong data types
     # Uncomment to see validation error:
     # content_creation_workflow.print_response(
     #     input={

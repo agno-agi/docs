@@ -1,0 +1,82 @@
+---
+title: Agent with Structured Output
+sidebarTitle: Structured Output
+description: "Get typed Pydantic responses instead of free-form text."
+---
+
+Use `output_schema` to get structured, typed responses you can trust. The agent returns a Pydantic model instead of free-form text.
+
+<Steps>
+
+  <Step title="Create a Python file">
+    ```python structured_output.py
+    from typing import List, Optional
+
+    from agno.agent import Agent
+    from agno.models.openai import OpenAIResponses
+    from agno.tools.yfinance import YFinanceTools
+    from pydantic import BaseModel, Field
+
+
+    class StockAnalysis(BaseModel):
+        ticker: str = Field(..., description="Stock ticker symbol")
+        company_name: str = Field(..., description="Full company name")
+        current_price: float = Field(..., description="Current price in USD")
+        pe_ratio: Optional[float] = Field(None, description="P/E ratio")
+        summary: str = Field(..., description="One-line summary")
+        key_drivers: List[str] = Field(..., description="2-3 key growth drivers")
+        key_risks: List[str] = Field(..., description="2-3 key risks")
+
+
+    agent = Agent(
+        model=OpenAIResponses(id="gpt-5.2"),
+        tools=[YFinanceTools()],
+        output_schema=StockAnalysis,
+    )
+
+    response = agent.run("Analyze NVIDIA stock")
+
+    # Access typed data directly
+    analysis: StockAnalysis = response.content
+    print(f"{analysis.company_name} ({analysis.ticker})")
+    print(f"Price: ${analysis.current_price}")
+    print(f"P/E Ratio: {analysis.pe_ratio or 'N/A'}")
+    print(f"Summary: {analysis.summary}")
+    print("Key Drivers:")
+    for driver in analysis.key_drivers:
+        print(f"  - {driver}")
+    print("Key Risks:")
+    for risk in analysis.key_risks:
+        print(f"  - {risk}")
+    ```
+  </Step>
+
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai yfinance
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+
+    <CodeGroup>
+
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run Agent">
+    ```bash
+    python structured_output.py
+    ```
+  </Step>
+
+</Steps>

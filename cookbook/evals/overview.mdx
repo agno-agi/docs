@@ -1,0 +1,193 @@
+---
+title: Evals Examples
+sidebarTitle: Overview
+description: 41 examples covering accuracy, performance, reliability, and agent-as-judge evaluations.
+---
+
+Evaluate your agents systematically with built-in evaluation frameworks. Test accuracy, measure performance, and use AI judges for complex assessments.
+
+```python
+from agno.agent import Agent
+from agno.eval.accuracy import AccuracyEval
+from agno.models.openai import OpenAIChat
+from agno.tools.calculator import CalculatorTools
+
+evaluation = AccuracyEval(
+    name="Calculator Eval",
+    model=OpenAIChat(id="o4-mini"),  # Judge model
+    agent=Agent(
+        model=OpenAIChat(id="gpt-4o"),
+        tools=[CalculatorTools()],
+    ),
+    input="What is 10*5 then to the power of 2?",
+    expected_output="2500",
+)
+
+result = evaluation.run(print_results=True)
+assert result.avg_score >= 8
+```
+
+## Evaluation Types
+
+| Type | Use Case | Description |
+|------|----------|-------------|
+| Accuracy | Correctness | Compare output against expected results |
+| Performance | Speed & cost | Measure latency and token usage |
+| Reliability | Consistency | Test response stability |
+| Agent as Judge | Complex tasks | Use AI to evaluate AI |
+
+## Examples by Type
+
+### Accuracy Evaluation
+
+Test if agents produce correct outputs.
+
+```python cookbook/09_evals/accuracy/accuracy_basic.py
+from agno.agent import Agent
+from agno.eval.accuracy import AccuracyEval, AccuracyResult
+from agno.models.openai import OpenAIChat
+from agno.tools.calculator import CalculatorTools
+
+evaluation = AccuracyEval(
+    name="Calculator Evaluation",
+    model=OpenAIChat(id="o4-mini"),
+    agent=Agent(
+        model=OpenAIChat(id="gpt-4o"),
+        tools=[CalculatorTools()],
+    ),
+    input="What is 10*5 then to the power of 2? Do it step by step",
+    expected_output="2500",
+    additional_guidelines="Agent output should include the steps and the final answer.",
+    num_iterations=1,
+)
+
+result = evaluation.run(print_results=True)
+assert result is not None and result.avg_score >= 8
+```
+
+### Async Accuracy Evaluation
+
+Run evaluations asynchronously for speed.
+
+```python cookbook/09_evals/accuracy/accuracy_async.py
+import asyncio
+from agno.eval.accuracy import AccuracyEval
+
+async def run_evals():
+    results = await asyncio.gather(
+        eval1.arun(),
+        eval2.arun(),
+        eval3.arun(),
+    )
+    return results
+```
+
+### Team Evaluation
+
+Evaluate multi-agent teams.
+
+```python cookbook/09_evals/accuracy/accuracy_team.py
+from agno.team import Team
+from agno.eval.accuracy import AccuracyEval
+
+evaluation = AccuracyEval(
+    name="Team Evaluation",
+    model=judge_model,
+    team=my_team,
+    input="Research and summarize AI trends",
+    expected_output="A comprehensive summary...",
+)
+```
+
+### Performance Evaluation
+
+Measure latency and resource usage.
+
+```python cookbook/09_evals/performance/simple_response.py
+from agno.agent import Agent
+from agno.eval.performance import PerformanceEval
+from agno.models.openai import OpenAIChat
+
+evaluation = PerformanceEval(
+    name="Latency Test",
+    agent=Agent(model=OpenAIChat(id="gpt-4o")),
+    input="What is 2+2?",
+    num_iterations=10,
+)
+
+result = evaluation.run()
+print(f"Avg latency: {result.avg_latency_ms}ms")
+print(f"Avg tokens: {result.avg_tokens}")
+```
+
+### Reliability Evaluation
+
+Test response consistency.
+
+```python cookbook/09_evals/reliability/single_tool_calls/calculator.py
+from agno.agent import Agent
+from agno.eval.reliability import ReliabilityEval
+
+evaluation = ReliabilityEval(
+    name="Consistency Test",
+    agent=my_agent,
+    input="What is the capital of France?",
+    num_iterations=5,
+    consistency_threshold=0.9,
+)
+
+result = evaluation.run()
+assert result.consistency_score >= 0.9
+```
+
+### Agent as Judge
+
+Use AI to evaluate complex outputs.
+
+```python cookbook/09_evals/agent_as_judge/agent_as_judge_basic.py
+from agno.agent import Agent
+from agno.eval.judge import AgentJudge
+from agno.models.openai import OpenAIChat
+
+judge = AgentJudge(
+    model=OpenAIChat(id="gpt-4o"),
+    criteria=[
+        "Is the response factually accurate?",
+        "Is the tone professional?",
+        "Does it address the question completely?",
+    ],
+)
+
+score = judge.evaluate(
+    input="Explain quantum computing",
+    output=agent_response,
+)
+```
+
+## All 41 Eval Examples
+
+| Category | Examples |
+|----------|----------|
+| Accuracy | `accuracy_basic.py`, `accuracy_async.py`, `accuracy_team.py`, `accuracy_9_11_bigger.py` |
+| Performance | `simple_response.py`, `response_with_storage.py`, `instantiate_agent.py` |
+| Reliability | `single_tool_calls/calculator.py`, `reliability_async.py` |
+| Agent as Judge | `agent_as_judge_basic.py`, `agent_as_judge_async.py`, `agent_as_judge_with_guidelines.py` |
+
+## Run Examples
+
+```bash
+git clone https://github.com/agno-agi/agno.git
+cd agno/cookbook/09_evals
+
+export OPENAI_API_KEY=xxx
+
+# Accuracy eval
+python accuracy/accuracy_basic.py
+
+# Performance eval
+python performance/simple_response.py
+
+# Agent as judge
+python agent_as_judge/agent_as_judge_basic.py
+```
+

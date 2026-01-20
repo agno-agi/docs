@@ -1,0 +1,203 @@
+---
+title: Learning Modes
+description: Control when and how your agent learns with ALWAYS, AGENTIC, and PROPOSE modes.
+sidebarTitle: Learning Modes
+---
+
+Learning Machine stores can operate in different modes, giving you control over when and how learning happens.
+
+## Overview
+
+| Mode | Behavior | LLM Calls | Best For |
+|------|----------|-----------|----------|
+| **ALWAYS** | Automatic extraction after each response | Extra call per interaction | Consistent learning |
+| **AGENTIC** | Agent uses tools to decide what to save | No extra calls | Selective learning |
+| **PROPOSE** | Agent proposes, user confirms | No extra calls | High-stakes knowledge |
+
+## ALWAYS Mode
+
+In ALWAYS mode, the Learning Machine automatically extracts relevant information after each conversation turn. No agent tools are involved - extraction happens in the background.
+
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.learn import LearningMachine, LearningMode, UserProfileConfig
+from agno.models.openai import OpenAIResponses
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai"),
+    learning=LearningMachine(
+        user_profile=UserProfileConfig(
+            mode=LearningMode.ALWAYS,
+        ),
+    ),
+)
+
+# Profile info is extracted automatically - no tool calls visible
+agent.print_response(
+    "I'm Alice Chen, but please call me Ali.",
+    user_id="alice@example.com",
+)
+```
+
+**How it works:**
+1. Agent responds to the user
+2. In parallel, an extraction LLM call analyzes the conversation
+3. Relevant information is saved to the store
+4. No agent awareness or tool calls needed
+
+**Best for:**
+- User Profile (capturing names, preferences)
+- User Memory (capturing observations)
+- Session Context (maintaining summaries)
+
+**Default for:** `user_profile`, `user_memory`, `session_context`
+
+## AGENTIC Mode
+
+In AGENTIC mode, the agent is given tools to explicitly save information. The agent decides when and what to save based on the conversation context.
+
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.learn import LearningMachine, LearningMode, UserProfileConfig
+from agno.models.openai import OpenAIResponses
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai"),
+    learning=LearningMachine(
+        user_profile=UserProfileConfig(
+            mode=LearningMode.AGENTIC,
+        ),
+    ),
+)
+
+# Agent decides to call update_user_profile tool
+agent.print_response(
+    "Remember that I prefer dark mode interfaces.",
+    user_id="alice@example.com",
+)
+```
+
+**How it works:**
+1. Agent receives tools like `update_user_profile`, `save_learning`
+2. During response generation, agent decides if/when to call tools
+3. Tool calls save information to the store
+4. Agent has full control and visibility
+
+**Available tools by store:**
+
+| Store | Tools |
+|-------|-------|
+| User Profile | `update_user_profile` |
+| User Memory | `save_user_memory`, `delete_user_memory` |
+| Entity Memory | `search_entities`, `create_entity`, `update_entity`, `add_fact`, `add_event` |
+| Learned Knowledge | `search_learnings`, `save_learning` |
+
+**Best for:**
+- Learned Knowledge (agent captures insights when relevant)
+- Entity Memory (agent builds knowledge graph as needed)
+
+**Default for:** `learned_knowledge`, `entity_memory`
+
+## PROPOSE Mode
+
+In PROPOSE mode, the agent proposes learnings but requires user confirmation before saving. This provides human-in-the-loop quality control.
+
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.knowledge import Knowledge
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.learn import LearnedKnowledgeConfig, LearningMachine, LearningMode
+from agno.models.openai import OpenAIResponses
+from agno.vectordb.pgvector import PgVector, SearchType
+
+db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
+
+knowledge = Knowledge(
+    vector_db=PgVector(
+        db_url=db_url,
+        table_name="proposed_learnings",
+        search_type=SearchType.hybrid,
+        embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+    ),
+)
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=PostgresDb(db_url=db_url),
+    learning=LearningMachine(
+        knowledge=knowledge,
+        learned_knowledge=LearnedKnowledgeConfig(
+            mode=LearningMode.PROPOSE,
+        ),
+    ),
+)
+
+# Agent proposes a learning, user must confirm
+agent.print_response(
+    "That's a great insight about API rate limits - we should remember that.",
+    user_id="alice@example.com",
+)
+```
+
+**How it works:**
+1. Agent calls `propose_learning` tool
+2. Learning is stored with `status="proposed"`
+3. User reviews and approves/rejects
+4. Only approved learnings are used in future context
+
+**Best for:**
+- High-stakes knowledge that needs human review
+- Quality control for collective intelligence
+- Regulated environments
+
+## Choosing the Right Mode
+
+| Scenario | Recommended Mode |
+|----------|------------------|
+| Capturing user names and preferences | ALWAYS |
+| Building user memory automatically | ALWAYS |
+| Tracking session progress | ALWAYS |
+| Agent-driven knowledge capture | AGENTIC |
+| Building entity knowledge graphs | AGENTIC |
+| Compliance-sensitive learning | PROPOSE |
+| High-value collective knowledge | PROPOSE |
+
+## Combining Modes
+
+You can use different modes for different stores:
+
+```python
+from agno.learn import (
+    LearningMachine,
+    LearningMode,
+    UserProfileConfig,
+    UserMemoryConfig,
+    LearnedKnowledgeConfig,
+)
+
+learning = LearningMachine(
+    # Automatic profile extraction
+    user_profile=UserProfileConfig(mode=LearningMode.ALWAYS),
+
+    # Automatic memory capture
+    user_memory=UserMemoryConfig(mode=LearningMode.ALWAYS),
+
+    # Agent-driven knowledge capture
+    learned_knowledge=LearnedKnowledgeConfig(mode=LearningMode.AGENTIC),
+)
+```
+
+## Performance Considerations
+
+| Mode | Latency Impact | Cost Impact |
+|------|----------------|-------------|
+| ALWAYS | Adds ~1-2s per response | Extra LLM call per turn |
+| AGENTIC | No additional latency | Only when agent calls tools |
+| PROPOSE | No additional latency | Only when agent proposes |
+
+For latency-sensitive applications, prefer AGENTIC mode and let the agent decide when learning is worthwhile.

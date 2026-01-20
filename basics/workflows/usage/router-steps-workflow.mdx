@@ -15,8 +15,8 @@ parallel paths, Router selects exactly one path.
 from typing import List
 
 from agno.agent.agent import Agent
-from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.tools.hackernews import HackerNewsTools
+from agno.tools.yfinance import YFinanceTools
 from agno.workflow.router import Router
 from agno.workflow.step import Step
 from agno.workflow.types import StepInput
@@ -29,10 +29,10 @@ hackernews_agent = Agent(
     tools=[HackerNewsTools()],
 )
 
-web_agent = Agent(
-    name="Web Researcher",
-    instructions="You are a comprehensive web researcher. Search across multiple sources including news sites, blogs, and official documentation to gather detailed information.",
-    tools=[DuckDuckGoTools()],
+finance_agent = Agent(
+    name="Finance Researcher",
+    instructions="You are a finance researcher. Search for stock data, market trends, and financial information to gather detailed insights.",
+    tools=[YFinanceTools()],
 )
 
 content_agent = Agent(
@@ -47,10 +47,10 @@ research_hackernews = Step(
     description="Research latest tech trends from Hacker News",
 )
 
-research_web = Step(
-    name="research_web",
-    agent=web_agent,
-    description="Comprehensive web research on the topic",
+research_finance = Step(
+    name="research_finance",
+    agent=finance_agent,
+    description="Research financial data and market trends",
 )
 
 publish_content = Step(
@@ -89,11 +89,11 @@ def research_router(step_input: StepInput) -> List[Step]:
     ]
 
     if any(keyword in topic for keyword in tech_keywords):
-        print(f"🔍 Tech topic detected: Using HackerNews research for '{topic}'")
+        print(f"Tech topic detected: Using HackerNews research for '{topic}'")
         return [research_hackernews]
     else:
-        print(f"🌐 General topic detected: Using web research for '{topic}'")
-        return [research_web]
+        print(f"Finance topic detected: Using finance research for '{topic}'")
+        return [research_finance]
 
 
 workflow = Workflow(
@@ -103,7 +103,7 @@ workflow = Workflow(
         Router(
             name="research_strategy_router",
             selector=research_router,
-            choices=[research_hackernews, research_web],
+            choices=[research_hackernews, research_finance],
             description="Intelligently selects research method based on topic",
         ),
         publish_content,
@@ -116,7 +116,3 @@ if __name__ == "__main__":
     )
 ```
 
-This was a synchronous non-streaming example of this pattern. To checkout async and streaming versions, see the cookbooks-
-- [Router Steps Workflow (sync streaming)](https://github.com/agno-agi/agno/tree/main/cookbook/05_workflows/_05_workflows_conditional_branching/sync/router_steps_workflow_stream.py)
-- [Router Steps Workflow (async non-streaming)](https://github.com/agno-agi/agno/tree/main/cookbook/05_workflows/_05_workflows_conditional_branching/async/router_steps_workflow.py)
-- [Router Steps Workflow (async streaming)](https://github.com/agno-agi/agno/tree/main/cookbook/05_workflows/_05_workflows_conditional_branching/async/router_steps_workflow_stream.py)

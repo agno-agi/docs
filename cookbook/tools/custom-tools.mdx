@@ -1,0 +1,193 @@
+---
+title: Custom Tools
+description: Build custom tools with the @tool decorator for any functionality.
+---
+
+Create custom tools with the `@tool` decorator. Agno automatically extracts function signatures and docstrings to describe tools to the model.
+
+```python
+from agno.agent import Agent
+from agno.tools import tool
+
+@tool
+def calculate_tip(bill: float, tip_percent: float = 18.0) -> float:
+    """Calculate tip amount for a restaurant bill."""
+    return bill * (tip_percent / 100)
+
+agent = Agent(tools=[calculate_tip])
+agent.print_response("What's an 18% tip on a $85 bill?")
+```
+
+## Capabilities
+
+### Basic Tool Decorator
+
+```python cookbook/90_tools/tool_decorator/tool_decorator.py
+import json
+from typing import Iterator
+import httpx
+from agno.agent import Agent
+from agno.tools import tool
+
+@tool(show_result=True)
+def get_top_hackernews_stories(agent: Agent) -> Iterator[str]:
+    num_stories = agent.dependencies.get("num_stories", 5) if agent.dependencies else 5
+
+    response = httpx.get("https://hacker-news.firebaseio.com/v0/topstories.json")
+    story_ids = response.json()
+
+    for story_id in story_ids[:num_stories]:
+        story_response = httpx.get(
+            f"https://hacker-news.firebaseio.com/v0/item/{story_id}.json"
+        )
+        story = story_response.json()
+        story.pop("text", None)
+        yield json.dumps(story)
+
+agent = Agent(
+    dependencies={"num_stories": 2},
+    tools=[get_top_hackernews_stories],
+    markdown=True,
+)
+agent.print_response("What are the top hackernews stories?", stream=True)
+```
+
+### Async Tools
+
+```python cookbook/90_tools/tool_decorator/tool_decorator_async.py
+import httpx
+from agno.agent import Agent
+from agno.tools import tool
+
+@tool
+async def fetch_url(url: str) -> str:
+    """Fetch content from a URL."""
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url)
+        return response.text[:500]
+
+agent = Agent(tools=[fetch_url])
+await agent.aprint_response("Fetch the homepage of example.com")
+```
+
+### Tools with Instructions
+
+Add custom instructions that the model sees when using the tool.
+
+```python cookbook/90_tools/tool_decorator/tool_decorator_with_instructions.py
+from agno.agent import Agent
+from agno.tools import tool
+
+@tool(
+    instructions="Always convert temperatures to both Celsius and Fahrenheit."
+)
+def get_temperature(city: str) -> dict:
+    """Get the current temperature for a city."""
+    # Simulated temperature data
+    temps = {"New York": 22, "London": 15, "Tokyo": 28}
+    celsius = temps.get(city, 20)
+    return {
+        "city": city,
+        "celsius": celsius,
+        "fahrenheit": celsius * 9/5 + 32,
+    }
+
+agent = Agent(tools=[get_temperature])
+agent.print_response("What's the temperature in Tokyo?")
+```
+
+### Cache Tool Calls
+
+Cache tool results to avoid repeated calls.
+
+```python cookbook/90_tools/tool_decorator/cache_tool_calls.py
+from agno.agent import Agent
+from agno.tools import tool
+
+@tool(cache=True)
+def expensive_calculation(x: int, y: int) -> int:
+    """Perform an expensive calculation."""
+    import time
+    time.sleep(2)  # Simulate expensive operation
+    return x * y
+
+agent = Agent(tools=[expensive_calculation])
+# First call takes 2 seconds
+agent.print_response("Calculate 5 times 7")
+# Second call with same args returns cached result instantly
+agent.print_response("What is 5 times 7 again?")
+```
+
+### Stop After Tool Call
+
+Stop agent execution after a specific tool is called.
+
+```python cookbook/90_tools/tool_decorator/stop_after_tool_call.py
+from agno.agent import Agent
+from agno.tools import tool
+
+@tool(stop_after_call=True)
+def submit_order(product: str, quantity: int) -> str:
+    """Submit an order. This will complete the transaction."""
+    return f"Order submitted: {quantity}x {product}"
+
+agent = Agent(tools=[submit_order])
+agent.print_response("Order 3 pizzas")
+# Agent stops after submit_order is called
+```
+
+### Tools on Class Methods
+
+Use class methods as tools for stateful operations.
+
+```python cookbook/90_tools/tool_decorator/tool_decorator_on_class_method.py
+from agno.agent import Agent
+from agno.tools import tool
+
+class Calculator:
+    def __init__(self):
+        self.memory = 0
+
+    @tool
+    def add_to_memory(self, value: float) -> float:
+        """Add a value to memory and return the new total."""
+        self.memory += value
+        return self.memory
+
+    @tool
+    def get_memory(self) -> float:
+        """Get the current memory value."""
+        return self.memory
+
+calc = Calculator()
+agent = Agent(tools=[calc.add_to_memory, calc.get_memory])
+agent.print_response("Add 10 to memory, then add 5 more, then tell me the total")
+```
+
+## Tool Options
+
+| Option | Description |
+|--------|-------------|
+| `show_result=True` | Show tool result to user |
+| `cache=True` | Cache results for same arguments |
+| `stop_after_call=True` | Stop agent after tool executes |
+| `instructions="..."` | Additional instructions for the model |
+| `pre_hook=fn` | Function to run before tool |
+| `post_hook=fn` | Function to run after tool |
+
+## Run Examples
+
+```bash
+git clone https://github.com/agno-agi/agno.git
+cd agno/cookbook/90_tools/tool_decorator
+
+# Basic
+python tool_decorator.py
+
+# With caching
+python cache_tool_calls.py
+
+# Class methods
+python tool_decorator_on_class_method.py
+```
+

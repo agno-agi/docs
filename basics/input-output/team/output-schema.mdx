@@ -1,0 +1,98 @@
+---
+title: Team with Output Schema
+description: "Return validated Pydantic models from team responses."
+---
+
+Use `output_schema` to ensure team responses are structured as Pydantic models. This provides type-safe, validated output.
+
+## Code
+
+```python pydantic_model_output.py
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.team import Team
+from agno.tools.hackernews import HackerNewsTools
+from agno.tools.yfinance import YFinanceTools
+from pydantic import BaseModel
+
+
+class StockAnalysis(BaseModel):
+    symbol: str
+    company_name: str
+    analysis: str
+
+
+class NewsAnalysis(BaseModel):
+    topic: str
+    summary: str
+
+
+class ResearchReport(BaseModel):
+    title: str
+    stock_analysis: str
+    news_summary: str
+
+
+news_agent = Agent(
+    name="News Agent",
+    model=OpenAIResponses(id="gpt-5.2"),
+    tools=[HackerNewsTools()],
+    role="Research tech news from HackerNews",
+    output_schema=NewsAnalysis,
+)
+
+stock_agent = Agent(
+    name="Stock Agent",
+    model=OpenAIResponses(id="gpt-5.2"),
+    tools=[YFinanceTools()],
+    role="Analyze stock prices and financial data",
+    output_schema=StockAnalysis,
+)
+
+team = Team(
+    name="Research Team",
+    model=OpenAIResponses(id="gpt-5.2"),
+    members=[news_agent, stock_agent],
+    output_schema=ResearchReport,
+    markdown=True,
+)
+
+response = team.run("Research NVIDIA - get stock data and recent news")
+print(f"Title: {response.content.title}")
+print(f"Stock Analysis: {response.content.stock_analysis}")
+print(f"News Summary: {response.content.news_summary}")
+```
+
+## Usage
+
+<Steps>
+
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai yfinance
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+
+    <CodeGroup>
+
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run Team">
+    ```bash
+    python pydantic_model_output.py
+    ```
+  </Step>
+
+</Steps>

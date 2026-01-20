@@ -1,203 +1,156 @@
-# CLAUDE.md — Agno Docs
+# CLAUDE.md - Agno Documentation Style Guide
 
-Instructions for Claude Code when working on this documentation site.
+## Voice
 
----
+Agno docs are direct, concrete, and professional. No marketing fluff. No AI-sounding prose.
 
-## Repository Structure
+## Core Rules
 
+### 1. Descriptions must be specific
+Every page's `description` field should describe what the page covers, not say "Learn how to..."
 ```
-agno-docs/
-├── *.mdx                    # Documentation pages (Mintlify format)
-├── get-started/             # Getting started guides
-├── basics/                  # Core concepts documentation
-├── examples/                # Example documentation
-├── reference-api/           # API reference (auto-generated)
-├── _snippets/               # Reusable content snippets
-├── agno/                    # Symlinked Agno framework repo (gitignored)
-│   ├── cookbook/            # Code examples and patterns
-│   ├── libs/agno/agno/      # Framework source code
-│   └── README.md            # Framework overview
-├── specs/                   # Symlinked design documents (gitignored)
-└── docs.json                # Mintlify configuration
+❌ "Learn how to run your Agents and process their output."
+✅ "Execute agents with Agent.run() and process their output."
+
+❌ "Learn how to build Agents with Agno."
+✅ "Start simple: a model, tools, and instructions."
+
+❌ "Learn about Agno Agents and how they work."
+✅ "AI programs where a language model controls the flow of execution."
 ```
 
----
+### 2. No em dashes
+Em dashes (—) are an AI tell. Use periods or rewrite.
+```
+❌ "No data leaves your environment—ideal for security-conscious teams."
+✅ "No data leaves your environment. Ideal for security-conscious teams."
 
-## Symlinked Resources
-
-Two directories are symlinked from external repos and gitignored. They are available locally for reference:
-
-| Directory | Purpose |
-|-----------|---------|
-| `agno/` | The Agno framework codebase. Use `agno/cookbook/` for code examples. Read `agno/README.md` for framework overview. |
-| `specs/` | Design documents for upcoming features. Follow spec-first development when documenting new features. |
-
----
-
-## Working Memory
-
-Maintain continuity across sessions using these files in `specs/docs/`:
-
-| File | Purpose |
-|------|---------|
-| `claude_memory.md` | Persistent thoughts, patterns, learnings. Write new discoveries here. |
-| `prompts.md` | Reusable prompts for documentation tasks. Add new useful prompts here. |
-
-**Self-instructions:**
-- When you discover something new about the codebase or style, add it to `claude_memory.md`
-- When you create a useful prompt, add it to `prompts.md`
-- Review these files at the start of documentation sessions
-
----
-
-## Writing Style
-
-**Reference files:** `introduction.mdx` and `get-started/` pages are the style guide.
-
-### Tone
-
-- **Lead with what it is, not what users want.** "Agno is a framework..." not "Companies want to build..."
-- **State facts, not claims.** "529× faster" not "the leading framework"
-- **Be direct, not defensive.** "Build an Agent that..." not "Instead of a toy demo..."
-- **Concrete over vague.** "Runs entirely in your cloud" not "incredible performance"
-- **Respect competitors.** Show benchmarks neutrally, let readers decide.
-
-### Formatting
-
-- Keep prose concise and direct
-- Avoid em-dashes. Use hyphens sparingly if needed
-- No emojis
-- Use tables for comparisons
-- Use code blocks with language hints (`python`, `bash`, etc.)
-- Use Mintlify components (`<Steps>`, `<Tip>`, `<Check>`, `<Frame>`, `<CodeGroup>`) appropriately
-- Descriptions under 160 characters, factual, not promotional
-
-**Frontmatter format:**
-```yaml
----
-title: Page Title
-description: "Brief description of the page content."
-keywords: [keyword1, keyword2]
-mode: "wide"
----
+❌ "Each Agent maintains its own history—switching users won't mix context."
+✅ "Each Agent maintains its own history. Switching users won't mix context."
 ```
 
----
+### 3. No comma splices
+Two independent clauses joined by a comma need a period.
+```
+❌ "Run it on your own machine, don't take these numbers at face value."
+✅ "Run it on your own machine. Don't take these numbers at face value."
 
-## Key Terminology
+❌ "Stateless, horizontal scalability isn't optional, it's the baseline."
+✅ "Stateless, horizontal scalability isn't optional. It's the baseline."
+```
 
-**Privacy is Agno's main differentiator.** Always mention prominently:
-- "Runs entirely in your cloud"
-- "No data leaves your environment"
-- "Private by design"
+### 4. Tighten wordy phrases
 
-**The Three Pillars** - use this consistent terminology:
+| Before | After |
+|--------|-------|
+| "Here's how they work:" | "The execution flow:" |
+| "For more information see the X documentation." | "See X for more details." |
+| "You can also run the agent asynchronously" | "Run the agent asynchronously" |
+| "The `input` parameter is the input to send to the agent. It can be..." | "The `input` parameter can be..." |
+| "If this is your first time using Agno, you can start here" | "New to Agno? Start with the quickstart." |
+| "After getting familiarized with" | "After getting familiar with" |
+| "View the X" / "View X" | Just link: "X" |
+| "This example shows how to..." | Remove or tighten |
+| "Here's how it looks:" | Remove (let the visual speak) |
+
+### 5. Link lists: no "View the..." pattern
+```markdown
+❌ Developer Resources
+- View the [Agent reference](/reference/agents/agent)
+- View the [RunOutput schema](/reference/agents/run-response)
+
+✅ Developer Resources
+- [Agent reference](/reference/agents/agent)
+- [RunOutput schema](/reference/agents/run-response)
+```
+
+### 6. Q&A lists → Tables
+```markdown
+❌ Common questions:
+- **How do I run my agent?** -> See [running agents](/path).
+- **How do I debug my agent?** -> See [debugging agents](/path).
+
+✅ | Task | Guide |
+   |------|-------|
+   | Run agents | [Running agents](/path) |
+   | Debug agents | [Debugging agents](/path) |
+```
+
+### 7. Card descriptions: vary them
+```
+❌ "Learn how to build your first agent."
+❌ "Learn how to run your agents."
+❌ "Learn how to debug your agents."
+
+✅ "Create your first agent with tools and instructions."
+✅ "Execute agents and handle responses."
+✅ "Troubleshoot and inspect agent behavior."
+```
+
+### 8. Section intros: get to the point
+```
+❌ "The `Agent.run()` function runs the agent and returns the output as a `RunOutput` object, or as a stream of `RunOutputEvent` objects when `stream=True`. For example:"
+
+✅ "`Agent.run()` returns a `RunOutput` object, or a stream of `RunOutputEvent` objects when `stream=True`:"
+```
+
+## Capitalization & Terminology
+
+| Wrong | Right |
+|-------|-------|
+| id | ID |
+| pydantic | Pydantic |
+| vector db | vector database |
+| 3rd party | third-party |
+| Hackernews | HackerNews |
+| higher level (adjective) | higher-level |
+| multi turn | multi-turn |
+| back-and-forth conversations | multi-turn conversations |
+
+## Words to Avoid
+
+| Word/Phrase | Why | Use Instead |
+|-------------|-----|-------------|
+| "Agent Engineering" | Not a recognized term | "multi-agent systems" |
+| "beautiful" / "elegant" | Subjective | Describe function |
+| "incredible" / "extreme" / "powerful" | Hyperbolic | Concrete facts |
+| "leading framework" | Unsubstantiated claim | State facts |
+| "Happy building!" | Unnecessary | End with links |
+| "Learn how to..." (descriptions) | Generic | Specific statement |
+| "Here's how it looks:" | Filler | Remove |
+| "For more information see..." | Wordy | "See X for details." |
+
+## The Three Pillars (use consistently)
 
 | Layer | Description |
 |-------|-------------|
-| **Framework** | Build agents, teams, and workflows with memory, knowledge, guardrails, and 100+ integrations |
-| **AgentOS Runtime** | Serve your system in production with a stateless, secure FastAPI backend |
-| **Control Plane** | Test, monitor, and manage your system using the AgentOS UI |
-
----
+| **Framework** | **Build** agents, teams, and workflows with memory, knowledge, guardrails, and 100+ integrations |
+| **AgentOS Runtime** | **Run** your system in production with a stateless, secure FastAPI backend |
+| **Control Plane** | **Manage** and monitor your system using the AgentOS UI |
 
 ## Code Examples
 
-Keep code minimal and clean:
-```python
-# Good
-from agno.agent import Agent
-from agno.db.sqlite import SqliteDb
-from agno.os import AgentOS
+- No verbose comment blocks (`# ************* Create Agent *************`)
+- Minimal inline comments
+- Keep examples consistent across pages (intro, quickstart, README should match)
 
-agent = Agent(
-    name="Support Agent",
-    db=SqliteDb(db_file="agno.db"),
-    add_history_to_context=True,
-)
+## Page Structure Patterns
 
-agent_os = AgentOS(agents=[agent])
-app = agent_os.get_app()
+### Overview pages
+1. Bold one-liner defining the concept
+2. Bullet list of key components
+3. Tip for newcomers
+4. Cards linking to guides
+5. "Developer Resources" links
+
+### Usage/Example pages
+1. One-sentence intro
+2. `<Steps>` with code
+3. Optional "Key Concepts" or "How It Works" section
+
+### Reference pages
+1. Brief intro (1-2 sentences)
+2. Code example
+3. Tables for parameters/events
+4. Links to related docs
 ```
-
-Avoid verbose comments and visual noise like `# ******** Section ********`.
-
----
-
-## Running Locally
-
-```bash
-# Install Mintlify CLI
-npm i -g mint
-
-# Run the dev server
-mint dev
-
-# Update dependencies if issues occur
-mint update
-```
-
-The site runs at `http://localhost:3333`.
-
----
-
-## Finding Code Examples
-
-Look in `agno/cookbook/` for code examples organized by topic:
-- `00_getting_started/` — Basic examples
-- `03_agents/` — Agent patterns
-- `04_teams/` — Team patterns
-- `05_workflows/` — Workflow patterns
-- `15_learning/` — Learning system examples (golden standard)
-
-When documenting features, check if cookbook examples exist first.
-
----
-
-## Documenting New Features
-
-1. **Check specs/** for design documents if documenting an upcoming feature
-2. **Find cookbook examples** in `agno/cookbook/` to include working code
-3. **Follow existing patterns** in similar documentation pages
-4. **Update docs.json** if adding new pages to the navigation
-
----
-
-## API Reference
-
-The `reference-api/` folder contains auto-generated OpenAPI documentation. See `README.md` for instructions on regenerating it from a running AgentOS instance.
-
----
-
-## Pull Requests
-
-Keep PRs small and reviewable in 5-10 minutes:
-- Maximum 3-4 pages per PR, or one section at a time
-- Focus on a single logical change
-- Don't bundle unrelated updates
-
----
-
-## Words and Phrases to Avoid
-
-| Avoid | Use Instead |
-|-------|-------------|
-| em-dashes (—) | hyphens sparingly |
-| "beautiful" / "elegant" | describe function instead |
-| "incredible" / "extreme" | concrete metrics |
-| "leading framework" | state facts |
-| "Happy building!" | end with actionable next steps |
-| "Head over to..." | "Post on" / "Visit" |
-| "Checkout" (verb) | "Check out" (two words) |
-| KiB variants (Kib, kib) | KiB (consistent units) |
-
----
-
-## Don't
-
-- Don't use emojis in documentation
-- Don't create documentation for features without checking for code examples first
-- Don't add pages without updating `docs.json`
-- Don't describe the same component twice on a page
-- Don't repeat links that are already in the header

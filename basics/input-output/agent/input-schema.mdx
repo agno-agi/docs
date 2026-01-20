@@ -1,0 +1,78 @@
+---
+title: Agent with Input Schema
+description: "Validate structured input using Pydantic models."
+---
+
+Use `input_schema` to automatically validate dictionary inputs against a Pydantic model. This ensures type safety and data validation before the agent processes the request.
+
+## Code
+
+```python input_schema_on_agent.py
+from typing import List
+
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.tools.hackernews import HackerNewsTools
+from pydantic import BaseModel, Field
+
+
+class ResearchTopic(BaseModel):
+    topic: str
+    focus_areas: List[str] = Field(description="Specific areas to focus on")
+    target_audience: str = Field(description="Who this research is for")
+    sources_required: int = Field(description="Number of sources needed", default=5)
+
+
+agent = Agent(
+    name="Research Agent",
+    model=OpenAIResponses(id="gpt-5.2"),
+    tools=[HackerNewsTools()],
+    role="Research topics from HackerNews",
+    input_schema=ResearchTopic,
+)
+
+# Pass a dict - automatically validated against ResearchTopic
+agent.print_response(
+    input={
+        "topic": "AI Agents",
+        "focus_areas": ["Multi-agent systems", "Tool use"],
+        "target_audience": "Developers",
+        "sources_required": 5,
+    },
+    stream=True,
+)
+```
+
+## Usage
+
+<Steps>
+
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+
+    <CodeGroup>
+
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run Agent">
+    ```bash
+    python input_schema_on_agent.py
+    ```
+  </Step>
+
+</Steps>

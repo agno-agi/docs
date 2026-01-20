@@ -1,0 +1,307 @@
+---
+title: Custom Schemas
+description: Extend learning stores with custom fields for your domain.
+sidebarTitle: Custom Schemas
+---
+
+Learning stores use predefined schemas by default, but you can extend them with custom fields to capture domain-specific information.
+
+## User Profile Schema
+
+The default `UserProfile` includes `name` and `preferred_name`. Extend it for your domain:
+
+```python
+from dataclasses import dataclass, field
+from typing import Optional
+from agno.learn.schemas import UserProfile
+
+@dataclass
+class CustomerProfile(UserProfile):
+    """Extended profile for customer support."""
+
+    company: Optional[str] = field(
+        default=None,
+        metadata={"description": "Company or organization"}
+    )
+    plan_tier: Optional[str] = field(
+        default=None,
+        metadata={"description": "Subscription tier: free | pro | enterprise"}
+    )
+    role: Optional[str] = field(
+        default=None,
+        metadata={"description": "Job title or role"}
+    )
+    timezone: Optional[str] = field(
+        default=None,
+        metadata={"description": "User's timezone"}
+    )
+    expertise_level: Optional[str] = field(
+        default=None,
+        metadata={"description": "Technical expertise: beginner | intermediate | expert"}
+    )
+```
+
+Use your custom schema:
+
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.learn import LearningMachine, UserProfileConfig
+from agno.models.openai import OpenAIResponses
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai"),
+    learning=LearningMachine(
+        user_profile=UserProfileConfig(
+            schema=CustomerProfile,
+        ),
+    ),
+)
+```
+
+## Schema Field Guidelines
+
+### Use Metadata Descriptions
+
+The `metadata={"description": ...}` field helps the LLM understand what to extract:
+
+```python
+# Good: Clear description guides extraction
+role: Optional[str] = field(
+    default=None,
+    metadata={"description": "Job title or role like 'Data Scientist' or 'Engineering Manager'"}
+)
+
+# Less effective: No description
+role: Optional[str] = None
+```
+
+### Use Optional Fields
+
+All custom fields should be `Optional` with defaults since they won't always be present:
+
+```python
+# Good: Optional with default
+company: Optional[str] = field(default=None, metadata={...})
+
+# Bad: Required field will cause issues
+company: str  # Will fail if not extracted
+```
+
+### Use Constrained Values
+
+For fields with known options, document them in the description:
+
+```python
+plan_tier: Optional[str] = field(
+    default=None,
+    metadata={"description": "Subscription tier: free | pro | enterprise"}
+)
+
+expertise: Optional[str] = field(
+    default=None,
+    metadata={"description": "Technical level: beginner | intermediate | expert"}
+)
+```
+
+## Domain Examples
+
+### SaaS Support Profile
+
+```python
+@dataclass
+class SupportProfile(UserProfile):
+    """Profile for SaaS customer support."""
+
+    company: Optional[str] = field(
+        default=None,
+        metadata={"description": "Company name"}
+    )
+    plan: Optional[str] = field(
+        default=None,
+        metadata={"description": "Subscription plan: starter | professional | enterprise"}
+    )
+    account_id: Optional[str] = field(
+        default=None,
+        metadata={"description": "Account or customer ID"}
+    )
+    primary_use_case: Optional[str] = field(
+        default=None,
+        metadata={"description": "Main use case or workflow"}
+    )
+    technical_contact: Optional[bool] = field(
+        default=None,
+        metadata={"description": "Whether this user is the technical contact"}
+    )
+```
+
+### Developer Profile
+
+```python
+@dataclass
+class DeveloperProfile(UserProfile):
+    """Profile for developer tools."""
+
+    primary_language: Optional[str] = field(
+        default=None,
+        metadata={"description": "Primary programming language: python | javascript | go | rust | etc"}
+    )
+    framework: Optional[str] = field(
+        default=None,
+        metadata={"description": "Primary framework: react | django | fastapi | etc"}
+    )
+    experience_years: Optional[int] = field(
+        default=None,
+        metadata={"description": "Years of programming experience"}
+    )
+    editor: Optional[str] = field(
+        default=None,
+        metadata={"description": "Preferred editor: vscode | neovim | intellij | etc"}
+    )
+    os: Optional[str] = field(
+        default=None,
+        metadata={"description": "Operating system: mac | linux | windows"}
+    )
+```
+
+### Healthcare Profile
+
+```python
+@dataclass
+class PatientProfile(UserProfile):
+    """Profile for healthcare applications."""
+
+    date_of_birth: Optional[str] = field(
+        default=None,
+        metadata={"description": "Date of birth in YYYY-MM-DD format"}
+    )
+    primary_physician: Optional[str] = field(
+        default=None,
+        metadata={"description": "Name of primary care physician"}
+    )
+    insurance_provider: Optional[str] = field(
+        default=None,
+        metadata={"description": "Health insurance provider name"}
+    )
+    pharmacy: Optional[str] = field(
+        default=None,
+        metadata={"description": "Preferred pharmacy for prescriptions"}
+    )
+```
+
+## Custom Entity Schema
+
+Extend `EntityMemory` for domain-specific entities:
+
+```python
+from dataclasses import dataclass, field
+from typing import Optional, List, Dict, Any
+from agno.learn.schemas import EntityMemory
+
+@dataclass
+class CompanyEntity(EntityMemory):
+    """Extended entity for company tracking."""
+
+    industry: Optional[str] = field(
+        default=None,
+        metadata={"description": "Industry sector: fintech | healthcare | saas | etc"}
+    )
+    funding_stage: Optional[str] = field(
+        default=None,
+        metadata={"description": "Funding stage: seed | series_a | series_b | public"}
+    )
+    employee_count: Optional[int] = field(
+        default=None,
+        metadata={"description": "Number of employees"}
+    )
+    annual_revenue: Optional[str] = field(
+        default=None,
+        metadata={"description": "Annual revenue range"}
+    )
+```
+
+## Custom Learned Knowledge Schema
+
+Extend `LearnedKnowledge` for domain-specific insights:
+
+```python
+from dataclasses import dataclass, field
+from typing import Optional, List
+from agno.learn.schemas import LearnedKnowledge
+
+@dataclass
+class TechnicalInsight(LearnedKnowledge):
+    """Extended learning for technical insights."""
+
+    applicable_languages: Optional[List[str]] = field(
+        default=None,
+        metadata={"description": "Programming languages this applies to"}
+    )
+    applicable_frameworks: Optional[List[str]] = field(
+        default=None,
+        metadata={"description": "Frameworks this applies to"}
+    )
+    performance_impact: Optional[str] = field(
+        default=None,
+        metadata={"description": "Performance impact: high | medium | low"}
+    )
+    complexity: Optional[str] = field(
+        default=None,
+        metadata={"description": "Implementation complexity: simple | moderate | complex"}
+    )
+```
+
+## Full Example
+
+```python
+from dataclasses import dataclass, field
+from typing import Optional
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.learn import LearningMachine, UserProfileConfig
+from agno.learn.schemas import UserProfile
+from agno.models.openai import OpenAIResponses
+
+@dataclass
+class EnterpriseProfile(UserProfile):
+    """Profile for enterprise customers."""
+
+    company: Optional[str] = field(
+        default=None,
+        metadata={"description": "Company name"}
+    )
+    department: Optional[str] = field(
+        default=None,
+        metadata={"description": "Department: engineering | sales | marketing | etc"}
+    )
+    role: Optional[str] = field(
+        default=None,
+        metadata={"description": "Job title"}
+    )
+    plan: Optional[str] = field(
+        default=None,
+        metadata={"description": "Enterprise plan tier"}
+    )
+    region: Optional[str] = field(
+        default=None,
+        metadata={"description": "Geographic region: NA | EMEA | APAC"}
+    )
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai"),
+    learning=LearningMachine(
+        user_profile=UserProfileConfig(schema=EnterpriseProfile),
+    ),
+    instructions="""You are an enterprise support assistant. Learn about
+    users to provide personalized, role-appropriate assistance.""",
+)
+
+# The agent will extract all custom fields automatically
+agent.print_response(
+    "Hi, I'm Sarah Chen, VP of Engineering at Acme Corp. We're on the Enterprise Plus plan, "
+    "and we're the EMEA team.",
+    user_id="sarah@acme.com",
+)
+```

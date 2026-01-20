@@ -15,8 +15,8 @@ This example demonstrates **Workflows 2.0** shows how to:
 
 ```python access_multiple_previous_steps_output.py
 from agno.agent.agent import Agent
-from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.tools.hackernews import HackerNewsTools
+from agno.tools.yfinance import YFinanceTools
 from agno.workflow.step import Step
 from agno.workflow.types import StepInput, StepOutput
 from agno.workflow.workflow import Workflow
@@ -28,10 +28,10 @@ hackernews_agent = Agent(
     tools=[HackerNewsTools()],
 )
 
-web_agent = Agent(
-    name="Web Researcher",
-    instructions="You are a comprehensive web researcher. Search across multiple sources including news sites, blogs, and official documentation to gather detailed information.",
-    tools=[DuckDuckGoTools()],
+finance_agent = Agent(
+    name="Finance Researcher",
+    instructions="You are a finance researcher. Search for stock data, market trends, and financial information to gather detailed insights.",
+    tools=[YFinanceTools()],
 )
 
 reasoning_agent = Agent(
@@ -46,10 +46,10 @@ research_hackernews = Step(
     description="Research latest tech trends from Hacker News",
 )
 
-research_web = Step(
-    name="research_web",
-    agent=web_agent,
-    description="Comprehensive web research on the topic",
+research_finance = Step(
+    name="research_finance",
+    agent=finance_agent,
+    description="Research financial data and market trends",
 )
 
 # Custom function step that has access to ALL previous step outputs
@@ -66,7 +66,7 @@ def create_comprehensive_report(step_input: StepInput) -> StepOutput:
 
     # Access specific step outputs by name
     hackernews_data = step_input.get_step_content("research_hackernews") or ""
-    web_data = step_input.get_step_content("research_web") or ""
+    finance_data = step_input.get_step_content("research_finance") or ""
 
     # Or access ALL previous content
     _ = step_input.get_all_previous_content()
@@ -81,8 +81,8 @@ def create_comprehensive_report(step_input: StepInput) -> StepOutput:
         ## HackerNews Insights
         {hackernews_data[:500]}...
 
-        ## Web Research Findings
-        {web_data[:500]}...
+        ## Finance Research Findings
+        {finance_data[:500]}...
     """
 
     return StepOutput(
@@ -108,7 +108,7 @@ workflow = Workflow(
     description="Multi-source research with custom data flow and reasoning",
     steps=[
         research_hackernews,
-        research_web,
+        research_finance,
         comprehensive_report_step,  # Has access to both previous steps
         reasoning_step,  # Gets the last step output (comprehensive report)
     ],

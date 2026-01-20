@@ -1,138 +1,148 @@
 ---
 title: Building Teams
 sidebarTitle: Building Teams
-description: Learn how to build Teams with Agno.
-keywords: [teams, building teams, building teams with agno, building teams with agno agents]
+description: Define team members, roles, and structure for multi-agent coordination.
 ---
 
-To build effective teams, start simple -- just a model, team members, and instructions. Once that works, add more functionality as needed.
+Start simple: a model, team members, and instructions. Add functionality as needed.
 
-Here's a minimal example of a team with specialized agents:
+## Minimal Example
 
-```python news_weather_team.py
+```python research_team.py
 from agno.team import Team
 from agno.agent import Agent
-from agno.models.openai import OpenAIChat
-from agno.tools.duckduckgo import DuckDuckGoTools
+from agno.models.openai import OpenAIResponses
+from agno.tools.hackernews import HackerNewsTools
+from agno.tools.yfinance import YFinanceTools
 
-# Create specialized agents
+news_agent = Agent(
+    name="News Agent",
+    role="Get trending tech news from HackerNews",
+    tools=[HackerNewsTools()]
+)
+
+finance_agent = Agent(
+    name="Finance Agent",
+    role="Get stock prices and financial data",
+    tools=[YFinanceTools()]
+)
+
+team = Team(
+    name="Research Team",
+    members=[news_agent, finance_agent],
+    model=OpenAIResponses(id="gpt-4o"),
+    instructions="Delegate to the appropriate agent based on the request."
+)
+
+team.print_response("What are the trending AI stories and how is NVDA stock doing?", stream=True)
+```
+
+## Team Members
+
+Each member should have a `name` and `role`. The team leader uses these to decide who handles what.
+
+```python
+news_agent = Agent(
+    name="News Agent",                              # Identifies the agent
+    role="Get trending tech news from HackerNews",  # Tells the leader what this agent does
+    tools=[HackerNewsTools()]
+)
+```
+
+For better tracing, also set an `id`:
+
+```python
 news_agent = Agent(
     id="news-agent",
     name="News Agent",
-    role="Get the latest news and provide summaries",
-    tools=[DuckDuckGoTools()]
+    role="Get trending tech news from HackerNews",
+    tools=[HackerNewsTools()]
 )
-
-weather_agent = Agent(
-    id="weather-agent",
-    name="Weather Agent",
-    role="Get weather information and forecasts",
-    tools=[DuckDuckGoTools()]
-)
-
-# Create the team
-team = Team(
-    name="News and Weather Team",
-    members=[news_agent, weather_agent],
-    model=OpenAIChat(id="gpt-4o"),
-    instructions="Coordinate with team members to provide comprehensive information. Delegate tasks based on the user's request."
-)
-
-team.print_response("What's the latest news and weather in Tokyo?", stream=True)
 ```
 
-<Tip>
-  It is recommended to specify the `id`, `name` and the `role` fields of each team member, for better identification by the team leader when delegating requests.
-  The `id` is used to identify the team member in the team and in the team leader's context.
-</Tip>
+## Nested Teams
 
-<Note>
-Team members inherit the `model` parameter from their parent `Team` if not specified. Members with an explicitly assigned `model` retain their own. In nested team structures, inheritance always happens from the direct parent.
-Teams without a defined model default to OpenAI `gpt-4o`.
-
-The `reasoning_model`, `parser_model`, and `output_model` must be explicitly defined for each team or team member.
-
-See the [model inheritance example](/basics/teams/usage/other/model-inheritance).
-</Note>
-
-## Run your Team
-
-When running your team, use the `Team.print_response()` method to print the response in the terminal.
-
-You can pass `show_members_responses=True` to also print the responses from the team members.
-
-For example:
-```python
-team.print_response("What's the latest news and weather in Tokyo?")
-```
-
-This is only for development purposes and not recommended for production use. In production, use the `Team.run()` or `Team.arun()` methods. 
-
-For example:
+Teams can contain other teams. The top-level leader delegates to sub-team leaders, who delegate to their members.
 
 ```python
-from typing import Iterator
 from agno.team import Team
 from agno.agent import Agent
-from agno.models.openai import OpenAIChat
-from agno.tools.duckduckgo import DuckDuckGoTools
-from agno.utils.pprint import pprint_run_response
-
-news_agent = Agent(name="News Agent", role="Get the latest news", tools=[DuckDuckGoTools()])
-weather_agent = Agent(name="Weather Agent", role="Get the weather for the next 7 days", tools=[DuckDuckGoTools()])
 
 team = Team(
-    name="News and Weather Team",
-    members=[news_agent, weather_agent],
-    model=OpenAIChat(id="gpt-4o")
+    name="Language Team",
+    members=[
+        Agent(name="English Agent", role="Answer in English"),
+        Agent(name="Chinese Agent", role="Answer in Chinese"),
+        Team(
+            name="Germanic Team",
+            role="Handle German and Dutch questions",
+            members=[
+                Agent(name="German Agent", role="Answer in German"),
+                Agent(name="Dutch Agent", role="Answer in Dutch"),
+            ],
+        ),
+    ],
 )
-
-# Run team and return the response as a variable
-response = team.run("What is the weather in Tokyo?")
-# Print the response
-print(response.content)
-
-################ STREAM RESPONSE #################
-stream = team.run("What is the weather in Tokyo?", stream=True)
-for chunk in stream:
-    print(chunk.content, end="", flush=True)
-
-# ################ STREAM AND PRETTY PRINT #################
-stream = team.run("What is the weather in Tokyo?", stream=True)
-pprint_run_response(stream, markdown=True)
 ```
 
-### Modify what is show on the terminal
+## Model Inheritance
 
-When using `print_response`, only the team tool calls (typically all of the delegation to members) are printed. If you want to print the responses from the members, you can use the `show_members_responses` parameter.
+Team members inherit the `model` from their parent team if not explicitly set.
+
 ```python
-...
+from agno.team import Team
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.models.anthropic import Claude
 
-team = Team(
-    name="News and Weather Team", 
-    members=[news_agent, weather_agent],
-    model=OpenAIChat(id="gpt-4o")
-    show_members_responses=True,
+# This agent uses its own model (Claude)
+agent_with_model = Agent(
+    name="Claude Agent",
+    model=Claude(id="claude-sonnet-4-5"),
+    role="Research with Claude"
 )
 
-team.print_response("What is the weather in Tokyo?")
+# This agent inherits gpt-4o from the team
+agent_without_model = Agent(
+    name="Inherited Agent",
+    role="Research with inherited model"
+)
+
+team = Team(
+    name="Research Team",
+    model=OpenAIResponses(id="gpt-4o"),  # Default for team and members without a model
+    members=[agent_with_model, agent_without_model]
+)
 ```
 
-## The Passthrough-Team Pattern
+## Team Features
 
-It is a common pattern to have a team that decides which member to delegate the request to, and then passes the request to the team member without any modification, and also applies no processing to the response before returning it to the user. I.e. this team is a "passthrough" team (or "router" team).
+Teams support the same features as agents:
 
-In that case the team leader is effectively bypassed and all communication is directly with a team member. See the [Passthrough Teams](/basics/teams/delegation#passthrough-teams) section for more details.
+| Feature | Description |
+|---------|-------------|
+| Instructions | Guide the team leader on how to coordinate |
+| Database | Persist session history and state |
+| Reasoning | Enable the leader to plan before delegating |
+| Knowledge | Give the leader access to a knowledge base |
+| Memory | Store and recall information across sessions |
+| Tools | Give the leader tools to use directly |
+
+See the guides below to add these features.
 
 ## Next Steps
 
-Next, continue building your team by adding functionality as needed. Common questions:
+| Task | Guide |
+|------|-------|
+| Run teams | [Running Teams](/basics/teams/running-teams) |
+| Control delegation | [Delegation](/basics/teams/delegation) |
+| Add chat history | [Chat History](/context/history/team/overview) |
+| Manage sessions | [Sessions](/basics/sessions/overview) |
+| Handle input/output | [Input and Output](/basics/input-output/overview) |
+| Add knowledge | [Knowledge](/context/knowledge/overview) |
+| Add guardrails | [Guardrails](/execution-control/guardrails/overview) |
 
-- **How do I run my team?** -> See the [running teams](/basics/teams/running-teams) documentation.
-- **How do I add history to my team?** -> See the [chat history](/basics/chat-history/team/overview) documentation.
-- **How do I manage sessions?** -> See the [sessions](/basics/sessions/overview) documentation.
-- **How do I manage input and capture output?** -> See the [input and output](/basics/input-output/overview) documentation.
-- **How do I manage the team context?** -> See the [context engineering](/basics/context/team) documentation.
-- **How do I add knowledge?** -> See the [knowledge](/basics/knowledge/overview) documentation.
-- **How do I add guardrails?** -> See the [guardrails](/basics/guardrails/overview) documentation.
-- **How do I cache responses during development?** -> See the [response caching](/basics/models/cache-response) documentation.
+## Developer Resources
+
+- [Team reference](/reference/teams/team)
+- [Team examples](/cookbook/teams/overview)

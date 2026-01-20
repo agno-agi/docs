@@ -1,0 +1,316 @@
+---
+title: Learned Knowledge Store
+description: Capture reusable insights that improve over time.
+sidebarTitle: Learned Knowledge
+---
+
+The Learned Knowledge Store captures reusable insights, patterns, and best practices that apply across users and sessions. It's powered by semantic search, allowing agents to find and apply relevant knowledge automatically.
+
+## Overview
+
+| Aspect | Details |
+|--------|---------|
+| **Data Type** | Insights, patterns, best practices |
+| **Scope** | Configurable (global or per-user) |
+| **Persistence** | Long-term |
+| **Default Mode** | AGENTIC |
+| **Supported Modes** | ALWAYS, AGENTIC, PROPOSE |
+| **Requires** | Knowledge base with vector database |
+
+## Prerequisites
+
+Learned Knowledge requires a Knowledge base with a vector database for semantic search:
+
+```python
+from agno.knowledge import Knowledge
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.vectordb.pgvector import PgVector, SearchType
+
+knowledge = Knowledge(
+    vector_db=PgVector(
+        db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
+        table_name="learned_knowledge",
+        search_type=SearchType.hybrid,
+        embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+    ),
+)
+```
+
+## Basic Usage
+
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.knowledge import Knowledge
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.learn import LearningMachine, LearnedKnowledgeConfig
+from agno.models.openai import OpenAIResponses
+from agno.vectordb.pgvector import PgVector, SearchType
+
+db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
+
+knowledge = Knowledge(
+    vector_db=PgVector(
+        db_url=db_url,
+        table_name="learned_knowledge",
+        search_type=SearchType.hybrid,
+        embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+    ),
+)
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=PostgresDb(db_url=db_url),
+    learning=LearningMachine(
+        knowledge=knowledge,
+        learned_knowledge=True,
+    ),
+)
+
+# Agent can save insights
+agent.print_response(
+    "Save this: When comparing cloud providers, always check egress costs first - "
+    "they can be 10x different between providers.",
+    user_id="alice@example.com",
+)
+
+# Agent automatically searches and applies relevant knowledge
+agent.print_response(
+    "I'm choosing between AWS and GCP for our data platform. What should I consider?",
+    user_id="bob@example.com",
+)
+```
+
+## AGENTIC Mode (Default)
+
+The agent receives tools to explicitly manage knowledge:
+
+```python
+from agno.learn import LearningMachine, LearningMode, LearnedKnowledgeConfig
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        knowledge=knowledge,
+        learned_knowledge=LearnedKnowledgeConfig(
+            mode=LearningMode.AGENTIC,
+        ),
+    ),
+)
+```
+
+**Available tools:**
+
+| Tool | Description |
+|------|-------------|
+| `search_learnings` | Find relevant insights by semantic search |
+| `save_learning` | Store a reusable insight |
+
+**Key rules for the agent:**
+1. Always search before answering substantive questions
+2. Always search before saving to avoid duplicates
+3. Only save insights that are non-obvious, reusable, and actionable
+
+## PROPOSE Mode
+
+The agent proposes learnings for user confirmation:
+
+```python
+from agno.learn import LearningMachine, LearningMode, LearnedKnowledgeConfig
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        knowledge=knowledge,
+        learned_knowledge=LearnedKnowledgeConfig(
+            mode=LearningMode.PROPOSE,
+        ),
+    ),
+)
+
+# Agent proposes, user confirms
+agent.print_response(
+    "That's a great insight about Docker networking. We should remember that.",
+    user_id="alice@example.com",
+)
+# Agent: "💡 Proposed Learning: Docker localhost access on Mac..."
+# User: "Yes, save that"
+```
+
+## ALWAYS Mode
+
+Learnings are extracted automatically in the background:
+
+```python
+from agno.learn import LearningMachine, LearningMode, LearnedKnowledgeConfig
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        knowledge=knowledge,
+        learned_knowledge=LearnedKnowledgeConfig(
+            mode=LearningMode.ALWAYS,
+        ),
+    ),
+)
+```
+
+## Learned Knowledge Data Model
+
+Each learning contains:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `title` | `str` | Short, searchable title |
+| `learning` | `str` | The actual insight |
+| `context` | `str` | When/where this applies |
+| `tags` | `list` | Categories for organization |
+| `namespace` | `str` | Sharing scope |
+| `user_id` | `str` | Owner (if namespace="user") |
+| `created_at` | `datetime` | When captured |
+
+## What to Save vs Not Save
+
+| Good to Save | Don't Save |
+|--------------|------------|
+| Non-obvious discoveries | Raw facts or data |
+| Reusable patterns | User-specific preferences |
+| Domain-specific insights | Common knowledge |
+| Problem-solving approaches | Conversation summaries |
+| Best practices | Temporary information |
+
+**Good example:**
+> "When comparing cloud providers, always check egress costs first - they vary dramatically (AWS: $0.09/GB, GCP: $0.12/GB, Cloudflare R2: free)."
+
+**Poor example:**
+> "AWS has egress costs."
+
+## Accessing Learned Knowledge
+
+```python
+# Get the learning machine
+learning = agent.get_learning_machine()
+
+# Search for relevant learnings
+results = learning.learned_knowledge_store.search(
+    query="cloud costs",
+    limit=5
+)
+
+for result in results:
+    print(f"Title: {result.title}")
+    print(f"Learning: {result.learning}")
+    print(f"Context: {result.context}")
+
+# Debug output
+learning.learned_knowledge_store.print(query="cloud costs")
+```
+
+## Context Injection
+
+Relevant learnings are injected via semantic search:
+
+```
+<relevant_learnings>
+Prior insights that may help with this task:
+
+**Cloud egress cost variations**
+Context: When selecting cloud providers for data-intensive workloads
+Insight: Always check egress costs first - they can be 10x different between
+providers. AWS charges $0.09/GB, GCP $0.12/GB, while Cloudflare R2 has free egress.
+
+**API rate limiting strategies**
+Context: When designing APIs with high traffic
+Insight: Use token bucket algorithm for rate limiting - it handles bursts better
+than fixed windows and is easier to reason about than leaky bucket.
+
+Apply these naturally if relevant. Current context takes precedence.
+</relevant_learnings>
+```
+
+## Namespace Configuration
+
+Control knowledge sharing:
+
+```python
+from agno.learn import LearningMachine, LearnedKnowledgeConfig
+
+# Global: shared with all users (default)
+learned_knowledge=LearnedKnowledgeConfig(namespace="global")
+
+# User: private per user
+learned_knowledge=LearnedKnowledgeConfig(namespace="user")
+
+# Custom: team or domain-specific
+learned_knowledge=LearnedKnowledgeConfig(namespace="engineering")
+```
+
+## Example: Technical Advisor
+
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.knowledge import Knowledge
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.learn import LearningMachine, LearningMode, LearnedKnowledgeConfig
+from agno.models.openai import OpenAIResponses
+from agno.vectordb.pgvector import PgVector, SearchType
+
+db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
+
+knowledge = Knowledge(
+    vector_db=PgVector(
+        db_url=db_url,
+        table_name="tech_insights",
+        search_type=SearchType.hybrid,
+        embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+    ),
+)
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=PostgresDb(db_url=db_url),
+    learning=LearningMachine(
+        knowledge=knowledge,
+        learned_knowledge=LearnedKnowledgeConfig(
+            mode=LearningMode.AGENTIC,
+            namespace="global",
+        ),
+    ),
+    instructions="""You are a technical advisor. Search for relevant learnings
+    before answering questions. Save genuinely valuable insights that would help
+    others facing similar problems.""",
+)
+
+# As users interact, the agent accumulates collective intelligence
+# that benefits all future users
+```
+
+## Combining with Other Stores
+
+Learned Knowledge works alongside user-specific stores:
+
+```python
+from agno.learn import (
+    LearningMachine,
+    UserProfileConfig,
+    UserMemoryConfig,
+    LearnedKnowledgeConfig,
+)
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        knowledge=knowledge,
+        user_profile=UserProfileConfig(),       # Who the user is
+        user_memory=UserMemoryConfig(),         # User's preferences
+        learned_knowledge=LearnedKnowledgeConfig(),  # Collective insights
+    ),
+)
+```
+
+This creates an agent that personalizes responses while drawing on collective knowledge.
