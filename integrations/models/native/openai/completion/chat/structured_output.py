@@ -1,10 +1,3 @@
----
-title: Structured Output
----
-
-## Code
-
-```python cookbook/11_models/openai/completion/chat/structured_output.py
 from typing import Dict, List
 
 from agno.agent import Agent, RunOutput  # noqa
@@ -68,28 +61,3 @@ guided_output_agent = Agent(
 json_mode_agent.print_response("New York")
 structured_output_agent.print_response("New York")
 guided_output_agent.print_response("New York")
-```
-
-## Usage
-
-<Steps>
-  <Snippet file="create-venv-step.mdx" />
-
-  <Step title="Set your API key">
-    ```bash
-    export OPENAI_API_KEY=xxx
-    ```
-  </Step>
-
-  <Step title="Install dependencies">
-    ```bash
-    uv pip install -U agno openai
-    ```
-  </Step>
-
-  <Step title="Run Agent">
-    ```bash
-    python cookbook/11_models/openai/completion/chat/structured_output.py
-    ```
-  </Step>
-</Steps>

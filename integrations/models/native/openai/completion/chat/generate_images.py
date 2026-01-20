@@ -1,10 +1,3 @@
----
-title: Generate Images
----
-
-## Code
-
-```python cookbook/11_models/openai/completion/chat/generate_images.py
 from agno.agent import Agent, RunOutput
 from agno.models.openai import OpenAIChat
 from agno.tools.dalle import DalleTools
@@ -27,28 +20,3 @@ if run_response and isinstance(run_response, RunOutput) and run_response.images:
         print(image_url)
 else:
     print("No images found in run response")
-```
-
-## Usage
-
-<Steps>
-  <Snippet file="create-venv-step.mdx" />
-
-  <Step title="Set your API key">
-    ```bash
-    export OPENAI_API_KEY=xxx
-    ```
-  </Step>
-
-  <Step title="Install dependencies">
-    ```bash
-    uv pip install -U agno openai
-    ```
-  </Step>
-
-  <Step title="Run Agent">
-    ```bash
-    python cookbook/11_models/openai/completion/chat/generate_images.py
-    ```
-  </Step>
-</Steps>

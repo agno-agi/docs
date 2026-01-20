@@ -1,10 +1,3 @@
----
-title: Audio Input Agent
----
-
-## Code
-
-```python cookbook/11_models/openai/completion/chat/audio_input_agent.py
 import requests
 from agno.agent import Agent, RunOutput  # noqa
 from agno.media import Audio
@@ -24,28 +17,3 @@ agent = Agent(
 agent.print_response(
     "What is in this audio?", audio=[Audio(content=wav_data, format="wav")], stream=True
 )
-```
-
-## Usage
-
-<Steps>
-  <Snippet file="create-venv-step.mdx" />
-
-  <Step title="Set your API key">
-    ```bash
-    export OPENAI_API_KEY=xxx
-    ```
-  </Step>
-
-  <Step title="Install dependencies">
-    ```bash
-    uv pip install -U agno openai requests
-    ```
-  </Step>
-
-  <Step title="Run Agent">
-    ```bash
-    python cookbook/11_models/openai/completion/chat/audio_input_agent.py
-    ```
-  </Step>
-</Steps>

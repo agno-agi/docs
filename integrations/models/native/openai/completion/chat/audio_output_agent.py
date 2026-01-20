@@ -1,10 +1,3 @@
----
-title: Audio Output Agent
----
-
-## Code
-
-```python cookbook/11_models/openai/completion/chat/audio_output_agent.py
 from agno.agent import Agent, RunOutput  # noqa
 from agno.models.openai import OpenAIChat
 from agno.utils.audio import write_audio_to_file
@@ -38,28 +31,3 @@ if run_output.response_audio:
         audio=run_output.response_audio.content,
         filename="tmp/scary_story_sequal.wav",
     )
-```
-
-## Usage
-
-<Steps>
-  <Snippet file="create-venv-step.mdx" />
-
-  <Step title="Set your API key">
-    ```bash
-    export OPENAI_API_KEY=xxx
-    ```
-  </Step>
-
-  <Step title="Install dependencies">
-    ```bash
-    uv pip install -U agno openai
-    ```
-  </Step>
-
-  <Step title="Run Agent">
-    ```bash
-    python cookbook/11_models/openai/completion/chat/audio_output_agent.py
-    ```
-  </Step>
-</Steps>
