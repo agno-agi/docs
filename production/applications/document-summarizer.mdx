@@ -1,0 +1,183 @@
+---
+title: "Document Summarizer"
+sidebarTitle: "Document Summarizer"
+description: "Structured document summaries with key points, entity extraction, and action item detection from PDFs, text, and URLs."
+---
+
+An intelligent document summarization agent that processes various document types (PDF, text, web pages) and produces structured summaries with key points, entities, and action items.
+
+## What You'll Learn
+
+| Concept | Description |
+|:--------|:------------|
+| **Structured Output** | Using Pydantic schemas for consistent agent responses |
+| **Document Loading** | Reading PDFs, text files, and web pages |
+| **Entity Extraction** | Identifying people, organizations, dates, technologies |
+| **Action Items** | Finding tasks and next steps in documents |
+
+## Prerequisites
+
+- Python 3.12+
+- OpenAI API key
+
+## Setup
+
+<Steps>
+<Step title="Clone the repository">
+
+```bash
+git clone https://github.com/agno-agi/agno.git
+cd agno
+```
+
+</Step>
+
+<Step title="Create and activate virtual environment">
+
+```bash
+uv venv --python 3.12
+source .venv/bin/activate
+```
+
+</Step>
+
+<Step title="Install dependencies">
+
+```bash
+uv pip install -r cookbook/01_showcase/01_agents/document_summarizer/requirements.in
+```
+
+</Step>
+
+<Step title="Set environment variables">
+
+```bash
+export OPENAI_API_KEY=your-openai-key
+```
+
+</Step>
+</Steps>
+
+## Run the Agent
+
+### Basic Summary
+
+Summarize a document and access structured fields:
+
+```bash
+python cookbook/01_showcase/01_agents/document_summarizer/examples/basic_summary.py
+```
+
+Demonstrates:
+- Summarizing a text file
+- Accessing structured summary fields
+- Displaying key points and entities
+
+### Entity Extraction
+
+Focus on extracting and categorizing entities:
+
+```bash
+python cookbook/01_showcase/01_agents/document_summarizer/examples/extract_entities.py
+```
+
+Demonstrates:
+- Entity extraction from documents
+- Categorizing by type (person, organization, date, etc.)
+- Contextual information for each entity
+
+### Batch Processing
+
+Process multiple documents:
+
+```bash
+python cookbook/01_showcase/01_agents/document_summarizer/examples/batch_processing.py
+```
+
+## Agent Configuration
+
+```python
+summarizer_agent = Agent(
+    name="Document Summarizer",
+    model=OpenAIResponses(id="gpt-5.2"),
+    system_message=SYSTEM_MESSAGE,
+    output_schema=DocumentSummary,
+    tools=[
+        ReasoningTools(add_instructions=True),
+        read_pdf,
+        read_text_file,
+        fetch_url,
+    ],
+    add_datetime_to_context=True,
+    add_history_to_context=True,
+    num_history_runs=5,
+    enable_agentic_memory=True,
+    markdown=True,
+)
+```
+
+| Parameter | Purpose |
+|-----------|---------|
+| `model` | GPT-5.2 for document understanding |
+| `output_schema` | Pydantic model for structured output |
+| `read_pdf` | Extract text from PDF files |
+| `read_text_file` | Read .txt and .md files |
+| `fetch_url` | Fetch and clean web page content |
+| `ReasoningTools` | Plan extraction approach before summarizing |
+
+## How It Works
+
+### Document Processing
+
+```
+1. Detect source type (PDF, URL, or text file)
+2. Extract content using appropriate tool
+3. Analyze document structure and type
+4. Generate structured summary
+5. Extract entities and action items
+6. Return validated output with confidence score
+```
+
+### Output Schema
+
+```python
+class DocumentSummary(BaseModel):
+    title: str                    # Document title or inferred subject
+    document_type: str            # report, article, meeting_notes, etc.
+    summary: str                  # Concise summary in 1-3 paragraphs
+    key_points: list[str]         # 3-7 main takeaways
+    entities: list[Entity]        # People, organizations, dates
+    action_items: list[ActionItem] # Tasks with owner, deadline, priority
+    word_count: int               # Original document word count
+    confidence: float             # 0-1 confidence score
+```
+
+### Document Type Detection
+
+| Type | Indicators |
+|------|------------|
+| `report` | Formal structure, findings, conclusions |
+| `article` | News format, byline, publication date |
+| `meeting_notes` | Attendees, agenda, discussion items |
+| `research_paper` | Abstract, methodology, citations |
+| `email` | To/From headers, subject line |
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="PDF extraction returns empty text">
+    The PDF may be image-based (scanned). This agent handles text-based PDFs only. For scanned documents, use the Invoice Analyst which has vision capabilities.
+  </Accordion>
+  <Accordion title="Web page content is incomplete">
+    JavaScript-heavy pages may not extract fully. The agent uses BeautifulSoup for static HTML extraction.
+  </Accordion>
+  <Accordion title="Low confidence score">
+    Low confidence indicates poor document quality, ambiguous content, or missing context. Review the document manually and provide additional context if needed.
+  </Accordion>
+</AccordionGroup>
+
+## Source Code
+
+- [Agent implementation](https://github.com/agno-agi/agno/tree/main/cookbook/01_showcase/01_agents/document_summarizer/agent.py)
+- [Output schemas](https://github.com/agno-agi/agno/tree/main/cookbook/01_showcase/01_agents/document_summarizer/schemas.py)
+- [Example scripts](https://github.com/agno-agi/agno/tree/main/cookbook/01_showcase/01_agents/document_summarizer/examples/)

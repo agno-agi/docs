@@ -6,24 +6,15 @@ This example demonstrates how to use tool hooks with teams and agents for interc
 
 ## Code
 
-```python cookbook/02_examples/teams/tools/02_team_with_tool_hooks.py
-"""
-This example demonstrates how to use tool hooks with teams and agents.
-
-Tool hooks allow you to intercept and monitor tool function calls, providing
-logging, timing, and other observability features.
-"""
-
+```python team_with_tool_hooks.py
 import time
 from typing import Any, Callable, Dict
-from uuid import uuid4
 
-from agno.agent.agent import Agent
-from agno.models.anthropic import Claude
-from agno.models.openai import OpenAIChat
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
 from agno.team import Team
-from agno.tools.duckduckgo import DuckDuckGoTools
-from agno.tools.reddit import RedditTools
+from agno.tools.hackernews import HackerNewsTools
+from agno.tools.yfinance import YFinanceTools
 from agno.utils.log import logger
 
 
@@ -53,55 +44,51 @@ def logger_hook(function_name: str, function_call: Callable, arguments: Dict[str
     return result
 
 
-# Reddit search agent with tool hooks
-reddit_agent = Agent(
-    name="Reddit Agent",
-    id="reddit-agent",
-    role="Search reddit for information",
-    tools=[RedditTools(cache_results=True)],
+# News agent with tool hooks
+news_agent = Agent(
+    name="News Agent",
+    id="news-agent",
+    role="Search HackerNews for information",
+    tools=[HackerNewsTools(cache_results=True)],
     instructions=[
-        "Find information about the company on Reddit",
+        "Find information about the company on HackerNews",
     ],
     tool_hooks=[logger_hook],
 )
 
-# Web search agent with tool hooks
-website_agent = Agent(
-    name="Website Agent",
-    id="website-agent",
-    role="Search the website for information",
-    model=OpenAIChat(id="gpt-5-mini"),
-    tools=[DuckDuckGoTools(cache_results=True)],
+# Finance agent with tool hooks
+finance_agent = Agent(
+    name="Finance Agent",
+    id="finance-agent",
+    role="Get stock prices and financial data",
+    model=OpenAIResponses(id="gpt-5.2"),
+    tools=[YFinanceTools(cache_results=True)],
     instructions=[
-        "Search the website for information",
+        "Get stock prices and financial information",
     ],
     tool_hooks=[logger_hook],
 )
-
-# Generate unique user ID
-user_id = str(uuid4())
 
 # Create team with tool hooks
-company_info_team = Team(
-    name="Company Info Team",
-    model=Claude(id="claude-3-7-sonnet-latest"),
+research_team = Team(
+    name="Research Team",
+    model=OpenAIResponses(id="gpt-5.2"),
     members=[
-        reddit_agent,
-        website_agent,
+        news_agent,
+        finance_agent,
     ],
     markdown=True,
     instructions=[
-        "You are a team that finds information about a company.",
-        "First search the web and wikipedia for information about the company.",
-        "If you can find the company's website URL, then scrape the homepage and the about page.",
+        "You are a team that researches companies.",
+        "Use the news agent for HackerNews discussions and finance agent for stock data.",
     ],
     show_members_responses=True,
     tool_hooks=[logger_hook],
 )
 
 if __name__ == "__main__":
-    company_info_team.print_response(
-        "Write me a full report on everything you can find about Agno, the company building AI agent infrastructure.",
+    research_team.print_response(
+        "Research NVIDIA - get the stock price and find any HackerNews discussions.",
         stream=True,
     )
 ```
@@ -110,28 +97,36 @@ if __name__ == "__main__":
 
 <Steps>
 
-    <Snippet file="create-venv-step.mdx" />
+  <Step title="Create a Python file">
+    Create `team_with_tool_hooks.py` with the code above.
+  </Step>
 
-    <Step title="Install required libraries">
-        ```bash
-        pip install agno ddgs
-        ```
-    </Step>
+  <Snippet file="create-venv-step.mdx" />
 
-    <Step title="Set environment variables">
-        ```bash
-        export OPENAI_API_KEY=****
-        export ANTHROPIC_API_KEY=****
-        export REDDIT_CLIENT_ID=****
-        export REDDIT_CLIENT_SECRET=****
-        export REDDIT_USER_AGENT=****
-        ```
-    </Step>
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai yfinance
+    ```
+  </Step>
 
-    <Step title="Run the agent">
-        ```bash
-        python cookbook/02_examples/teams/tools/02_team_with_tool_hooks.py
-        ```
-    </Step>
+  <Step title="Export your OpenAI API key">
+
+    <CodeGroup>
+
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run Team">
+    ```bash
+    python team_with_tool_hooks.py
+    ```
+  </Step>
 
 </Steps>

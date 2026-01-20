@@ -1,0 +1,228 @@
+---
+title: Session Context Store
+description: Track conversation state, goals, and progress within a session.
+sidebarTitle: Session Context
+---
+
+The Session Context Store captures the current state of a conversation - what's been discussed, what the goal is, and what progress has been made. Unlike other stores that accumulate data, session context is a snapshot that gets replaced on each update.
+
+## Overview
+
+| Aspect | Details |
+|--------|---------|
+| **Data Type** | Summary, goal, plan, progress |
+| **Scope** | Per session (identified by `session_id`) |
+| **Persistence** | Session lifetime (replaced on update) |
+| **Default Mode** | ALWAYS |
+| **Supported Modes** | ALWAYS only |
+
+## Basic Usage
+
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.learn import LearningMachine
+from agno.models.openai import OpenAIResponses
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai"),
+    learning=LearningMachine(
+        session_context=True,
+    ),
+)
+
+# Session tracks what's being discussed
+agent.print_response(
+    "I'm designing a REST API for a todo app. Should I use PUT or PATCH for updates?",
+    user_id="alice@example.com",
+    session_id="api_design",
+)
+
+# Later in the session, context is maintained
+agent.print_response(
+    "What about the delete endpoint?",
+    user_id="alice@example.com",
+    session_id="api_design",
+)
+# Agent knows the ongoing context about REST API design
+```
+
+## Summary Mode (Default)
+
+Summary mode captures the essence of the conversation without detailed planning:
+
+```python
+from agno.learn import LearningMachine, SessionContextConfig
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        session_context=SessionContextConfig(),  # Summary mode by default
+    ),
+)
+```
+
+**What gets captured:**
+- What's being worked on and why
+- Key decisions made and their rationale
+- Current state of any work in progress
+- Open questions or pending items
+
+## Planning Mode
+
+Enable planning mode to track goals, plans, and progress:
+
+```python
+from agno.learn import LearningMachine, SessionContextConfig
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        session_context=SessionContextConfig(
+            enable_planning=True,
+        ),
+    ),
+)
+
+# Agent tracks goal, plan steps, and progress
+agent.print_response(
+    "Help me deploy a Python app to production. Give me the steps.",
+    user_id="alice@example.com",
+    session_id="deploy_app",
+)
+
+# Later, progress is tracked
+agent.print_response(
+    "Done with step 1. What's next?",
+    user_id="alice@example.com",
+    session_id="deploy_app",
+)
+```
+
+## Session Context Data Model
+
+Each session context contains:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `session_id` | `str` | Unique session identifier |
+| `user_id` | `str` | User this session belongs to |
+| `summary` | `str` | What's been discussed in this session |
+| `goal` | `str` | What user is trying to accomplish (planning mode) |
+| `plan` | `list` | Steps to achieve goal (planning mode) |
+| `progress` | `list` | Completed steps (planning mode) |
+| `created_at` | `datetime` | When the context was created |
+| `updated_at` | `datetime` | Last update timestamp |
+
+## Accessing Session Context
+
+```python
+# Get the learning machine
+learning = agent.get_learning_machine()
+
+# Access the session context store
+context = learning.session_context_store.get(session_id="api_design")
+
+if context:
+    print(f"Summary: {context.summary}")
+    if context.goal:
+        print(f"Goal: {context.goal}")
+    if context.plan:
+        print(f"Plan: {context.plan}")
+    if context.progress:
+        print(f"Progress: {context.progress}")
+
+# Debug output
+learning.session_context_store.print(session_id="api_design")
+```
+
+## Context Injection
+
+Session context is automatically injected into the agent's system prompt:
+
+```
+<session_context>
+This is a continuation of an ongoing session. Here's where things stand:
+
+**Summary:** Helping user design a REST API for a todo app. Discussed resource naming conventions and decided on /todos endpoint. Currently exploring HTTP methods for CRUD operations.
+
+**Current Goal:** Design complete REST API for todo application
+
+**Plan:**
+  1. Define resource endpoints
+  2. Choose HTTP methods for each operation
+  3. Design request/response schemas
+  4. Add authentication
+
+**Completed:**
+  ✓ Define resource endpoints
+</session_context>
+```
+
+## Why Session Context Matters
+
+Session context is essential when:
+
+1. **Message history gets truncated** - Long conversations may lose early context
+2. **Sessions are resumed** - User returns after a break
+3. **Complex multi-step tasks** - Track progress through long workflows
+4. **Handoffs** - Another agent or human needs to understand the state
+
+## Example: Technical Support Session
+
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.learn import LearningMachine, SessionContextConfig
+from agno.models.openai import OpenAIResponses
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai"),
+    learning=LearningMachine(
+        session_context=SessionContextConfig(enable_planning=True),
+    ),
+    instructions="""You are a technical support agent. Track the user's issue
+    and your troubleshooting progress. When you identify the problem,
+    create a plan to resolve it.""",
+)
+
+# Session 1: Initial issue report
+agent.print_response(
+    "My application keeps crashing when I try to upload files larger than 10MB.",
+    user_id="user@company.com",
+    session_id="support_ticket_123",
+)
+
+# Session 2: Troubleshooting continues
+agent.print_response(
+    "I checked the logs - there's an OutOfMemoryError.",
+    user_id="user@company.com",
+    session_id="support_ticket_123",
+)
+# Agent has full context of the ongoing troubleshooting session
+```
+
+## Combining with Other Stores
+
+Session context works well alongside user-level stores:
+
+```python
+from agno.learn import LearningMachine, UserProfileConfig, SessionContextConfig
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        user_profile=UserProfileConfig(),     # Who the user is
+        session_context=SessionContextConfig( # Current session state
+            enable_planning=True,
+        ),
+    ),
+)
+```
+
+This gives the agent both long-term user knowledge and short-term session state.

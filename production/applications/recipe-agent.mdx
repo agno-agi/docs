@@ -1,0 +1,198 @@
+---
+title: "Recipe Agent"
+sidebarTitle: "Recipe Agent"
+description: "Multi-modal RAG agent that retrieves recipes from a knowledge base and generates visual cooking guides."
+---
+
+A multi-modal RAG agent that retrieves recipes from a knowledge base and generates step-by-step visual instruction manuals using image generation.
+
+## Key Concepts
+
+This agent combines two powerful techniques:
+
+- **RAG (Retrieval Augmented Generation)**: Searches a vector database for recipes
+- **Image Generation**: Creates visual guides using DALL-E via OpenAITools
+
+## Prerequisites
+
+- Python 3.12+
+- Docker (for PostgreSQL with pgvector)
+- OpenAI API key (for GPT and DALL-E)
+- Cohere API key (for embeddings)
+
+## Setup
+
+<Steps>
+<Step title="Clone the repository">
+
+```bash
+git clone https://github.com/agno-agi/agno.git
+cd agno
+```
+
+</Step>
+
+<Step title="Create and activate virtual environment">
+
+```bash
+uv venv --python 3.12
+source .venv/bin/activate
+```
+
+</Step>
+
+<Step title="Install dependencies">
+
+```bash
+uv pip install -r cookbook/01_showcase/01_agents/recipe_agent/requirements.in
+```
+
+</Step>
+
+<Step title="Set environment variables">
+
+```bash
+export OPENAI_API_KEY=sk-***
+export COHERE_API_KEY=***
+```
+
+</Step>
+
+<Step title="Start PostgreSQL with pgvector">
+
+```bash
+./cookbook/scripts/run_pgvector.sh
+```
+
+</Step>
+
+<Step title="Load recipes into knowledge base">
+
+```bash
+python cookbook/01_showcase/01_agents/recipe_agent/scripts/load_recipes.py
+```
+
+</Step>
+</Steps>
+
+## Run the Agent
+
+### Basic Recipe
+
+Retrieve a recipe from the knowledge base:
+
+```bash
+python cookbook/01_showcase/01_agents/recipe_agent/examples/basic_recipe.py
+```
+
+Demonstrates:
+- Searching the recipe knowledge base
+- Formatted recipe output
+- Ingredient and instruction extraction
+
+### Visual Guide
+
+Generate a recipe with step-by-step images:
+
+```bash
+python cookbook/01_showcase/01_agents/recipe_agent/examples/visual_guide.py
+```
+
+Demonstrates:
+- DALL-E image generation for cooking steps
+- Saving images to disk
+- Complete visual recipe guide
+
+## Agent Configuration
+
+```python
+recipe_agent = Agent(
+    name="Recipe Agent",
+    model=OpenAIResponses(id="gpt-5.2"),
+    system_message=SYSTEM_MESSAGE,
+    knowledge=recipe_knowledge,
+    tools=[
+        OpenAITools(),
+        ReasoningTools(add_instructions=True),
+    ],
+    add_datetime_to_context=True,
+    add_history_to_context=True,
+    num_history_runs=5,
+    enable_agentic_memory=True,
+    search_knowledge=True,
+    markdown=True,
+)
+```
+
+| Parameter | Purpose |
+|-----------|---------|
+| `model` | GPT-5.2 for recipe understanding and generation |
+| `knowledge` | Vector database with recipe documents |
+| `OpenAITools` | DALL-E image generation |
+| `search_knowledge` | Enable knowledge base search |
+| `ReasoningTools` | Plan recipe presentation |
+
+## How It Works
+
+### Recipe Workflow
+
+```
+1. User requests a recipe
+2. Agent searches knowledge base for matches
+3. Retrieves and formats recipe details
+4. Identifies 2-3 key visual steps
+5. Generates images for each step using DALL-E
+6. Returns combined recipe text and images
+```
+
+### Knowledge Base
+
+Recipes are stored in PostgreSQL with pgvector using Cohere embeddings:
+
+```python
+recipe_knowledge = Knowledge(
+    name="Recipe Knowledge Base",
+    vector_db=PgVector(
+        db_url=DB_URL,
+        table_name="recipe_documents",
+        embedder=CohereEmbedder(id="embed-v4.0"),
+    ),
+    max_results=5,
+)
+```
+
+### Image Generation
+
+The agent generates images for key cooking steps:
+
+| Step Type | Example Prompt |
+|-----------|---------------|
+| Ingredient prep | "Thai green curry ingredients on cutting board, food photography" |
+| Cooking technique | "Wok with stir-fried vegetables, steam rising, overhead shot" |
+| Final dish | "Plated Thai curry with jasmine rice, garnished with basil" |
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="No recipes found">
+    Ensure recipes are loaded into the knowledge base:
+    ```bash
+    python cookbook/01_showcase/01_agents/recipe_agent/scripts/load_recipes.py
+    ```
+  </Accordion>
+  <Accordion title="Image generation fails">
+    Check your OpenAI API key has DALL-E access. Image generation requires a paid OpenAI account.
+  </Accordion>
+  <Accordion title="Database connection refused">
+    Ensure PostgreSQL is running:
+    ```bash
+    docker ps | grep pgvector
+    ./cookbook/scripts/run_pgvector.sh
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Source Code
+
+- [Agent implementation](https://github.com/agno-agi/agno/tree/main/cookbook/01_showcase/01_agents/recipe_agent/agent.py)
+- [Example scripts](https://github.com/agno-agi/agno/tree/main/cookbook/01_showcase/01_agents/recipe_agent/examples/)

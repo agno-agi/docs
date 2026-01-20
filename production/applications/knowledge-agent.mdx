@@ -1,0 +1,225 @@
+---
+title: "Internal Knowledge Agent"
+sidebarTitle: "Knowledge Agent"
+description: "RAG-powered agent for answering questions from company docs with source citations."
+---
+
+A RAG-powered knowledge agent that provides intelligent access to internal company documentation. Enables employees to ask questions and get accurate answers with source citations from company knowledge bases.
+
+## Key Concepts
+
+| Concept | Description |
+|:--------|:------------|
+| **RAG** | Retrieval Augmented Generation for accurate answers |
+| **Hybrid Search** | Combines semantic and keyword search for comprehensive results |
+| **Source Citations** | Every answer references source documents |
+| **Uncertainty Handling** | Acknowledges when information is not in the knowledge base |
+
+## Prerequisites
+
+- Python 3.12+
+- Docker (for PostgreSQL with pgvector)
+- OpenAI API key
+
+## Setup
+
+<Steps>
+<Step title="Clone the repository">
+
+```bash
+git clone https://github.com/agno-agi/agno.git
+cd agno
+```
+
+</Step>
+
+<Step title="Create and activate virtual environment">
+
+```bash
+uv venv --python 3.12
+source .venv/bin/activate
+```
+
+</Step>
+
+<Step title="Install dependencies">
+
+```bash
+uv pip install -r cookbook/01_showcase/01_agents/knowledge_agent/requirements.in
+```
+
+</Step>
+
+<Step title="Set environment variables">
+
+```bash
+export OPENAI_API_KEY=your-openai-key
+```
+
+</Step>
+
+<Step title="Start PostgreSQL with pgvector">
+
+```bash
+./cookbook/scripts/run_pgvector.sh
+```
+
+</Step>
+
+<Step title="Load sample knowledge base">
+
+```bash
+python cookbook/01_showcase/01_agents/knowledge_agent/scripts/load_knowledge.py
+```
+
+</Step>
+</Steps>
+
+## Run the Agent
+
+### Basic Query
+
+Ask a question from the knowledge base:
+
+```bash
+python cookbook/01_showcase/01_agents/knowledge_agent/examples/basic_query.py
+```
+
+Demonstrates:
+- Searching the knowledge base
+- Answer synthesis with citations
+- Confidence levels
+
+### Multi-Turn Conversation
+
+Have a follow-up conversation:
+
+```bash
+python cookbook/01_showcase/01_agents/knowledge_agent/examples/conversation.py
+```
+
+Demonstrates:
+- Conversation memory
+- Context-aware follow-ups
+- Building on previous answers
+
+### Edge Cases
+
+Handle uncertainty and ambiguity:
+
+```bash
+python cookbook/01_showcase/01_agents/knowledge_agent/examples/edge_cases.py
+```
+
+## Agent Configuration
+
+```python
+knowledge_agent = Agent(
+    name="Knowledge Agent",
+    model=OpenAIResponses(id="gpt-5.2"),
+    knowledge=company_knowledge,
+    system_message=SYSTEM_MESSAGE,
+    tools=[
+        ReasoningTools(add_instructions=True),
+    ],
+    add_datetime_to_context=True,
+    add_history_to_context=True,
+    num_history_runs=5,
+    read_chat_history=True,
+    enable_agentic_memory=True,
+    search_knowledge=True,
+    markdown=True,
+)
+```
+
+| Parameter | Purpose |
+|-----------|---------|
+| `model` | GPT-5.2 for question answering |
+| `knowledge` | PgVector database with hybrid search |
+| `search_knowledge` | Auto-search knowledge base before answering |
+| `read_chat_history` | Access conversation history |
+| `num_history_runs` | Include 5 previous turns for context |
+| `ReasoningTools` | Plan search and synthesis approach |
+
+## How It Works
+
+### RAG Workflow
+
+```
+1. User asks a question
+2. Agent searches knowledge base (hybrid search)
+3. Top-k relevant chunks retrieved
+4. Agent synthesizes answer from context
+5. Answer includes source citations
+```
+
+### Hybrid Search
+
+The knowledge base uses hybrid search combining:
+
+| Search Type | Description |
+|-------------|-------------|
+| **Semantic** | Vector similarity for conceptual matches |
+| **Keyword** | BM25 for exact term matches |
+| **Combined** | Best of both for comprehensive results |
+
+### Knowledge Base Configuration
+
+```python
+company_knowledge = Knowledge(
+    name="Company Knowledge Base",
+    vector_db=PgVector(
+        table_name="company_knowledge",
+        db_url=DB_URL,
+        search_type=SearchType.hybrid,
+        embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+    ),
+    max_results=10,
+)
+```
+
+### Handling Uncertainty
+
+| Scenario | Behavior |
+|----------|----------|
+| Not in docs | States "I don't have information about X" |
+| Ambiguous | Asks for clarification or lists options |
+| Partial match | Provides what's known, notes limitations |
+| Conflicting sources | Notes discrepancy, cites both sources |
+
+## Sample Documents
+
+The knowledge base includes sample company documents:
+
+| Document | Content | Use Case |
+|----------|---------|----------|
+| `employee_handbook.md` | PTO, benefits, policies | Policy questions |
+| `engineering_wiki.md` | Setup, coding standards | Technical questions |
+| `onboarding_checklist.md` | First week tasks | New hire questions |
+| `product_guide.md` | Platform features, API | Product questions |
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Database connection refused">
+    Ensure PostgreSQL is running:
+    ```bash
+    docker ps | grep pgvector
+    ./cookbook/scripts/run_pgvector.sh
+    ```
+  </Accordion>
+  <Accordion title="No results for query">
+    Ensure the knowledge base is loaded:
+    ```bash
+    python cookbook/01_showcase/01_agents/knowledge_agent/scripts/load_knowledge.py
+    ```
+  </Accordion>
+  <Accordion title="Low quality answers">
+    The agent relies on the knowledge base content. Add more relevant documents or improve existing document quality.
+  </Accordion>
+</AccordionGroup>
+
+## Source Code
+
+- [Agent implementation](https://github.com/agno-agi/agno/tree/main/cookbook/01_showcase/01_agents/knowledge_agent/agent.py)
+- [Example scripts](https://github.com/agno-agi/agno/tree/main/cookbook/01_showcase/01_agents/knowledge_agent/examples/)

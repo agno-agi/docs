@@ -1,0 +1,105 @@
+---
+title: Async Team Post-Hook Agent as Judge
+description: Automatic async evaluation of team outputs using post-hooks
+---
+
+This example demonstrates using Agent as Judge as an async post-hook on a Team to automatically evaluate team responses.
+
+<Steps>
+
+  <Step title="Add the following code to your Python file">
+    ```python agent_as_judge_team_post_hook_async.py
+    import asyncio
+
+    from agno.agent import Agent
+    from agno.db.sqlite import AsyncSqliteDb
+    from agno.eval.agent_as_judge import AgentAsJudgeEval
+    from agno.models.openai import OpenAIResponses
+    from agno.team.team import Team
+
+
+    async def main():
+        # Setup database to persist eval results
+        db = AsyncSqliteDb(db_file="tmp/agent_as_judge_team_post_hook_async.db")
+
+        # Eval runs as post-hook, results saved to database
+        agent_as_judge_eval = AgentAsJudgeEval(
+            name="Team Response Quality",
+            model=OpenAIResponses(id="gpt-5.2"),
+            criteria="Response should be well-researched, clear, comprehensive, and show good collaboration between team members",
+            scoring_strategy="numeric",
+            threshold=7,
+            db=db,
+        )
+
+        # Setup a team with researcher and writer
+        researcher = Agent(
+            name="Researcher",
+            role="Research and gather information",
+            model=OpenAIResponses(id="gpt-5.2"),
+        )
+
+        writer = Agent(
+            name="Writer",
+            role="Write clear and concise summaries",
+            model=OpenAIResponses(id="gpt-5.2"),
+        )
+
+        research_team = Team(
+            name="Research Team",
+            model=OpenAIResponses("gpt-5.2"),
+            members=[researcher, writer],
+            instructions=["First research the topic thoroughly, then write a clear summary."],
+            post_hooks=[agent_as_judge_eval],
+            db=db,
+        )
+
+        response = await research_team.arun("Explain quantum computing")
+        print(response.content)
+
+        # Query database for eval results
+        print("Evaluation Results:")
+        eval_runs = await db.get_eval_runs()
+        if eval_runs:
+            latest = eval_runs[-1]
+            if latest.eval_data and "results" in latest.eval_data:
+                result = latest.eval_data["results"][0]
+                print(f"Score: {result.get('score', 'N/A')}/10")
+                print(f"Status: {'PASSED' if result.get('passed') else 'FAILED'}")
+                print(f"Reason: {result.get('reason', 'N/A')[:200]}...")
+
+
+    if __name__ == "__main__":
+        asyncio.run(main())
+
+    ```
+  </Step>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+
+    <CodeGroup>
+
+    ```bash Mac/Linux
+      export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+      $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    ```bash
+    python agent_as_judge_team_post_hook_async.py
+    ```
+  </Step>
+
+</Steps>

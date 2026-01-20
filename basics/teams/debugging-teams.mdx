@@ -1,82 +1,167 @@
 ---
 title: Debugging Teams
 sidebarTitle: Debugging Teams
-description: Learn how to debug Agno Teams.
-keywords: [teams, debugging teams]
+description: Troubleshoot and inspect team behavior with debug mode, tracing, and common failure patterns.
 ---
 
-Agno comes with an debug mode that takes your team development experience to the next level. It helps you understand the flow of execution and the intermediate steps. For example:
-
-1. Inspect the messages sent to the model and the response it generates.
-2. Trace intermediate steps and monitor metrics like token usage, execution time, etc.
-3. Inspect tool calls, errors, and their results.
-4. Monitor team member interactions and delegation patterns.
+Teams add coordination complexity. When something goes wrong, you need to trace execution across the leader and all members.
 
 ## Debug Mode
 
-To enable debug mode on a team, use one of the following methods:
-
-1. Set the `debug_mode` parameter on your team, to enable it for all runs, as well as for member runs.
-2. Set the `debug_mode` parameter on the `run` method, to enable it on a single run.
-3. Set the `AGNO_DEBUG` environment variable to `True`, to enable debug mode for all teams.
+Enable debug mode to see the messages sent to the model, tool calls, delegation patterns, and metrics.
 
 ```python
 from agno.team import Team
 from agno.agent import Agent
-from agno.models.openai import OpenAIChat
+from agno.models.openai import OpenAIResponses
 
 news_agent = Agent(name="News Agent", role="Get the latest news")
-weather_agent = Agent(name="Weather Agent", role="Get the weather for the next 7 days")
+weather_agent = Agent(name="Weather Agent", role="Get weather forecasts")
 
 team = Team(
-    name="News and Weather Team",
+    name="Research Team",
     members=[news_agent, weather_agent],
-    model=OpenAIChat(id="gpt-4o"),
-    debug_mode=True,
-    # debug_level=2, # Uncomment to get more detailed logs
+    model=OpenAIResponses(id="gpt-4o"),
+    debug_mode=True
 )
 
-# Run team and print response to the terminal
-team.print_response("What is the weather in Tokyo?", show_member_responses=True)
+team.print_response("What is the weather in Tokyo?", show_members_responses=True)
 ```
 
-<Tip>
+Three ways to enable debug mode:
 
-You can set `debug_level=2` to get even more detailed logs.
+| Method | Scope |
+|--------|-------|
+| `debug_mode=True` on Team | All runs for this team |
+| `debug_mode=True` on `run()` | Single run only |
+| `AGNO_DEBUG=True` env var | All teams globally |
 
-</Tip>
+Set `debug_level=2` for more detailed logs:
+
+```python
+team = Team(
+    name="Research Team",
+    members=[news_agent, weather_agent],
+    model=OpenAIResponses(id="gpt-4o"),
+    debug_mode=True,
+    debug_level=2
+)
+```
+
+## What to Look For
+
+When debugging, check:
+
+| Issue | What to inspect |
+|-------|-----------------|
+| Wrong member selected | Leader's reasoning, member roles |
+| Member not responding | Member's tool calls, errors |
+| Slow execution | Token counts, sequential vs parallel execution |
+| Unexpected output | Leader's synthesis step, member responses |
+| High token usage | Coordination overhead, context size |
+
+## Common Failure Modes
+
+### Leader Delegates to Wrong Member
+
+The leader picks members based on their `role`. If delegation is wrong:
+
+1. Check that roles clearly describe what each member does
+2. Make roles distinct (avoid overlap)
+3. Add instructions to the team leader
+
+```python
+# Bad: Roles are vague
+agent1 = Agent(name="Agent 1", role="Research things")
+agent2 = Agent(name="Agent 2", role="Look stuff up")
+
+# Good: Roles are specific and distinct
+news_agent = Agent(name="News Agent", role="Get tech news from HackerNews")
+finance_agent = Agent(name="Finance Agent", role="Get stock prices from Yahoo Finance")
+```
+
+### Member Fails Silently
+
+If a member fails, the leader may synthesize a response without that member's output. Enable `show_members_responses=True` to see what each member returned:
+
+```python
+team.print_response("Research AI trends", show_members_responses=True)
+```
+
+### Infinite Delegation Loop
+
+The leader keeps delegating without producing a final response. This usually means:
+
+1. Instructions are unclear about when to stop
+2. Members are returning incomplete results
+
+Add explicit stopping criteria to instructions:
+
+```python
+team = Team(
+    name="Research Team",
+    members=[...],
+    instructions=[
+        "Delegate to members to gather information.",
+        "Once you have enough information, synthesize and respond directly.",
+        "Do not delegate more than 3 times per request."
+    ]
+)
+```
+
+### High Token Usage
+
+Multi-agent coordination burns tokens. A 4-member team can easily use 10x the tokens of a single agent.
+
+Check token usage in debug output or metrics:
+
+```python
+response = team.run("Research AI trends")
+print(f"Total tokens: {response.metrics.total_tokens}")
+```
+
+To reduce tokens:
+- Use fewer members
+- Keep member responses concise
+- Use `respond_directly=True` to skip synthesis
 
 ## Interactive CLI
 
-Agno also comes with a pre-built interactive CLI that runs your Team as a command-line application. You can use this to test back-and-forth conversations with your team.
+Test multi-turn conversations with the built-in CLI:
 
 ```python
 from agno.team import Team
 from agno.agent import Agent
 from agno.db.sqlite import SqliteDb
-from agno.models.openai import OpenAIChat
+from agno.models.openai import OpenAIResponses
 
 news_agent = Agent(name="News Agent", role="Get the latest news")
-weather_agent = Agent(name="Weather Agent", role="Get the weather for the next 7 days")
+weather_agent = Agent(name="Weather Agent", role="Get weather forecasts")
 
 team = Team(
-    name="News and Weather Team",
+    name="Research Team",
     members=[news_agent, weather_agent],
-    model=OpenAIChat(id="gpt-4o"),
+    model=OpenAIResponses(id="gpt-4o"),
     db=SqliteDb(db_file="tmp/data.db"),
     add_history_to_context=True,
-    num_history_runs=3,
+    num_history_runs=3
 )
 
-# Run team as an interactive CLI app
 team.cli_app(stream=True)
 ```
 
-<Note>
-Use `await team.acli_app()` to run the team asynchronously in an interactive CLI app.
-</Note>
+Use `await team.acli_app()` for async.
+
+## Tracing with AgentOS
+
+For production debugging, connect your team to [AgentOS](/agent-os/overview) to get:
+
+- Visual trace of all delegation and tool calls
+- Token usage breakdown by member
+- Session history and replay
+- Error tracking
 
 ## Developer Resources
 
-- View the [Team reference](/reference/teams/team)
-- View [Team Cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/04_teams/README.md)
+- [Team reference](/reference/teams/team)
+- [Team examples](/cookbook/teams/overview)

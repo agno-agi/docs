@@ -1,0 +1,119 @@
+---
+title: Learning
+sidebarTitle: Overview
+description: Agents that learn, adapt, and improve over time using the Learning Machine.
+---
+
+The Learning Machine enables agents to learn from every interaction. Instead of building memory, knowledge, and feedback systems separately, configure one system that handles all learning.
+
+**The goal:** An agent on interaction 1000 is fundamentally better than it was on interaction 1.
+
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIResponses
+
+db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=True,  # Enable all learning stores
+)
+
+# Session 1
+agent.run("I'm Alex, I prefer concise answers.", user_id="alex@example.com")
+
+# Session 2 - agent remembers
+agent.run("What do you know about me?", user_id="alex@example.com")
+# -> "You're Alex, you prefer concise answers"
+```
+
+## Learning Stores
+
+The Learning Machine coordinates five specialized stores:
+
+| Store | What It Captures | Scope |
+|-------|------------------|-------|
+| **User Profile** | Structured fields (name, preferences) | Per user |
+| **User Memory** | Unstructured observations | Per user |
+| **Session Context** | Goal, plan, progress, summary | Per session |
+| **Entity Memory** | Facts, events, relationships | Configurable |
+| **Learned Knowledge** | Insights, patterns, best practices | Global |
+
+## Configuration Levels
+
+```python
+from agno.learn import LearningMachine, UserProfileConfig, SessionContextConfig, LearningMode
+
+# Level 1: Dead Simple
+agent = Agent(model=model, db=db, learning=True)
+
+# Level 2: Pick What You Want
+agent = Agent(
+    model=model,
+    db=db,
+    learning=LearningMachine(
+        user_profile=True,
+        session_context=True,
+        entity_memory=False,
+        learned_knowledge=False,
+    ),
+)
+
+# Level 3: Full Control
+agent = Agent(
+    model=model,
+    db=db,
+    learning=LearningMachine(
+        user_profile=UserProfileConfig(mode=LearningMode.AGENTIC),
+        session_context=SessionContextConfig(enable_planning=True),
+    ),
+)
+```
+
+## Learning Modes
+
+Each store can run in different modes:
+
+| Mode | Behavior | Best For |
+|------|----------|----------|
+| **ALWAYS** | Automatic extraction after each turn | User profiles, session context |
+| **AGENTIC** | Agent decides when to save | Learned knowledge |
+| **PROPOSE** | Agent proposes, user confirms | High-stakes knowledge |
+
+## Featured Patterns
+
+<CardGroup cols={2}>
+  <Card
+    title="Personal Assistant"
+    icon="user"
+    iconType="duotone"
+    href="/cookbook/learning/personal-assistant"
+  >
+    Remembers preferences, tracks context, learns from feedback.
+  </Card>
+  <Card
+    title="Support Agent"
+    icon="headset"
+    iconType="duotone"
+    href="/cookbook/learning/support-agent"
+  >
+    Multi-tenant learning with namespace isolation. Tracks customer context and accumulates support knowledge.
+  </Card>
+</CardGroup>
+
+## Run the Examples
+
+```bash
+git clone https://github.com/agno-agi/agno.git
+cd agno/cookbook/08_learning
+
+# Setup
+./setup_venv.sh
+
+# Run examples
+python 01_basics/1a_user_profile_always.py
+python 07_patterns/personal_assistant.py
+```
+

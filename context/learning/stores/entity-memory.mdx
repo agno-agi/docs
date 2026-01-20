@@ -1,0 +1,286 @@
+---
+title: Entity Memory Store
+description: Build knowledge graphs about companies, people, and projects.
+sidebarTitle: Entity Memory
+---
+
+The Entity Memory Store captures structured knowledge about external entities - companies, people, projects, and systems. Think of it as your agent's professional "mental rolodex" that accumulates knowledge over time.
+
+## Overview
+
+| Aspect | Details |
+|--------|---------|
+| **Data Type** | Entities with facts, events, and relationships |
+| **Scope** | Configurable (global or per-user) |
+| **Persistence** | Long-term |
+| **Default Mode** | ALWAYS |
+| **Supported Modes** | ALWAYS, AGENTIC |
+
+## Basic Usage
+
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.learn import LearningMachine, EntityMemoryConfig
+from agno.models.openai import OpenAIResponses
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai"),
+    learning=LearningMachine(
+        entity_memory=True,
+    ),
+)
+
+# Entities are extracted automatically
+agent.print_response(
+    "Just met with Acme Corp. They're a fintech startup in SF, "
+    "50 employees. CTO is Jane Smith. They use Python and Postgres.",
+    user_id="sales@example.com",
+    session_id="session_1",
+)
+
+# Later, entity knowledge is recalled
+agent.print_response(
+    "What do we know about Acme Corp?",
+    user_id="sales@example.com",
+    session_id="session_2",
+)
+```
+
+## Three Types of Knowledge
+
+Entity Memory captures three types of information:
+
+### Facts (Timeless Truths)
+
+Facts are things that remain true over time:
+
+- "Uses PostgreSQL for their main database"
+- "Headquarters in San Francisco"
+- "50 employees"
+- "Founded by ex-Google engineers"
+
+### Events (Time-Bound Occurrences)
+
+Events are things that happened at a specific time:
+
+- "Launched v2.0 on January 15, 2025"
+- "Closed $50M Series B led by Sequoia"
+- "Had 4-hour outage affecting payment processing"
+- "Announced partnership with CloudCo yesterday"
+
+### Relationships (Entity Connections)
+
+Relationships link entities together:
+
+- Jane Smith → CEO → Acme Corp
+- Project Atlas → uses → PostgreSQL
+- Acme Corp → competitor_of → Beta Inc
+
+## ALWAYS Mode (Default)
+
+In ALWAYS mode, entities are extracted automatically from conversations:
+
+```python
+from agno.learn import LearningMachine, LearningMode, EntityMemoryConfig
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        entity_memory=EntityMemoryConfig(
+            mode=LearningMode.ALWAYS,
+        ),
+    ),
+)
+```
+
+**Behavior:**
+- Extraction happens in parallel with the agent's response
+- No tools are visible to the agent
+- All conversations are analyzed for entity information
+
+## AGENTIC Mode
+
+In AGENTIC mode, the agent explicitly decides when to create or update entities:
+
+```python
+from agno.learn import LearningMachine, LearningMode, EntityMemoryConfig
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        entity_memory=EntityMemoryConfig(
+            mode=LearningMode.AGENTIC,
+        ),
+    ),
+)
+
+# Agent uses tools to manage entities
+agent.print_response(
+    "Create an entry for Acme Corp - they're a fintech startup with 50 employees.",
+    user_id="sales@example.com",
+)
+```
+
+**Available tools:**
+
+| Tool | Description |
+|------|-------------|
+| `search_entities` | Search for entities by name, facts, or events |
+| `create_entity` | Create a new entity |
+| `update_entity` | Update entity properties |
+| `add_fact` | Add a timeless truth |
+| `update_fact` | Correct an existing fact |
+| `delete_fact` | Remove an incorrect fact |
+| `add_event` | Record a time-bound occurrence |
+| `add_relationship` | Create connection between entities |
+
+## Entity Data Model
+
+Each entity contains:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `entity_id` | `str` | Unique identifier (e.g., "acme_corp") |
+| `entity_type` | `str` | Category: "company", "person", "project", etc. |
+| `name` | `str` | Display name |
+| `description` | `str` | Brief description |
+| `properties` | `dict` | Key-value metadata |
+| `facts` | `list` | Timeless truths |
+| `events` | `list` | Time-bound occurrences |
+| `relationships` | `list` | Connections to other entities |
+
+## Accessing Entity Memory
+
+```python
+# Get the learning machine
+learning = agent.get_learning_machine()
+
+# Search for entities
+entities = learning.entity_memory_store.search(
+    query="acme",
+    entity_type="company",
+    limit=10
+)
+
+for entity in entities:
+    print(f"Entity: {entity.name}")
+    print(f"Facts: {entity.facts}")
+    print(f"Events: {entity.events}")
+    print(f"Relationships: {entity.relationships}")
+
+# Debug output
+learning.entity_memory_store.print(entity_id="acme_corp", entity_type="company")
+```
+
+## Context Injection
+
+Relevant entities are injected into the agent's context:
+
+```
+<entity_memory>
+**Known information about relevant entities:**
+
+**Acme Corp** (company)
+Properties: industry: fintech, size: 50 employees
+
+Facts:
+  - Uses PostgreSQL and Redis for their data layer
+  - Headquarters in San Francisco
+
+Events:
+  - Launched v2.0 with new ML features (2025-01-15)
+  - Closed $50M Series B led by Sequoia (2024-Q3)
+
+Relationships:
+  - CEO: jane_smith
+  - competitor_of: beta_inc
+</entity_memory>
+```
+
+## Namespace Configuration
+
+Control who can access entity data:
+
+```python
+from agno.learn import LearningMachine, EntityMemoryConfig
+
+# Global: shared with everyone (default)
+entity_memory=EntityMemoryConfig(namespace="global")
+
+# User: private per user
+entity_memory=EntityMemoryConfig(namespace="user")
+
+# Custom: explicit grouping
+entity_memory=EntityMemoryConfig(namespace="sales_team")
+```
+
+## Example: CRM Assistant
+
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.learn import LearningMachine, LearningMode, EntityMemoryConfig
+from agno.models.openai import OpenAIResponses
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai"),
+    learning=LearningMachine(
+        entity_memory=EntityMemoryConfig(
+            mode=LearningMode.AGENTIC,
+            namespace="sales_team",
+        ),
+    ),
+    instructions="""You are a CRM assistant. Track information about companies
+    and contacts. Always search for existing entities before creating new ones.
+    Record important facts, events, and relationships.""",
+)
+
+# Track a new company
+agent.print_response(
+    "Just had a great call with TechStartup Inc. They're Series A, "
+    "20 employees, looking for data infrastructure. CEO is Bob Johnson, "
+    "he was previously at Google. They're planning to close their round next month.",
+    user_id="sales@example.com",
+    session_id="session_1",
+)
+
+# Prepare for follow-up
+agent.print_response(
+    "I have a follow-up call with TechStartup tomorrow. What do we know about them?",
+    user_id="sales@example.com",
+    session_id="session_2",
+)
+```
+
+## Facts vs Events Guide
+
+| Use Facts For | Use Events For |
+|---------------|----------------|
+| Tech stack | Product launches |
+| Headquarters location | Funding rounds |
+| Employee count | Outages or incidents |
+| Industry/domain | Partnerships announced |
+| Pricing model | Key meetings |
+| Preferences | Milestones achieved |
+
+## Building Relationship Graphs
+
+Create rich knowledge graphs by linking entities:
+
+```python
+# The agent can build relationships like:
+# Jane Smith --[CEO]--> Acme Corp
+# Jane Smith --[former_employee]--> Google
+# Acme Corp --[competitor_of]--> Beta Inc
+# Project Atlas --[uses]--> PostgreSQL
+```
+
+Common relationship types:
+- People: `CEO`, `CTO`, `engineer_at`, `founder`, `reports_to`
+- Companies: `competitor_of`, `partner_of`, `acquired_by`, `subsidiary_of`
+- Projects: `uses`, `depends_on`, `integrates_with`, `owned_by`
