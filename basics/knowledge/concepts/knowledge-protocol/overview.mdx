@@ -1,0 +1,239 @@
+---
+title: Custom Knowledge
+sidebarTitle: Custom Knowledge
+description: Implement your own storage layer using the Knowledge Protocol.
+keywords: [knowledge, custom, protocol]
+---
+
+The Knowledge Protocol lets you bring your own storage layer to Agno agents. Instead of using Agno's built-in vector database approach, you can connect to any data source and define exactly how your agent retrieves information.
+
+## When to Use Custom Knowledge
+
+| Use Case | Recommendation |
+|----------|----------------|
+| Standard RAG with documents | Use built-in `Knowledge` class |
+| Existing search infrastructure (Elasticsearch, Algolia) | Custom implementation |
+| File system access for code/docs | Custom implementation |
+| API-backed data sources | Custom implementation |
+
+## Protocol Requirements
+
+A custom knowledge implementation needs to provide:
+
+| Method | Required | Purpose |
+|--------|----------|---------|
+| `build_context()` | Yes | Instructions for the agent's system prompt |
+| `get_tools()` | Yes | Tools the agent can call |
+| `aget_tools()` | Yes | Async version of get_tools |
+| `retrieve()` | Optional | Default retrieval for `add_knowledge_to_context` |
+| `aretrieve()` | Optional | Async version of retrieve |
+
+## Minimal Implementation
+
+Here's the simplest custom knowledge implementation:
+
+```python
+from dataclasses import dataclass
+from typing import Any, List
+
+from agno.tools.function import Function
+
+
+@dataclass
+class MyKnowledge:
+    """Custom knowledge backed by your own storage."""
+    
+    api_url: str
+    
+    def build_context(self, **kwargs) -> str:
+        """Tell the agent what tools it has."""
+        return """
+        You have access to a knowledge base.
+        Use search_docs(query) to find relevant information.
+        Always search before answering domain-specific questions.
+        """
+    
+    def get_tools(self, **kwargs) -> List[Any]:
+        """Return the tools for the agent."""
+        return [self._create_search_tool()]
+    
+    async def aget_tools(self, **kwargs) -> List[Any]:
+        """Async version - usually just calls get_tools."""
+        return self.get_tools(**kwargs)
+    
+    def _create_search_tool(self) -> Any:
+        def search_docs(query: str) -> str:
+            """Search the knowledge base for relevant documents.
+            
+            Args:
+                query: The search query.
+                
+            Returns:
+                Relevant information from the knowledge base.
+            """
+            # Your search logic here
+            results = self._internal_search(query)
+            return self._format_results(results)
+        
+        return Function.from_callable(search_docs, name="search_docs")
+    
+    def _internal_search(self, query: str) -> list:
+        # Implement your search logic
+        pass
+    
+    def _format_results(self, results: list) -> str:
+        # Format results for the agent
+        pass
+```
+
+## Using with an Agent
+
+Custom knowledge works exactly like the built-in Knowledge class:
+
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o"),
+    knowledge=MyKnowledge(api_url="https://api.example.com"),
+    search_knowledge=True,
+)
+
+agent.print_response("What does our documentation say about authentication?")
+```
+
+## Full Example: API-Backed Knowledge
+
+Here's a complete implementation that connects to an external API:
+
+```python
+from dataclasses import dataclass
+from typing import Any, List
+
+from agno.knowledge.document import Document
+from agno.tools.function import Function
+
+
+@dataclass
+class APIKnowledge:
+    """Knowledge backed by an external API."""
+    
+    api_url: str
+    api_key: str
+    max_results: int = 20
+    
+    def __post_init__(self):
+        import httpx
+        self._client = httpx.Client(
+            base_url=self.api_url,
+            headers={"Authorization": f"Bearer {self.api_key}"}
+        )
+    
+    def build_context(self, **kwargs) -> str:
+        return """
+        You have access to an API-backed knowledge base.
+        
+        Available tools:
+        - query(question): Ask a natural language question
+        - lookup(entity_id): Get details about a specific entity
+        
+        Use query() for general questions and lookup() when you have an ID.
+        """
+    
+    def get_tools(self, **kwargs) -> List[Any]:
+        return [
+            self._create_query_tool(),
+            self._create_lookup_tool(),
+        ]
+    
+    async def aget_tools(self, **kwargs) -> List[Any]:
+        return self.get_tools(**kwargs)
+    
+    def _create_query_tool(self) -> Any:
+        def query(question: str, max_results: int = 10) -> str:
+            """Query the knowledge base with a natural language question.
+            
+            Args:
+                question: Your question.
+                max_results: Maximum results to return.
+                
+            Returns:
+                Relevant information from the knowledge base.
+            """
+            response = self._client.post(
+                "/query",
+                json={"q": question, "limit": max_results}
+            )
+            data = response.json()
+            
+            if not data.get("results"):
+                return "No results found."
+            
+            return "\n\n".join(
+                f"[{r['id']}] {r['title']}: {r['summary']}"
+                for r in data["results"]
+            )
+        
+        return Function.from_callable(query, name="query")
+    
+    def _create_lookup_tool(self) -> Any:
+        def lookup(entity_id: str) -> str:
+            """Get detailed information about an entity.
+            
+            Args:
+                entity_id: The entity ID from query results.
+                
+            Returns:
+                Full details about the entity.
+            """
+            response = self._client.get(f"/entities/{entity_id}")
+            
+            if response.status_code == 404:
+                return f"Entity {entity_id} not found."
+            
+            data = response.json()
+            return f"# {data['title']}\n\n{data['content']}"
+        
+        return Function.from_callable(lookup, name="lookup")
+    
+    def retrieve(self, query: str, max_results: int = None, **kwargs) -> List[Document]:
+        """Default retrieval for add_knowledge_to_context."""
+        response = self._client.post(
+            "/query",
+            json={"q": query, "limit": max_results or self.max_results}
+        )
+        data = response.json()
+        
+        return [
+            Document(
+                name=r["title"],
+                content=r["content"],
+                meta_data={"id": r["id"]}
+            )
+            for r in data.get("results", [])
+        ]
+    
+    async def aretrieve(self, query: str, **kwargs) -> List[Document]:
+        return self.retrieve(query, **kwargs)
+```
+
+## Best Practices
+
+### Tool Design
+
+- **Clear names**: Use descriptive tool names that indicate their purpose
+- **Good docstrings**: The agent reads docstrings to understand how to use tools
+- **Helpful returns**: Format tool output to be useful for the agent
+- **Error handling**: Return helpful error messages, don't raise exceptions
+
+### Context Design
+
+- **Be specific**: List each tool and when to use it
+- **Set expectations**: Tell the agent what kind of information is available
+
+### Performance
+
+- **Lazy initialization**: Initialize heavy resources in `__post_init__`
+- **Connection pooling**: Reuse HTTP clients and database connections
+- **Reasonable defaults**: Set sensible `max_results` defaults
