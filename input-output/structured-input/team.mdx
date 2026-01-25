@@ -1,0 +1,227 @@
+---
+title: Structured Input for Teams
+sidebarTitle: Team
+description: Validate input data for teams with Pydantic models.
+---
+
+Pass structured data to teams using Pydantic models. You can either pass a model instance directly or set `input_schema` to validate dictionaries automatically.
+
+## Passing Pydantic Models Directly
+
+Pass a Pydantic model instance to `input`:
+
+```python
+from pydantic import BaseModel, Field
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.team import Team
+from agno.tools.hackernews import HackerNewsTools
+from agno.tools.yfinance import YFinanceTools
+
+class ResearchProject(BaseModel):
+    topic: str
+    focus_areas: list[str] = Field(min_length=1)
+    max_sources: int = Field(ge=1, le=20, default=10)
+
+news_agent = Agent(
+    name="News Researcher",
+    role="Research tech news and trends",
+    tools=[HackerNewsTools()]
+)
+
+finance_agent = Agent(
+    name="Finance Researcher",
+    role="Research financial data",
+    tools=[YFinanceTools()]
+)
+
+team = Team(
+    name="Research Team",
+    model=OpenAIResponses(id="gpt-5.2"),
+    members=[news_agent, finance_agent],
+)
+
+# Pass the model instance directly
+project = ResearchProject(
+    topic="AI Agents",
+    focus_areas=["multi-agent systems", "tool use"],
+    max_sources=15
+)
+
+response = team.run(input=project)
+```
+
+Validation happens when you create the model instance. Invalid data raises a Pydantic `ValidationError` before the team runs.
+
+## Using input_schema
+
+Set `input_schema` on the team to validate dictionaries automatically:
+
+```python
+from pydantic import BaseModel, Field
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.team import Team
+from agno.tools.hackernews import HackerNewsTools
+from agno.tools.yfinance import YFinanceTools
+
+class ResearchProject(BaseModel):
+    topic: str
+    focus_areas: list[str] = Field(min_length=1)
+    max_sources: int = Field(ge=1, le=20, default=10)
+
+news_agent = Agent(
+    name="News Researcher",
+    role="Research tech news and trends",
+    tools=[HackerNewsTools()]
+)
+
+finance_agent = Agent(
+    name="Finance Researcher",
+    role="Research financial data",
+    tools=[YFinanceTools()]
+)
+
+team = Team(
+    name="Research Team",
+    model=OpenAIResponses(id="gpt-5.2"),
+    members=[news_agent, finance_agent],
+    input_schema=ResearchProject,
+)
+
+# Pass a dict - validated against ResearchProject
+response = team.run(
+    input={
+        "topic": "AI Agents",
+        "focus_areas": ["multi-agent systems", "tool use"],
+        "max_sources": 15
+    }
+)
+```
+
+This is useful when input comes from external sources like API requests or configuration files.
+
+## Validation Errors
+
+Invalid input raises a Pydantic `ValidationError`:
+
+```python
+from pydantic import BaseModel, Field, ValidationError
+
+class ResearchProject(BaseModel):
+    topic: str
+    focus_areas: list[str] = Field(min_length=1)
+
+team = Team(
+    model=OpenAIResponses(id="gpt-5.2"),
+    members=[news_agent, finance_agent],
+    input_schema=ResearchProject,
+)
+
+try:
+    team.run(input={"topic": "AI", "focus_areas": []})  # Empty list
+except ValidationError as e:
+    print(e)
+    # focus_areas: List should have at least 1 item
+```
+
+## When to Use Each Approach
+
+| Approach | Use when |
+|----------|----------|
+| Pass model directly | You're building the input in code |
+| Use `input_schema` | Input comes from external sources (APIs, files, user input) |
+
+## Common Patterns
+
+### Multi-Topic Research
+
+```python
+from pydantic import BaseModel, Field
+
+class ComparisonProject(BaseModel):
+    title: str
+    items_to_compare: list[str] = Field(min_length=2, max_length=5)
+    comparison_criteria: list[str]
+    output_format: str = Field(default="table")
+
+team = Team(
+    model=OpenAIResponses(id="gpt-5.2"),
+    members=[news_agent, finance_agent],
+    input_schema=ComparisonProject,
+)
+
+response = team.run(
+    input={
+        "title": "AI Framework Comparison",
+        "items_to_compare": ["Agno", "LangChain", "CrewAI"],
+        "comparison_criteria": ["performance", "ease of use", "documentation"],
+        "output_format": "table"
+    }
+)
+```
+
+### Scoped Analysis
+
+```python
+from pydantic import BaseModel, Field
+from datetime import date
+
+class AnalysisScope(BaseModel):
+    company: str
+    analysis_type: str = Field(description="financial, competitive, or market")
+    start_date: date | None = None
+    end_date: date | None = None
+    include_competitors: bool = True
+
+team = Team(
+    model=OpenAIResponses(id="gpt-5.2"),
+    members=[news_agent, finance_agent],
+    input_schema=AnalysisScope,
+)
+
+response = team.run(
+    input={
+        "company": "NVIDIA",
+        "analysis_type": "competitive",
+        "include_competitors": True
+    }
+)
+```
+
+### Nested Configuration
+
+```python
+from pydantic import BaseModel, Field
+
+class Source(BaseModel):
+    name: str
+    priority: int = Field(ge=1, le=3, default=2)
+
+class ResearchConfig(BaseModel):
+    topic: str
+    sources: list[Source]
+    depth: int = Field(ge=1, le=10, default=5)
+
+team = Team(
+    model=OpenAIResponses(id="gpt-5.2"),
+    members=[news_agent, finance_agent],
+    input_schema=ResearchConfig,
+)
+
+response = team.run(
+    input={
+        "topic": "Quantum Computing",
+        "sources": [
+            {"name": "HackerNews", "priority": 1},
+            {"name": "Financial Reports", "priority": 2}
+        ],
+        "depth": 7
+    }
+)
+```
+
+## Related
+
+- [Agent Structured Input](/input-output/structured-input/agent): Configure structured input for agents
+- [Team Structured Output](/input-output/structured-output/team): Get validated output from teams

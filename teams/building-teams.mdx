@@ -1,0 +1,148 @@
+---
+title: Building Teams
+sidebarTitle: Building Teams
+description: Define team members, roles, and structure for multi-agent coordination.
+---
+
+Start simple: a model, team members, and instructions. Add functionality as needed.
+
+## Minimal Example
+
+```python research_team.py
+from agno.team import Team
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.tools.hackernews import HackerNewsTools
+from agno.tools.yfinance import YFinanceTools
+
+news_agent = Agent(
+    name="News Agent",
+    role="Get trending tech news from HackerNews",
+    tools=[HackerNewsTools()]
+)
+
+finance_agent = Agent(
+    name="Finance Agent",
+    role="Get stock prices and financial data",
+    tools=[YFinanceTools()]
+)
+
+team = Team(
+    name="Research Team",
+    members=[news_agent, finance_agent],
+    model=OpenAIResponses(id="gpt-4o"),
+    instructions="Delegate to the appropriate agent based on the request."
+)
+
+team.print_response("What are the trending AI stories and how is NVDA stock doing?", stream=True)
+```
+
+## Team Members
+
+Each member should have a `name` and `role`. The team leader uses these to decide who handles what.
+
+```python
+news_agent = Agent(
+    name="News Agent",                              # Identifies the agent
+    role="Get trending tech news from HackerNews",  # Tells the leader what this agent does
+    tools=[HackerNewsTools()]
+)
+```
+
+For better tracing, also set an `id`:
+
+```python
+news_agent = Agent(
+    id="news-agent",
+    name="News Agent",
+    role="Get trending tech news from HackerNews",
+    tools=[HackerNewsTools()]
+)
+```
+
+## Nested Teams
+
+Teams can contain other teams. The top-level leader delegates to sub-team leaders, who delegate to their members.
+
+```python
+from agno.team import Team
+from agno.agent import Agent
+
+team = Team(
+    name="Language Team",
+    members=[
+        Agent(name="English Agent", role="Answer in English"),
+        Agent(name="Chinese Agent", role="Answer in Chinese"),
+        Team(
+            name="Germanic Team",
+            role="Handle German and Dutch questions",
+            members=[
+                Agent(name="German Agent", role="Answer in German"),
+                Agent(name="Dutch Agent", role="Answer in Dutch"),
+            ],
+        ),
+    ],
+)
+```
+
+## Model Inheritance
+
+Team members inherit the `model` from their parent team if not explicitly set.
+
+```python
+from agno.team import Team
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.models.anthropic import Claude
+
+# This agent uses its own model (Claude)
+agent_with_model = Agent(
+    name="Claude Agent",
+    model=Claude(id="claude-sonnet-4-5"),
+    role="Research with Claude"
+)
+
+# This agent inherits gpt-4o from the team
+agent_without_model = Agent(
+    name="Inherited Agent",
+    role="Research with inherited model"
+)
+
+team = Team(
+    name="Research Team",
+    model=OpenAIResponses(id="gpt-4o"),  # Default for team and members without a model
+    members=[agent_with_model, agent_without_model]
+)
+```
+
+## Team Features
+
+Teams support the same features as agents:
+
+| Feature | Description |
+|---------|-------------|
+| Instructions | Guide the team leader on how to coordinate |
+| Database | Persist session history and state |
+| Reasoning | Enable the leader to plan before delegating |
+| Knowledge | Give the leader access to a knowledge base |
+| Memory | Store and recall information across sessions |
+| Tools | Give the leader tools to use directly |
+
+See the guides below to add these features.
+
+## Next Steps
+
+| Task | Guide |
+|------|-------|
+| Run teams | [Running Teams](/teams/running-teams) |
+| Control delegation | [Delegation](/teams/delegation) |
+| Add chat history | [Chat History](/history/team/overview) |
+| Manage sessions | [Sessions](/sessions/overview) |
+| Handle input/output | [Input and Output](/input-output/overview) |
+| Add knowledge | [Knowledge](/knowledge/what-is-knowledge) |
+| Add guardrails | [Guardrails](/guardrails/overview) |
+
+## Developer Resources
+
+- [Team reference](/reference/teams/team)
+- [Team examples](/cookbook/teams/overview)

@@ -1,0 +1,188 @@
+---
+title: Structured Input for Agents
+sidebarTitle: Agent
+description: Validate input data for agents with Pydantic models.
+---
+
+Pass structured data to agents using Pydantic models. You can either pass a model instance directly or set `input_schema` to validate dictionaries automatically.
+
+## Passing Pydantic Models Directly
+
+Pass a Pydantic model instance to `input`:
+
+```python
+from pydantic import BaseModel, Field
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+
+class ResearchRequest(BaseModel):
+    topic: str
+    max_sources: int = Field(ge=1, le=20, default=5)
+    focus_areas: list[str] = Field(default_factory=list)
+
+agent = Agent(model=OpenAIResponses(id="gpt-5.2"))
+
+# Pass the model instance directly
+request = ResearchRequest(
+    topic="AI Agents",
+    max_sources=10,
+    focus_areas=["multi-agent systems", "tool use"]
+)
+
+response = agent.run(input=request)
+```
+
+Validation happens when you create the model instance. Invalid data raises a Pydantic `ValidationError` before the agent runs.
+
+## Using input_schema
+
+Set `input_schema` on the agent to validate dictionaries automatically:
+
+```python
+from pydantic import BaseModel, Field
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+
+class ResearchRequest(BaseModel):
+    topic: str
+    max_sources: int = Field(ge=1, le=20, default=5)
+    focus_areas: list[str] = Field(default_factory=list)
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    input_schema=ResearchRequest,
+)
+
+# Pass a dict - validated against ResearchRequest
+response = agent.run(
+    input={
+        "topic": "AI Agents",
+        "max_sources": 10,
+        "focus_areas": ["multi-agent systems", "tool use"]
+    }
+)
+```
+
+This is useful when input comes from external sources like API requests or configuration files.
+
+## Validation Errors
+
+Invalid input raises a Pydantic `ValidationError`:
+
+```python
+from pydantic import BaseModel, Field, ValidationError
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+
+class OrderRequest(BaseModel):
+    product_id: str
+    quantity: int = Field(gt=0)
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    input_schema=OrderRequest,
+)
+
+try:
+    agent.run(input={"product_id": "SKU-123", "quantity": -5})
+except ValidationError as e:
+    print(e)
+    # quantity: Input should be greater than 0
+```
+
+## When to Use Each Approach
+
+| Approach | Use when |
+|----------|----------|
+| Pass model directly | You're building the input in code |
+| Use `input_schema` | Input comes from external sources (APIs, files, user input) |
+
+## Common Patterns
+
+### API Request Handler
+
+```python
+from pydantic import BaseModel, Field
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+
+class SummaryRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=50000)
+    max_length: int = Field(ge=50, le=500, default=200)
+    style: str = Field(default="concise")
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    input_schema=SummaryRequest,
+)
+
+# In your API endpoint
+def summarize(request_data: dict):
+    response = agent.run(input=request_data)  # Auto-validated
+    return {"summary": response.content}
+```
+
+### Configuration-Driven Tasks
+
+```python
+from pydantic import BaseModel, Field
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.tools.hackernews import HackerNewsTools
+
+class ResearchConfig(BaseModel):
+    topic: str
+    depth: int = Field(ge=1, le=10, default=5)
+    include_sources: bool = True
+    output_format: str = Field(default="markdown")
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    tools=[HackerNewsTools()],
+    input_schema=ResearchConfig,
+)
+
+# Load config from file or environment
+config = {
+    "topic": "LLM frameworks",
+    "depth": 7,
+    "include_sources": True
+}
+
+response = agent.run(input=config)
+```
+
+### Nested Models
+
+```python
+from pydantic import BaseModel
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+
+class Author(BaseModel):
+    name: str
+    email: str
+
+class ArticleRequest(BaseModel):
+    title: str
+    author: Author
+    tags: list[str]
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    input_schema=ArticleRequest,
+)
+
+response = agent.run(
+    input={
+        "title": "Getting Started with Agno",
+        "author": {"name": "Jane Doe", "email": "jane@example.com"},
+        "tags": ["tutorial", "agents"]
+    }
+)
+```
+
+## Related
+
+- [Team Structured Input](/input-output/structured-input/team): Configure structured input for teams
+- [Structured Output](/input-output/structured-output/agent): Get validated output from agents
