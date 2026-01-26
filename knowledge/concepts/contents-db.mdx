@@ -1,0 +1,206 @@
+---
+title: Contents Database
+sidebarTitle: Contents DB
+description: Track and manage the content you've added to your knowledge base.
+keywords: [contents db, content database, knowledge management]
+---
+
+Contents Database is an optional component that tracks what you've added to your knowledge base. While the vector database stores embeddings for search, Contents Database stores metadata about each piece of content: what it is, when you added it, and its processing status.
+```python
+from agno.knowledge.knowledge import Knowledge
+from agno.db.postgres import PostgresDb
+from agno.vectordb.pgvector import PgVector
+
+knowledge = Knowledge(
+    vector_db=PgVector(table_name="vectors", db_url=db_url),
+    contents_db=PostgresDb(db_url=db_url),  # Enables content tracking
+)
+```
+
+## Why Use Content DB
+
+**Without Content DB**, you can search your knowledge base but can't see what's in it or manage individual pieces of content.
+
+**With Content DB**, you get:
+
+- **Visibility**: See all content that's been added, track processing status, view metadata
+- **Management**: Delete specific content and automatically clean up associated vectors
+- **Updates**: Edit names, descriptions, and metadata without rebuilding the knowledge base
+- **Filtering**: Use [agentic filtering](/knowledge/concepts/filters/overview) to filter search results by metadata
+
+<Note>
+Content DB is required for [agentic filtering](/knowledge/concepts/filters/overview) and the [AgentOS Knowledge UI](/agentos/features/knowledge-management).
+</Note>
+
+## Setup
+
+Agno supports multiple database backends:
+
+<Tabs>
+  <Tab title="PostgreSQL">
+    ```python
+    from agno.db.postgres import PostgresDb
+
+    contents_db = PostgresDb(
+        db_url="postgresql+psycopg://user:pass@localhost:5432/db",
+        knowledge_table="knowledge_contents"  # Optional custom table name
+    )
+    ```
+  </Tab>
+  <Tab title="SQLite">
+    ```python
+    from agno.db.sqlite import SqliteDb
+
+    contents_db = SqliteDb(db_file="knowledge.db")
+    ```
+  </Tab>
+  <Tab title="MongoDB">
+    ```python
+    from agno.db.mongo import MongoDb
+
+    contents_db = MongoDb(
+        uri="mongodb://localhost:27017",
+        database="agno_db"
+    )
+    ```
+  </Tab>
+  <Tab title="In-Memory">
+    ```python
+    from agno.db.in_memory import InMemoryDb
+
+    contents_db = InMemoryDb()  # For testing only
+    ```
+  </Tab>
+</Tabs>
+
+Other supported backends: [PostgreSQL](/database/providers/postgres/overview) (recommended for production), [SQLite](/database/providers/sqlite/overview) (development), [MySQL](/database/providers/mysql/overview), [MongoDB](/database/providers/mongo/overview), [Redis](/database/providers/redis/overview), [DynamoDB](/database/providers/dynamodb/overview), [Firestore](/database/providers/firestore/overview).
+
+## Managing Content
+
+### Add Content with Metadata
+```python
+knowledge.insert(
+    name="Product Manual",
+    path="docs/manual.pdf",
+    metadata={"department": "engineering", "version": "2.1"}
+)
+```
+
+### List Content
+```python
+contents, total_count = knowledge.get_content(
+    limit=20,
+    page=1,
+    sort_by="created_at",
+    sort_order="desc"
+)
+
+for content in contents:
+    print(content.name, content.status, content.created_at)
+```
+
+### Get Content by ID
+```python
+content = knowledge.get_content_by_id(content_id)
+
+print(content.name)         # Content name
+print(content.description)  # Description
+print(content.metadata)     # Custom metadata
+print(content.file_type)    # File type (.pdf, .txt, etc.)
+print(content.size)         # File size in bytes
+print(content.status)       # Processing status
+print(content.created_at)   # When it was added
+print(content.updated_at)   # Last modification
+```
+
+### Delete Content
+
+Deleting content automatically:
+1. Removes the content metadata from Content DB
+2. Deletes associated vectors from the vector database
+3. Maintains consistency between both databases
+```python
+# Delete specific content
+knowledge.remove_content_by_id(content_id)
+
+# Delete all content
+knowledge.remove_all_content()
+```
+
+### Filter by Metadata
+```python
+# Get available filter keys
+valid_filters = knowledge.get_filters()
+
+# Search with filters
+results = knowledge.search(
+    query="technical documentation",
+    filters={"department": "engineering"}
+)
+```
+
+## Schema
+
+Content DB stores the following fields for each piece of content:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | str | Unique identifier |
+| `name` | str | Content name |
+| `description` | str | Content description |
+| `metadata` | dict | Custom metadata |
+| `type` | str | Content type |
+| `size` | int | File size in bytes |
+| `linked_to` | str | ID of linked content |
+| `access_count` | int | Number of times accessed |
+| `status` | str | Processing status |
+| `status_message` | str | Status details |
+| `created_at` | int | Created timestamp |
+| `updated_at` | int | Updated timestamp |
+| `external_id` | str | External ID for integrations like LightRAG |
+
+## AgentOS Integration
+
+Content DB is required for the AgentOS Knowledge UI. With it, the web interface provides:
+
+- **Content Browser**: View all uploaded content with metadata
+- **Upload Interface**: Add new content through the web UI
+- **Status Monitoring**: Real-time processing status updates
+- **Metadata Editor**: Update content metadata through forms
+- **Search and Filtering**: Find content by metadata attributes
+- **Bulk Operations**: Manage multiple content items at once
+```python
+from agno.os import AgentOS
+from agno.agent import Agent
+
+knowledge = Knowledge(
+    vector_db=PgVector(table_name="vectors", db_url=db_url),
+    contents_db=PostgresDb(db_url=db_url),
+)
+
+agent = Agent(name="Knowledge Agent", knowledge=knowledge)
+
+app = AgentOS(
+    id="knowledge-demo",
+    agents=[agent],
+)
+```
+
+See [AgentOS Knowledge Management](/agentos/features/knowledge-management) for more details.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Vector DB" icon="database" href="/knowledge/concepts/vector-db">
+    Understand the embedding storage layer
+  </Card>
+  <Card title="Filtering" icon="filter" href="/knowledge/concepts/filters/overview">
+    Filter search results by metadata
+  </Card>
+  <Card title="AgentOS" icon="server" href="/agentos/introduction">
+    Manage knowledge through the web UI
+  </Card>
+  <Card title="Database Setup" icon="wrench" href="/database/overview">
+    Database configuration guides
+  </Card>
+</CardGroup>
