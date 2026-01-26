@@ -4,9 +4,56 @@ sidebarTitle: Output Model
 description: Use a secondary model to format the final response.
 ---
 
-Use `output_model` to delegate final response formatting to a different model. The primary model handles reasoning and tool calls, then the output model formats the result.
+Use `output_model` to delegate final response formatting to a different model.
+The primary model handles reasoning and tool calls, then the output model formats the result.
 
-## Why Use an Output Model?
+If the primary model does not support structured output, use `output_model` and `output_schema`. 
+For custom output styling, use `output_model_prompt`.
+
+## How It Works
+
+1. Primary model processes the request and executes tool calls
+2. Primary model generates an intermediate response
+3. Intermediate response passes to the output model
+4. Output model formats and returns the final response
+
+## Model Selection
+
+| Use Case | Recommendation |
+|----------|----------------|
+| Need better prose quality | `output_model` with Claude Opus 4.5 |
+| Need to reduce costs | `output_model` with GPT-5-mini |
+| Primary model lacks structured output | `output_model` + `output_schema` |
+| Need custom formatting style | `output_model` + `output_model_prompt` |
+| Simple structured data extraction | `output_schema` alone (no output model needed) |
+
+
+## Custom Output Style 
+
+Use `output_model_prompt` to control the output style:
+```python
+from agno.agent import Agent
+from agno.models.anthropic import Claude
+from agno.models.openai import OpenAIResponses
+from agno.tools.hackernews import HackerNewsTools
+
+# Executive summary style
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    output_model=Claude(id="claude-sonnet-4-5"),
+    output_model_prompt="Format as a concise executive summary. No fluff, just insights.",
+    tools=[HackerNewsTools()],
+)
+
+# Technical documentation style
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    output_model=Claude(id="claude-sonnet-4-5"),
+    output_model_prompt="Format as technical documentation with code examples where relevant.",
+    tools=[HackerNewsTools()],
+)
+```
+## Examples 
 
 | Use Case | Example |
 |----------|---------|
@@ -14,7 +61,7 @@ Use `output_model` to delegate final response formatting to a different model. T
 | Cost optimization | Reason with DeepSeek, format with GPT-5-mini |
 | Structured output | Use a model without native support, format with one that has it |
 
-## Better Writing
+### Better Writing
 
 GPT-5.2 excels at research and tool use, but Claude Opus 4.5 produces better prose. Combine them:
 ```python
@@ -35,7 +82,7 @@ agent.print_response("Write an article about the latest AI breakthroughs", strea
 
 The primary model gathers information from HackerNews. Claude Opus 4.5 transforms those findings into polished prose.
 
-## Cost Optimization
+### Cost Optimization
 
 Use a capable but expensive model for complex reasoning, a cheaper model for formatting:
 ```python
@@ -69,7 +116,7 @@ agent = Agent(
 agent.print_response("Analyze AAPL stock performance", stream=True)
 ```
 
-## Structured Output Support
+### Structured Output Support
 
 Some models lack native structured output. Use an output model that supports it:
 ```python
@@ -94,49 +141,6 @@ response = agent.run("Summarize the top AI story on HackerNews")
 summary: ArticleSummary = response.content
 print(summary.key_points)
 ```
-
-## How It Works
-
-1. Primary model processes the request and executes tool calls
-2. Primary model generates an intermediate response
-3. Intermediate response passes to the output model
-4. Output model formats and returns the final response
-
-## Custom Formatting Prompt
-
-Use `output_model_prompt` to control the output style:
-```python
-from agno.agent import Agent
-from agno.models.anthropic import Claude
-from agno.models.openai import OpenAIResponses
-from agno.tools.hackernews import HackerNewsTools
-
-# Executive summary style
-agent = Agent(
-    model=OpenAIResponses(id="gpt-5.2"),
-    output_model=Claude(id="claude-sonnet-4-5"),
-    output_model_prompt="Format as a concise executive summary. No fluff, just insights.",
-    tools=[HackerNewsTools()],
-)
-
-# Technical documentation style
-agent = Agent(
-    model=OpenAIResponses(id="gpt-5.2"),
-    output_model=Claude(id="claude-sonnet-4-5"),
-    output_model_prompt="Format as technical documentation with code examples where relevant.",
-    tools=[HackerNewsTools()],
-)
-```
-
-## When to Use Output Model
-
-| Scenario | Recommendation |
-|----------|----------------|
-| Need better prose quality | `output_model` with Claude Opus 4.5 |
-| Need to reduce costs | `output_model` with GPT-5-mini |
-| Primary model lacks structured output | `output_model` + `output_schema` |
-| Need specific formatting style | `output_model` + `output_model_prompt` |
-| Simple structured data extraction | `output_schema` alone (no output model needed) |
 
 ## Related
 
