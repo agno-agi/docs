@@ -1,0 +1,159 @@
+---
+title: Chat History
+description: "Include previous messages in context for multi-turn conversations."
+keywords: [chat history, history, conversation history, multi-turn, context]
+---
+
+Chat history enables multi-turn conversations. Without it, each run is isolated—the agent has no idea what was said before. With a database and `add_history_to_context=True`, previous messages are automatically included in every request.
+
+## Enable Chat History
+
+Set `add_history_to_context=True` to include previous messages in every run:
+
+<CodeGroup>
+
+```python Agent
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+
+agent = Agent(
+    db=SqliteDb(db_file="agent.db"),
+    add_history_to_context=True,
+    num_history_runs=3,  # Include last 3 turns
+)
+
+agent.print_response("My name is Sarah", session_id="chat_123")
+agent.print_response("What's my name?", session_id="chat_123")  # Agent knows: "Sarah"
+```
+```python Team
+from agno.team import Team
+from agno.db.sqlite import SqliteDb
+
+team = Team(
+    db=SqliteDb(db_file="team.db"),
+    add_history_to_context=True,
+    num_history_runs=3,  # Include last 3 turns
+)
+
+team.print_response("My name is Sarah", session_id="chat_123")
+team.print_response("What's my name?", session_id="chat_123")  # Team knows: "Sarah"
+```
+</CodeGroup>
+
+<Note>
+Chat history requires a database. Without one, there's nothing to retrieve.
+</Note>
+
+## Control History Size
+
+More history means more tokens. Use these parameters to control what gets included:
+
+| Parameter | Description |
+|-----------|-------------|
+| `num_history_runs` | Number of previous runs to include (default: 3) |
+| `num_history_messages` | Maximum messages to include across all runs |
+| `max_tool_calls_from_history` | Limit tool call messages in history |
+```python
+agent = Agent(
+    db=SqliteDb(db_file="agent.db"),
+    add_history_to_context=True,
+    num_history_runs=5,
+    num_history_messages=20,  # Cap at 20 messages total
+)
+```
+
+<Tip>
+Start with `num_history_runs=3`. Increase only if your agent needs more context. For long conversations, combine limited history with [session summaries](/sessions/session-summaries).
+</Tip>
+
+## On-Demand History Access
+
+Instead of always including history, let the agent decide when to look it up:
+```python
+agent = Agent(
+    db=SqliteDb(db_file="agent.db"),
+    read_chat_history=True,  # Agent gets a get_chat_history() tool
+)
+```
+
+The agent can call `get_chat_history()` when it needs context, rather than having history in every request. Useful for analytics, auditing, or when most queries don't need prior context.
+
+## Cross-Session History
+
+Search across multiple sessions for context that spans conversations:
+```python
+agent = Agent(
+    db=SqliteDb(db_file="agent.db"),
+    search_session_history=True,
+    num_history_sessions=2,  # Search last 2 sessions
+)
+```
+
+<Warning>
+Keep `num_history_sessions` low (2-3). Cross-session history can quickly fill your context window.
+</Warning>
+
+## Programmatic Access
+
+Retrieve history directly in your code:
+```python
+# Get user-assistant message pairs
+chat_history = agent.get_chat_history(session_id="chat_123")
+
+# Get all messages from the session
+messages = agent.get_session_messages(session_id="chat_123")
+
+# Get the last run output with metrics
+last_run = agent.get_last_run_output()
+```
+
+Use this for building custom UIs, debugging, or exporting transcripts.
+
+## Team History
+
+Teams support additional history sharing between members:
+```python
+team = Team(
+    db=SqliteDb(db_file="team.db"),
+    add_history_to_context=True,
+    num_history_runs=3,
+    add_team_history_to_members=True,  # Share history across team members
+)
+```
+
+With `add_team_history_to_members=True`, member agents see the full team conversation, not just their own interactions.
+
+## Workflow History
+
+Workflows use `add_workflow_history_to_steps` to pass previous run results to steps:
+```python
+from agno.workflow import Workflow
+
+workflow = Workflow(
+    db=SqliteDb(db_file="workflow.db"),
+    add_workflow_history_to_steps=True,
+    num_history_runs=5,
+    steps=[...],
+)
+```
+
+<Note>
+Workflow history passes previous workflow outputs to steps, not conversation messages. See [Workflow Sessions](/sessions/workflow-sessions) for details.
+</Note>
+
+## Choosing a Pattern
+
+| Scenario | Configuration |
+|----------|---------------|
+| Chat-style products | `add_history_to_context=True`, `num_history_runs=3` |
+| Long conversations | Limited history + [session summaries](/sessions/session-summaries) |
+| Tool-heavy agents | Add `max_tool_calls_from_history` to reduce noise |
+| Cross-session recall | `search_session_history=True`, `num_history_sessions=2` |
+| Selective lookup | `read_chat_history=True` (agent decides when to look up) |
+| Custom UIs | Use `get_chat_history()` programmatically |
+
+## Developer Resources
+
+- [Session Storage](/database/session-storage) - What gets stored and how to retrieve it.
+- [AgentSession reference](/reference/agents/session)
+- [TeamSession reference](/reference/teams/session)
