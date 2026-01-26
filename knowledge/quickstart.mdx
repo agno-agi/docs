@@ -1,0 +1,129 @@
+---
+title: Quickstart
+description: Build a knowledge-powered agent in under 5 minutes.
+keywords: [knowledge, rag, agentic rag]
+---
+
+Build an agent that answers questions about your documents.
+
+## Create an Agent with Knowledge
+
+```python knowledge_agent.py
+from agno.agent import Agent
+from agno.knowledge.embedder.google import GeminiEmbedder
+from agno.knowledge.knowledge import Knowledge
+from agno.models.google import Gemini
+from agno.vectordb.chroma import ChromaDb
+from agno.vectordb.search import SearchType
+
+# Create a knowledge base with ChromaDB
+knowledge = Knowledge(
+    vector_db=ChromaDb(
+        collection="docs",
+        path="tmp/chromadb",
+        persistent_client=True,
+        search_type=SearchType.hybrid,
+        embedder=GeminiEmbedder(id="gemini-embedding-001"),
+    ),
+)
+
+# Load content into the knowledge base
+knowledge.insert(url="https://docs.agno.com/introduction.md", skip_if_exists=True)
+
+# Create an agent that searches the knowledge base
+agent = Agent(
+    model=Gemini(id="gemini-3-flash-preview"),
+    knowledge=knowledge,
+    search_knowledge=True,
+    markdown=True,
+)
+
+agent.print_response("What is Agno?", stream=True)
+```
+
+## Setup
+
+<Steps>
+  <Step title="Create virtual environment">
+    <CodeGroup>
+    ```bash Mac
+    uv venv --python 3.12
+    source .venv/bin/activate
+    ```
+    ```bash Windows
+    uv venv --python 3.12
+    .venv\Scripts\activate
+    ```
+    </CodeGroup>
+  </Step>
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno chromadb google-genai
+    ```
+  </Step>
+  <Step title="Export your API key">
+    <CodeGroup>
+    ```bash Mac
+    export GOOGLE_API_KEY=your-google-api-key
+    ```
+    ```bash Windows
+    setx GOOGLE_API_KEY your-google-api-key
+    ```
+    </CodeGroup>
+  </Step>
+  <Step title="Run the agent">
+    ```bash
+    python knowledge_agent.py
+    ```
+  </Step>
+</Steps>
+
+The agent searches the knowledge base, finds relevant content, and answers based on what it found.
+
+## Load Different Content Types
+
+<Tabs>
+  <Tab title="Files">
+  ```python
+    knowledge.insert(path="docs/product-guide.pdf")
+    knowledge.insert(path="data/")  # Entire directory
+  ```
+  </Tab>
+  <Tab title="URLs">
+  ```python
+    knowledge.insert(url="https://example.com/docs.pdf")
+  ```
+  </Tab>
+  <Tab title="Text">
+  ```python
+    knowledge.insert(text_content="Your content here...")
+  ```
+  </Tab>
+</Tabs>
+
+Agno detects file types automatically and uses the appropriate reader for PDFs, DOCX, CSV, Markdown, and more.
+
+## What's Happening
+
+1. **Insert**: Content is chunked, embedded with Gemini, and stored in ChromaDB
+2. **Query**: The agent receives your question and decides to search the knowledge base using the `search_knowledge_base` tool
+3. **Response**: The agent uses the retrieved content to answer, grounding its response in your data
+
+This is **Agentic RAG**. The agent decides when to search rather than blindly injecting context on every query.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Agents with Knowledge" icon="robot" href="/knowledge/agents/overview">
+    Agentic RAG, traditional RAG, reranking
+  </Card>
+  <Card title="Teams with Knowledge" icon="users" href="/knowledge/teams/overview">
+    Distributed search, coordinated RAG
+  </Card>
+  <Card title="Vector Stores" icon="database" href="/knowledge/vector-stores">
+    PgVector, Pinecone, Weaviate, and 20+ more
+  </Card>
+  <Card title="Search & Retrieval" icon="magnifying-glass" href="/knowledge/concepts/search-and-retrieval/overview">
+    Vector, keyword, and hybrid search
+  </Card>
+</CardGroup>

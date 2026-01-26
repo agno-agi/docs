@@ -1,275 +1,180 @@
 ---
 title: Readers
-sidebarTitle: Readers
-description: Convert raw data into searchable knowledge with readers.
-keywords: [readers, knowledge]
+description: Convert files, URLs, and text into searchable documents.
+keywords: [readers, knowledge, pdf, csv, markdown, documents]
 ---
 
-Readers are the first step in the process of creating Knowledge from content.
-They transform raw content from various sources into structured `Document` objects that can be embedded, chunked, and stored in vector databases.
-
-## What are Readers?
-
-A **Reader** is a specialized component that knows how to parse and extract content from specific data sources or file formats. Think of readers as translators that convert different content formats into a standardized format that Agno can work with.
-
-Every piece of content that enters your knowledge base must pass through a reader first. The reader's job is to:
-
-1. **Parse** the raw content from its original format
-2. **Extract** the meaningful text and metadata
-3. **Structure** the content into `Document` objects
-4. **Apply chunking** strategies to break large content into manageable pieces
-
-## How Readers Work
-
-All readers inherit from the base `Reader` class and follow a consistent pattern:
-
-```python
-# Every reader implements these core methods
-class Reader:
-    def read(self, obj, name=None) -> List[Document]:
-        """Synchronously read and process content"""
-        pass
-
-    async def async_read(self, obj, name=None) -> List[Document]:
-        """Asynchronously read and process content"""
-        pass
-```
-
-### The Reading Process
-
-When a reader processes content, it follows these steps:
-
-1. **Content Ingestion**: The reader receives raw content (file, URL, text, etc.)
-2. **Parsing**: Extract text and metadata using format-specific logic
-3. **Document Creation**: Convert parsed content into `Document` objects
-4. **Chunking**: Apply chunking strategies to break content into smaller pieces
-5. **Return**: Provide a list of processed documents ready for embedding
-
-### Content Types and Specialization
-
-Each reader specializes in handling specific content types:
-
-```python
-@classmethod
-def get_supported_content_types(cls) -> List[ContentType]:
-    """Returns the content types this reader can handle"""
-    return [ContentType.PDF]  # Example for PDFReader
-```
-
-This specialization allows each reader to:
-- Use format-specific parsing libraries
-- Extract relevant metadata
-- Handle format-specific challenges (encryption, encoding, etc.)
-- Optimize processing for that content type
-
-## Reader Configuration
-
-Readers are highly configurable to meet different processing needs:
-
-### Chunking Control
-
-```python
-reader = PDFReader(
-    chunk=True,                    # Enable/disable chunking
-    chunk_size=1000,              # Size of each chunk
-    chunking_strategy=MyStrategy() # Custom chunking logic
-)
-```
-
-### Content Processing Options
-
-```python
-reader = PDFReader(
-    split_on_pages=True,          # Create separate documents per page
-    password="secret123",         # Handle encrypted PDFs
-    read_images=True             # Extract text from images via OCR
-)
-```
-
-### Encoding Control
-
-For text-based readers, the file encoding can be overridden:
-
-```python
-reader = TextReader(
-    encoding="utf-8"              # Override default encoding
-)
-
-reader = CSVReader(
-    encoding="latin-1"            # Handle files with specific encodings
-)
-
-reader = MarkdownReader(
-    encoding="cp1252"             # Windows-specific encoding
-)
-```
-
-### Metadata and Naming
-
-```python
-documents = reader.read(
-    file_path,
-    name="custom_document_name",  # Override default naming
-    password="file_password"      # Runtime password override
-)
-```
-
-## The Document Output
-
-Readers convert raw content into `Document` objects with this structure:
-
-```python
-Document(
-    content="The extracted text content...",
-    id="unique_document_identifier",
-    name="document_name",
-    meta_data={
-        "page": 1,                # Page number for PDFs
-        "url": "https://...",     # Source URL for web content
-        "author": "...",          # Document metadata
-    },
-    size=len(content)             # Content size in characters
-)
-```
-
-## Chunking Integration
-
-One of the most important features of readers is their integration with chunking strategies:
-
-### Automatic Chunking
-
-When `chunk=True`, readers automatically apply chunking strategies to break large documents into smaller, more manageable pieces:
-
-```python
-# Large PDF gets broken into multiple documents
-pdf_reader = PDFReader(chunk=True, chunk_size=1000)
-documents = pdf_reader.read("large_document.pdf")
-# Returns: [Document(chunk1), Document(chunk2), Document(chunk3), ...]
-```
-
-### Chunking Strategy Support
-
-Different readers support different chunking strategies based on their content type:
-
-```python
-@classmethod
-def get_supported_chunking_strategies(cls) -> List[ChunkingStrategyType]:
-    return [
-        ChunkingStrategyType.DOCUMENT_CHUNKING,  # Respect document structure
-        ChunkingStrategyType.FIXED_SIZE_CHUNKING, # Fixed character/token limits
-        ChunkingStrategyType.SEMANTIC_CHUNKING,   # Semantic boundaries
-        ChunkingStrategyType.AGENTIC_CHUNKING,    # AI-powered chunking
-    ]
-```
-
-## Reader Factory and Auto-Selection
-
-Agno provides intelligent reader selection through the `ReaderFactory`:
-
-```python
-# Automatic reader selection based on file extension
-reader = ReaderFactory.get_reader_for_extension(".pdf")  # Returns PDFReader
-reader = ReaderFactory.get_reader_for_extension(".csv")  # Returns CSVReader
-
-# URL-based reader selection
-reader = ReaderFactory.get_reader_for_url("https://youtube.com/watch?v=...")  # YouTubeReader
-reader = ReaderFactory.get_reader_for_url("https://example.com/doc.pdf")     # PDFReader
-```
-
-## Supported Readers
-
-The following readers are currently supported:
-| Reader Name               | Description                                                          |
-|---------------------------|----------------------------------------------------------------------|
-| ArxivReader               | Fetches and processes academic papers from arXiv                     |
-| CSVReader                 | Parses CSV files and converts rows to documents                      |
-| FieldLabeledCSVReader     | Converts CSV rows to field-labeled text documents                    |
-| FirecrawlReader           | Uses Firecrawl API to scrape and crawl web content                   |
-| JSONReader                | Processes JSON files and converts them into documents                |
-| MarkdownReader            | Reads and parses Markdown files                                      |
-| PDFReader                 | Reads and extracts text from PDF files                               |
-| PPTXReader                | Reads and extracts text from PowerPoint (.pptx) files                |
-| TextReader                | Handles plain text files                                             |
-| WebsiteReader             | Crawls entire websites following links recursively                   |
-| WebSearchReader           | Searches and reads web search results                                |
-| WikipediaReader           | Searches and reads Wikipedia articles                                |
-| YouTubeReader             | Extracts transcripts and metadata from YouTube videos                |
-
-
-## Async Processing
-
-All readers support asynchronous processing for better performance:
-
-```python
-# Synchronous reading
-documents = reader.read("file.pdf")
-
-# Asynchronous reading - better for I/O intensive operations
-documents = await reader.async_read("file.pdf")
-
-# Batch processing with async
-tasks = [reader.async_read(file) for file in file_list]
-all_documents = await asyncio.gather(*tasks)
-```
-
-## Usage in Knowledge
-
-Readers integrate seamlessly with Agno Knowledge:
+Readers transform raw content into `Document` objects that can be chunked, embedded, and stored in your knowledge base. Each reader handles a specific format (PDF, CSV, Markdown, etc.) and extracts text and metadata.
 
 ```python
 from agno.knowledge.reader.pdf_reader import PDFReader
 
-# Custom reader configuration
-reader = PDFReader(
-    chunk_size=1000,
-    chunking_strategy=SemanticChunking(),
-)
+reader = PDFReader(chunk=True, chunk_size=5000)
+documents = reader.read("company_handbook.pdf")
+```
 
-knowledge_base = Knowledge(
-    vector_db=vector_db,
-)
+## How Readers Work
 
-# Use custom reader
-knowledge_base.insert(
-    path="data/documents",
-    reader=reader  # Override default reader
+1. **Parse**: Read the raw content using format-specific logic
+2. **Extract**: Pull out text and metadata (page numbers, authors, etc.)
+3. **Chunk**: Split large content into smaller pieces (if enabled)
+4. **Return**: Provide a list of `Document` objects ready for embedding
+
+```python
+# Output structure
+Document(
+    content="The extracted text...",
+    id="unique_id",
+    name="document_name",
+    meta_data={"page": 1, "source": "handbook.pdf"},
 )
 ```
 
-## Best Practices
+## Supported Readers
 
-### Choose the Right Reader
-- Use specialized readers for better extraction quality
-- Consider format-specific features (PDF encryption, CSV delimiters, etc.)
+| Reader | Description |
+|--------|-------------|
+| `PDFReader` | Extract text from PDF files |
+| `TextReader` | Plain text files |
+| `MarkdownReader` | Markdown files |
+| `CSVReader` | CSV files (rows become documents) |
+| `FieldLabeledCSVReader` | CSV rows as field-labeled text |
+| `JSONReader` | JSON files |
+| `PPTXReader` | PowerPoint presentations |
+| `ArxivReader` | Academic papers from arXiv |
+| `WikipediaReader` | Wikipedia articles |
+| `YouTubeReader` | YouTube transcripts |
+| `WebsiteReader` | Crawl websites recursively |
+| `WebSearchReader` | Web search results |
+| `FirecrawlReader` | Web scraping via Firecrawl API |
 
-### Configure Chunking Appropriately
-- Smaller chunks for precise retrieval
-- Larger chunks for maintaining context
-- Use semantic chunking for structured documents
+## Using Readers with Knowledge
 
-### Optimize for Performance
-- Use async readers for I/O-heavy operations
-- Batch process multiple files when possible
-- Cache readers through ReaderFactory when processing many files
+Pass a reader to `knowledge.insert()` to override automatic format detection:
 
-### Handle Errors Gracefully
-- Readers return empty lists for failed processing
-- Check reader logs for debugging information
-- Provide fallback readers for unknown formats
+```python
+from agno.knowledge.knowledge import Knowledge
+from agno.knowledge.reader.pdf_reader import PDFReader
 
-## Guides
+knowledge = Knowledge(vector_db=vector_db)
 
-<CardGroup cols={3}>
-  <Card title="Chunking Strategies" icon="scissors" href="/knowledge/concepts/chunking/overview">
-    Learn how to optimize content chunking for better search results
+# Use custom reader configuration
+reader = PDFReader(chunk_size=3000, split_on_pages=True)
+knowledge.insert(path="documents/", reader=reader)
+```
+
+## Auto-Selection
+
+Agno automatically selects the right reader based on file extension or URL:
+
+```python
+from agno.knowledge.reader.reader_factory import ReaderFactory
+
+# By file extension
+reader = ReaderFactory.get_reader_for_extension(".pdf")  # PDFReader
+reader = ReaderFactory.get_reader_for_extension(".csv")  # CSVReader
+
+# By URL
+reader = ReaderFactory.get_reader_for_url("https://youtube.com/watch?v=...")  # YouTubeReader
+```
+
+When using `knowledge.insert()`, this happens automatically.
+
+## Configuration
+
+### Chunking
+```python
+reader = PDFReader(
+    chunk=True,           # Enable chunking (default: True)
+    chunk_size=5000,      # Characters per chunk
+)
+```
+
+### Format-Specific Options
+```python
+# PDF with encryption and OCR
+reader = PDFReader(
+    password="secret",
+    read_images=True,     # OCR for images
+    split_on_pages=True,  # One document per page
+)
+
+# CSV with custom encoding
+reader = CSVReader(
+    encoding="latin-1",
+)
+
+# Text with encoding override
+reader = TextReader(
+    encoding="utf-8",
+)
+```
+
+### Runtime Options
+
+Override settings when calling `read()`:
+
+```python
+documents = reader.read(
+    "file.pdf",
+    name="custom_document_name",  # Override default naming
+    password="runtime_password",  # Password at read time
+)
+```
+
+## Async Processing
+
+All readers support async for better performance with I/O operations:
+
+```python
+import asyncio
+
+# Single file
+documents = await reader.async_read("file.pdf")
+
+# Batch processing
+tasks = [reader.async_read(file) for file in files]
+all_documents = await asyncio.gather(*tasks)
+```
+
+## Custom Chunking Strategy
+
+Override the default chunking behavior:
+
+```python
+from agno.knowledge.chunking.semantic_chunking import SemanticChunking
+
+reader = PDFReader(
+    chunk=True,
+    chunking_strategy=SemanticChunking(),
+)
+```
+
+See [Chunking](/knowledge/concepts/chunking/overview) for available strategies.
+
+## Error Handling
+
+Readers return an empty list when processing fails. Check logs for debugging information:
+
+```python
+documents = reader.read("corrupted.pdf")
+if not documents:
+    print("Failed to read file, check logs for details")
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="PDF Reader" icon="file-pdf" href="/knowledge/concepts/readers/pdf-reader">
+    Extract text from PDFs
   </Card>
-  <Card title="Content Types" icon="file-lines" href="/knowledge/concepts/content-types">
-    Understand different ways to add information to your knowledge base
+  <Card title="Website Reader" icon="globe" href="/knowledge/concepts/readers/website-reader">
+    Crawl and index websites
   </Card>
-  <Card title="Vector Databases" icon="database" href="/knowledge/concepts/vector-db">
-    Choose the right storage solution for your processed content
+  <Card title="Chunking" icon="scissors" href="/knowledge/concepts/chunking/overview">
+    Control how content is split
   </Card>
-  <Card title="Examples" icon="code" href="/knowledge/concepts/readers/pdf-reader">
-    See readers in action with practical examples
+  <Card title="Vector DB" icon="database" href="/knowledge/concepts/vector-db">
+    Store processed documents
   </Card>
 </CardGroup>
