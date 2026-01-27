@@ -1,124 +1,167 @@
 ---
 title: Custom Retriever
+description: Implement custom retrieval logic for full control over how agents search knowledge.
+keywords: [custom retriever, knowledge retriever, rag, retrieval]
 ---
 
+Custom retrievers let you implement your own search logic instead of using the default knowledge search. This is useful when you need to:
 
-## Code
+- Query external APIs or databases directly
+- Implement custom ranking or filtering
+- Reformulate queries before searching
+- Combine multiple data sources
 
-```python retriever.py
+```python
+from agno.agent import Agent
+
+def knowledge_retriever(query: str, num_documents: int = 5, **kwargs) -> list[dict]:
+    # Your custom retrieval logic here
+    return [{"content": "..."}]
+
+agent = Agent(
+    knowledge_retriever=knowledge_retriever,
+    search_knowledge=True,
+)
+```
+
+## How It Works
+
+When the agent decides to search for information:
+
+1. The agent calls your `knowledge_retriever` function with the query
+2. Your function retrieves documents however you want
+3. Results are returned to the agent as a list of dictionaries
+4. The agent uses the retrieved content to generate a response
+
+## Retriever Function Signature
+
+```python
+from typing import Optional
+from agno.agent import Agent
+
+def knowledge_retriever(
+    query: str,
+    agent: Optional[Agent] = None,
+    num_documents: int = 5,
+    **kwargs
+) -> Optional[list[dict]]:
+    """
+    Args:
+        query: The search query from the agent
+        agent: The agent instance (optional, for accessing agent state)
+        num_documents: Number of documents to retrieve
+        **kwargs: Additional arguments passed from the agent
+
+    Returns:
+        List of documents as dictionaries, or None if search fails
+    """
+    # Your logic here
+    return [{"content": "..."}]
+```
+
+## Example: Direct Vector Database Query
+
+This example bypasses the Knowledge abstraction and queries Qdrant directly:
+
+```python custom_retriever.py
 from typing import Optional
 
 from agno.agent import Agent
 from agno.knowledge.embedder.openai import OpenAIEmbedder
-from agno.knowledge.knowledge import Knowledge
-from agno.vectordb.qdrant import Qdrant
 from qdrant_client import QdrantClient
 
-# ---------------------------------------------------------
-# This section loads the knowledge base. Skip if your knowledge base was populated elsewhere.
-# Define the embedder
 embedder = OpenAIEmbedder(id="text-embedding-3-small")
-# Initialize vector database connection
-vector_db = Qdrant(
-    collection="thai-recipes", url="http://localhost:6333", embedder=embedder
-)
-# Load the knowledge base
-knowledge = Knowledge(
-    vector_db=vector_db,
-)
+qdrant_client = QdrantClient(url="http://localhost:6333")
 
-knowledge.insert(
-    url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
-)
-
-# ---------------------------------------------------------
-
-
-# Define the custom knowledge retriever
-# This is the function that the agent will use to retrieve documents
 def knowledge_retriever(
-    query: str, agent: Optional[Agent] = None, num_documents: int = 5, **kwargs
+    query: str, num_documents: int = 5, **kwargs
 ) -> Optional[list[dict]]:
-    """
-    Custom knowledge retriever function to search the vector database for relevant documents.
-
-    Args:
-        query (str): The search query string
-        agent (Agent): The agent instance making the query
-        num_documents (int): Number of documents to retrieve (default: 5)
-        **kwargs: Additional keyword arguments
-
-    Returns:
-        Optional[list[dict]]: List of retrieved documents or None if search fails
-    """
     try:
-        qdrant_client = QdrantClient(url="http://localhost:6333")
+        # Generate embedding for the query
         query_embedding = embedder.get_embedding(query)
+
+        # Search Qdrant directly
         results = qdrant_client.query_points(
-            collection_name="thai-recipes",
+            collection_name="recipes",
             query=query_embedding,
             limit=num_documents,
         )
-        results_dict = results.model_dump()
-        if "points" in results_dict:
-            return results_dict["points"]
-        else:
-            return None
+
+        return results.model_dump().get("points")
     except Exception as e:
-        print(f"Error during vector database search: {str(e)}")
+        print(f"Search error: {e}")
         return None
 
+agent = Agent(
+    knowledge_retriever=knowledge_retriever,
+    search_knowledge=True,
+)
 
-def main():
-    """Main function to demonstrate agent usage."""
-    # Initialize agent with custom knowledge retriever
-    # Remember to set search_knowledge=True to use agentic_rag or add_reference=True for traditional RAG
-    # search_knowledge=True is default when you add a knowledge base but is needed here
-    agent = Agent(
-        knowledge_retriever=knowledge_retriever,
-        search_knowledge=True,
-        instructions="Search the knowledge base for information",
-    )
-
-    # Example query
-    query = "List down the ingredients to make Massaman Gai"
-    agent.print_response(query, markdown=True)
-
-
-if __name__ == "__main__":
-    main()
+agent.print_response("What ingredients do I need for Massaman Gai?")
 ```
 
-## Usage
+## Example: Query Reformulation
 
-<Steps>
-  <Step title="Install dependencies">
-    ```bash
-    uv pip install -U agno openai qdrant-client
-    ```
-  </Step>
+Expand or modify queries before searching:
 
-  <Step title="Run Qdrant">
-    ```bash
-    docker run -p 6333:6333 qdrant/qdrant
-    ```
-  </Step>
+```python
+from agno.knowledge.knowledge import Knowledge
 
-  <Step title="Set OpenAI API key">
-    ```bash
-    export OPENAI_API_KEY=your_openai_api_key_here
-    ```
-  </Step>
+knowledge = Knowledge(vector_db=vector_db)
 
-  <Step title="Run the example">
-    <CodeGroup>
-    ```bash Mac
-    python cookbook/08_knowledge/custom_retriever/retriever.py
-    ```
+def knowledge_retriever(query: str, num_documents: int = 5, **kwargs) -> list[dict]:
+    # Expand common terms
+    expanded_query = query.replace("vacation", "vacation PTO paid time off")
+    expanded_query = expanded_query.replace("WFH", "work from home remote")
 
-    ```bash Windows
-    python cookbook/08_knowledge/custom_retriever/retriever.py
-    ```
-    </CodeGroup>
-  </Step>
-</Steps>
+    # Search with expanded query
+    results = knowledge.search(expanded_query, max_results=num_documents)
+
+    return [doc.to_dict() for doc in results]
+```
+
+## Example: Multi-Source Retrieval
+
+Combine results from multiple knowledge bases:
+```python
+def knowledge_retriever(query: str, num_documents: int = 5, **kwargs) -> list[dict]:
+    # Search multiple sources
+    policy_results = policy_knowledge.search(query, max_results=3)
+    faq_results = faq_knowledge.search(query, max_results=3)
+
+    # Combine and deduplicate
+    all_results = []
+    seen_ids = set()
+
+    for doc in policy_results + faq_results:
+        if doc.id not in seen_ids:
+            all_results.append(doc.to_dict())
+            seen_ids.add(doc.id)
+
+    return all_results[:num_documents]
+```
+
+
+## When to Use Custom Retrievers
+
+| Use Case | Why Custom Retriever |
+|----------|---------------------|
+| Direct database access | Skip the Knowledge abstraction for performance |
+| Query expansion | Add synonyms or related terms before searching |
+| Multi-source search | Combine results from multiple knowledge bases |
+| External APIs | Search third-party services (Elasticsearch, Algolia, etc.) |
+| Custom ranking | Implement domain-specific relevance scoring |
+| Conditional logic | Apply different search strategies based on query type |
+
+For most use cases, the built-in [Knowledge](/knowledge/overview) search is sufficient. Use custom retrievers when you need full control over the retrieval process.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Search & Retrieval" icon="magnifying-glass" href="/knowledge/concepts/search-and-retrieval/overview">
+    Learn about built-in search options
+  </Card>
+  <Card title="Filtering" icon="filter" href="/knowledge/concepts/filters/overview">
+    Filter results by metadata
+  </Card>
+</CardGroup>

@@ -1,103 +1,139 @@
 ---
-title: What is Chunking?
-sidebarTitle: Chunking
-description: Chunking is the process of breaking down large documents into smaller pieces for effective vector search and retrieval.
-keywords: [chunking, chunking strategies, chunker]
+title: Chunking
+description: Split documents into smaller pieces for effective vector search.
+keywords: [chunking, chunking strategies, semantic chunking, fixed size chunking]
 ---
 
-Chunking is the process of dividing content into manageable pieces before converting them into embeddings and storing them in vector databases. The chunking strategy you choose directly impacts search quality and retrieval accuracy.
+Chunking divides content into smaller pieces before embedding and storing in a vector database. The strategy you choose affects search quality and retrieval accuracy.
 
-Different chunking strategies serve different purposes. For example, when processing a recipe book, different strategies produce different results:
+```python
+from agno.knowledge.chunking.semantic_chunking import SemanticChunking
+from agno.knowledge.reader.pdf_reader import PDFReader
 
-- **Fixed Size**: Splits text every 500 characters (which may break recipes mid-instruction)
-- **Semantic**: Keeps complete recipes together based on meaning
-- **Document**: Each page becomes a chunk
+reader = PDFReader(
+    chunking_strategy=SemanticChunking(),
+)
+```
 
-The strategy affects whether you get complete, relevant results or fragmented pieces.
+## Why Chunking Matters
 
-## Available Chunking Strategies
+Consider processing a recipe book with different strategies:
 
-<CardGroup cols={3}>
-  <Card title="Fixed Size Chunking" icon="ruler" href="/knowledge/concepts/chunking/fixed-size-chunking">
-    Split content into uniform chunks with specified size and overlap.
+| Strategy | Result |
+|----------|--------|
+| Fixed Size (5000 chars) | May split recipes mid-instruction |
+| Semantic | Keeps complete recipes together based on meaning |
+| Document | Each page becomes a chunk |
+
+The right strategy returns complete, relevant results. The wrong one returns fragments.
+
+## Available Strategies
+
+<CardGroup cols={2}>
+  <Card title="Fixed Size" icon="ruler" href="/knowledge/concepts/chunking/fixed-size-chunking">
+    Split into uniform chunks by character count
   </Card>
-  <Card title="Semantic Chunking" icon="brain" href="/knowledge/concepts/chunking/semantic-chunking">
-    Use semantic similarity to identify natural breakpoints in content.
+  <Card title="Semantic" icon="brain" href="/knowledge/concepts/chunking/semantic-chunking">
+    Split at natural breakpoints based on meaning
   </Card>
-  <Card title="Recursive Chunking" icon="sitemap" href="/knowledge/concepts/chunking/recursive-chunking">
-    Recursively split content using multiple separators for hierarchical processing.
+  <Card title="Recursive" icon="sitemap" href="/knowledge/concepts/chunking/recursive-chunking">
+    Split using multiple separators hierarchically
   </Card>
-  <Card title="Document Chunking" icon="file-lines" href="/knowledge/concepts/chunking/document-chunking">
-    Preserve document structure by treating sections as individual chunks.
+  <Card title="Document" icon="file-lines" href="/knowledge/concepts/chunking/document-chunking">
+    Preserve document structure (sections, pages)
   </Card>
-  <Card title="CSV Row Chunking" icon="table" href="/knowledge/concepts/chunking/csv-row-chunking">
-    Splits CSV files by treating each row as an individual chunk. Only compatible with CSVs.
+  <Card title="Markdown" icon="markdown" href="/knowledge/concepts/chunking/markdown-chunking">
+    Split by heading structure
   </Card>
-  <Card title="Markdown Chunking" icon="markdown" href="/knowledge/concepts/chunking/markdown-chunking">
-    Split markdown content while preserving heading structure and hierarchy. Only compatible with Markdown files.
+  <Card title="CSV Row" icon="table" href="/knowledge/concepts/chunking/csv-row-chunking">
+    Each row becomes a chunk
   </Card>
-  <Card title="Agentic Chunking" icon="robot" href="/knowledge/concepts/chunking/agentic-chunking">
-    Use AI to intelligently determine optimal chunk boundaries.
+  <Card title="Agentic" icon="robot" href="/knowledge/concepts/chunking/agentic-chunking">
+    AI determines optimal boundaries
   </Card>
-  <Card title="Custom Chunking" icon="code" href="/knowledge/concepts/chunking/custom-chunking">
-    Build your own chunking strategy for specialized use cases.
+  <Card title="Custom" icon="code" href="/knowledge/concepts/chunking/custom-chunking">
+    Build your own strategy
   </Card>
 </CardGroup>
 
-## Using Chunking Strategies
+## Using with Readers
 
-Chunking strategies are configured when setting up readers for your knowledge base:
-
+Pass a chunking strategy to any reader:
 ```python
-from agno.knowledge.chunking.semantic import SemanticChunking
-from agno.knowledge.reader.pdf_reader import PDFReader
 from agno.knowledge.knowledge import Knowledge
+from agno.knowledge.chunking.fixed_size_chunking import FixedSizeChunking
+from agno.knowledge.reader.pdf_reader import PDFReader
 from agno.vectordb.pgvector import PgVector
-from agno.db.postgres import PostgresDb
 
-# Configure chunking strategy with a reader
 reader = PDFReader(
-    chunking_strategy=SemanticChunking(similarity_threshold=0.7)
+    chunking_strategy=FixedSizeChunking(chunk_size=3000),
 )
 
-# Set up ContentsDB - tracks content metadata
-contents_db = PostgresDb(
-    db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
-    knowledge_table="knowledge_contents"
-)
-
-# Set up vector database - stores embeddings
-vector_db = PgVector(
-    table_name="documents",
-    db_url="postgresql+psycopg://ai:ai@localhost:5532/ai"
-)
-
-# Create Knowledge with both databases
 knowledge = Knowledge(
-    name="Chunking Knowledge Base",
-    vector_db=vector_db,
-    contents_db=contents_db
+    vector_db=PgVector(table_name="docs", db_url=db_url),
 )
 
-# Add content with chunking applied
-knowledge.insert(
-    path="documents/cookbook.pdf",
-    reader=reader,
-)
+knowledge.insert(path="documents/", reader=reader)
 ```
 
 ## Choosing a Strategy
 
-The choice of chunking strategy depends on your content type and use case:
+| Content Type | Recommended Strategy | Why |
+|--------------|---------------------|-----|
+| General text | Semantic | Maintains meaning and context |
+| Structured docs | Document | Preserves sections and hierarchy |
+| Markdown files | Markdown | Respects heading structure |
+| CSV/tabular data | CSV Row | Each row is a logical unit |
+| Mixed content | Recursive | Handles multiple separator types |
+| Need consistency | Fixed Size | Predictable chunk dimensions |
 
-- **Text documents**: Semantic chunking maintains context and meaning
-- **Structured documents**: Document or Markdown chunking preserves hierarchy  
-- **Tabular data**: CSV Row chunking treats each row as a separate entity
-- **Mixed content**: Recursive chunking provides flexibility with multiple separators
-- **Uniform processing**: Fixed Size chunking ensures consistent chunk dimensions
+Each reader has a sensible default, but you can override it based on your content and retrieval needs.
 
-Each reader has a default chunking strategy that works well for its content type, but you can override it by specifying a `chunking_strategy` parameter when configuring the reader.
+## Configuration
 
-<Note>
-Consider your specific use case and performance requirements when choosing a chunking strategy, since different strategies vary in processing time and memory usage.
-</Note>
+Most strategies accept configuration options:
+```python
+# Fixed size with overlap
+FixedSizeChunking(
+    chunk_size=5000,       # Characters per chunk
+    overlap=200,           # Overlap between chunks
+)
+
+# Semantic with threshold
+SemanticChunking(
+    similarity_threshold=0.7,  # Lower = more splits
+)
+
+# Recursive with custom separators
+RecursiveChunking(
+    separators=["\n\n", "\n", ". ", " "],
+    chunk_size=4000,
+)
+```
+
+## Chunk Size Guidelines
+
+| Chunk Size | Trade-off |
+|------------|-----------|
+| Small (1000-3000 chars) | More precise retrieval, may lose context |
+| Default (5000 chars) | Balanced precision and context |
+| Large (8000+ chars) | More context, less targeted results |
+
+Smaller chunks work better for specific questions. Larger chunks work better when context matters.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Semantic Chunking" icon="brain" href="/knowledge/concepts/chunking/semantic-chunking">
+    Split content by meaning
+  </Card>
+  <Card title="Fixed Size Chunking" icon="ruler" href="/knowledge/concepts/chunking/fixed-size-chunking">
+    Uniform chunk sizes
+  </Card>
+  <Card title="Readers" icon="file-lines" href="/knowledge/concepts/readers/overview">
+    Configure readers with chunking
+  </Card>
+  <Card title="Search & Retrieval" icon="magnifying-glass" href="/knowledge/concepts/search-and-retrieval/overview">
+    How chunking affects search
+  </Card>
+</CardGroup>
