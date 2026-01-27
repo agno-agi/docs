@@ -1,36 +1,56 @@
 ---
 title: Output Model
 sidebarTitle: Output Model
-description: Use a secondary model to format the final response.
+description: Use secondary model, custom styling to refine the final output.
 ---
 
-Use `output_model` to delegate final response formatting to a different model.
-The primary model handles reasoning and tool calls, then the output model formats the result.
+Agno supports a modular output model pipeline for response refinement when required. 
+Use secondary model if you need to refine the response or validate the response from the primary model.
 
-If the primary model does not support structured output, use `output_model` and `output_schema`. 
-For custom output styling, use `output_model_prompt`.
+## How it works
 
-## How It Works
-
-1. Primary model processes the request and executes tool calls
-2. Primary model generates an intermediate response
-3. Intermediate response passes to the output model
-4. Output model formats and returns the final response
+1. Primary model generates response (Optionally feed this as intermediate response to the secondary model)
+2. Optional Secondary model processes intermediate response, formats and returns the final response
+3. Optionally, the final response can be further custom styled and validated
 
 ## Model Selection
 
-| Use Case | Recommendation |
-|----------|----------------|
-| Need better prose quality | `output_model` with Claude Opus 4.5 |
-| Need to reduce costs | `output_model` with GPT-5-mini |
-| Primary model lacks structured output | `output_model` + `output_schema` |
-| Need custom formatting style | `output_model` + `output_model_prompt` |
-| Simple structured data extraction | `output_schema` alone (no output model needed) |
+Design your agent based on three dimensions: Reasoning (Logic), Presentation (Style), and Structure (Schema)
 
+* Single model (`model`): Select the 'doer' or 'pipeline brain' based on reasoning capabity *(for example, GPT-4o for complex tasks, Claude-3 for simple ones)*.
+* Single model with output refinement (`output_model`): In single model pipeline, select the 'formatter' or 'pipeline stylist' based on formatting capability *(for example, Claude Opus 4.5 for prose, GPT-5-mini for cost optimization)*.
+* Multi-model (`parser_model`): Add a secondary model if the primary model is weaker or the output is not structured or needs refinement.*(For example, with OpenAI/Anthropic, use `parser_model` with a smart model (for example, Claude 4.5 or later) to "fix" or "extract" desired output)*.
+
+Use these parameters to select the desired output model pipeline:
+
+- `model`: Mandatory, specifies the primary model to generate a response
+- `output_schema`: The schema to validate the response against
+- `output_model`: When using single model, if the model does not support structured output, use this to validate the response    
+- `output_model_prompt`: Optional, used in conjuction with `output_model` to specify additional custom formatting to refine output
+- `parser_model`: The secondary model used to further refine the intermediary response for better outcomes
+- `parser_model_prompt`: Optional, used in conjuction with `parser_model` to specify additional instructions to control the `parser_model` output
+
+## Use cases
+| Model Design | Use Case | Configuration |
+|-------------|----------|----------------|
+| Single Model | Need better prose quality | `output_model` = Claude Opus 4.5 |
+| Single Model | Need to reduce costs | `output_model` = GPT-5-mini |
+| Single Model | Primary model lacks structured output or lacks desired formatting | `parser_model` = GPT-4o, `output_schema` = your desired schema, `output_model` = Claude Opus 4.5 |
+| Single Model | Need custom formatting style | `output_model` = Claude Opus 4.5, `output_model_prompt` = your desired formatting instructions |
+| Single Model | Simple structured data extraction | `output_schema` = your desired schema |
+| Multi Model | Standard Agent | `model` = OpenAIResponses(id="gpt-5.2") |
+| Multi Model | Strict JSON   | `model` = OpenAIResponses(id="gpt-5.2") and `output_schema` = your desired schema |
+| Multi Model | Strict JSON (Weak Model) | `model` = OpenAIResponses(id="gpt-5.2") and `parser_model` = GPT-4o and `output_schema` = your desired schema |
+| Multi Model | Reasoning + Great Prose | `model` = OpenAIResponses(id="gpt-5.2") and `output_model` = Claude Opus 4.5 |
+| Multi Model | Cost Efficient | `model` = OpenAIResponses(id="gpt-5.2") and `output_model` = GPT-5-mini |
 
 ## Custom Output Style 
 
-Use `output_model_prompt` to control the output style:
+### `output_model_prompt`
+
+Use `output_model_prompt` optionally whenever you use an `output_model` to set the style, 
+tone, and format for the final output. It replaces the default System Prompt for the specified `output_model`.
+
 ```python
 from agno.agent import Agent
 from agno.models.anthropic import Claude
@@ -53,6 +73,61 @@ agent = Agent(
     tools=[HackerNewsTools()],
 )
 ```
+<Note>
+**Default Behavior (if you don't set `output_model_prompt`):**
+
+Without `output_model_prompt`, the 
+`output_model` will just summarize/rewrite the content in its default voice, which may not be what you want.
+
+**When to use it:** 
+
+Use it to set the tone (Write a professional, executive summary), format (Format as technical documentation with code examples where relevant), or audience (Explain to a layman or ELI5) for the response.
+</Note>
+
+### `parser_model_prompt`
+
+The `parser_model_prompt` is optional. In most cases,the default system prompt works well for secondary model.
+Use it optionally whenever you use a secondary `parser_model` to set the style, tone, and format for the final output.  
+
+```python
+from typing import List
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.models.ollama import Ollama
+from pydantic import BaseModel, Field
+class MovieScript(BaseModel):
+    setting: str = Field(..., description="Provide a nice setting for a blockbuster movie.")
+    ending: str = Field(..., description="Ending of the movie. If not available, provide the best ending you can think of.")
+    genre: str = Field(..., description="Genre of the movie. If not available, select the best genre you can think of.")
+    name: str = Field(..., description="Name of the movie")
+    characters: List[str] = Field(..., description="Name of characters for this movie.")
+    storyline: str = Field(..., description="3 sentence storyline for the movie. Make it exciting!")
+# Agent with a parser model + custom parser prompt
+agent = Agent(
+    model=Ollama(id="llama3.1"),
+    description="You are a movie script writer.",
+    output_schema=MovieScript,
+    parser_model=OpenAIChat(id="gpt-4o"),
+    parser_model_prompt="Extract the movie details from the input. Ensure the JSON is valid and matches the MovieScript schema exactly."
+)
+agent.print_response("New york")
+```
+
+<Note>
+**Default Behavior (if you don't set `parser_model_prompt`):** 
+
+The specified `parser_model` 
+prompt defaults to: "You are tasked with creating a structured output from the provided user 
+message." (or similar).
+
+**When to use it:** 
+
+You only need to set this if the default extraction fails or 
+if you need to provide specific rules for how to extract the final output data (for example, "Extract 
+dates in YYYY-MM-DD format" or "Extract only the first 3 items").
+</Note>
+
+
 ## Examples 
 
 | Use Case | Example |
