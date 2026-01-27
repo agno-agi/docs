@@ -101,23 +101,51 @@ Start with hybrid search and add a reranker for best results.
 <Tabs>
   <Tab title="Traditional RAG">
     ```python
-    # Always searches, always injects results
-    results = knowledge.search(user_query)
-    context = "\n\n".join([d.content for d in results])
-    response = llm.generate(user_query + "\n" + context)
+    from agno.agent import Agent
+    from agno.knowledge.knowledge import Knowledge
+    from agno.knowledge.embedder.openai import OpenAIEmbedder
+    from agno.models.openai import OpenAIChat
+    from agno.vectordb.lancedb import LanceDb, SearchType
+
+    knowledge = Knowledge(
+        vector_db=LanceDb(
+            table_name="recipes",
+            uri="tmp/lancedb",
+            search_type=SearchType.vector,
+            embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+        ),
+    )
+
+    agent = Agent(
+        model=OpenAIChat(id="gpt-4o"),
+        knowledge=knowledge,
+        add_knowledge_to_context=True,  # Always inject knowledge into prompt
+        search_knowledge=False,  # Disable agentic search
+    )
     ```
   </Tab>
   <Tab title="Agentic RAG">
     ```python
     from agno.agent import Agent
+    from agno.knowledge.knowledge import Knowledge
+    from agno.knowledge.embedder.openai import OpenAIEmbedder
+    from agno.models.openai import OpenAIChat
+    from agno.vectordb.lancedb import LanceDb, SearchType
 
-    # Agent decides when to search
-    agent = Agent(
-        knowledge=knowledge,
-        search_knowledge=True,  # Agent calls search_knowledge_base tool when needed
+    knowledge = Knowledge(
+        vector_db=LanceDb(
+            table_name="recipes",
+            uri="tmp/lancedb",
+            search_type=SearchType.vector,
+            embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+        ),
     )
 
-    agent.print_response("What's our return policy?")
+    agent = Agent(
+        model=OpenAIChat(id="gpt-4o"),
+        knowledge=knowledge,
+        search_knowledge=True,  # Agent decides when to search
+    )
     ```
   </Tab>
 </Tabs>
