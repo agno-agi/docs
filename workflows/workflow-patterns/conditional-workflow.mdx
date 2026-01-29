@@ -7,18 +7,27 @@ description: Deterministic branching based on input analysis or business rules
 
 Conditional workflows provide predictable branching logic while maintaining deterministic execution paths.
 
-<img 
-  className="block dark:hidden" 
-  src="/images/workflows-condition-steps-light.png" 
+<img
+  className="block dark:hidden"
+  src="/images/workflows-condition-steps-light.svg"
   alt="Workflows condition steps diagram"
 />
-<img 
-  className="hidden dark:block" 
-  src="/images/workflows-condition-steps.png" 
+<img
+  className="hidden dark:block"
+  src="/images/workflows-condition-steps.svg"
   alt="Workflows condition steps diagram"
 />
 
-## Example
+## How It Works
+
+The `Condition` class evaluates a function and executes different steps based on the result:
+
+- **If branch (`steps`)**: Executes when the evaluator returns `True`
+- **Else branch (`else_steps`)**: Executes when the evaluator returns `False` (optional)
+
+If the condition is `False` and no `else_steps` are provided, the condition is skipped and the workflow continues to the next step.
+
+## Basic Example
 
 ```python conditional_workflow.py
 from agno.workflow import Condition, Step, Workflow
@@ -40,6 +49,45 @@ workflow = Workflow(
 )
 
 workflow.print_response("Comprehensive analysis of AI and machine learning trends", markdown=True)
+```
+
+## If/Else Branching
+
+Use `else_steps` to define an alternative execution path when the condition is `False`:
+
+```python condition_with_else.py
+from agno.workflow import Condition, Step, Workflow
+
+def is_technical_issue(step_input) -> bool:
+    text = (step_input.input or "").lower()
+    tech_keywords = ["error", "bug", "crash", "not working", "api", "timeout"]
+    return any(kw in text for kw in tech_keywords)
+
+workflow = Workflow(
+    name="Customer Support Router",
+    steps=[
+        Condition(
+            name="TechnicalTriage",
+            evaluator=is_technical_issue,
+            # If branch: technical pipeline
+            steps=[
+                Step(name="Diagnose", agent=diagnostic_agent),
+                Step(name="Engineer", agent=engineering_agent),
+            ],
+            # Else branch: general support
+            else_steps=[
+                Step(name="GeneralSupport", agent=general_support_agent),
+            ],
+        ),
+        Step(name="FollowUp", agent=followup_agent),
+    ],
+)
+
+# Technical query -> executes Diagnose, Engineer, then FollowUp
+workflow.print_response("My app keeps crashing with a timeout error")
+
+# Non-technical query -> executes GeneralSupport, then FollowUp
+workflow.print_response("How do I change my shipping address?")
 ```
 
 ## Developer Resources
