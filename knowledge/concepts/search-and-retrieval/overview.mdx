@@ -1,0 +1,255 @@
+---
+title: Search & Retrieval
+sidebarTitle: Overview
+description: How agents search knowledge bases to find relevant information.
+keywords: [search, retrieval, rag, agentic rag, vector search, hybrid search]
+---
+
+When an agent needs information, it searches for relevant chunks rather than loading everything into the prompt. This keeps responses focused and efficient.
+
+```python
+from agno.knowledge.knowledge import Knowledge
+from agno.vectordb.pgvector import PgVector
+from agno.vectordb.search import SearchType
+
+knowledge = Knowledge(
+    vector_db=PgVector(
+        table_name="embeddings",
+        db_url=db_url,
+        search_type=SearchType.hybrid,
+    ),
+    max_results=5,
+)
+
+results = knowledge.search("What's our return policy?")
+```
+
+## How Search Works
+
+<Steps>
+  <Step title="Query Analysis">
+    The agent analyzes the user's question to understand what information would help.
+  </Step>
+  <Step title="Search Execution">
+    The system runs vector, keyword, or hybrid search based on configuration.
+  </Step>
+  <Step title="Retrieval">
+    The knowledge base returns the most relevant content chunks.
+  </Step>
+  <Step title="Response Generation">
+    Retrieved information is combined with the question to generate a response.
+  </Step>
+</Steps>
+
+## Search Types
+
+### Vector Search
+
+Finds content by meaning, not exact words. When you ask "How do I reset my password?", it finds documents about "changing credentials" even if those exact words don't appear.
+
+```python
+vector_db = PgVector(
+    table_name="embeddings",
+    db_url=db_url,
+    search_type=SearchType.vector,
+)
+```
+
+**Best for:** Conceptual questions where users phrase things differently than your docs.
+
+### Keyword Search
+
+Classic text search that matches exact words and phrases. Uses your database's full-text search or keyword matching capabilities.
+
+```python
+vector_db = PgVector(
+    table_name="embeddings",
+    db_url=db_url,
+    search_type=SearchType.keyword,
+)
+```
+
+**Best for:** Specific terms, product names, error codes, technical identifiers.
+
+### Hybrid Search
+
+Combines vector similarity with keyword matching. Usually the best choice for production.
+
+```python
+from agno.knowledge.reranker.cohere import CohereReranker
+
+vector_db = PgVector(
+    table_name="embeddings",
+    db_url=db_url,
+    search_type=SearchType.hybrid,
+    reranker=CohereReranker(),  # Optional: improves result ordering
+)
+```
+
+**Best for:** Most real-world applications where you want both semantic understanding and exact-match precision.
+
+<Tip>
+Start with hybrid search and add a reranker for best results.
+</Tip>
+
+## Agentic vs Traditional RAG
+
+**Traditional RAG** always searches with the exact user query and injects results into the prompt.
+
+**Agentic RAG** lets the agent decide when to search, reformulate queries, and run follow-up searches if needed.
+
+<Tabs>
+  <Tab title="Traditional RAG">
+    ```python
+    # Always searches, always injects results
+    results = knowledge.search(user_query)
+    context = "\n\n".join([d.content for d in results])
+    response = llm.generate(user_query + "\n" + context)
+    ```
+  </Tab>
+  <Tab title="Agentic RAG">
+    ```python
+    from agno.agent import Agent
+
+    # Agent decides when to search
+    agent = Agent(
+        knowledge=knowledge,
+        search_knowledge=True,  # Agent calls search_knowledge_base tool when needed
+    )
+
+    agent.print_response("What's our return policy?")
+    ```
+  </Tab>
+</Tabs>
+
+With Agentic RAG, the agent can:
+- Skip searching when it already knows the answer
+- Reformulate queries for better results
+- Run multiple searches to gather complete information
+- Combine results from different searches
+
+## Filtering Results
+
+Filter searches by metadata to target specific content:
+```python
+# Add content with metadata
+knowledge.insert(
+    path="policies/",
+    metadata={"department": "hr", "type": "policy", "year": 2024}
+)
+
+# Search with filters
+results = knowledge.search(
+    query="vacation policy",
+    filters={"department": "hr", "type": "policy"}
+)
+
+# Use filters with agents
+agent.print_response(
+    "What's our vacation policy?",
+    knowledge_filters={"department": "hr"}
+)
+```
+
+For complex filtering with OR, NOT, and comparisons, see [Filtering](/knowledge/concepts/filters/overview).
+
+## Custom Retrieval Logic
+
+Override the default search behavior with a custom retriever:
+```python
+async def my_retriever(query: str, num_documents: int = 5, filters: dict = None, **kwargs):
+    # Reformulate query
+    expanded_query = query.replace("vacation", "paid time off PTO")
+
+    # Run search
+    docs = await knowledge.asearch(expanded_query, max_results=num_documents, filters=filters)
+
+    return [d.to_dict() for d in docs]
+
+agent = Agent(
+    knowledge=knowledge,
+    knowledge_retriever=my_retriever,
+)
+```
+
+## Improving Search Quality
+
+### Chunk Size
+
+How you split content affects retrieval precision:
+
+| Chunk Size | Trade-off |
+|------------|-----------|
+| Small (1000-3000 chars) | More precise, but may miss context |
+| Default (5000 chars) | Balanced precision and context |
+| Large (8000+ chars) | More context, but less targeted |
+| Semantic chunking | Splits at natural topic boundaries |
+
+### Embedding Model
+
+Your embedder converts text into vectors that capture meaning. The right choice depends on your content:
+
+| Type | Use Case |
+|------|----------|
+| General-purpose (OpenAI, Gemini) | Works well for most content |
+| Domain-specific | Better for specialized fields like medical or legal |
+| Multilingual | Required for non-English or mixed-language content |
+
+See [Embedders](/knowledge/concepts/embedder/overview) for available options.
+
+### Metadata
+
+Rich metadata enables better filtering:
+
+```python
+# Good: specific, consistent, filterable
+metadata = {
+    "department": "engineering",
+    "document_type": "runbook",
+    "service": "payments",
+    "last_updated": "2024-01-15",
+}
+
+# Bad: vague, inconsistent
+metadata = {"type": "doc", "id": "12345"}
+```
+
+### Content Structure
+
+Well-organized content searches better:
+- Use clear headings and sections
+- Include relevant terminology naturally
+- Add summaries at the top of long documents
+- Use descriptive filenames (`hr_vacation_policy_2024.pdf` not `document1.pdf`)
+
+### Testing
+
+Test with real queries to validate search quality:
+```python
+test_queries = [
+    "What's our vacation policy?",
+    "How do I submit expenses?",
+    "Remote work guidelines",
+]
+
+for query in test_queries:
+    results = knowledge.search(query)
+    print(f"{query} -> {results[0].content[:100]}..." if results else "No results")
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Hybrid Search" icon="magnifying-glass" href="/knowledge/concepts/search-and-retrieval/hybrid-search">
+    Deep dive into combining vector and keyword search
+  </Card>
+  <Card title="Filtering" icon="filter" href="/knowledge/concepts/filters/overview">
+    Filter results by metadata
+  </Card>
+  <Card title="Vector DB" icon="database" href="/knowledge/concepts/vector-db">
+    Storage options for embeddings
+  </Card>
+  <Card title="Performance Tips" icon="gauge" href="/knowledge/concepts/performance-tips">
+    Optimize for speed and accuracy
+  </Card>
+</CardGroup>

@@ -1,0 +1,160 @@
+---
+title: User Memory
+sidebarTitle: User Memory
+description: "Unstructured observations about users."
+mode: wide
+---
+
+The User Memory Store captures unstructured observations about users: preferences, behaviors, and context that don't fit into structured profile fields.
+
+| Aspect | Value |
+|--------|-------|
+| **Scope** | Per user |
+| **Persistence** | Long-term (with optional curation) |
+| **Default mode** | Always |
+| **Supported modes** | Always, Agentic |
+
+## Basic Usage
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.learn import LearningMachine
+from agno.models.openai import OpenAIResponses
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai"),
+    learning=LearningMachine(user_memory=True),
+)
+
+# Session 1: Share preferences
+agent.print_response(
+    "I prefer code examples over explanations. Also, I'm working on a machine learning project.",
+    user_id="alice@example.com",
+    session_id="session_1",
+)
+
+# Session 2: Memory is recalled
+agent.print_response(
+    "Explain async/await in Python",
+    user_id="alice@example.com",
+    session_id="session_2",
+)
+```
+
+The agent knows to include code examples and may relate to ML context.
+
+## Always Mode
+
+Memories are extracted automatically after each response.
+```python
+from agno.learn import LearningMachine, LearningMode, UserMemoryConfig
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        user_memory=UserMemoryConfig(mode=LearningMode.ALWAYS),
+    ),
+)
+```
+
+Tradeoff: extra LLM call per interaction.
+
+## Agentic Mode
+
+The agent receives tools to manage memories explicitly.
+```python
+from agno.learn import LearningMachine, LearningMode, UserMemoryConfig
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        user_memory=UserMemoryConfig(mode=LearningMode.AGENTIC),
+    ),
+)
+
+agent.print_response(
+    "Remember that I always want to see error handling in code examples.",
+    user_id="alice@example.com",
+)
+```
+
+Available tools: `save_user_memory`, `delete_user_memory`
+
+Tradeoff: agent may miss implicit observations.
+
+## What Gets Captured
+
+| Good for User Memory | Better for User Profile |
+|---------------------|-------------------------|
+| "Prefers detailed explanations" | Name: "Alice Chen" |
+| "Working on ML project" | Company: "Acme Corp" |
+| "Struggles with async code" | Role: "Data Scientist" |
+| "Uses VS Code" | Timezone: "PST" |
+
+## Memory Data Model
+
+| Field | Description |
+|-------|-------------|
+| `memory_id` | Unique identifier |
+| `memory` | The observation text |
+| `topics` | Extracted topics for categorization |
+| `user_id` | User this memory belongs to |
+| `created_at` | When created |
+| `updated_at` | Last update |
+
+## Accessing Memories
+```python
+lm = agent.get_learning_machine()
+
+# Get all memories
+memories = lm.user_memory_store.get_memories(user_id="alice@example.com")
+for memory in memories:
+    print(f"- {memory.memory}")
+
+# Debug output
+lm.user_memory_store.print(user_id="alice@example.com")
+```
+
+## Context Injection
+
+Relevant memories are injected into the system prompt:
+```
+<user_memories>
+- Prefers code examples over explanations
+- Working on a machine learning project
+- Uses Python 3.11
+- Prefers concise responses
+</user_memories>
+```
+
+## Curation
+
+Over time, memories accumulate. Use the Curator to maintain them:
+```python
+lm = agent.get_learning_machine()
+
+# Remove memories older than 90 days
+lm.curator.prune(user_id="alice@example.com", max_age_days=90)
+
+# Remove duplicates
+lm.curator.deduplicate(user_id="alice@example.com")
+```
+
+## Combining with User Profile
+
+Use both stores for comprehensive user understanding:
+```python
+from agno.learn import LearningMachine
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        user_profile=True,  # Structured: name, company
+        user_memory=True,   # Unstructured: preferences, context
+    ),
+)
+```

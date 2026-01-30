@@ -1,0 +1,109 @@
+---
+title: Vector Search
+description: Find content by semantic meaning using vector similarity.
+keywords: [vector search, semantic search, embeddings, similarity search]
+---
+
+Vector search finds content by meaning rather than exact word matches. When you search for "How do I reset my password?", it finds documents about "changing credentials" even if those exact words don't appear.
+
+```python
+from agno.knowledge.knowledge import Knowledge
+from agno.vectordb.pgvector import PgVector, SearchType
+
+knowledge = Knowledge(
+    vector_db=PgVector(
+        table_name="docs",
+        db_url=db_url,
+        search_type=SearchType.vector,
+    ),
+)
+```
+
+## How It Works
+
+1. **Query embedding**: Your search query is converted to a vector (list of numbers capturing meaning)
+2. **Similarity matching**: The system finds stored vectors closest to the query vector
+3. **Ranking**: Results are ordered by cosine similarity (how close the meanings are)
+
+The embedding model determines how well semantic relationships are captured. General-purpose models like OpenAI's `text-embedding-3-small` work well for most content.
+
+## When to Use Vector Search
+
+| Scenario | Why Vector Search Works |
+|----------|------------------------|
+| Conceptual questions | Matches meaning, not just words |
+| Users phrase things differently | Finds relevant content regardless of terminology |
+| Natural language queries | Understands intent behind questions |
+| Content with varied vocabulary | Connects synonyms and related concepts |
+
+Use **hybrid search** if you also need exact term matching (product names, error codes).
+Use **keyword search** if you need precise text matching only.
+
+## Configuration
+
+### Basic Setup
+
+```python
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+
+vector_db = PgVector(
+    table_name="docs",
+    db_url=db_url,
+    search_type=SearchType.vector,
+    embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+)
+```
+
+### With Reranking
+
+Add a reranker to improve result ordering:
+
+```python
+from agno.knowledge.reranker.cohere import CohereReranker
+
+vector_db = PgVector(
+    table_name="docs",
+    db_url=db_url,
+    search_type=SearchType.vector,
+    reranker=CohereReranker(),
+)
+```
+
+## Example
+
+```python vector_search.py
+from agno.knowledge.knowledge import Knowledge
+from agno.vectordb.pgvector import PgVector, SearchType
+
+db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
+
+knowledge = Knowledge(
+    vector_db=PgVector(
+        table_name="recipes",
+        db_url=db_url,
+        search_type=SearchType.vector,
+        embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+    ),
+)
+
+# Load content
+knowledge.insert(
+    url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
+)
+
+# Search by semantic meaning
+results = knowledge.search("chicken coconut soup", max_results=5)
+for doc in results:
+    print(doc.content[:200])
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Hybrid Search" icon="magnifying-glass" href="/knowledge/concepts/search-and-retrieval/hybrid-search">
+    Combine vector search with keyword matching
+  </Card>
+  <Card title="Embedders" icon="code" href="/knowledge/concepts/embedder/overview">
+    Choose the right embedding model
+  </Card>
+</CardGroup>

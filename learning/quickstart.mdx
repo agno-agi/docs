@@ -1,0 +1,129 @@
+---
+title: Quickstart
+sidebarTitle: Quickstart
+description: "Enable learning in your agents."
+mode: wide
+---
+
+## Enable Learning
+
+The simplest way: set `learning=True`.
+
+```python
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIResponses
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=SqliteDb(db_file="tmp/agents.db"),
+    learning=True,
+)
+```
+
+This enables user profile and user memory extraction in Always mode. The agent automatically captures information and recalls it in future sessions.
+
+## Test It
+```python
+# Session 1: Share information
+agent.print_response(
+    "Hi! I'm Sarah, I work at Acme Corp as a data scientist.",
+    user_id="sarah@acme.com",
+    session_id="session_1",
+)
+
+# Session 2: Agent remembers
+agent.print_response(
+    "What do you know about me?",
+    user_id="sarah@acme.com",
+    session_id="session_2",
+)
+```
+
+Session 2 is a new conversation, but the agent remembers Sarah.
+
+## Choose What Gets Learned
+
+For more control, configure stores individually:
+```python
+from agno.learn import LearningMachine
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        user_profile=True,      # Structured facts (name, role, preferences)
+        user_memory=True,       # Unstructured observations
+        session_context=True,   # Session summary and goals
+        entity_memory=False,    # Facts about external entities
+        learned_knowledge=False # Insights across users (requires Knowledge)
+    ),
+)
+```
+
+See [Learning Stores](/learning/stores/intro) for details on each store.
+
+## Choose How Learning Happens
+
+Each store can use a different learning mode:
+```python
+from agno.learn import (
+    LearningMachine,
+    LearningMode,
+    UserProfileConfig,
+    UserMemoryConfig,
+)
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        user_profile=UserProfileConfig(mode=LearningMode.ALWAYS),
+        user_memory=UserMemoryConfig(mode=LearningMode.AGENTIC),
+    ),
+)
+```
+
+| Mode | How it works |
+|------|--------------|
+| **Always** | Extraction runs automatically after each response |
+| **Agentic** | Agent receives tools and decides what to save |
+| **Propose** | Agent proposes learnings, you approve before saving |
+
+See [Learning Modes](/learning/learning-modes) for details.
+
+## Production Database
+
+For production, use PostgreSQL:
+```python
+from agno.db.postgres import PostgresDb
+
+db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=True,
+)
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Learning Stores"
+    icon="database"
+    iconType="duotone"
+    href="/learning/stores/intro"
+  >
+    Configure each store type
+  </Card>
+  <Card
+    title="Learning Modes"
+    icon="sliders"
+    iconType="duotone"
+    href="/learning/learning-modes"
+  >
+    Control how and when agents learn
+  </Card>
+</CardGroup>

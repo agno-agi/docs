@@ -1,0 +1,129 @@
+---
+title: Hybrid Search
+description: Combine vector similarity with keyword matching for better retrieval accuracy.
+keywords: [hybrid search, vector search, keyword search, rrf, reciprocal rank fusion]
+---
+
+Hybrid search combines vector similarity (semantic meaning) with keyword matching (exact terms) to get the best of both approaches. It's the recommended search type for most production use cases.
+
+```python
+from agno.knowledge.knowledge import Knowledge
+from agno.vectordb.pgvector import PgVector, SearchType
+
+knowledge = Knowledge(
+    vector_db=PgVector(
+        table_name="docs",
+        db_url=db_url,
+        search_type=SearchType.hybrid,
+    ),
+)
+```
+
+## How It Works
+
+Hybrid search runs two searches in parallel:
+
+1. **Vector search** finds semantically similar content (meaning-based)
+2. **Keyword search** finds exact term matches (text-based)
+3. **Fusion** combines results using Reciprocal Rank Fusion (RRF)
+
+The RRF algorithm merges rankings with the formula: `RRF(d) = Σ 1/(k + rank)`
+
+This ensures documents that rank well in both searches appear at the top, while documents that only match one method still surface.
+
+<Note>
+Not all vector databases support hybrid search or RRF.
+</Note>
+
+## When to Use Hybrid Search
+
+| Scenario | Why Hybrid Helps |
+|----------|------------------|
+| User queries vary in phrasing | Vector catches meaning, keywords catch exact terms |
+| Technical content with specific terms | Keywords match error codes, product names exactly |
+| Mixed content types | Balances conceptual and precise matching |
+| Production systems | Best overall accuracy for diverse queries |
+
+Use **vector-only** if your queries are always conceptual with no specific terms.
+Use **keyword-only** if you need exact matching (e.g., search by ID or code).
+
+## Configuration
+
+### Basic Setup
+```python
+from agno.vectordb.pgvector import PgVector, SearchType
+
+vector_db = PgVector(
+    table_name="docs",
+    db_url=db_url,
+    search_type=SearchType.hybrid,
+)
+```
+
+### With Reranking
+
+Add a reranker to improve result ordering after fusion:
+```python
+from agno.knowledge.reranker.cohere import CohereReranker
+
+vector_db = PgVector(
+    table_name="docs",
+    db_url=db_url,
+    search_type=SearchType.hybrid,
+    reranker=CohereReranker(),
+)
+```
+
+### RRF Constant
+
+The `k` constant in RRF controls how much weight lower-ranked results receive. Higher values (e.g., 60) smooth out rankings; lower values make top results more dominant.
+
+```python
+from agno.vectordb.chroma import ChromaDb, SearchType
+
+vector_db = ChromaDb(
+    collection="docs",
+    path="tmp/chromadb",
+    search_type=SearchType.hybrid,
+    hybrid_rrf_k=60,  # Default is 60
+)
+```
+
+## Example
+
+```python hybrid_search.py
+from agno.knowledge.knowledge import Knowledge
+from agno.vectordb.pgvector import PgVector, SearchType
+
+db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
+
+knowledge = Knowledge(
+    vector_db=PgVector(
+        table_name="recipes",
+        db_url=db_url,
+        search_type=SearchType.hybrid,
+    ),
+)
+
+# Load content
+knowledge.insert(
+    url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
+)
+
+# Search combines semantic similarity + keyword matching
+results = knowledge.search("chicken coconut soup", max_results=5)
+for doc in results:
+    print(doc.content[:200])
+```
+
+## Supported Vector Databases
+
+Hybrid search is available in:
+- [PgVector](/knowledge/vector-stores/pgvector/overview)
+- [ChromaDB](/knowledge/vector-stores/chroma/overview)
+- [LanceDB](/knowledge/vector-stores/lancedb/overview)
+- [Weaviate](/knowledge/vector-stores/weaviate/overview)
+- [Milvus](/knowledge/vector-stores/milvus/overview)
+- [Pinecone](/knowledge/vector-stores/pinecone/overview)
+
+Check individual vector database docs for specific hybrid search capabilities.

@@ -1,0 +1,100 @@
+---
+title: Conditional Workflow
+description: Deterministic branching based on input analysis or business rules
+---
+
+**Example Use-Cases**: Content type routing, topic-specific processing, quality-based decisions
+
+Conditional workflows provide predictable branching logic while maintaining deterministic execution paths.
+
+<img
+  className="block dark:hidden"
+  src="/images/workflows-condition-steps-light.png"
+  alt="Workflows condition steps diagram"
+/>
+<img
+  className="hidden dark:block"
+  src="/images/workflows-condition-steps.png"
+  alt="Workflows condition steps diagram"
+/>
+
+## How It Works
+
+The `Condition` class evaluates a function and executes different steps based on the result:
+
+- **If branch (`steps`)**: Executes when the evaluator returns `True`
+- **Else branch (`else_steps`)**: Executes when the evaluator returns `False` (optional)
+
+If the condition is `False` and no `else_steps` are provided, the condition is skipped and the workflow continues to the next step.
+
+## Basic Example
+
+```python conditional_workflow.py
+from agno.workflow import Condition, Step, Workflow
+
+def is_tech_topic(step_input) -> bool:
+    topic = step_input.input.lower()
+    return any(keyword in topic for keyword in ["ai", "tech", "software"])
+
+workflow = Workflow(
+    name="Conditional Research",
+    steps=[
+        Condition(
+            name="Tech Topic Check",
+            evaluator=is_tech_topic,
+            steps=[Step(name="Tech Research", agent=tech_researcher)]
+        ),
+        Step(name="General Analysis", agent=general_analyst),
+    ]
+)
+
+workflow.print_response("Comprehensive analysis of AI and machine learning trends", markdown=True)
+```
+
+## If/Else Branching
+
+Use `else_steps` to define an alternative execution path when the condition is `False`:
+
+```python condition_with_else.py
+from agno.workflow import Condition, Step, Workflow
+
+def is_technical_issue(step_input) -> bool:
+    text = (step_input.input or "").lower()
+    tech_keywords = ["error", "bug", "crash", "not working", "api", "timeout"]
+    return any(kw in text for kw in tech_keywords)
+
+workflow = Workflow(
+    name="Customer Support Router",
+    steps=[
+        Condition(
+            name="TechnicalTriage",
+            evaluator=is_technical_issue,
+            # If branch: technical pipeline
+            steps=[
+                Step(name="Diagnose", agent=diagnostic_agent),
+                Step(name="Engineer", agent=engineering_agent),
+            ],
+            # Else branch: general support
+            else_steps=[
+                Step(name="GeneralSupport", agent=general_support_agent),
+            ],
+        ),
+        Step(name="FollowUp", agent=followup_agent),
+    ],
+)
+
+# Technical query -> executes Diagnose, Engineer, then FollowUp
+workflow.print_response("My app keeps crashing with a timeout error")
+
+# Non-technical query -> executes GeneralSupport, then FollowUp
+workflow.print_response("How do I change my shipping address?")
+```
+
+## Developer Resources
+
+- [Condition Steps Workflow](/workflows/usage/condition-steps-workflow-stream)
+- [Condition with List of Steps](/workflows/usage/condition-with-list-of-steps)
+
+## Reference
+
+For complete API documentation, see [Condition Steps Reference](/reference/workflows/conditional-steps).

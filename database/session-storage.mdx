@@ -1,0 +1,119 @@
+---
+title: Session Storage
+description: "Store and retrieve agent sessions from your database."
+keywords: [sessions, storage, database, persistence]
+---
+
+When you add a database to your agent, sessions are stored automatically. A session groups related runs into a conversation thread - every message, response, and piece of metadata is persisted under a `session_id`. This page covers how to access and configure that storage.
+
+## Configure the Session Table
+
+By default, sessions are stored in the `agno_sessions` table. The table is created automatically if it doesn't exist.
+
+Use `session_table` to store sessions in a custom table:
+
+```python
+from agno.db.postgres import PostgresDb
+
+db = PostgresDb(
+    db_url="postgresql://user:password@localhost:5432/mydb",
+    session_table="my_agent_sessions",
+)
+
+agent = Agent(db=db)
+```
+
+<Tip>
+Use separate tables for different agents or environments.
+</Tip>
+
+## What Gets Stored
+
+Each session record contains:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `session_id` | `str` | Unique session identifier |
+| `session_type` | `str` | Type of session (agent, team, or workflow) |
+| `agent_id` | `str` | The agent ID (if agent session) |
+| `team_id` | `str` | The team ID (if team session) |
+| `workflow_id` | `str` | The workflow ID (if workflow session) |
+| `user_id` | `str` | The user this session belongs to |
+| `session_data` | `dict` | Session-specific data and state |
+| `agent_data` | `dict` | Agent configuration and metadata |
+| `team_data` | `dict` | Team configuration and metadata |
+| `workflow_data` | `dict` | Workflow configuration and metadata |
+| `metadata` | `dict` | Additional custom metadata |
+| `runs` | `list` | All the runs (interactions) in this session |
+| `summary` | `dict` | The session summary (if enabled) |
+| `created_at` | `int` | Unix timestamp when session was created |
+| `updated_at` | `int` | Unix timestamp of last update |
+
+## Retrieve Sessions
+
+Use `get_session()` to retrieve a stored session:
+
+```python
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+
+agent = Agent(db=SqliteDb(db_file="agent.db"))
+
+agent.print_response("What is the capital of France?", session_id="session_123")
+
+# Retrieve the session
+session = agent.get_session(session_id="session_123")
+
+# Access session data
+print(session.session_id)
+print(session.runs)  # List of runs with messages and responses
+```
+
+## Works With Teams and Workflows
+
+Session storage works identically for Teams and Workflows:
+```python
+from agno.team import Team
+from agno.workflow import Workflow
+from agno.db.sqlite import SqliteDb
+
+db = SqliteDb(db_file="agno.db")
+
+team = Team(db=db, ...)
+workflow = Workflow(db=db, ...)
+
+# Retrieve sessions the same way
+team_session = team.get_session(session_id="team_session_123")
+workflow_session = workflow.get_session(session_id="workflow_session_456")
+```
+
+<Note>
+Workflow sessions store complete pipeline runs rather than conversation messages. See [Workflow Sessions](/sessions/workflow-sessions) for details.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Session Summaries"
+    icon="compress"
+    iconType="duotone"
+    href="/sessions/session-summaries"
+  >
+    Condense long conversations to save tokens.
+  </Card>
+  <Card
+    title="Storage Control"
+    icon="sliders"
+    iconType="duotone"
+    href="/sessions/persisting-sessions/storage-control"
+  >
+    Choose what gets persisted to your database.
+  </Card>
+</CardGroup>
+
+## Developer Resources
+
+- [AgentSession reference](/reference/agents/session)
+- [TeamSession reference](/reference/teams/session)
+- [WorkflowSession reference](/reference/workflows/session)

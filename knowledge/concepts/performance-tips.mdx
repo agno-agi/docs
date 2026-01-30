@@ -1,0 +1,226 @@
+---
+title: Performance Tips
+description: Optimize knowledge base performance, search quality, and content loading speed.
+keywords: [performance, optimization, speed, memory]
+---
+
+Agno's defaults work well for most use cases. But if you're seeing slow searches, memory issues, or poor results, a few strategic changes might help.
+
+## Quick Wins
+
+### 1. Choose the Right Vector Database
+
+Database choice has the biggest impact at scale:
+
+| Database | Use Case |
+|----------|----------|
+| LanceDB/ChromaDB | Development, testing (zero setup) |
+| PgVector | Production up to 1M docs, need SQL |
+| Pinecone | Managed service, auto-scaling |
+
+```python
+from agno.vectordb.lancedb import LanceDb
+from agno.vectordb.pgvector import PgVector
+
+# Development
+dev_db = LanceDb(table_name="docs", uri="./local_db")
+
+# Production
+prod_db = PgVector(table_name="docs", db_url=db_url)
+```
+
+### 2. Skip Already-Processed Files
+
+The biggest speed-up when re-running ingestion:
+
+```python
+knowledge.insert(
+    path="documents/",
+    skip_if_exists=True,  # Don't reprocess existing files
+)
+
+# Batch loading with filters
+knowledge.insert_many(
+    paths=["docs/", "policies/"],
+    skip_if_exists=True,
+    include=["*.pdf", "*.md"],
+    exclude=["*temp*", "*draft*"]
+)
+```
+
+### 3. Use Metadata Filters
+
+Narrow searches before search:
+
+```python
+# Slow: search everything
+results = knowledge.search("deployment process")
+
+# Fast: filter first, then search
+results = knowledge.search(
+    query="deployment process",
+    filters={"department": "engineering", "type": "procedure"}
+)
+
+# Validate filters to catch typos
+valid_filters, invalid_keys = knowledge.validate_filters({
+    "department": "engineering",
+    "invalid_key": "value"  # This gets flagged
+})
+```
+
+### 4. Match Chunking to Content
+
+| Strategy | Speed | Quality | Best For |
+|----------|-------|---------|----------|
+| Fixed Size | Fast | Good | Uniform content |
+| Semantic | Slower | Best | Complex documents |
+| Recursive | Fast | Good | Structured docs |
+
+```python
+from agno.knowledge.chunking.fixed_size_chunking import FixedSizeChunking
+from agno.knowledge.chunking.semantic_chunking import SemanticChunking
+
+# Fast processing
+FixedSizeChunking(chunk_size=5000, overlap=200)
+
+# Better quality (slower)
+SemanticChunking(similarity_threshold=0.5)
+```
+
+### 5. Use Async for Batch Operations
+
+Process multiple sources concurrently:
+
+```python
+import asyncio
+
+async def load_knowledge():
+    await asyncio.gather(
+        knowledge.ainsert(path="docs/hr/"),
+        knowledge.ainsert(path="docs/engineering/"),
+        knowledge.ainsert(url="https://company.com/api-docs"),
+    )
+
+asyncio.run(load_knowledge())
+```
+
+## Common Issues
+
+### Irrelevant Search Results
+
+**Causes:** Chunks too large/small, wrong chunking strategy.
+
+**Fixes:**
+- Try semantic chunking for better context
+- Increase `max_results` to check if relevant results are ranked lower
+- Add metadata filters to narrow scope
+
+```python
+# Debug search quality
+results = knowledge.search("your query", max_results=10)
+for doc in results:
+    print(doc.content[:200])
+```
+
+### Slow Content Loading
+
+**Causes:** Reprocessing existing files, semantic chunking on large datasets.
+
+**Fixes:**
+- Use `skip_if_exists=True`
+- Switch to fixed-size chunking
+- Process in batches
+```python
+# Only process new PDFs
+knowledge.insert(
+    path="documents/",
+    include=["*.pdf"],
+    exclude=["*draft*", "*backup*"],
+    skip_if_exists=True,
+)
+```
+
+### Memory Issues
+
+**Causes:** Loading too many large files at once, chunk sizes too large.
+
+**Fixes:**
+- Process in smaller batches
+- Reduce chunk size
+- Use include/exclude patterns
+- Clear outdated content with `knowledge.remove_content_by_id(content_id)`
+
+## Advanced Optimizations
+
+### Hybrid Search
+
+Combine vector and keyword search:
+```python
+from agno.vectordb.pgvector import PgVector, SearchType
+
+vector_db = PgVector(
+    table_name="docs",
+    db_url=db_url,
+    search_type=SearchType.hybrid,
+)
+```
+
+### Reranking
+
+Improve result ordering:
+```python
+from agno.knowledge.reranker.cohere import CohereReranker
+
+vector_db = PgVector(
+    table_name="docs",
+    db_url=db_url,
+    reranker=CohereReranker(model="rerank-v3.5", top_n=10),
+)
+```
+
+### Smaller Embedding Dimensions
+
+Trade slight quality for faster search:
+```python
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+
+embedder = OpenAIEmbedder(
+    id="text-embedding-3-large",
+    dimensions=1024,  # Instead of 3072
+)
+```
+
+## Monitoring
+```python
+import time
+
+# Time searches
+start = time.time()
+results = knowledge.search("test query", max_results=5)
+print(f"Search: {time.time() - start:.2f}s")
+
+# Check failed content
+content_list, total = knowledge.get_content()
+for content in content_list:
+    if content.status == "failed":
+        status, message = knowledge.get_content_status(content.id)
+        print(f"{content.name}: {message}")
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Chunking" icon="scissors" href="/knowledge/concepts/chunking/overview">
+    How chunking affects performance
+  </Card>
+  <Card title="Vector DB" icon="database" href="/knowledge/concepts/vector-db">
+    Compare database options
+  </Card>
+  <Card title="Hybrid Search" icon="magnifying-glass" href="/knowledge/concepts/search-and-retrieval/hybrid-search">
+    Combine vector and keyword search
+  </Card>
+  <Card title="Embedders" icon="brain" href="/knowledge/concepts/embedder/overview">
+    Choose the right embedder
+  </Card>
+</CardGroup>

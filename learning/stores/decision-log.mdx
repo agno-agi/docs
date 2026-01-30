@@ -1,0 +1,172 @@
+---
+title: Decision Log
+sidebarTitle: Decision Log
+description: "Decisions with reasoning for auditing and learning."
+mode: wide
+---
+
+The Decision Log Store records decisions made by agents with reasoning, context, and outcomes. Useful for auditing agent behavior, debugging unexpected outcomes, and building feedback loops.
+
+| Aspect | Value |
+|--------|-------|
+| **Scope** | Per agent |
+| **Persistence** | Long-term |
+| **Default mode** | Agentic |
+| **Supported modes** | Always, Agentic |
+
+## Basic Usage
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.learn import LearningMachine, DecisionLogConfig
+from agno.models.openai import OpenAIChat
+
+agent = Agent(
+    id="my-agent",
+    model=OpenAIChat(id="gpt-4o"),
+    db=PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai"),
+    learning=LearningMachine(
+        decision_log=DecisionLogConfig(),
+    ),
+    instructions=[
+        "When you make a significant choice, use log_decision to record it.",
+        "Include your reasoning and alternatives you considered.",
+    ],
+)
+
+agent.print_response(
+    "I need help choosing between Python and JavaScript for web scraping.",
+    session_id="session_1",
+)
+
+# View logged decisions
+lm = agent.get_learning_machine()
+lm.decision_log_store.print(agent_id="my-agent", limit=5)
+```
+
+## Agentic Mode
+
+The agent receives tools to explicitly log decisions.
+```python
+from agno.learn import LearningMachine, LearningMode, DecisionLogConfig
+
+agent = Agent(
+    id="my-agent",
+    model=OpenAIChat(id="gpt-4o"),
+    db=db,
+    learning=LearningMachine(
+        decision_log=DecisionLogConfig(mode=LearningMode.AGENTIC),
+    ),
+)
+```
+
+Available tools: `log_decision`, `record_outcome`, `search_decisions`
+
+The agent decides when a decision is significant enough to log.
+
+## Always Mode
+
+Tool calls are automatically logged as decisions.
+```python
+from agno.learn import LearningMachine, LearningMode, DecisionLogConfig
+
+agent = Agent(
+    id="my-agent",
+    model=OpenAIChat(id="gpt-4o"),
+    db=db,
+    learning=LearningMachine(
+        decision_log=DecisionLogConfig(mode=LearningMode.ALWAYS),
+    ),
+    tools=[DuckDuckGoTools()],
+)
+
+agent.print_response("What are the latest developments in AI agents?")
+# Tool calls are automatically recorded as decisions
+```
+
+Tradeoff: logs every tool call, may generate noise.
+
+## Data Model
+
+| Field | Description |
+|-------|-------------|
+| `id` | Unique identifier (e.g., "dec_abc123") |
+| `decision` | What was decided |
+| `reasoning` | Why this decision was made |
+| `decision_type` | Category: tool_selection, response_style, clarification |
+| `context` | The situation that required a decision |
+| `alternatives` | Other options considered |
+| `confidence` | How confident (0.0 to 1.0) |
+| `outcome` | What happened as a result |
+| `outcome_quality` | Was it good, bad, or neutral |
+| `created_at` | When the decision was made |
+
+## Recording Outcomes
+
+Update decisions with what actually happened to build feedback loops:
+```python
+lm = agent.get_learning_machine()
+
+# Via store directly
+lm.decision_log_store.update_outcome(
+    decision_id="dec_abc123",
+    outcome="User was satisfied with Python recommendation",
+    outcome_quality="good",
+)
+```
+
+Or the agent can use the `record_outcome` tool during conversation.
+
+## Accessing Decisions
+```python
+lm = agent.get_learning_machine()
+
+# Search decisions
+decisions = lm.decision_log_store.search(
+    agent_id="my-agent",
+    decision_type="tool_selection",
+    days=7,
+    limit=10,
+)
+
+for d in decisions:
+    print(f"{d.decision}: {d.reasoning}")
+
+# Debug output
+lm.decision_log_store.print(agent_id="my-agent", limit=5)
+```
+
+## Context Injection
+
+Recent decisions are injected into the system prompt:
+```
+<decision_log>
+Recent decisions:
+
+- **Recommended Python over JavaScript**
+  Reasoning: Web scraping libraries are more mature in Python
+  Outcome: User was satisfied
+
+- **Used web search for current info**
+  Reasoning: Question about recent developments requires fresh data
+</decision_log>
+```
+
+## Decision Types
+
+Common categories for organizing decisions:
+
+| Type | When to use |
+|------|-------------|
+| `tool_selection` | Choosing which tool to call |
+| `response_style` | Deciding how to format or phrase response |
+| `clarification` | Choosing to ask for more info |
+| `escalation` | Deciding to defer to human |
+| `approach` | Choosing between solution strategies |
+
+## Use Cases
+
+- **Auditing**: Review what decisions agents made and why
+- **Debugging**: Understand unexpected behavior by examining reasoning
+- **Learning**: Analyze outcome patterns to improve agent instructions
+- **Feedback loops**: Record outcomes to identify successful patterns

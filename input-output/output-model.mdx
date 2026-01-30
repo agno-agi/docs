@@ -1,0 +1,223 @@
+---
+title: Output Model
+sidebarTitle: Output Model
+description: Use secondary model, custom styling to refine the final output.
+---
+
+Agno supports a modular output model pipeline for response refinement when required. 
+Use secondary model if you need to refine the response or validate the response from the primary model.
+
+## How it works
+
+1. Primary model generates response (Optionally feed this as intermediate response to the secondary model)
+2. Optional Secondary model processes intermediate response, formats and returns the final response
+3. Optionally, the final response can be further custom styled and validated
+
+## Model Selection
+
+Design your agent based on three dimensions: Reasoning (Logic), Presentation (Style), and Structure (Schema)
+
+* Single model (`model`): Select the 'doer' or 'pipeline brain' based on reasoning capabity *(for example, GPT-4o for complex tasks, Claude-3 for simple ones)*.
+* Single model with output refinement (`output_model`): In single model pipeline, select the 'formatter' or 'pipeline stylist' based on formatting capability *(for example, Claude Opus 4.5 for prose, GPT-5-mini for cost optimization)*.
+* Multi-model (`parser_model`): Add a secondary model if the primary model is weaker or the output is not structured or needs refinement.*(For example, with OpenAI/Anthropic, use `parser_model` with a smart model (for example, Claude 4.5 or later) to "fix" or "extract" desired output)*.
+
+Use these parameters to select the desired output model pipeline:
+
+- `model`: Mandatory, specifies the primary model to generate a response
+- `output_schema`: The schema to validate the response against
+- `output_model`: When using single model, if the model does not support structured output, use this to validate the response    
+- `output_model_prompt`: Optional, used in conjuction with `output_model` to specify additional custom formatting to refine output
+- `parser_model`: The secondary model used to further refine the intermediary response for better outcomes
+- `parser_model_prompt`: Optional, used in conjuction with `parser_model` to specify additional instructions to control the `parser_model` output
+
+## Use cases
+| Model Design | Use Case | Configuration |
+|-------------|----------|----------------|
+| Single Model | Need better prose quality | `output_model` = Claude Opus 4.5 |
+| Single Model | Need to reduce costs | `output_model` = GPT-5-mini |
+| Single Model | Primary model lacks structured output or lacks desired formatting | `parser_model` = GPT-4o, `output_schema` = your desired schema, `output_model` = Claude Opus 4.5 |
+| Single Model | Need custom formatting style | `output_model` = Claude Opus 4.5, `output_model_prompt` = your desired formatting instructions |
+| Single Model | Simple structured data extraction | `output_schema` = your desired schema |
+| Multi Model | Standard Agent | `model` = OpenAIResponses(id="gpt-5.2") |
+| Multi Model | Strict JSON   | `model` = OpenAIResponses(id="gpt-5.2") and `output_schema` = your desired schema |
+| Multi Model | Strict JSON (Weak Model) | `model` = OpenAIResponses(id="gpt-5.2") and `parser_model` = GPT-4o and `output_schema` = your desired schema |
+| Multi Model | Reasoning + Great Prose | `model` = OpenAIResponses(id="gpt-5.2") and `output_model` = Claude Opus 4.5 |
+| Multi Model | Cost Efficient | `model` = OpenAIResponses(id="gpt-5.2") and `output_model` = GPT-5-mini |
+
+## Custom Output Style 
+
+### `output_model_prompt`
+
+Use `output_model_prompt` optionally whenever you use an `output_model` to set the style, 
+tone, and format for the final output. It replaces the default System Prompt for the specified `output_model`.
+
+```python
+from agno.agent import Agent
+from agno.models.anthropic import Claude
+from agno.models.openai import OpenAIResponses
+from agno.tools.hackernews import HackerNewsTools
+
+# Executive summary style
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    output_model=Claude(id="claude-sonnet-4-5"),
+    output_model_prompt="Format as a concise executive summary. No fluff, just insights.",
+    tools=[HackerNewsTools()],
+)
+
+# Technical documentation style
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    output_model=Claude(id="claude-sonnet-4-5"),
+    output_model_prompt="Format as technical documentation with code examples where relevant.",
+    tools=[HackerNewsTools()],
+)
+```
+<Note>
+**Default Behavior (if you don't set `output_model_prompt`):**
+
+Without `output_model_prompt`, the 
+`output_model` will just summarize/rewrite the content in its default voice, which may not be what you want.
+
+**When to use it:** 
+
+Use it to set the tone (Write a professional, executive summary), format (Format as technical documentation with code examples where relevant), or audience (Explain to a layman or ELI5) for the response.
+</Note>
+
+### `parser_model_prompt`
+
+The `parser_model_prompt` is optional. In most cases,the default system prompt works well for secondary model.
+Use it optionally whenever you use a secondary `parser_model` to set the style, tone, and format for the final output.  
+
+```python
+from typing import List
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.models.ollama import Ollama
+from pydantic import BaseModel, Field
+class MovieScript(BaseModel):
+    setting: str = Field(..., description="Provide a nice setting for a blockbuster movie.")
+    ending: str = Field(..., description="Ending of the movie. If not available, provide the best ending you can think of.")
+    genre: str = Field(..., description="Genre of the movie. If not available, select the best genre you can think of.")
+    name: str = Field(..., description="Name of the movie")
+    characters: List[str] = Field(..., description="Name of characters for this movie.")
+    storyline: str = Field(..., description="3 sentence storyline for the movie. Make it exciting!")
+# Agent with a parser model + custom parser prompt
+agent = Agent(
+    model=Ollama(id="llama3.1"),
+    description="You are a movie script writer.",
+    output_schema=MovieScript,
+    parser_model=OpenAIChat(id="gpt-4o"),
+    parser_model_prompt="Extract the movie details from the input. Ensure the JSON is valid and matches the MovieScript schema exactly."
+)
+agent.print_response("New york")
+```
+
+<Note>
+**Default Behavior (if you don't set `parser_model_prompt`):** 
+
+The specified `parser_model` 
+prompt defaults to: "You are tasked with creating a structured output from the provided user 
+message." (or similar).
+
+**When to use it:** 
+
+You only need to set this if the default extraction fails or 
+if you need to provide specific rules for how to extract the final output data (for example, "Extract 
+dates in YYYY-MM-DD format" or "Extract only the first 3 items").
+</Note>
+
+
+## Examples 
+
+| Use Case | Example |
+|----------|---------|
+| Better writing | Research with GPT-5.2, write with Claude Opus 4.5 |
+| Cost optimization | Reason with DeepSeek, format with GPT-5-mini |
+| Structured output | Use a model without native support, format with one that has it |
+
+### Better Writing
+
+GPT-5.2 excels at research and tool use, but Claude Opus 4.5 produces better prose. Combine them:
+```python
+from agno.agent import Agent
+from agno.models.anthropic import Claude
+from agno.models.openai import OpenAIResponses
+from agno.tools.hackernews import HackerNewsTools
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),       # Research and tool calls
+    output_model=Claude(id="claude-opus-4-5"), # Creative writing
+    output_model_prompt="Write an engaging, well-structured article based on these findings.",
+    tools=[HackerNewsTools()],
+)
+
+agent.print_response("Write an article about the latest AI breakthroughs", stream=True)
+```
+
+The primary model gathers information from HackerNews. Claude Opus 4.5 transforms those findings into polished prose.
+
+### Cost Optimization
+
+Use a capable but expensive model for complex reasoning, a cheaper model for formatting:
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.tools.yfinance import YFinanceTools
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),       # Expensive: complex analysis + tools
+    output_model=OpenAIResponses(id="gpt-5-mini"),  # Cheap: just formatting
+    output_model_prompt="Summarize the analysis in 3 bullet points.",
+    tools=[YFinanceTools()],
+)
+
+agent.print_response("Deep analysis of NVDA financials", stream=True)
+```
+
+Or use a cheaper reasoning model with a better formatting model:
+```python
+from agno.agent import Agent
+from agno.models.deepseek import DeepSeek
+from agno.models.openai import OpenAIResponses
+from agno.tools.yfinance import YFinanceTools
+
+agent = Agent(
+    model=DeepSeek(id="deepseek-chat"),        # Cheap: reasoning + tools
+    output_model=OpenAIResponses(id="gpt-5.2"), # Better formatting
+    tools=[YFinanceTools()],
+)
+
+agent.print_response("Analyze AAPL stock performance", stream=True)
+```
+
+### Structured Output Support
+
+Some models lack native structured output. Use an output model that supports it:
+```python
+from pydantic import BaseModel, Field
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.tools.hackernews import HackerNewsTools
+
+class ArticleSummary(BaseModel):
+    title: str
+    key_points: list[str] = Field(description="3-5 main takeaways")
+    sentiment: str = Field(description="positive, negative, or neutral")
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),            # Primary reasoning
+    output_model=OpenAIResponses(id="gpt-5.2"),    # Structured output
+    output_schema=ArticleSummary,
+    tools=[HackerNewsTools()],
+)
+
+response = agent.run("Summarize the top AI story on HackerNews")
+summary: ArticleSummary = response.content
+print(summary.key_points)
+```
+
+## Related
+
+- [Structured Output](/input-output/structured-output/agent): Get validated Pydantic objects
+- [Structured Input](/input-output/structured-input/agent): Pass validated input to agents
