@@ -1,0 +1,239 @@
+---
+title: Your First Agent
+sidebarTitle: "First Agent"
+description: "Build your first learning agent."
+keywords: [agno, agent, quickstart, tutorial]
+mode: "wide"
+---
+
+## Setup
+
+<Steps>
+  <Step title="Create and activate a virtual environment">
+    <CodeGroup>
+    ```bash Mac
+    uv venv --python 3.12
+    source .venv/bin/activate
+    ```
+    ```bash Windows
+    uv venv --python 3.12
+    .venv\Scripts\activate
+    ```
+    </CodeGroup>
+  </Step>
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai sqlalchemy chromadb
+    ```
+  </Step>
+  <Step title="Export your API key">
+    <CodeGroup>
+    ```bash Mac
+    export OPENAI_API_KEY=sk-***
+    ```
+    ```bash Windows
+    setx OPENAI_API_KEY sk-***
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+## Create an Agent
+
+```python basic_agent.py
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+
+agent = Agent(model=OpenAIResponses(id="gpt-5.2"))
+
+agent.print_response("Hi! I'm Alice. I work at Anthropic as a research scientist.", stream=True)
+```
+
+```bash
+python basic_agent.py
+```
+
+That's a basic agent. It responds, but it doesn't remember anything.
+
+## Add Learning
+
+Add a database and set `learning=True`:
+
+```python 01_always_learn.py
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIResponses
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=SqliteDb(db_file="tmp/agents.db"),
+    add_history_to_context=True,
+    learning=True,
+    markdown=True,
+)
+
+if __name__ == "__main__":
+    user_id = "alice@example.com"
+
+    # Session 1: Share information naturally
+    print("\n--- Session 1: Extraction happens automatically ---\n")
+    agent.print_response(
+        "Hi! I'm Alice. I work at Anthropic as a research scientist. "
+        "I prefer concise responses without too much explanation.",
+        user_id=user_id,
+        session_id="session_1",
+        stream=True,
+    )
+    lm = agent.get_learning_machine()
+    lm.user_profile_store.print(user_id=user_id)
+    lm.user_memory_store.print(user_id=user_id)
+
+    # Session 2: New session - agent remembers
+    print("\n--- Session 2: Agent remembers across sessions ---\n")
+    agent.print_response(
+        "What do you know about me?",
+        user_id=user_id,
+        session_id="session_2",
+        stream=True,
+    )
+```
+
+```bash
+python 01_always_learn.py
+```
+
+Session 2 is a new conversation. Different session ID. But the agent remembers Alice.
+
+**How it works:** When you set `learning=True`, the agent extracts user profile and memories in parallel with generating the response, stores them in the database, and recalls them in future sessions. No tool calls visible. The agent learns in the background.
+
+## Agentic Learning
+
+For more control, use agentic mode. The agent receives tools and decides what to save.
+
+```python 02_agentic_learn.py
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.learn import (
+    LearningMachine,
+    LearningMode,
+    UserMemoryConfig,
+    UserProfileConfig,
+)
+from agno.models.openai import OpenAIResponses
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=SqliteDb(db_file="tmp/agents.db"),
+    add_history_to_context=True,
+    learning=LearningMachine(
+        user_profile=UserProfileConfig(mode=LearningMode.AGENTIC),
+        user_memory=UserMemoryConfig(mode=LearningMode.AGENTIC),
+    ),
+    markdown=True,
+)
+
+if __name__ == "__main__":
+    user_id = "alice@example.com"
+
+    # Session 1: Agent decides what to save via tool calls
+    print("\n--- Session 1: Agent uses tools to save profile and memories ---\n")
+    agent.print_response(
+        "Hi! I'm Alice. I work at Anthropic as a research scientist. "
+        "I prefer concise responses without too much explanation.",
+        user_id=user_id,
+        session_id="session_1",
+        stream=True,
+    )
+    lm = agent.get_learning_machine()
+    lm.user_profile_store.print(user_id=user_id)
+    lm.user_memory_store.print(user_id=user_id)
+
+    # Session 2: New session - agent remembers
+    print("\n--- Session 2: Agent remembers across sessions ---\n")
+    agent.print_response(
+        "What do you know about me?",
+        user_id=user_id,
+        session_id="session_2",
+        stream=True,
+    )
+```
+
+```bash
+python 02_agentic_learn.py
+```
+
+Watch for tool calls in the output. The agent explicitly decides when to save.
+
+## Cross-User Insights
+
+Agents can learn knowledge that transfers across users. One user teaches the agent, another benefits.
+
+```python 03_learned_knowledge.py
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.knowledge import Knowledge
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.learn import LearnedKnowledgeConfig, LearningMachine, LearningMode
+from agno.models.openai import OpenAIResponses
+from agno.vectordb.chroma import ChromaDb, SearchType
+
+knowledge = Knowledge(
+    name="Agent Learnings",
+    vector_db=ChromaDb(
+        name="learnings",
+        path="tmp/chromadb",
+        persistent_client=True,
+        search_type=SearchType.hybrid,
+        embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+    ),
+)
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=SqliteDb(db_file="tmp/agents.db"),
+    add_history_to_context=True,
+    learning=LearningMachine(
+        knowledge=knowledge,
+        learned_knowledge=LearnedKnowledgeConfig(mode=LearningMode.AGENTIC),
+    ),
+    markdown=True,
+)
+
+if __name__ == "__main__":
+    # Session 1: User 1 teaches the agent
+    print("\n--- Session 1: User 1 saves a learning ---\n")
+    agent.print_response(
+        "We're trying to reduce our cloud egress costs. Remember this.",
+        user_id="engineer_1@example.com",
+        session_id="session_1",
+        stream=True,
+    )
+    lm = agent.get_learning_machine()
+    lm.learned_knowledge_store.print(query="cloud")
+
+    # Session 2: User 2 benefits from the learning
+    print("\n--- Session 2: User 2 asks a related question ---\n")
+    agent.print_response(
+        "I'm picking a cloud provider for a data pipeline. Key considerations?",
+        user_id="engineer_2@example.com",
+        session_id="session_2",
+        stream=True,
+    )
+```
+
+```bash
+python 03_learned_knowledge.py
+```
+
+User 2 gets advice informed by User 1's insight. No shared context. No explicit handoff.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Your First Multi-Agent System" icon="code-branch" href="/first-multi-agent-system">
+    Build your first multi-agent system.
+  </Card>
+  <Card title="Build Agents" icon="user-robot" href="/agents/overview">
+    Configuration, tools, and advanced patterns
+  </Card>
+</CardGroup>

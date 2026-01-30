@@ -1,0 +1,144 @@
+---
+title: Learning Modes
+sidebarTitle: Learning Modes
+description: "Control when and how agents learn."
+mode: wide
+---
+
+Learning modes control when and how a Learning Machine captures information. Each store can use a different mode.
+
+| Mode | How it works | Tradeoff |
+|------|--------------|----------|
+| **Always** | Extraction runs automatically after each response | Extra LLM call per interaction |
+| **Agentic** | Agent receives tools and decides what to save | May miss implicit information |
+| **Propose** | Agent proposes learnings, user confirms before saving | Requires user interaction |
+
+## Always Mode
+
+Extraction happens automatically in the background. No agent tools involved.
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.learn import LearningMachine, LearningMode, UserProfileConfig
+from agno.models.openai import OpenAIResponses
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai"),
+    learning=LearningMachine(
+        user_profile=UserProfileConfig(mode=LearningMode.ALWAYS),
+    ),
+)
+
+# Profile info extracted automatically - no tool calls visible
+agent.print_response(
+    "I'm Alice Chen, but please call me Ali.",
+    user_id="alice@example.com",
+)
+```
+
+Best for: User Profile, User Memory, Session Context
+
+## Agentic Mode
+
+The agent receives tools and decides when to save.
+```python
+from agno.learn import LearningMachine, LearningMode, UserProfileConfig
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        user_profile=UserProfileConfig(mode=LearningMode.AGENTIC),
+    ),
+)
+
+# Agent decides to call update_user_profile tool
+agent.print_response(
+    "Remember that I prefer dark mode interfaces.",
+    user_id="alice@example.com",
+)
+```
+
+Best for: Learned Knowledge, Entity Memory, Decision Log
+
+### Tools by Store
+
+| Store | Tools |
+|-------|-------|
+| User Profile | `update_user_profile` |
+| User Memory | `save_user_memory`, `delete_user_memory` |
+| Entity Memory | `search_entities`, `create_entity`, `update_entity`, `add_fact`, `add_event` |
+| Learned Knowledge | `search_learnings`, `save_learning` |
+| Decision Log | `log_decision`, `record_outcome`, `search_decisions` |
+
+## Propose Mode
+
+The agent proposes learnings. User must confirm before saving.
+```python
+from agno.learn import LearningMachine, LearningMode, LearnedKnowledgeConfig
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        knowledge=knowledge,
+        learned_knowledge=LearnedKnowledgeConfig(mode=LearningMode.PROPOSE),
+    ),
+)
+
+# Agent proposes, user confirms
+agent.print_response(
+    "That's a great insight about API rate limits - we should remember that.",
+    user_id="alice@example.com",
+)
+```
+
+Best for: High-stakes knowledge, regulated environments, quality control
+
+## Combining Modes
+
+Use different modes for different stores:
+```python
+from agno.learn import (
+    LearningMachine,
+    LearningMode,
+    UserProfileConfig,
+    UserMemoryConfig,
+    LearnedKnowledgeConfig,
+)
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        user_profile=UserProfileConfig(mode=LearningMode.ALWAYS),     # Automatic
+        user_memory=UserMemoryConfig(mode=LearningMode.ALWAYS),       # Automatic
+        learned_knowledge=LearnedKnowledgeConfig(mode=LearningMode.AGENTIC),  # Agent-driven
+    ),
+)
+```
+
+## Defaults by Store
+
+| Store | Default mode | Reason |
+|-------|--------------|--------|
+| User Profile | Always | Names and preferences should be captured consistently |
+| User Memory | Always | Observations accumulate passively |
+| Session Context | Always | Session state needs continuous tracking |
+| Entity Memory | Agentic | Agent builds knowledge graph as needed |
+| Learned Knowledge | Agentic | Agent decides what insights are worth saving |
+| Decision Log | Agentic | Agent logs significant decisions explicitly |
+
+## Choosing a Mode
+
+| Scenario | Mode |
+|----------|------|
+| Capture user names and preferences | Always |
+| Build user memory automatically | Always |
+| Track session progress | Always |
+| Agent-driven knowledge capture | Agentic |
+| Build entity knowledge graphs | Agentic |
+| Audit agent decisions | Agentic |
+| High-value collective knowledge | Propose |
+| Compliance-sensitive learning | Propose |

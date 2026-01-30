@@ -1,0 +1,218 @@
+---
+title: Creating Skills
+sidebarTitle: Creating Skills
+description: Create skills with instructions, scripts, and reference documentation.
+---
+
+A skill is a directory containing a `SKILL.md` file with optional `scripts/` and `references/` subdirectories.
+
+## Directory Structure
+
+```
+my-skill/
+├── SKILL.md           # Required: Instructions with YAML frontmatter
+├── scripts/           # Optional: Executable scripts
+│   └── helper.py
+└── references/        # Optional: Reference documentation
+    └── guide.md
+```
+
+## The SKILL.md File
+
+The `SKILL.md` file is the heart of a skill. It contains YAML frontmatter with metadata, followed by markdown instructions.
+
+### Required Fields
+
+```yaml
+---
+name: my-skill
+description: Short description of what this skill does
+---
+```
+
+- **name**: Must be lowercase, alphanumeric with hyphens only (max 64 characters)
+- **description**: Brief summary shown in the agent's system prompt (max 1024 characters)
+
+### Optional Fields
+
+```yaml
+---
+name: code-review
+description: Code review assistance with style checking and best practices
+license: Apache-2.0
+metadata:
+  version: "1.0.0"
+  author: your-name
+  tags: ["python", "code-quality"]
+---
+```
+
+### Full Example
+
+```markdown
+---
+name: code-review
+description: Code review assistance with style checking and best practices
+license: Apache-2.0
+metadata:
+  version: "1.0.0"
+  author: your-name
+  tags: ["python", "code-quality"]
+---
+
+# Code Review Skill
+
+Use this skill when reviewing code for quality, style, and best practices.
+
+## When to Use
+
+- User asks for code review or feedback
+- User wants to improve code quality
+- User needs help with refactoring
+
+## Process
+
+1. **Analyze Structure**: Review overall code organization
+2. **Check Style**: Look for style guide violations
+3. **Identify Issues**: Find bugs, security issues, performance problems
+4. **Suggest Improvements**: Provide actionable recommendations
+
+## Best Practices
+
+- Focus on the most impactful issues first
+- Explain the "why" behind suggestions
+- Provide code examples for fixes
+```
+
+## Adding Scripts
+
+Scripts are executable files the agent can run. They must have a shebang line.
+
+### Python Script Example
+
+Create `scripts/check_style.py`:
+
+```python
+#!/usr/bin/env python3
+"""Check code style and return results."""
+
+import sys
+
+def check_style(code: str) -> dict:
+    issues = []
+    lines = code.split('\n')
+
+    for i, line in enumerate(lines, 1):
+        if len(line) > 100:
+            issues.append(f"Line {i}: exceeds 100 characters")
+        if line.endswith(' '):
+            issues.append(f"Line {i}: trailing whitespace")
+
+    return {"issues": issues, "count": len(issues)}
+
+if __name__ == "__main__":
+    # Read code from stdin or argument
+    code = sys.stdin.read() if not sys.argv[1:] else sys.argv[1]
+    result = check_style(code)
+    print(result)
+```
+
+### Shell Script Example
+
+Create `scripts/lint.sh`:
+
+```bash
+#!/bin/bash
+# Run linting on provided file
+
+if [ -z "$1" ]; then
+    echo "Usage: lint.sh <file>"
+    exit 1
+fi
+
+ruff check "$1" 2>&1
+```
+
+<Note>
+Scripts are executed with the skill directory as the working directory. The agent can pass arguments when executing scripts.
+</Note>
+
+## Adding References
+
+References are documentation files the agent can load on demand.
+
+### Example Reference
+
+Create `references/style-guide.md`:
+
+```markdown
+# Python Style Guide
+
+## Naming Conventions
+
+- **Variables**: `snake_case`
+- **Classes**: `PascalCase`
+- **Constants**: `UPPER_SNAKE_CASE`
+
+## Line Length
+
+- Maximum 100 characters per line
+- Break long lines at logical points
+
+## Imports
+
+- Standard library imports first
+- Third-party imports second
+- Local imports third
+- Alphabetize within each group
+```
+
+## Validation Rules
+
+Skills are validated when loaded. Here are the rules:
+
+### Name Requirements
+
+- Maximum 64 characters
+- Lowercase letters, numbers, and hyphens only
+- Cannot start or end with a hyphen
+- No consecutive hyphens (`--`)
+- Must match the directory name
+
+### Field Limits
+
+| Field | Max Length |
+|-------|------------|
+| name | 64 characters |
+| description | 1024 characters |
+
+### Valid Licenses
+
+Common SPDX identifiers are accepted: `MIT`, `Apache-2.0`, `GPL-3.0`, `BSD-3-Clause`, etc.
+
+## Organizing Multiple Skills
+
+Create a directory containing multiple skill folders:
+
+```
+skills/
+├── code-review/
+│   ├── SKILL.md
+│   ├── scripts/
+│   └── references/
+├── git-workflow/
+│   ├── SKILL.md
+│   ├── scripts/
+│   └── references/
+└── testing/
+    ├── SKILL.md
+    └── references/
+```
+
+Load all skills at once:
+
+```python
+from agno.skills import Skills, LocalSkills
+
+skills = Skills(loaders=[LocalSkills("/path/to/skills")])
+```

@@ -1,0 +1,254 @@
+---
+title: A2AClient
+sidebarTitle: A2AClient
+description: Python client for communicating with A2A-compatible agent servers
+---
+
+The `A2AClient` provides an async interface for communicating with any [A2A protocol](https://a2a-protocol.org/) compatible server. This includes Agno AgentOS instances with A2A interface enabled, Google ADK agents, and any other A2A-compatible agent server.
+
+## Basic Usage
+
+```python
+from agno.client.a2a import A2AClient
+
+# Connect to an Agno AgentOS A2A endpoint
+client = A2AClient("http://localhost:7001/a2a/agents/my-agent")
+
+# Send a message
+result = await client.send_message(message="Hello!")
+print(result.content)
+```
+
+## Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `base_url` | `str` | Required | Base URL of the A2A server. For Agno servers, include the full agent path (e.g., `"http://localhost:7003/a2a/agents/my-agent"`) |
+| `timeout` | `int` | `30` | Request timeout in seconds |
+| `protocol` | `Literal["rest", "json-rpc"]` | `"rest"` | Protocol mode. Use `"json-rpc"` for Google ADK servers |
+
+## Connecting to Different Servers
+
+### Agno AgentOS
+
+For Agno servers with A2A interface enabled, include the full agent path in the URL:
+
+```python
+from agno.client.a2a import A2AClient
+
+# The URL includes the A2A path to the specific agent
+client = A2AClient("http://localhost:7001/a2a/agents/my-agent")
+
+result = await client.send_message(message="What can you help me with?")
+print(result.content)
+```
+
+### Google ADK
+
+Google ADK uses pure JSON-RPC mode. Set `protocol="json-rpc"`:
+
+```python
+from agno.client.a2a import A2AClient
+
+# Google ADK uses JSON-RPC at the root endpoint
+client = A2AClient("http://localhost:8001/", protocol="json-rpc")
+
+result = await client.send_message(message="Tell me an interesting fact")
+print(result.content)
+```
+
+## Methods
+
+### `send_message`
+
+Send a message to an A2A agent and wait for the complete response.
+
+```python
+result = await client.send_message(
+    message="What is the capital of France?",
+    user_id="user-123",
+    context_id="session-456",
+)
+print(result.content)
+print(f"Task ID: {result.task_id}")
+print(f"Context ID: {result.context_id}")
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `message` | `str` | Required | The text message to send |
+| `context_id` | `Optional[str]` | `None` | Context/session ID for multi-turn conversations |
+| `user_id` | `Optional[str]` | `None` | User identifier |
+| `images` | `Optional[List[Image]]` | `None` | Images to include |
+| `audio` | `Optional[List[Audio]]` | `None` | Audio files to include |
+| `videos` | `Optional[List[Video]]` | `None` | Videos to include |
+| `files` | `Optional[List[File]]` | `None` | Files to include |
+| `metadata` | `Optional[Dict[str, Any]]` | `None` | Additional metadata |
+
+**Returns:** `TaskResult`
+
+**Raises:**
+- `HTTPStatusError`: If the server returns an HTTP error (4xx, 5xx)
+- `RemoteServerUnavailableError`: If connection fails or times out
+
+### `stream_message`
+
+Stream a message response in real-time.
+
+```python
+async for event in client.stream_message(
+    message="Tell me a story",
+    user_id="user-123",
+):
+    if event.is_content and event.content:
+        print(event.content, end="", flush=True)
+
+    if event.is_final:
+        print("\n--- Stream complete ---")
+```
+
+**Parameters:** Same as `send_message`
+
+**Yields:** `StreamEvent`
+
+**Raises:**
+- `HTTPStatusError`: If the server returns an HTTP error (4xx, 5xx)
+- `RemoteServerUnavailableError`: If connection fails or times out
+
+### `get_agent_card`
+
+Get the agent card for capability discovery.
+
+```python
+card = client.get_agent_card()
+if card:
+    print(f"Agent: {card.name}")
+    print(f"Description: {card.description}")
+    print(f"Capabilities: {card.capabilities}")
+```
+
+**Returns:** `AgentCard` if available, `None` otherwise
+
+---
+### `aget_agent_card`
+
+Get the agent card for capability discovery asynchronously.
+
+```python
+card = await client.aget_agent_card()
+if card:
+    print(f"Agent: {card.name}")
+    print(f"Description: {card.description}")
+    print(f"Capabilities: {card.capabilities}")
+```
+
+**Returns:** `AgentCard` if available, `None` otherwise
+
+## Response Types
+
+### TaskResult
+
+Returned by `send_message()`:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `task_id` | `str` | Unique task identifier |
+| `context_id` | `str` | Context/session ID for multi-turn conversations |
+| `status` | `str` | Task status (`"completed"`, `"failed"`, `"canceled"`) |
+| `content` | `str` | Response text content |
+| `artifacts` | `List[Artifact]` | Any artifacts produced (files, images, etc.) |
+| `metadata` | `Optional[Dict]` | Additional response metadata |
+| `is_completed` | `bool` | True if task completed successfully |
+| `is_failed` | `bool` | True if task failed |
+| `is_canceled` | `bool` | True if task was canceled |
+
+### StreamEvent
+
+Yielded by `stream_message()`:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `event_type` | `str` | Event type (`"content"`, `"started"`, `"completed"`, `"failed"`, `"working"`) |
+| `content` | `Optional[str]` | Text content (for content events) |
+| `task_id` | `Optional[str]` | Task identifier |
+| `context_id` | `Optional[str]` | Context/session ID |
+| `metadata` | `Optional[Dict]` | Event metadata |
+| `is_final` | `bool` | True if this is the final event |
+| `is_content` | `bool` | True if this is a content event with text |
+| `is_started` | `bool` | True if this is a task started event |
+| `is_completed` | `bool` | True if this is a task completed event |
+| `is_tool_call` | `bool` | True if this is a tool call event |
+
+### Artifact
+
+Represents files, images, or other artifacts from a task:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `artifact_id` | `str` | Unique artifact identifier |
+| `name` | `Optional[str]` | Artifact name |
+| `description` | `Optional[str]` | Artifact description |
+| `mime_type` | `Optional[str]` | MIME type of the artifact |
+| `uri` | `Optional[str]` | URI to access the artifact |
+| `content` | `Optional[bytes]` | Raw content (if available) |
+
+### AgentCard
+
+Describes the capabilities of an A2A agent:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `name` | `str` | Agent name |
+| `url` | `str` | Agent URL |
+| `description` | `Optional[str]` | Agent description |
+| `version` | `Optional[str]` | Agent version |
+| `capabilities` | `List[str]` | List of agent capabilities |
+| `metadata` | `Optional[Dict]` | Additional metadata |
+
+
+## Multi-Turn Conversations
+
+Use `context_id` to maintain conversation context across multiple messages:
+
+```python
+from agno.client.a2a import A2AClient
+
+client = A2AClient("http://localhost:7003/a2a/agents/my-agent")
+
+# First message - no context_id
+result1 = await client.send_message(
+    message="My name is Alice and I love Python.",
+)
+print(f"Agent: {result1.content}")
+
+# Get context_id from response
+context_id = result1.context_id
+
+# Follow-up message - include context_id
+result2 = await client.send_message(
+    message="What is my name?",
+    context_id=context_id,
+)
+print(f"Agent: {result2.content}")  # Should remember "Alice"
+```
+
+
+## Error Handling
+
+```python
+from agno.client.a2a import A2AClient
+from agno.exceptions import RemoteServerUnavailableError
+from httpx import HTTPStatusError
+
+client = A2AClient("http://localhost:7003/a2a/agents/my-agent")
+
+try:
+    result = await client.send_message(message="Hello")
+except RemoteServerUnavailableError as e:
+    print(f"Server unavailable: {e.message}")
+    print(f"URL: {e.base_url}")
+except HTTPStatusError as e:
+    print(f"HTTP error: {e.response.status_code}")
+```

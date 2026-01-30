@@ -1,0 +1,140 @@
+---
+title: Embedders
+sidebarTitle: Overview
+description: Convert text into vector representations for semantic search.
+keywords: [embedders, embeddings, vectors, semantic search]
+---
+
+Embedders convert text into vectors (lists of numbers) that capture meaning. These vectors enable semantic search, so "How do I reset my passcode?" finds documents mentioning "change PIN" even without keyword matches.
+
+```python
+from agno.knowledge.knowledge import Knowledge
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.vectordb.pgvector import PgVector
+
+knowledge = Knowledge(
+    vector_db=PgVector(
+        table_name="docs",
+        db_url=db_url,
+        embedder=OpenAIEmbedder(),  # Default
+    ),
+)
+```
+
+## How It Works
+
+1. **Insert**: When you add content, each chunk is converted to a vector
+2. **Store**: Vectors are saved in your vector database
+3. **Search**: Queries are embedded and matched against stored vectors by similarity
+
+Agno uses `OpenAIEmbedder` by default, but you can swap in any supported embedder.
+
+## Configuration
+
+```python
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+
+embedder = OpenAIEmbedder(
+    id="text-embedding-3-small",
+    dimensions=1536,
+)
+```
+
+### Using with Knowledge
+
+```python
+from agno.knowledge.knowledge import Knowledge
+from agno.vectordb.pgvector import PgVector
+
+knowledge = Knowledge(
+    vector_db=PgVector(
+        table_name="docs",
+        db_url=db_url,
+        embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+    ),
+)
+
+# Content is embedded automatically on insert
+knowledge.insert(path="documents/")
+```
+
+## Batch Embeddings
+
+Process multiple texts in a single API call to reduce requests and improve performance:
+
+```python
+embedder = OpenAIEmbedder(
+    id="text-embedding-3-small",
+    dimensions=1536,
+    enable_batch=True,
+    batch_size=100,
+)
+```
+
+Embedders with batch support: OpenAI, Azure OpenAI, Gemini, Cohere, Voyage AI, Mistral, Fireworks, Together, Jina, Nebius.
+
+## Best Practices
+
+<Warning>
+**Re-embed when changing models**: Vectors from different embedders aren't compatible. If you switch embedders, you must re-embed all content.
+</Warning>
+
+<Tip>
+**Test retrieval quality**: Use sample queries to verify you're finding the right chunks. Adjust chunking strategy or embedder if results are poor.
+</Tip>
+
+<Tip>
+**Match dimensions**: Ensure your embedder's output dimensions match what your vector database expects.
+</Tip>
+
+## Supported Embedders
+
+| Embedder | Type | Cost | Notes |
+|----------|------|------|-------|
+| [OpenAI](/knowledge/concepts/embedder/openai/overview) | Hosted | $$ | Default, excellent quality |
+| [Gemini](/knowledge/concepts/embedder/gemini/overview) | Hosted | $$ | Multilingual, Google ecosystem |
+| [Cohere](/knowledge/concepts/embedder/cohere/overview) | Hosted | $$ | Strong retrieval performance |
+| [Voyage AI](/knowledge/concepts/embedder/voyageai/overview) | Hosted | $$$ | Specialized for retrieval |
+| [Mistral](/knowledge/concepts/embedder/mistral/overview) | Hosted | $$ | European provider |
+| [Ollama](/knowledge/concepts/embedder/ollama/overview) | Local | Free | Privacy, offline |
+| [FastEmbed](/knowledge/concepts/embedder/qdrant-fastembed/overview) | Local | Free | Fast local embeddings |
+| [HuggingFace](/knowledge/concepts/embedder/huggingface/overview) | Local/Hosted | Free/$ | Open source models |
+| [AWS Bedrock](/knowledge/concepts/embedder/aws-bedrock/overview) | Hosted | $$ | AWS ecosystem |
+| [Azure OpenAI](/knowledge/concepts/embedder/azure-openai/overview) | Hosted | $$ | Azure ecosystem |
+| [Fireworks](/knowledge/concepts/embedder/fireworks/overview) | Hosted | $ | Fast inference |
+| [Together](/knowledge/concepts/embedder/together/overview) | Hosted | $ | Open source models |
+| [Jina](/knowledge/concepts/embedder/jina/overview) | Hosted | $$ | Multilingual |
+| [Nebius](/knowledge/concepts/embedder/nebius/overview) | Hosted | $ | European provider |
+
+## Choosing an Embedder
+
+| Consideration | Recommendation |
+|---------------|----------------|
+| General use | OpenAI or Gemini |
+| Privacy/offline | Ollama or FastEmbed |
+| Multilingual | Gemini or Jina |
+| Cost-sensitive | Local embedders (free) or Fireworks/Together ($) |
+| Best retrieval quality | Voyage AI or Cohere |
+
+**Key factors:**
+- **Hosted vs local**: Local for privacy and no API costs; hosted for quality and convenience
+- **Latency and cost**: Smaller models are cheaper and faster; larger models often retrieve better
+- **Language support**: Ensure your embedder supports your content's languages
+- **Dimension size**: Match your vector database's expected embedding dimensions
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="OpenAI Embedder" icon="brain" href="/knowledge/concepts/embedder/openai/overview">
+    Default embedder setup
+  </Card>
+  <Card title="Ollama Embedder" icon="server" href="/knowledge/concepts/embedder/ollama/overview">
+    Local embeddings for privacy
+  </Card>
+  <Card title="Vector DB" icon="database" href="/knowledge/concepts/vector-db">
+    Store your embeddings
+  </Card>
+  <Card title="Chunking" icon="scissors" href="/knowledge/concepts/chunking/overview">
+    Prepare content for embedding
+  </Card>
+</CardGroup>

@@ -1,0 +1,100 @@
+---
+title: Agent with Memory
+description: "Store user preferences that persist across conversations."
+mode: wide
+---
+
+Memory lets your agent remember facts about users across conversations. Unlike storage (which persists conversation history), memory stores user-level information like preferences and context.
+
+<Steps>
+
+  <Step title="Create a Python file">
+    ```python agent_with_memory.py
+    from agno.agent import Agent
+    from agno.db.sqlite import SqliteDb
+    from agno.memory import MemoryManager
+    from agno.models.openai import OpenAIResponses
+    from agno.tools.yfinance import YFinanceTools
+    from rich.pretty import pprint
+
+    db = SqliteDb(db_file="tmp/agents.db")
+
+    memory_manager = MemoryManager(
+        model=OpenAIResponses(id="gpt-5.2"),
+        db=db,
+    )
+
+    agent = Agent(
+        model=OpenAIResponses(id="gpt-5.2"),
+        tools=[YFinanceTools()],
+        db=db,
+        memory_manager=memory_manager,
+        enable_agentic_memory=True,
+        markdown=True,
+    )
+
+    user_id = "investor@example.com"
+
+    # Tell the agent about yourself
+    agent.print_response(
+        "I'm interested in AI and semiconductor stocks. My risk tolerance is moderate.",
+        user_id=user_id,
+        stream=True,
+    )
+
+    # The agent now knows your preferences
+    agent.print_response(
+        "What stocks would you recommend for me?",
+        user_id=user_id,
+        stream=True,
+    )
+
+    # View stored memories
+    memories = agent.get_user_memories(user_id=user_id)
+    print("\nStored Memories:")
+    pprint(memories)
+    ```
+  </Step>
+
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai yfinance sqlalchemy rich
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+
+    <CodeGroup>
+
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run Agent">
+    ```bash
+    python agent_with_memory.py
+    ```
+  </Step>
+
+</Steps>
+
+## Memory vs Storage
+
+| Feature | Storage | Memory |
+|---------|---------|--------|
+| What it stores | Conversation history | User preferences and facts |
+| Scope | Per session | Per user (across all sessions) |
+| Use case | "What did we discuss?" | "What do you know about me?" |
+
+## Enabling Memory
+
+1. **`enable_agentic_memory=True`** (used above): Agent decides when to store/recall via tool calls. More efficient.
+2. **`update_memory_on_run=True`**: Memory manager runs after every response. Guaranteed capture, higher latency.

@@ -1,0 +1,112 @@
+---
+title: "Team with Memory Manager"
+---
+
+This example demonstrates how to use persistent memory with a team. After each run, user memories are created and updated, allowing the team to remember information about users across sessions and provide personalized experiences.
+
+## Code
+
+```python team_with_memory_manager.py
+"""
+This example shows you how to use persistent memory with an Agent.
+
+After each run, user memories are created/updated.
+
+To enable this, set `update_memory_on_run=True` in the Agent config.
+"""
+
+from uuid import uuid4
+
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.memory import MemoryManager  # noqa: F401
+from agno.models.openai import OpenAIResponses
+from agno.team import Team
+
+db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
+db = PostgresDb(db_url=db_url)
+
+session_id = str(uuid4())
+john_doe_id = "john_doe@example.com"
+
+# 1. Create memories by setting `update_memory_on_run=True` in the Agent
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+)
+team = Team(
+    model=OpenAIResponses(id="gpt-5.2"),
+    members=[agent],
+    db=db,
+    update_memory_on_run=True,
+)
+
+team.print_response(
+    "My name is John Doe and I like to hike in the mountains on weekends.",
+    stream=True,
+    user_id=john_doe_id,
+    session_id=session_id,
+)
+
+team.print_response(
+    "What are my hobbies?", stream=True, user_id=john_doe_id, session_id=session_id
+)
+
+# 2. Set a custom MemoryManager on the agent
+# memory_manager = MemoryManager(model=OpenAIResponses(id="gpt-5.2"))
+
+# memory_manager.clear()
+
+# agent = Agent(
+#     model=OpenAIResponses(id="gpt-5.2"),
+#     memory_manager=memory_manager,
+# )
+
+# team = Team(
+#     model=OpenAIResponses(id="gpt-5.2"),
+#     members=[agent],
+#     db=db,
+#     update_memory_on_run=True,
+# )
+
+# team.print_response(
+#     "My name is John Doe and I like to hike in the mountains on weekends.",
+#     stream=True,
+#     user_id=john_doe_id,
+#     session_id=session_id,
+# )
+
+# # You can also get the user memories from the agent
+# memories = agent.get_user_memories(user_id=john_doe_id)
+# print("John Doe's memories:")
+# pprint(memories)
+```
+
+## Usage
+
+<Steps>
+
+    <Snippet file="create-venv-step.mdx" />
+
+    <Step title="Install dependencies">
+        ```bash
+        uv pip install -U agno openai psycopg sqlalchemy
+        ```
+    </Step>
+
+    <Step title="Set up PostgreSQL database">
+        Start PostgreSQL with pgvector and update the connection string in the code as needed.
+    </Step>
+
+    <Step title="Set environment variables">
+        ```bash
+        export OPENAI_API_KEY=your_openai_api_key_here
+        ```
+    </Step>
+
+    <Step title="Run the example">
+        ```bash
+        python team_with_memory_manager.py
+        ```
+    </Step>
+
+</Steps>

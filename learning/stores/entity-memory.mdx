@@ -1,0 +1,184 @@
+---
+title: Entity Memory
+sidebarTitle: Entity Memory
+description: "Facts about companies, projects, and people."
+mode: wide
+---
+
+The Entity Memory Store captures structured knowledge about external entities: companies, people, projects, and systems. Think of it as your agent's professional rolodex that accumulates knowledge over time.
+
+| Aspect | Value |
+|--------|-------|
+| **Scope** | Configurable (global, user, or custom namespace) |
+| **Persistence** | Long-term |
+| **Default mode** | Always |
+| **Supported modes** | Always, Agentic |
+
+## Basic Usage
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.learn import LearningMachine
+from agno.models.openai import OpenAIResponses
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai"),
+    learning=LearningMachine(entity_memory=True),
+)
+
+# Entities are extracted automatically
+agent.print_response(
+    "Just met with Acme Corp. They're a fintech startup in SF, "
+    "50 employees. CTO is Jane Smith. They use Python and Postgres.",
+    user_id="sales@example.com",
+    session_id="session_1",
+)
+
+# Later, entity knowledge is recalled
+agent.print_response(
+    "What do we know about Acme Corp?",
+    user_id="sales@example.com",
+    session_id="session_2",
+)
+```
+
+## Three Types of Knowledge
+
+### Facts
+
+Timeless truths: "Uses PostgreSQL", "Headquarters in San Francisco", "50 employees"
+
+### Events
+
+Time-bound occurrences: "Launched v2.0 on January 15", "Closed $50M Series B", "Had 4-hour outage"
+
+### Relationships
+
+Entity connections: Jane Smith → CEO → Acme Corp, Acme Corp → competitor_of → Beta Inc
+
+## Always Mode
+
+Entities are extracted automatically from conversations.
+```python
+from agno.learn import LearningMachine, LearningMode, EntityMemoryConfig
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        entity_memory=EntityMemoryConfig(mode=LearningMode.ALWAYS),
+    ),
+)
+```
+
+Tradeoff: extra LLM call per interaction.
+
+## Agentic Mode
+
+The agent receives tools to manage entities explicitly.
+```python
+from agno.learn import LearningMachine, LearningMode, EntityMemoryConfig
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        entity_memory=EntityMemoryConfig(mode=LearningMode.AGENTIC),
+    ),
+)
+
+agent.print_response(
+    "Create an entry for Acme Corp - they're a fintech startup with 50 employees.",
+    user_id="sales@example.com",
+)
+```
+
+Available tools: `search_entities`, `create_entity`, `update_entity`, `add_fact`, `update_fact`, `delete_fact`, `add_event`, `add_relationship`
+
+## Data Model
+
+| Field | Description |
+|-------|-------------|
+| `entity_id` | Unique identifier (e.g., "acme_corp") |
+| `entity_type` | Category: "company", "person", "project" |
+| `name` | Display name |
+| `description` | Brief description |
+| `properties` | Key-value metadata |
+| `facts` | Timeless truths |
+| `events` | Time-bound occurrences |
+| `relationships` | Connections to other entities |
+
+## Accessing Entity Memory
+```python
+lm = agent.get_learning_machine()
+
+# Search for entities
+entities = lm.entity_memory_store.search(
+    query="acme",
+    entity_type="company",
+    limit=10
+)
+
+for entity in entities:
+    print(f"{entity.name}: {entity.facts}")
+
+# Debug output
+lm.entity_memory_store.print(entity_id="acme_corp", entity_type="company")
+```
+
+## Context Injection
+
+Relevant entities are injected into the system prompt:
+```
+<entity_memory>
+**Acme Corp** (company)
+Properties: industry: fintech, size: 50 employees
+
+Facts:
+  - Uses PostgreSQL and Redis for their data layer
+  - Headquarters in San Francisco
+
+Events:
+  - Launched v2.0 with new ML features (2025-01-15)
+  - Closed $50M Series B led by Sequoia (2024-Q3)
+
+Relationships:
+  - CEO: jane_smith
+  - competitor_of: beta_inc
+</entity_memory>
+```
+
+## Namespaces
+
+Control who can access entity data:
+```python
+from agno.learn import EntityMemoryConfig
+
+# Global: shared with everyone (default)
+entity_memory=EntityMemoryConfig(namespace="global")
+
+# User: private per user
+entity_memory=EntityMemoryConfig(namespace="user")
+
+# Custom: explicit grouping
+entity_memory=EntityMemoryConfig(namespace="sales_team")
+```
+
+## Facts vs Events
+
+| Use facts for | Use events for |
+|---------------|----------------|
+| Tech stack | Product launches |
+| Headquarters location | Funding rounds |
+| Employee count | Outages or incidents |
+| Industry/domain | Partnerships announced |
+| Pricing model | Key meetings |
+
+## Relationship Types
+
+Common patterns for linking entities:
+
+- **People**: `CEO`, `CTO`, `engineer_at`, `founder`, `reports_to`
+- **Companies**: `competitor_of`, `partner_of`, `acquired_by`, `subsidiary_of`
+- **Projects**: `uses`, `depends_on`, `integrates_with`, `owned_by`

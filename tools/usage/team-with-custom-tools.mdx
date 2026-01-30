@@ -1,0 +1,111 @@
+---
+title: "Team with Custom Tools"
+---
+
+This example demonstrates how to create a team with custom tools, using custom tools alongside agent tools to answer questions from a knowledge base and fall back to web search when needed.
+
+## Code
+
+```python team_with_custom_tools.py
+from agno.agent import Agent
+from agno.team.team import Team
+from agno.tools import tool
+from agno.tools.hackernews import HackerNewsTools
+
+
+@tool()
+def answer_from_known_questions(question: str) -> str:
+    """Answer a question from a list of known questions
+
+    Args:
+        question: The question to answer
+
+    Returns:
+        The answer to the question
+    """
+
+    # FAQ knowledge base
+    faq = {
+        "What is the capital of France?": "Paris",
+        "What is the capital of Germany?": "Berlin",
+        "What is the capital of Italy?": "Rome",
+        "What is the capital of Spain?": "Madrid",
+        "What is the capital of Portugal?": "Lisbon",
+        "What is the capital of Greece?": "Athens",
+        "What is the capital of Turkey?": "Ankara",
+    }
+
+    # Check if question is in FAQ
+    if question in faq:
+        return f"From my knowledge base: {faq[question]}"
+    else:
+        return "I don't have that information in my knowledge base. Try asking the news agent."
+
+
+# Create news agent for fallback
+news_agent = Agent(
+    name="News Agent",
+    role="Search HackerNews for information",
+    tools=[HackerNewsTools()],
+    markdown=True,
+)
+
+# Create team with custom tool and agent members
+team = Team(name="Q & A team", members=[news_agent], tools=[answer_from_known_questions])
+
+# Test the team
+team.print_response("What is the capital of France?", stream=True)
+
+# Check if team has session state and display information
+print("\nTeam Session Info:")
+session = team.get_session()
+print(f"   Session ID: {session.session_id}")
+print(f"   Session State: {session.session_data['session_state']}")
+
+# Show team capabilities
+print("\nTeam Tools Available:")
+for t in team.tools:
+    print(f"   - {t.name}: {t.description}")
+
+print("\nTeam Members:")
+for member in team.members:
+    print(f"   - {member.name}: {member.role}")
+```
+
+## Usage
+
+<Steps>
+
+  <Step title="Create a Python file">
+    Create `team_with_custom_tools.py` with the code above.
+  </Step>
+
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+
+    <CodeGroup>
+
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run Team">
+    ```bash
+    python team_with_custom_tools.py
+    ```
+  </Step>
+
+</Steps>

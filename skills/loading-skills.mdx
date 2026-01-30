@@ -1,0 +1,174 @@
+---
+title: Loading Skills
+sidebarTitle: Loading Skills
+description: Load skills into agents using LocalSkills and the Skills orchestrator.
+---
+
+Skills are loaded using the `Skills` class with one or more `SkillLoader` instances set as loaders.
+
+Currently, `LocalSkills` is available for loading skills from the filesystem.
+
+## Basic Usage
+
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.skills import Skills, LocalSkills
+
+# Load skills from a directory
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    skills=Skills(loaders=[LocalSkills("/path/to/skills")])
+)
+```
+
+## LocalSkills Loader
+
+The `LocalSkills` loader reads skills from the local filesystem.
+
+### Loading from a Directory of Skills
+
+If you have multiple skills in subdirectories:
+
+```
+skills/
+├── code-review/
+│   └── SKILL.md
+├── git-workflow/
+│   └── SKILL.md
+└── testing/
+    └── SKILL.md
+```
+
+```python
+from agno.skills import Skills, LocalSkills
+
+# Load all skills from the directory
+skills = Skills(loaders=[LocalSkills("/path/to/skills")])
+```
+
+### Loading a Single Skill
+
+If you want to load just one skill:
+
+```python
+from agno.skills import Skills, LocalSkills
+
+# Load a single skill directory
+skills = Skills(loaders=[LocalSkills("/path/to/skills/code-review")])
+```
+
+### Multiple Loaders
+
+You can combine multiple loaders to load skills from different locations:
+
+```python
+from agno.skills import Skills, LocalSkills
+
+skills = Skills(loaders=[
+    LocalSkills("/path/to/shared-skills"),
+    LocalSkills("/path/to/project-skills"),
+])
+```
+
+<Note>
+If skills from different loaders have the same name, the later loader's skill will overwrite the earlier one.
+</Note>
+
+## Agent Tools
+
+When you add skills to an agent, it automatically gets access to these tools:
+
+| Tool | Description |
+|------|-------------|
+| `get_skill_instructions(skill_name)` | Load full instructions for a skill |
+| `get_skill_reference(skill_name, reference_path)` | Load a reference document |
+| `get_skill_script(skill_name, script_path, execute, args, timeout)` | Read or execute a script |
+
+### Example: Using Skill Tools
+
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.skills import Skills, LocalSkills
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    skills=Skills(loaders=[LocalSkills("/path/to/skills")]),
+    instructions=[
+        "You have access to specialized skills.",
+        "Use get_skill_instructions to load full guidance when needed.",
+    ],
+)
+
+# The agent will automatically use skills when relevant
+agent.print_response("Review this code for best practices: def foo(): pass")
+```
+
+## System Prompt Integration
+
+Skills metadata is automatically added to the agent's system prompt. The agent sees:
+
+- Skill names and descriptions
+- Available scripts and references
+- Instructions on how to load full skill details
+
+This allows the agent to discover and use skills without loading everything upfront.
+
+## Reloading Skills
+
+If your skills change at runtime, you can reload them:
+
+```python
+from agno.skills import Skills, LocalSkills
+
+skills = Skills(loaders=[LocalSkills("/path/to/skills")])
+
+# ... skills are modified on disk ...
+
+# Reload to pick up changes
+skills.reload()
+```
+
+## Error Handling
+
+Skills are validated when loaded. If validation fails, a `SkillValidationError` is raised:
+
+```python
+from agno.skills import Skills, LocalSkills, SkillValidationError
+
+try:
+    skills = Skills(loaders=[LocalSkills("/path/to/skills")])
+except SkillValidationError as e:
+    print(f"Skill validation failed: {e}")
+    print(f"Errors: {e.errors}")
+```
+
+## Complete Example
+
+```python
+from pathlib import Path
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.skills import Skills, LocalSkills
+
+# Get skills directory relative to this file
+skills_dir = Path(__file__).parent / "skills"
+
+# Create agent with skills
+agent = Agent(
+    name="Code Assistant",
+    model=OpenAIResponses(id="gpt-5.2"),
+    skills=Skills(loaders=[LocalSkills(str(skills_dir))]),
+    instructions=[
+        "You are a helpful coding assistant with access to specialized skills."
+    ],
+    markdown=True,
+)
+
+if __name__ == "__main__":
+    agent.print_response(
+        "Review this Python function:\n\n"
+        "def calc(x,y): return x+y"
+    )
+```

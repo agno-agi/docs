@@ -1,28 +1,22 @@
 ---
 title: Multi-DB Tracing with tracing=True
-description: Learn how to trace agents with multiple databases using tracing=True in AgentOS
+description: Trace agents with multiple databases using tracing=True in AgentOS.
 sidebarTitle: Multi-DB with tracing=True
 keywords: [tracing, observability, agents, databases, agno, opentelemetry]
 mode: wide
 ---
 
-This example shows how to configure tracing when agents have separate databases using the `tracing=True` flag. A dedicated `tracing_db` ensures all traces are stored in one central location.
+This example shows how to configure tracing when agents have separate databases using the `tracing=True` flag. A dedicated `db` ensures all traces are stored in one central location.
 
 <Steps>
 
   <Step title="Create a Python file">
-    ```bash
-    touch tracing_multi_db_flag.py
-    ```
-  </Step>
-
-  <Step title="Add the following code to your Python file">
     ```python tracing_multi_db_flag.py
     from agno.agent import Agent
     from agno.db.sqlite import SqliteDb
-    from agno.models.openai import OpenAIChat
+    from agno.models.openai import OpenAIResponses
     from agno.os import AgentOS
-    from agno.tools.duckduckgo import DuckDuckGoTools
+    from agno.tools.hackernews import HackerNewsTools
     from agno.tools.hackernews import HackerNewsTools
 
     # Set up databases - each agent has its own db
@@ -30,11 +24,11 @@ This example shows how to configure tracing when agents have separate databases 
     db2 = SqliteDb(db_file="tmp/db2.db", id="db2")
 
     # Dedicated traces database
-    tracing_db = SqliteDb(db_file="tmp/traces.db", id="traces")
+    db = SqliteDb(db_file="tmp/traces.db", id="traces")
 
     agent = Agent(
         name="HackerNews Agent",
-        model=OpenAIChat(id="gpt-5-mini"),
+        model=OpenAIResponses(id="gpt-5.2"),
         tools=[HackerNewsTools()],
         instructions="You are a hacker news agent. Answer questions concisely.",
         markdown=True,
@@ -43,20 +37,20 @@ This example shows how to configure tracing when agents have separate databases 
 
     agent2 = Agent(
         name="Web Search Agent",
-        model=OpenAIChat(id="gpt-5-mini"),
-        tools=[DuckDuckGoTools()],
+        model=OpenAIResponses(id="gpt-5.2"),
+        tools=[HackerNewsTools()],
         instructions="You are a web search agent. Answer questions concisely.",
         markdown=True,
         db=db2,
     )
 
-    # Setup AgentOS with tracing=True and dedicated tracing_db
+    # Setup AgentOS with tracing=True and dedicated db
     # This ensures traces are written to and read from the same database
     agent_os = AgentOS(
         description="Example app for tracing with multiple databases",
         agents=[agent, agent2],
         tracing=True,
-        tracing_db=tracing_db,  # Dedicated database for traces
+        db=db,  # Dedicated database for traces
     )
     app = agent_os.get_app()
 
@@ -67,9 +61,9 @@ This example shows how to configure tracing when agents have separate databases 
 
   <Snippet file="create-venv-step.mdx" />
 
-  <Step title="Install libraries">
+  <Step title="Install dependencies">
     ```bash
-    pip install -U openai agno opentelemetry-api opentelemetry-sdk openinference-instrumentation-agno
+    uv pip install -U openai agno opentelemetry-api opentelemetry-sdk openinference-instrumentation-agno
     ```
   </Step>
 
@@ -86,15 +80,9 @@ This example shows how to configure tracing when agents have separate databases 
   </Step>
 
   <Step title="Run AgentOS">
-    <CodeGroup>
-    ```bash Mac
+    ```bash
     python tracing_multi_db_flag.py
     ```
-
-    ```bash Windows
-    python tracing_multi_db_flag.py
-    ```
-    </CodeGroup>
 
     Your AgentOS will be available at `http://localhost:7777`. View traces in the AgentOS dashboard.
   </Step>

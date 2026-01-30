@@ -1,0 +1,221 @@
+---
+title: "Inbox Agent"
+sidebarTitle: "Inbox Agent"
+description: "Gmail assistant that triages emails, drafts replies, and flags urgent items with safety controls."
+---
+
+An intelligent email assistant that connects to Gmail, triages incoming messages, summarizes important emails, drafts responses, and helps manage inbox zero.
+
+## Key Concepts
+
+| Concept | Description |
+|:--------|:------------|
+| **Email Triage** | Categorizes emails by urgency and type |
+| **Priority Levels** | 1-5 priority scale based on sender and content |
+| **Draft-Only Mode** | Never auto-sends emails. Drafts require approval |
+| **Phishing Detection** | Warns about suspicious emails |
+
+## Prerequisites
+
+- Python 3.12+
+- OpenAI API key
+- Google OAuth credentials (for Gmail access)
+
+## Setup
+
+<Steps>
+<Step title="Clone the repository">
+
+```bash
+git clone https://github.com/agno-agi/agno.git
+cd agno
+```
+
+</Step>
+
+<Step title="Create and activate virtual environment">
+
+```bash
+uv venv --python 3.12
+source .venv/bin/activate
+```
+
+</Step>
+
+<Step title="Install dependencies">
+
+```bash
+uv pip install -r cookbook/01_showcase/01_agents/inbox_agent/requirements.in
+```
+
+</Step>
+
+<Step title="Set up Google OAuth credentials">
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com)
+2. Create a new project or select existing
+3. Enable the Gmail API:
+   - Go to "APIs & Services" > "Enable APIs and Services"
+   - Search for "Gmail API" and enable it
+4. Create OAuth credentials:
+   - Go to "APIs & Services" > "Credentials"
+   - Click "Create Credentials" > "OAuth client ID"
+   - Select "Desktop app" as application type
+   - Download the credentials
+5. Add redirect URI:
+   - Go to OAuth consent screen settings
+   - Add `http://127.0.0.1/` as authorized redirect URI
+
+</Step>
+
+<Step title="Set environment variables">
+
+```bash
+export OPENAI_API_KEY=your-openai-key
+export GOOGLE_CLIENT_ID=your-client-id
+export GOOGLE_CLIENT_SECRET=your-client-secret
+export GOOGLE_PROJECT_ID=your-project-id
+export GOOGLE_REDIRECT_URI=http://127.0.0.1/
+```
+
+</Step>
+</Steps>
+
+## Run the Agent
+
+The first run will open a browser window for OAuth authentication.
+
+### Triage Inbox
+
+Categorize and prioritize unread emails:
+
+```bash
+python cookbook/01_showcase/01_agents/inbox_agent/examples/triage_inbox.py
+```
+
+Demonstrates:
+- Retrieving unread emails
+- Categorization (urgent, action_required, fyi, newsletter, spam)
+- Priority scoring
+
+### Summarize Thread
+
+Get a summary of an email conversation:
+
+```bash
+python cookbook/01_showcase/01_agents/inbox_agent/examples/summarize_thread.py
+```
+
+Demonstrates:
+- Fetching email threads
+- Key point extraction
+- Action item identification
+
+### Draft Response
+
+Create a draft reply:
+
+```bash
+python cookbook/01_showcase/01_agents/inbox_agent/examples/draft_response.py
+```
+
+Demonstrates:
+- Context-aware draft generation
+- Tone matching
+- Draft storage (never auto-sends)
+
+## Agent Configuration
+
+```python
+inbox_agent = Agent(
+    name="Inbox Agent",
+    model=OpenAIResponses(id="gpt-5.2"),
+    system_message=SYSTEM_MESSAGE,
+    tools=[
+        ReasoningTools(add_instructions=True),
+        GmailTools(),
+    ],
+    add_datetime_to_context=True,
+    add_history_to_context=True,
+    num_history_runs=5,
+    read_chat_history=True,
+    enable_agentic_memory=True,
+    markdown=True,
+)
+```
+
+| Parameter | Purpose |
+|-----------|---------|
+| `model` | GPT-5.2 for email understanding and drafting |
+| `GmailTools` | Gmail API integration (read, search, draft, label) |
+| `ReasoningTools` | Plan triage and response approach |
+| `read_chat_history` | Remember previous email context |
+
+## How It Works
+
+### Email Categories
+
+| Category | Criteria | Default Action |
+|----------|----------|----------------|
+| **urgent** | Time-sensitive, VIPs, deadlines | Surface immediately |
+| **action_required** | Requests, questions | Queue for response |
+| **fyi** | Updates, notifications, CC'd | Summarize briefly |
+| **newsletter** | Marketing, subscriptions | Archive or summarize |
+| **spam** | Unwanted promotional | Archive |
+
+### Priority Levels
+
+| Level | Description | Timeframe |
+|-------|-------------|-----------|
+| 1 | Critical | Immediate |
+| 2 | High | 24-48 hours |
+| 3 | Medium | Within a week |
+| 4 | Low | Informational |
+| 5 | Minimal | Archive/skip |
+
+### Gmail Tools
+
+| Tool | Description |
+|------|-------------|
+| `get_unread_emails` | Retrieve unread messages |
+| `get_emails_by_thread` | Get full thread |
+| `search_emails` | Search by query |
+| `create_draft_email` | Save draft (no send) |
+| `send_email_reply` | Reply to thread |
+| `apply_label` | Organize with labels |
+| `mark_email_as_read` | Mark processed |
+
+### Safety Features
+
+1. **No auto-send**: Emails are saved as drafts, never auto-sent
+2. **Confirmation required**: Sending requires explicit user approval
+3. **Read-only default**: Only reads emails unless action requested
+4. **Phishing detection**: Warns about suspicious emails
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="OAuth authentication fails">
+    Verify your Google Cloud credentials are set correctly:
+    ```bash
+    echo $GOOGLE_CLIENT_ID
+    echo $GOOGLE_CLIENT_SECRET
+    ```
+    Ensure the redirect URI is configured in Google Cloud Console.
+  </Accordion>
+  <Accordion title="Gmail API not enabled">
+    Go to Google Cloud Console > APIs & Services > Enable APIs and Services > Search for "Gmail API" > Enable.
+  </Accordion>
+  <Accordion title="Token expired">
+    Delete `token.json` and re-authenticate:
+    ```bash
+    rm token.json
+    ```
+    Run the agent again to trigger OAuth flow.
+  </Accordion>
+</AccordionGroup>
+
+## Source Code
+
+- [Agent implementation](https://github.com/agno-agi/agno/tree/main/cookbook/01_showcase/01_agents/inbox_agent/agent.py)
+- [Example scripts](https://github.com/agno-agi/agno/tree/main/cookbook/01_showcase/01_agents/inbox_agent/examples/)

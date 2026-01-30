@@ -1,0 +1,216 @@
+---
+title: Custom Toolkits
+sidebarTitle: Custom Toolkits
+description: Bundle related tool functions into reusable toolkit classes.
+---
+
+Many advanced use-cases will require writing custom Toolkits. A Toolkit is a collection of functions that can be added to an Agent. The functions in a Toolkit are designed to work together, share internal state and provide a better development experience.
+
+Here's the general flow:
+
+1. Create a class inheriting the `agno.tools.Toolkit` class.
+2. Add your functions to the class.
+3. Include all the functions in the `tools` argument to the `Toolkit` constructor.
+
+For example:
+
+```python shell_toolkit.py
+from typing import List
+
+from agno.agent import Agent
+from agno.tools import Toolkit
+from agno.utils.log import logger
+
+class ShellTools(Toolkit):
+    def __init__(self, working_directory: str = "/", **kwargs):
+        self.working_directory = working_directory
+
+        tools = [
+            self.run_shell_command,
+        ]
+
+        super().__init__(name="shell_tools", tools=tools, **kwargs)
+    
+    def list_files(self, directory: str):
+        """
+        List the files in the given directory.
+
+        Args:
+            directory (str): The directory to list the files from.
+        Returns:
+            str: The list of files in the directory.
+        """
+        import os
+
+        # List files relative to the toolkit's working_directory
+        path = os.path.join(self.working_directory, directory)
+        try:
+            files = os.listdir(path)
+            return "\n".join(files)
+        except Exception as e:
+            logger.warning(f"Failed to list files in {path}: {e}")
+            return f"Error: {e}"
+        return os.listdir(directory)
+
+    def run_shell_command(self, args: List[str], tail: int = 100) -> str:
+        """
+        Runs a shell command and returns the output or error.
+
+        Args:
+            args (List[str]): The command to run as a list of strings.
+            tail (int): The number of lines to return from the output.
+        Returns:
+            str: The output of the command.
+        """
+        import subprocess
+
+        logger.info(f"Running shell command: {args}")
+        try:
+            logger.info(f"Running shell command: {args}")
+            result = subprocess.run(args, capture_output=True, text=True, cwd=self.working_directory)
+            logger.debug(f"Result: {result}")
+            logger.debug(f"Return code: {result.returncode}")
+            if result.returncode != 0:
+                return f"Error: {result.stderr}"
+            # return only the last n lines of the output
+            return "\n".join(result.stdout.split("\n")[-tail:])
+        except Exception as e:
+            logger.warning(f"Failed to run shell command: {e}")
+            return f"Error: {e}"
+
+agent = Agent(tools=[ShellTools()], markdown=True)
+agent.print_response("List all the files in my home directory.")
+
+```
+
+## Adding Async Methods
+
+Any toolkit can include async methods alongside sync methods. For operations that benefit from async execution (like HTTP requests, database queries, or browser automation), you can provide both sync and async variants of your tools. The framework automatically uses the appropriate version based on the execution context:
+- `agent.run()` / `agent.print_response()` → uses sync tools
+- `agent.arun()` / `agent.aprint_response()` → uses async tools if available, otherwise falls back to sync tools
+
+To add async tools to your Toolkits, use the `async_tools` parameter:
+
+```python
+from typing import Any, Dict
+
+from agno.agent import Agent
+from agno.tools import Toolkit
+
+try:
+    import httpx
+except ImportError:
+    raise ImportError("`httpx` not installed. Run `uv pip install httpx`")
+
+
+class APITools(Toolkit):
+    def __init__(self, base_url: str, timeout: float = 30.0, **kwargs):
+        self.base_url = base_url
+        self.timeout = timeout
+
+        # Sync tools for agent.run() and agent.print_response()
+        tools = [
+            self.fetch_data,
+            self.post_data,
+        ]
+
+        # Async tools for agent.arun() and agent.aprint_response()
+        # Format: (async_method, "tool_name")
+        async_tools = [
+            (self.afetch_data, "fetch_data"),
+            (self.apost_data, "post_data"),
+        ]
+
+        super().__init__(name="api_tools", tools=tools, async_tools=async_tools, **kwargs)
+
+    # Sync methods
+    def fetch_data(self, endpoint: str) -> Dict[str, Any]:
+        """
+        Fetch data from an API endpoint.
+
+        Args:
+            endpoint: The API endpoint to fetch data from (e.g., "/users/123")
+        Returns:
+            The JSON response from the API
+        """
+        url = f"{self.base_url}{endpoint}"
+        with httpx.Client(timeout=self.timeout) as client:
+            response = client.get(url)
+            response.raise_for_status()
+            return response.json()
+
+    def post_data(self, endpoint: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Post data to an API endpoint.
+
+        Args:
+            endpoint: The API endpoint to post data to
+            data: The data to post as JSON
+        Returns:
+            The JSON response from the API
+        """
+        url = f"{self.base_url}{endpoint}"
+        with httpx.Client(timeout=self.timeout) as client:
+            response = client.post(url, json=data)
+            response.raise_for_status()
+            return response.json()
+
+    # Async methods (used automatically in async contexts)
+    async def afetch_data(self, endpoint: str) -> Dict[str, Any]:
+        """
+        Fetch data from an API endpoint asynchronously.
+
+        Args:
+            endpoint: The API endpoint to fetch data from (e.g., "/users/123")
+        Returns:
+            The JSON response from the API
+        """
+        url = f"{self.base_url}{endpoint}"
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            return response.json()
+
+    async def apost_data(self, endpoint: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Post data to an API endpoint asynchronously.
+
+        Args:
+            endpoint: The API endpoint to post data to
+            data: The data to post as JSON
+        Returns:
+            The JSON response from the API
+        """
+        url = f"{self.base_url}{endpoint}"
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.post(url, json=data)
+            response.raise_for_status()
+            return response.json()
+
+# Create the agent with the toolkit (using JSONPlaceholder - a free fake API for testing)
+agent = Agent(tools=[APITools(base_url="https://jsonplaceholder.typicode.com")], markdown=True)
+
+# Sync usage - uses fetch_data
+agent.print_response("Fetch the user with ID 1")
+
+# Async usage - uses afetch_data automatically
+import asyncio
+asyncio.run(agent.aprint_response("Fetch the post with ID 1"))
+```
+
+<Note>
+The `async_tools` parameter takes a list of tuples where each tuple contains:
+- The async method reference
+- The tool name (should match the sync tool name for automatic switching)
+
+The function name of the async tool is different but we register it with same name as the sync function that the LLM sees.
+Example: In the above code block, the async tool is `afetch_data` but the LLM sees it as `fetch_data`.
+</Note>
+
+<Tip>
+Important Tips:
+- Fill in the docstrings for each function with detailed descriptions of the function and its arguments.
+- Remember that this function is provided to the LLM and is not used elsewhere in code, so the docstring should make sense to an LLM and the name of the functions need to be descriptive.
+</Tip>
+
+See the [Toolkit Reference](/reference/tools/toolkit) for more details.

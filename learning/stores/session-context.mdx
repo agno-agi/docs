@@ -1,0 +1,164 @@
+---
+title: Session Context
+sidebarTitle: Session Context
+description: "Goals, plans, and progress for active sessions."
+mode: wide
+---
+
+The Session Context Store captures the current state of a conversation: what's been discussed, what the goal is, and what progress has been made. Unlike other stores that accumulate data, session context is a snapshot that gets replaced on each update.
+
+| Aspect | Value |
+|--------|-------|
+| **Scope** | Per session |
+| **Persistence** | Session lifetime (replaced on update) |
+| **Default mode** | Always |
+| **Supported modes** | Always |
+
+## Basic Usage
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.learn import LearningMachine
+from agno.models.openai import OpenAIResponses
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai"),
+    learning=LearningMachine(session_context=True),
+)
+
+# Session tracks what's being discussed
+agent.print_response(
+    "I'm designing a REST API for a todo app. Should I use PUT or PATCH for updates?",
+    user_id="alice@example.com",
+    session_id="api_design",
+)
+
+# Later in the session, context is maintained
+agent.print_response(
+    "What about the delete endpoint?",
+    user_id="alice@example.com",
+    session_id="api_design",
+)
+```
+
+The agent knows the ongoing context about REST API design.
+
+## Summary Mode
+
+Default behavior. Captures the essence of the conversation without detailed planning.
+```python
+from agno.learn import LearningMachine, SessionContextConfig
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        session_context=SessionContextConfig(),
+    ),
+)
+```
+
+What gets captured: what's being worked on, key decisions made, current state, open questions.
+
+## Planning Mode
+
+Enable planning to track goals, plan steps, and progress.
+```python
+from agno.learn import LearningMachine, SessionContextConfig
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        session_context=SessionContextConfig(enable_planning=True),
+    ),
+)
+
+agent.print_response(
+    "Help me deploy a Python app to production. Give me the steps.",
+    user_id="alice@example.com",
+    session_id="deploy_app",
+)
+
+# Later, progress is tracked
+agent.print_response(
+    "Done with step 1. What's next?",
+    user_id="alice@example.com",
+    session_id="deploy_app",
+)
+```
+
+## Data Model
+
+| Field | Description |
+|-------|-------------|
+| `session_id` | Unique session identifier |
+| `user_id` | User this session belongs to |
+| `summary` | What's been discussed |
+| `goal` | What user is trying to accomplish (planning mode) |
+| `plan` | Steps to achieve goal (planning mode) |
+| `progress` | Completed steps (planning mode) |
+| `created_at` | When created |
+| `updated_at` | Last update |
+
+## Accessing Session Context
+```python
+lm = agent.get_learning_machine()
+
+context = lm.session_context_store.get(session_id="api_design")
+if context:
+    print(f"Summary: {context.summary}")
+    if context.goal:
+        print(f"Goal: {context.goal}")
+
+# Debug output
+lm.session_context_store.print(session_id="api_design")
+```
+
+## Context Injection
+
+Session context is injected into the system prompt:
+```
+<session_context>
+Summary: Helping user design a REST API for a todo app. Discussed resource naming conventions. Currently exploring HTTP methods for CRUD operations.
+
+Goal: Design complete REST API for todo application
+
+Plan:
+  1. Define resource endpoints
+  2. Choose HTTP methods for each operation
+  3. Design request/response schemas
+  4. Add authentication
+
+Completed:
+  ✓ Define resource endpoints
+</session_context>
+```
+
+## When to Use
+
+Session context is essential when:
+
+- **Message history gets truncated**: long conversations lose early context
+- **Sessions are resumed**: user returns after a break
+- **Complex multi-step tasks**: track progress through long workflows
+- **Handoffs**: another agent or human needs to understand the state
+
+## Combining with Other Stores
+
+Session context works well alongside user-level stores:
+```python
+from agno.learn import LearningMachine, SessionContextConfig
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        user_profile=True,                                  # Who the user is
+        session_context=SessionContextConfig(enable_planning=True),  # Current state
+    ),
+)
+```
+
+Long-term user knowledge plus short-term session state.

@@ -1,0 +1,113 @@
+---
+title: Managing Tool Calls
+---
+
+This example demonstrates how to use `max_tool_calls_from_history` to limit tool calls in team context across multiple research queries.
+
+## Code
+
+```python filter_tool_calls_from_history.py
+from textwrap import dedent
+
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIResponses
+from agno.team import Team
+from agno.tools.hackernews import HackerNewsTools
+from agno.tools.yfinance import YFinanceTools
+
+# Create specialized research agents
+tech_researcher = Agent(
+    name="Alex",
+    role="Technology Researcher",
+    instructions=dedent("""
+        You specialize in technology and AI research.
+        - Focus on latest developments, trends, and breakthroughs
+        - Provide concise, data-driven insights
+    """).strip(),
+)
+
+business_analyst = Agent(
+    name="Sarah",
+    role="Business Analyst",
+    instructions=dedent("""
+        You specialize in business and market analysis.
+        - Focus on companies, markets, and economic trends
+        - Provide actionable business insights
+        - Include relevant data and statistics
+    """).strip(),
+)
+
+# Create research team with tools and context management
+research_team = Team(
+    name="Research Team",
+    model=OpenAIResponses(id="gpt-5.2"),
+    members=[tech_researcher, business_analyst],
+    tools=[HackerNewsTools(), YFinanceTools()],
+    description="Research team that investigates topics and provides analysis.",
+    instructions=dedent("""
+        You are a research coordinator that investigates topics comprehensively.
+
+        Your Process:
+        1. Use HackerNews to find tech discussions and YFinance for market data
+        2. Delegate detailed analysis to the appropriate specialist
+        3. Synthesize research findings with specialist insights
+
+        Guidelines:
+        - Use HackerNews for tech news and YFinance for financial data
+        - Choose the right specialist based on the topic (tech vs business)
+        - Combine your research with specialist analysis
+        - Provide comprehensive responses
+    """).strip(),
+    db=SqliteDb(db_file="tmp/research_team.db"),
+    session_id="research_session",
+    add_history_to_context=True,
+    num_history_runs=6,  # Load last 6 research queries
+    max_tool_calls_from_history=3,  # Keep only last 3 research results
+    markdown=True,
+)
+
+research_team.print_response("What are the latest developments in AI agents?", stream=True)
+research_team.print_response("How is NVDA performing this quarter?", stream=True)
+research_team.print_response("What are the trends in LLM applications?", stream=True)
+research_team.print_response("What companies are leading in AI infrastructure?", stream=True)
+```
+
+## Usage
+
+<Steps>
+
+  <Step title="Create a Python file">
+    Create `filter_tool_calls_from_history.py` with the code above.
+  </Step>
+
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai yfinance sqlalchemy
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+
+    <CodeGroup>
+
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run Team">
+    ```bash
+    python filter_tool_calls_from_history.py
+    ```
+  </Step>
+
+</Steps>
+

@@ -1,113 +1,58 @@
 ---
-title: "AgentOS Client"
+title: "Clients"
 sidebarTitle: "Overview"
-description: "Python client for programmatic access to AgentOS instances"
+description: "Python clients for connecting to agent servers"
 ---
 
-The `AgentOSClient` provides a Python interface for interacting with running AgentOS instances. It enables you to:
+Agno provides Python clients for programmatic access to agent servers. These clients enable you to run agents, manage sessions, and integrate AI capabilities into your applications.
 
-- **Run agents, teams, and workflows** programmatically with streaming support
-- **Manage sessions** for conversation persistence across runs
-- **Search and manage knowledge** in connected knowledge bases
-- **Access memories** stored for users
-- **Monitor traces** for debugging and observability
-
-## Quick Start
-
-```python
-import asyncio
-from agno.client import AgentOSClient
-
-async def main():
-    # Connect to AgentOS
-    client = AgentOSClient(base_url="http://localhost:7777")
-    
-    # Get configuration and available agents
-    config = await client.aget_config()
-    print(f"Connected to: {config.name or config.os_id}")
-    print(f"Available agents: {[a.id for a in config.agents]}")
-    
-    # Run an agent
-    if config.agents:
-        result = await client.run_agent(
-            agent_id=config.agents[0].id,
-            message="Hello, how can you help me?",
-        )
-        print(f"Response: {result.content}")
-
-asyncio.run(main())
-```
-
-## Streaming Responses
-
-The client supports streaming for real-time response handling:
-
-```python
-from agno.run.agent import RunContentEvent, RunCompletedEvent
-
-async for event in client.run_agent_stream(
-    agent_id="my-agent",
-    message="Tell me a story",
-):
-    if isinstance(event, RunContentEvent):
-        print(event.content, end="", flush=True)
-    elif isinstance(event, RunCompletedEvent):
-        print(f"\nCompleted! Run ID: {event.run_id}")
-```
-
-## Authentication
-
-When connecting to authenticated AgentOS instances, pass headers with your requests:
-
-```python
-headers = {"Authorization": "Bearer your-jwt-token"}
-
-config = await client.aget_config(headers=headers)
-result = await client.run_agent(
-    agent_id="my-agent",
-    message="Hello",
-    headers=headers,
-)
-```
-
-## Error Handling
-
-```python
-from agno.exceptions import RemoteServerUnavailableError
-
-try:
-    config = await client.aget_config()
-except RemoteServerUnavailableError as e:
-    print(f"Server unavailable: {e.message}")
-    print(f"URL: {e.base_url}")
-```
-
-## Examples
+## Available Clients
 
 <CardGroup cols={2}>
-  <Card title="Basic Client" icon="plug" href="/agent-os/usage/client/basic-client">
-    Connect and explore an AgentOS instance
+  <Card title="AgentOS Client" icon="server" href="/agent-os/client/agentos-client">
+    Connect to Agno AgentOS instances via REST API. Run agents, teams, workflows, manage sessions, knowledge, and memories.
   </Card>
-  <Card title="Run Agents" icon="robot" href="/agent-os/usage/client/run-agents">
-    Execute streaming and non-streaming agent runs
-  </Card>
-  <Card title="Run Teams" icon="users" href="/agent-os/usage/client/run-teams">
-    Execute team runs with member coordination
-  </Card>
-  <Card title="Run Workflows" icon="diagram-project" href="/agent-os/usage/client/run-workflows">
-    Execute workflow pipelines
-  </Card>
-  <Card title="Session Management" icon="messages" href="/agent-os/usage/client/session-management">
-    Create, list, and manage sessions
-  </Card>
-  <Card title="Knowledge Search" icon="magnifying-glass" href="/agent-os/usage/client/knowledge-search">
-    Search and upload knowledge content
-  </Card>
-  <Card title="Memory Operations" icon="brain" href="/agent-os/usage/client/memory-operations">
-    Create, list, and manage user memories
+  <Card title="A2A Client" icon="link" href="/agent-os/client/a2a-client">
+    Connect to any A2A-compatible server including Agno, Google ADK, and other A2A implementations.
   </Card>
 </CardGroup>
 
-## API Reference
+## Choosing a Client
 
-For complete method documentation and parameters, see the [AgentOSClient Reference](/reference/agent-os/client).
+| Client | Use Case |
+|--------|----------|
+| `AgentOSClient` | Connect to Agno AgentOS instances with full feature access (sessions, knowledge, memories, traces) |
+| `A2AClient` | Connect to any A2A-compatible server for cross-framework agent communication |
+
+## Quick Comparison
+
+### AgentOSClient
+
+Best for connecting to Agno AgentOS instances where you need full access to all features:
+
+```python
+from agno.client import AgentOSClient
+
+client = AgentOSClient(base_url="http://localhost:7777")
+
+# Full AgentOS features
+config = await client.aget_config()
+result = await client.run_agent(agent_id="my-agent", message="Hello!")
+sessions = await client.get_sessions(user_id="user-123")
+```
+
+### A2AClient
+
+Best for cross-framework communication or connecting to A2A-compatible servers:
+
+```python
+from agno.client.a2a import A2AClient
+
+# Connect to Agno A2A endpoint
+client = A2AClient("http://localhost:7001/a2a/agents/my-agent")
+result = await client.send_message(message="Hello!")
+
+# Or connect to Google ADK
+client = A2AClient("http://localhost:8001/", protocol="json-rpc")
+result = await client.send_message(message="Hello!")
+```

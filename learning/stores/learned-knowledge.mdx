@@ -1,0 +1,214 @@
+---
+title: Learned Knowledge
+sidebarTitle: Learned Knowledge
+description: "Insights that transfer across users."
+mode: wide
+---
+
+The Learned Knowledge Store captures reusable insights, patterns, and best practices that apply across users and sessions. Powered by semantic search, agents find and apply relevant knowledge automatically.
+
+| Aspect | Value |
+|--------|-------|
+| **Scope** | Configurable (global, user, or custom namespace) |
+| **Persistence** | Long-term |
+| **Default mode** | Agentic |
+| **Supported modes** | Always, Agentic, Propose |
+| **Requires** | Knowledge base with vector database |
+
+## Prerequisites
+
+Learned Knowledge requires a Knowledge base for semantic search:
+```python
+from agno.knowledge import Knowledge
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.vectordb.pgvector import PgVector, SearchType
+
+knowledge = Knowledge(
+    vector_db=PgVector(
+        db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
+        table_name="learned_knowledge",
+        search_type=SearchType.hybrid,
+        embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+    ),
+)
+```
+
+## Basic Usage
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.learn import LearningMachine
+from agno.models.openai import OpenAIResponses
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai"),
+    learning=LearningMachine(
+        knowledge=knowledge,
+        learned_knowledge=True,
+    ),
+)
+
+# User 1 saves an insight
+agent.print_response(
+    "Save this: When comparing cloud providers, always check egress costs first - "
+    "they can be 10x different between providers.",
+    user_id="alice@example.com",
+)
+
+# User 2 benefits from the insight
+agent.print_response(
+    "I'm choosing between AWS and GCP for our data platform. What should I consider?",
+    user_id="bob@example.com",
+)
+```
+
+## Agentic Mode
+
+The agent receives tools to manage knowledge explicitly.
+```python
+from agno.learn import LearningMachine, LearningMode, LearnedKnowledgeConfig
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        knowledge=knowledge,
+        learned_knowledge=LearnedKnowledgeConfig(mode=LearningMode.AGENTIC),
+    ),
+)
+```
+
+Available tools: `search_learnings`, `save_learning`
+
+The agent searches before answering questions and before saving (to avoid duplicates).
+
+## Propose Mode
+
+The agent proposes learnings for user confirmation before saving.
+```python
+from agno.learn import LearningMachine, LearningMode, LearnedKnowledgeConfig
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        knowledge=knowledge,
+        learned_knowledge=LearnedKnowledgeConfig(mode=LearningMode.PROPOSE),
+    ),
+)
+
+agent.print_response(
+    "That's a great insight about Docker networking. We should remember that.",
+    user_id="alice@example.com",
+)
+# Agent proposes the learning, user confirms before it's saved
+```
+
+## Always Mode
+
+Learnings are extracted automatically after each response.
+```python
+from agno.learn import LearningMachine, LearningMode, LearnedKnowledgeConfig
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        knowledge=knowledge,
+        learned_knowledge=LearnedKnowledgeConfig(mode=LearningMode.ALWAYS),
+    ),
+)
+```
+
+Tradeoff: extra LLM call per interaction, may save low-value insights.
+
+## Data Model
+
+| Field | Description |
+|-------|-------------|
+| `title` | Short, searchable title |
+| `learning` | The actual insight |
+| `context` | When/where this applies |
+| `tags` | Categories for organization |
+| `namespace` | Sharing scope |
+| `user_id` | Owner (if namespace="user") |
+| `created_at` | When captured |
+
+## What to Save
+
+| Good to save | Don't save |
+|--------------|------------|
+| Non-obvious discoveries | Raw facts or data |
+| Reusable patterns | User-specific preferences |
+| Domain-specific insights | Common knowledge |
+| Problem-solving approaches | Conversation summaries |
+| Best practices | Temporary information |
+
+**Good example:**
+> "When comparing cloud providers, always check egress costs first - they vary dramatically (AWS: $0.09/GB, GCP: $0.12/GB, Cloudflare R2: free)."
+
+**Poor example:**
+> "AWS has egress costs."
+
+## Accessing Learned Knowledge
+```python
+lm = agent.get_learning_machine()
+
+# Search for relevant learnings
+results = lm.learned_knowledge_store.search(query="cloud costs", limit=5)
+for result in results:
+    print(f"{result.title}: {result.learning}")
+
+# Debug output
+lm.learned_knowledge_store.print(query="cloud costs")
+```
+
+## Context Injection
+
+Relevant learnings are injected via semantic search:
+```
+<relevant_learnings>
+**Cloud egress cost variations**
+Context: When selecting cloud providers for data-intensive workloads
+Insight: Always check egress costs first - they can be 10x different between providers.
+
+**API rate limiting strategies**
+Context: When designing APIs with high traffic
+Insight: Use token bucket algorithm for rate limiting - it handles bursts better than fixed windows.
+</relevant_learnings>
+```
+
+## Namespaces
+
+Control knowledge sharing:
+```python
+from agno.learn import LearnedKnowledgeConfig
+
+# Global: shared with all users (default)
+learned_knowledge=LearnedKnowledgeConfig(namespace="global")
+
+# User: private per user
+learned_knowledge=LearnedKnowledgeConfig(namespace="user")
+
+# Custom: team or domain-specific
+learned_knowledge=LearnedKnowledgeConfig(namespace="engineering")
+```
+
+## Combining with Other Stores
+```python
+from agno.learn import LearningMachine
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=db,
+    learning=LearningMachine(
+        knowledge=knowledge,
+        user_profile=True,       # Who the user is
+        user_memory=True,        # User's preferences
+        learned_knowledge=True,  # Collective insights
+    ),
+)
+```
+
+Personalized responses drawing on collective knowledge.

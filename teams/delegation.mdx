@@ -1,0 +1,257 @@
+---
+title: Delegation
+sidebarTitle: Delegation
+description: Control how the team leader delegates tasks to members.
+---
+
+When you call `run()` on a team, the leader decides how to handle the request: respond directly, use tools, or delegate to members.
+
+<img
+  className="block dark:hidden"
+  src="/images/teams/team-delegate-light.png"
+  alt="Team delegation flow"
+/>
+
+<img
+  className="hidden dark:block"
+  src="/images/teams/team-delegate-dark.png"
+  alt="Team delegation flow"
+/>
+
+The default flow:
+1. Team receives user input
+2. Leader analyzes the input and decides which members to delegate to
+3. Leader formulates a task for each selected member
+4. Members execute and return results (concurrently in async mode)
+5. Leader synthesizes results into a final response
+
+You can customize this flow with three patterns:
+
+| Pattern | Configuration | Behavior |
+|---------|--------------|----------|
+| **Supervisor** (default) | Default settings | Leader selects members, formulates tasks, synthesizes results |
+| **Router** | `respond_directly=True` + `determine_input_for_members=False` | Leader routes to member, returns member response directly |
+| **Broadcast** | `delegate_to_all_members=True` | Leader delegates to all members simultaneously |
+
+## Supervisor Pattern (Default)
+
+The leader controls everything: which members to use, what task to give them, and how to combine their outputs.
+
+```python
+from agno.team import Team
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.tools.hackernews import HackerNewsTools
+from agno.tools.yfinance import YFinanceTools
+
+team = Team(
+    name="Research Team",
+    model=OpenAIResponses(id="gpt-4o"),
+    members=[
+        Agent(name="News Agent", role="Get tech news", tools=[HackerNewsTools()]),
+        Agent(name="Finance Agent", role="Get stock data", tools=[YFinanceTools()])
+    ],
+    instructions="Research the topic thoroughly, then synthesize findings into a clear report."
+)
+
+team.print_response("What's happening with AI companies and their stock prices?")
+```
+
+Use this when:
+- Tasks need decomposition into subtasks
+- You want quality control over the final output
+- The leader should add context or reasoning to member outputs
+
+## Router Pattern
+
+The leader selects which member handles the request, then passes the request through unchanged and returns the member's response directly.
+
+<img
+  className="block dark:hidden"
+  src="/images/teams/team-passthrough-light.png"
+  alt="Router pattern flow"
+/>
+
+<img
+  className="hidden dark:block"
+  src="/images/teams/team-passthrough-dark.png"
+  alt="Router pattern flow"
+/>
+
+```python
+from agno.team import Team
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+
+team = Team(
+    name="Language Router",
+    model=OpenAIResponses(id="gpt-4o"),
+    members=[
+        Agent(name="English Agent", role="Answer questions in English"),
+        Agent(name="Japanese Agent", role="Answer questions in Japanese"),
+    ],
+    respond_directly=True,            # Return member response without synthesis
+    determine_input_for_members=False # Pass user input unchanged to member
+)
+
+team.print_response("How are you?")        # Routes to English Agent
+team.print_response("お元気ですか?")        # Routes to Japanese Agent
+```
+
+Use this when:
+- You have specialized agents and want automatic routing
+- The leader shouldn't modify the request or response
+- You want lower latency (no synthesis step)
+
+### Configuration Options
+
+**`respond_directly=True`**: Return member responses without leader synthesis.
+
+<img
+  className="block dark:hidden"
+  src="/images/teams/team-direct-response-light.png"
+  alt="Direct response flow"
+/>
+
+<img
+  className="hidden dark:block"
+  src="/images/teams/team-direct-response-dark.png"
+  alt="Direct response flow"
+/>
+
+**`determine_input_for_members=False`**: Send user input directly to members instead of having the leader formulate a task.
+
+<img
+  className="block dark:hidden"
+  src="/images/teams/team-raw-input-light.png"
+  alt="Raw input flow"
+/>
+
+<img
+  className="hidden dark:block"
+  src="/images/teams/team-raw-input-dark.png"
+  alt="Raw input flow"
+/>
+
+Combine both for a full passthrough:
+
+```python
+team = Team(
+    respond_directly=True,
+    determine_input_for_members=False,
+    ...
+)
+```
+
+## Broadcast Pattern
+
+The leader delegates to all members at once. Useful for gathering multiple perspectives or parallel research.
+
+<img
+  className="block dark:hidden"
+  src="/images/teams/team-delegate-to-all-members-light.png"
+  alt="Broadcast pattern flow"
+/>
+
+<img
+  className="hidden dark:block"
+  src="/images/teams/team-delegate-to-all-members-dark.png"
+  alt="Broadcast pattern flow"
+/>
+
+```python
+import asyncio
+from agno.team import Team
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.tools.hackernews import HackerNewsTools
+from agno.tools.arxiv import ArxivTools
+from agno.tools.duckduckgo import DuckDuckGoTools
+
+team = Team(
+    name="Research Team",
+    model=OpenAIResponses(id="gpt-4o"),
+    members=[
+        Agent(name="HackerNews Researcher", role="Find discussions on HackerNews", tools=[HackerNewsTools()]),
+        Agent(name="Academic Researcher", role="Find academic papers", tools=[ArxivTools()]),
+        Agent(name="Web Researcher", role="Search the web", tools=[DuckDuckGoTools()]),
+    ],
+    delegate_to_all_members=True,
+    instructions="Synthesize findings from all researchers into a comprehensive report."
+)
+
+# Use async for concurrent execution
+asyncio.run(team.aprint_response("Research the current state of AI agents"))
+```
+
+Use this when:
+- You want multiple perspectives on the same topic
+- Members can work independently
+- Parallel execution improves latency
+
+<Note>
+`delegate_to_all_members=True` is not compatible with `respond_directly=True`.
+</Note>
+
+## Structured Input
+
+When using `determine_input_for_members=False`, you can pass structured Pydantic models directly to members:
+
+```python
+from pydantic import BaseModel, Field
+from agno.team import Team
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.tools.hackernews import HackerNewsTools
+
+class ResearchRequest(BaseModel):
+    topic: str
+    num_sources: int = Field(default=5)
+
+research_agent = Agent(
+    name="Research Agent",
+    role="Research topics on HackerNews",
+    tools=[HackerNewsTools()]
+)
+
+team = Team(
+    name="Research Team",
+    model=OpenAIResponses(id="gpt-4o"),
+    members=[research_agent],
+    determine_input_for_members=False  # Pass input directly to member
+)
+
+request = ResearchRequest(topic="AI Agents", num_sources=10)
+team.print_response(input=request)
+```
+
+## Production Considerations
+
+### Token Costs
+
+Each pattern has different token overhead:
+
+| Pattern | Coordination Cost | When to Use |
+|---------|------------------|-------------|
+| Supervisor | High (decomposition + synthesis) | Quality matters more than cost |
+| Router | Low (selection only) | Simple routing, cost-sensitive |
+| Broadcast | Medium (synthesis only) | Parallel research, multiple perspectives |
+
+### Latency
+
+- **Supervisor**: Sequential (leader thinks → members execute → leader synthesizes)
+- **Router**: Fast (leader selects → member executes)
+- **Broadcast with async**: Parallel member execution, but synthesis adds latency
+
+### Error Handling
+
+What happens when a member fails?
+
+- **Supervisor**: Leader can work with partial results from other members
+- **Router**: Failure is returned directly to caller
+- **Broadcast**: Leader synthesizes available results, may note missing data
+
+## Developer Resources
+
+- [Team reference](/reference/teams/team)
+- [Team examples](/cookbook/teams/overview)

@@ -1,0 +1,214 @@
+---
+title: Observability Examples
+sidebarTitle: Overview
+description: 21 examples covering Langfuse, Arize Phoenix, AgentOps, and more.
+---
+
+Monitor and debug your agents in production with observability integrations. Agno supports OpenTelemetry-based tracing that works with major observability platforms.
+
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from openinference.instrumentation.agno import AgnoInstrumentor
+
+# Start tracing
+AgnoInstrumentor().instrument()
+
+agent = Agent(model=OpenAIChat(id="gpt-4o"))
+agent.print_response("Hello, world!")
+# Traces sent to your observability platform
+```
+
+## Supported Platforms
+
+| Platform | Best For | Description |
+|----------|----------|-------------|
+| Langfuse | Full-featured | Open-source LLM observability |
+| Arize Phoenix | ML monitoring | AI observability with Phoenix |
+| AgentOps | Agent-focused | Purpose-built for agents |
+| LangSmith | LangChain users | LangChain's observability |
+| Langtrace | Open-source | OpenTelemetry native |
+| Langwatch | Enterprise | Production monitoring |
+| Logfire | Pydantic users | From Pydantic team |
+| Weave | Weights & Biases | W&B integration |
+| Opik | Comet users | Comet's LLM platform |
+
+## Examples by Platform
+
+### Langfuse
+
+Open-source LLM observability platform.
+
+```python cookbook/91_integrations/observability/langfuse_via_openinference.py
+import base64
+import os
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.tools.yfinance import YFinanceTools
+from openinference.instrumentation.agno import AgnoInstrumentor
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+
+# Configure Langfuse
+LANGFUSE_AUTH = base64.b64encode(
+    f"{os.getenv('LANGFUSE_PUBLIC_KEY')}:{os.getenv('LANGFUSE_SECRET_KEY')}".encode()
+).decode()
+os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = "https://cloud.langfuse.com/api/public/otel"
+os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = f"Authorization=Basic {LANGFUSE_AUTH}"
+
+# Start tracing
+tracer_provider = TracerProvider()
+tracer_provider.add_span_processor(SimpleSpanProcessor(OTLPSpanExporter()))
+AgnoInstrumentor().instrument(tracer_provider=tracer_provider)
+
+# Use your agent - traces are sent automatically
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini"),
+    tools=[YFinanceTools()],
+)
+
+agent.print_response("What is Tesla's stock price?")
+```
+
+### Arize Phoenix
+
+AI observability with Arize Phoenix.
+
+```python cookbook/91_integrations/observability/arize_phoenix_via_openinference.py
+import phoenix as px
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from openinference.instrumentation.agno import AgnoInstrumentor
+from opentelemetry.sdk.trace import TracerProvider
+
+# Start Phoenix
+px.launch_app()
+
+tracer_provider = TracerProvider()
+AgnoInstrumentor().instrument(tracer_provider=tracer_provider)
+
+agent = Agent(model=OpenAIChat(id="gpt-4o"))
+agent.print_response("Explain machine learning")
+```
+
+### Local Phoenix
+
+Run Phoenix locally for development.
+
+```python cookbook/91_integrations/observability/arize_phoenix_via_openinference_local.py
+import phoenix as px
+from phoenix.otel import register
+
+# Start local Phoenix server
+tracer_provider = register(project_name="my-agent")
+
+from openinference.instrumentation.agno import AgnoInstrumentor
+AgnoInstrumentor().instrument(tracer_provider=tracer_provider)
+```
+
+### AgentOps
+
+Purpose-built observability for agents.
+
+```python cookbook/91_integrations/observability/agent_ops.py
+import agentops
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+
+# Initialize AgentOps
+agentops.init()
+
+agent = Agent(model=OpenAIChat(id="gpt-4o"))
+agent.print_response("Hello, AgentOps!")
+
+agentops.end_session("Success")
+```
+
+### LangSmith
+
+LangChain's observability platform.
+
+```python cookbook/91_integrations/observability/langsmith_via_openinference.py
+import os
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from openinference.instrumentation.agno import AgnoInstrumentor
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+
+os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = "https://api.smith.langchain.com/otel"
+os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = f"x-api-key={os.getenv('LANGSMITH_API_KEY')}"
+
+tracer_provider = TracerProvider()
+tracer_provider.add_span_processor(SimpleSpanProcessor(OTLPSpanExporter()))
+AgnoInstrumentor().instrument(tracer_provider=tracer_provider)
+```
+
+### Langtrace
+
+Open-source, OpenTelemetry-native tracing.
+
+```python cookbook/91_integrations/observability/langtrace_op.py
+from langtrace_python_sdk import langtrace
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+
+langtrace.init()
+
+agent = Agent(model=OpenAIChat(id="gpt-4o"))
+agent.print_response("Hello, Langtrace!")
+```
+
+### Logfire
+
+From the Pydantic team.
+
+```python cookbook/91_integrations/observability/logfire_via_openinference.py
+import logfire
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from openinference.instrumentation.agno import AgnoInstrumentor
+
+logfire.configure()
+AgnoInstrumentor().instrument()
+
+agent = Agent(model=OpenAIChat(id="gpt-4o"))
+agent.print_response("Hello, Logfire!")
+```
+
+## All 21 Observability Examples
+
+| Platform | Examples |
+|----------|----------|
+| Langfuse | `langfuse_via_openinference.py`, `langfuse_via_openlit.py`, `langfuse_via_openinference_response_model.py` |
+| Arize Phoenix | `arize_phoenix_via_openinference.py`, `arize_phoenix_via_openinference_local.py`, `arize_phoenix_moving_traces.py` |
+| AgentOps | `agent_ops.py` |
+| LangSmith | `langsmith_via_openinference.py` |
+| Langtrace | `langtrace_op.py` |
+| Langwatch | `langwatch_op.py` |
+| Logfire | `logfire_via_openinference.py` |
+| Weave | `weave_op.py` |
+| Opik | `opik_via_openinference.py` |
+| Maxim | `maxim_ops.py` |
+| Atla | `atla_op.py` |
+
+## Run Examples
+
+```bash
+git clone https://github.com/agno-agi/agno.git
+cd agno/cookbook/91_integrations/observability
+
+pip install openinference-instrumentation-agno
+
+# Langfuse
+export LANGFUSE_PUBLIC_KEY=xxx
+export LANGFUSE_SECRET_KEY=xxx
+python langfuse_via_openinference.py
+
+# Phoenix (local)
+pip install arize-phoenix
+python arize_phoenix_via_openinference_local.py
+```
+

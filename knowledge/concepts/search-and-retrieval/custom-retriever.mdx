@@ -1,0 +1,167 @@
+---
+title: Custom Retriever
+description: Implement custom retrieval logic for full control over how agents search knowledge.
+keywords: [custom retriever, knowledge retriever, rag, retrieval]
+---
+
+Custom retrievers let you implement your own search logic instead of using the default knowledge search. This is useful when you need to:
+
+- Query external APIs or databases directly
+- Implement custom ranking or filtering
+- Reformulate queries before searching
+- Combine multiple data sources
+
+```python
+from agno.agent import Agent
+
+def knowledge_retriever(query: str, num_documents: int = 5, **kwargs) -> list[dict]:
+    # Your custom retrieval logic here
+    return [{"content": "..."}]
+
+agent = Agent(
+    knowledge_retriever=knowledge_retriever,
+    search_knowledge=True,
+)
+```
+
+## How It Works
+
+When the agent decides to search for information:
+
+1. The agent calls your `knowledge_retriever` function with the query
+2. Your function retrieves documents however you want
+3. Results are returned to the agent as a list of dictionaries
+4. The agent uses the retrieved content to generate a response
+
+## Retriever Function Signature
+
+```python
+from typing import Optional
+from agno.agent import Agent
+
+def knowledge_retriever(
+    query: str,
+    agent: Optional[Agent] = None,
+    num_documents: int = 5,
+    **kwargs
+) -> Optional[list[dict]]:
+    """
+    Args:
+        query: The search query from the agent
+        agent: The agent instance (optional, for accessing agent state)
+        num_documents: Number of documents to retrieve
+        **kwargs: Additional arguments passed from the agent
+
+    Returns:
+        List of documents as dictionaries, or None if search fails
+    """
+    # Your logic here
+    return [{"content": "..."}]
+```
+
+## Example: Direct Vector Database Query
+
+This example bypasses the Knowledge abstraction and queries Qdrant directly:
+
+```python custom_retriever.py
+from typing import Optional
+
+from agno.agent import Agent
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+from qdrant_client import QdrantClient
+
+embedder = OpenAIEmbedder(id="text-embedding-3-small")
+qdrant_client = QdrantClient(url="http://localhost:6333")
+
+def knowledge_retriever(
+    query: str, num_documents: int = 5, **kwargs
+) -> Optional[list[dict]]:
+    try:
+        # Generate embedding for the query
+        query_embedding = embedder.get_embedding(query)
+
+        # Search Qdrant directly
+        results = qdrant_client.query_points(
+            collection_name="recipes",
+            query=query_embedding,
+            limit=num_documents,
+        )
+
+        return results.model_dump().get("points")
+    except Exception as e:
+        print(f"Search error: {e}")
+        return None
+
+agent = Agent(
+    knowledge_retriever=knowledge_retriever,
+    search_knowledge=True,
+)
+
+agent.print_response("What ingredients do I need for Massaman Gai?")
+```
+
+## Example: Query Reformulation
+
+Expand or modify queries before searching:
+
+```python
+from agno.knowledge.knowledge import Knowledge
+
+knowledge = Knowledge(vector_db=vector_db)
+
+def knowledge_retriever(query: str, num_documents: int = 5, **kwargs) -> list[dict]:
+    # Expand common terms
+    expanded_query = query.replace("vacation", "vacation PTO paid time off")
+    expanded_query = expanded_query.replace("WFH", "work from home remote")
+
+    # Search with expanded query
+    results = knowledge.search(expanded_query, max_results=num_documents)
+
+    return [doc.to_dict() for doc in results]
+```
+
+## Example: Multi-Source Retrieval
+
+Combine results from multiple knowledge bases:
+```python
+def knowledge_retriever(query: str, num_documents: int = 5, **kwargs) -> list[dict]:
+    # Search multiple sources
+    policy_results = policy_knowledge.search(query, max_results=3)
+    faq_results = faq_knowledge.search(query, max_results=3)
+
+    # Combine and deduplicate
+    all_results = []
+    seen_ids = set()
+
+    for doc in policy_results + faq_results:
+        if doc.id not in seen_ids:
+            all_results.append(doc.to_dict())
+            seen_ids.add(doc.id)
+
+    return all_results[:num_documents]
+```
+
+
+## When to Use Custom Retrievers
+
+| Use Case | Why Custom Retriever |
+|----------|---------------------|
+| Direct database access | Skip the Knowledge abstraction for performance |
+| Query expansion | Add synonyms or related terms before searching |
+| Multi-source search | Combine results from multiple knowledge bases |
+| External APIs | Search third-party services (Elasticsearch, Algolia, etc.) |
+| Custom ranking | Implement domain-specific relevance scoring |
+| Conditional logic | Apply different search strategies based on query type |
+
+For most use cases, the built-in [Knowledge](/knowledge/overview) search is sufficient. Use custom retrievers when you need full control over the retrieval process.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Search & Retrieval" icon="magnifying-glass" href="/knowledge/concepts/search-and-retrieval/overview">
+    Learn about built-in search options
+  </Card>
+  <Card title="Filtering" icon="filter" href="/knowledge/concepts/filters/overview">
+    Filter results by metadata
+  </Card>
+</CardGroup>

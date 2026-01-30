@@ -10,12 +10,15 @@ Remote execution enables you to run agents, teams, and workflows that are hosted
 - **Microservices**: Decompose your agentic system into independent services
 - **Gateway pattern**: Create a unified API for multiple AgentOS instances
 
+<Note>
+Agno supports remote connections to AgentOS instances and A2A-compatible servers.
+
+See [RemoteAgent](/agent-os/remote-execution/remote-agent), [RemoteTeam](/agent-os/remote-execution/remote-team), and [RemoteWorkflow](/agent-os/remote-execution/remote-workflow) for more information.
+</Note>
+
 ## Core Components
 
 <CardGroup cols={2}>
-  <Card title="AgentOSClient" icon="plug" href="/reference/agent-os/client">
-    Low-level client for direct API access to any AgentOS endpoint
-  </Card>
   <Card title="RemoteAgent" icon="robot" href="/agent-os/remote-execution/remote-agent">
     Execute agents on remote AgentOS instances
   </Card>
@@ -24,6 +27,12 @@ Remote execution enables you to run agents, teams, and workflows that are hosted
   </Card>
   <Card title="RemoteWorkflow" icon="diagram-project" href="/agent-os/remote-execution/remote-workflow">
     Execute workflows on remote AgentOS instances
+  </Card>
+  <Card title="AgentOSClient" icon="plug" href="/reference/clients/agentos-client">
+    Low-level client for direct API access to any AgentOS endpoint
+  </Card>
+  <Card title="A2AClient" icon="plug" href="/reference/clients/a2a-client">
+    Low-level client for direct API access to any A2A endpoint
   </Card>
 </CardGroup>
 
@@ -36,13 +45,13 @@ First, create and run an AgentOS instance that will host your agents:
 ```python
 # server.py
 from agno.agent import Agent
-from agno.models.openai import OpenAIChat
+from agno.models.openai import OpenAIResponses
 from agno.os import AgentOS
 
 agent = Agent(
     name="Assistant",
     id="assistant-agent",
-    model=OpenAIChat(id="gpt-5-mini"),
+    model=OpenAIResponses(id="gpt-5.2"),
     instructions="You are a helpful assistant.",
 )
 
@@ -71,7 +80,7 @@ from agno.agent import RemoteAgent
 
 async def main():
     agent = RemoteAgent(
-        base_url="http://remote-server:7778",  # Use localhost for local testing
+        base_url="http://localhost:7778",  # Running on localhost for this example
         agent_id="assistant-agent",
     )
     
@@ -94,7 +103,7 @@ from agno.os import AgentOS
 local_agent = Agent(
     name="Research Agent",
     id="research-agent",
-    model=OpenAIChat(id="gpt-5-mini"),
+    model=OpenAIResponses(id="gpt-5.2"),
     instructions="You are a research assistant.",
 )
 
@@ -113,39 +122,27 @@ if __name__ == "__main__":
 
 See [Gateway Pattern](/agent-os/remote-execution/gateway) for more details.
 
-## Authentication
+## Connecting to A2A-compatible servers
 
-When connecting to authenticated AgentOS instances, pass the `auth_token` parameter:
+Using the A2A protocol, you can connect to any A2A-compatible server.
+
+Here is an example of connecting to a Google ADK A2A server:
 
 ```python
-response = await agent.arun(
-    "Hello",
-    auth_token="your-jwt-token",
+from agno.agent import RemoteAgent
+
+# Connect to a Google ADK A2A server
+agent = RemoteAgent(
+    base_url="http://localhost:8001",  # Running on localhost for this example
+    agent_id="facts_agent",
+    protocol="a2a",
+    a2a_protocol="json-rpc",  # Google ADK uses JSON-RPC
 )
+
+response = await agent.arun("Tell me an interesting fact")
+print(response.content)
 ```
 
-For the `AgentOSClient`, use the `headers` parameter:
-
-```python
-from agno.client import AgentOSClient
-
-client = AgentOSClient(base_url="http://localhost:7777")
-config = await client.aget_config(headers={"Authorization": "Bearer your-token"})
-```
-
-## Error Handling
-
-Remote execution can fail due to network issues or server unavailability:
-
-```python
-from agno.exceptions import RemoteServerUnavailableError
-
-try:
-    response = await agent.arun("Hello")
-except RemoteServerUnavailableError as e:
-    print(f"Server unavailable: {e.message}")
-    print(f"Base URL: {e.base_url}")
-```
 
 ## Learn More
 

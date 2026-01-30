@@ -1,0 +1,90 @@
+---
+title: Agent with Storage
+sidebarTitle: Agent with Storage
+description: "Persist conversation history across runs."
+mode: wide
+---
+
+Storage lets your agent remember conversations. With the same `session_id`, it picks up where you left off, even after restarting.
+
+<Steps>
+
+  <Step title="Create a Python file">
+    ```python agent_with_storage.py
+    from agno.agent import Agent
+    from agno.db.sqlite import SqliteDb
+    from agno.models.openai import OpenAIResponses
+    from agno.tools.yfinance import YFinanceTools
+
+    db = SqliteDb(db_file="tmp/agents.db")
+
+    agent = Agent(
+        model=OpenAIResponses(id="gpt-5.2"),
+        tools=[YFinanceTools()],
+        db=db,
+        add_history_to_context=True,
+        num_history_runs=5,
+        markdown=True,
+    )
+
+    session_id = "finance-session"
+
+    # Turn 1: Analyze a stock
+    agent.print_response(
+        "Give me a quick analysis of NVIDIA",
+        session_id=session_id,
+        stream=True,
+    )
+
+    # Turn 2: The agent remembers NVDA from turn 1
+    agent.print_response(
+        "Compare that to AMD",
+        session_id=session_id,
+        stream=True,
+    )
+
+    # Turn 3: Ask based on full conversation
+    agent.print_response(
+        "Which looks like the better investment?",
+        session_id=session_id,
+        stream=True,
+    )
+    ```
+  </Step>
+
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai yfinance sqlalchemy
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+
+    <CodeGroup>
+
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run Agent">
+    ```bash
+    python agent_with_storage.py
+    ```
+  </Step>
+
+</Steps>
+
+## Key Concepts
+
+- **Session:** A conversation thread identified by `session_id`
+- **Same `session_id` = continuous conversation**, even across script runs
+- **`add_history_to_context=True`:** Includes previous messages in context
+- **`num_history_runs=5`:** Number of previous runs to include

@@ -32,8 +32,10 @@ print(response.content)
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `base_url` | `str` | Required | Base URL of the remote AgentOS instance (e.g., `"http://localhost:7777"`) |
+| `base_url` | `str` | Required | Base URL of the remote server (e.g., `"http://localhost:7777"`) |
 | `agent_id` | `str` | Required | ID of the remote agent to execute |
+| `protocol` | `Literal["agentos", "a2a"]` | `"agentos"` | Protocol to use for communication |
+| `a2a_protocol` | `Literal["rest", "json-rpc"]` | `"rest"` | A2A sub-protocol (only used when `protocol="a2a"`) |
 | `timeout` | `float` | `60.0` | Request timeout in seconds |
 | `config_ttl` | `float` | `300.0` | Time-to-live for cached configuration in seconds |
 
@@ -224,31 +226,57 @@ config = agent.refresh_config()
 
 **Returns:** `AgentResponse`
 
-## Using in Teams
+## A2A Protocol Support
 
-Remote agents can be used as members of local teams:
+`RemoteAgent` can connect to any A2A-compatible server using the `protocol="a2a"` parameter:
+
+### Connecting to Agno A2A Servers
 
 ```python
 from agno.agent import RemoteAgent
-from agno.team import Team
-from agno.models.openai import OpenAIChat
 
-# Remote agent from another AgentOS instance
-researcher = RemoteAgent(
-    base_url="http://research-server:7777",
-    agent_id="researcher-agent",
+# Connect to an Agno AgentOS with A2A interface
+agent = RemoteAgent(
+    base_url="http://localhost:7001/a2a/agents/my-agent",
+    agent_id="my-agent",
+    protocol="a2a",
 )
 
-# Local team with remote agent member
-team = Team(
-    name="Research Team",
-    model=OpenAIChat(id="gpt-4o"),
-    members=[researcher],
-    instructions="Coordinate research tasks",
-)
-
-response = await team.arun("Research AI trends")
+response = await agent.arun("Hello!")
+print(response.content)
 ```
+
+### Connecting to Google ADK
+
+Google ADK uses JSON-RPC mode. Set `a2a_protocol="json-rpc"`:
+
+```python
+from agno.agent import RemoteAgent
+
+# Connect to a Google ADK server
+agent = RemoteAgent(
+    base_url="http://localhost:8001",
+    agent_id="facts_agent",
+    protocol="a2a",
+    a2a_protocol="json-rpc",
+)
+
+response = await agent.arun("Tell me an interesting fact")
+print(response.content)
+
+# Streaming is also supported
+async for event in agent.arun("Tell me a story", stream=True):
+    if hasattr(event, "content") and event.content:
+        print(event.content, end="", flush=True)
+```
+
+### Protocol Options
+
+| Protocol | a2a_protocol | Use Case |
+|----------|--------------|----------|
+| `"agentos"` | N/A | Default. Connect to Agno AgentOS REST API |
+| `"a2a"` | `"rest"` | Connect to A2A servers using REST endpoints |
+| `"a2a"` | `"json-rpc"` | Connect to Google ADK or pure JSON-RPC A2A servers |
 
 ## Using in AgentOS Gateway
 
