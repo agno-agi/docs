@@ -1,0 +1,103 @@
+---
+title: "Add HTTPS"
+sidebarTitle: "HTTPS"
+description: "Add a custom domain and SSL certificate"
+---
+
+HTTPS is required to connect your AgentOS to os.agno.com.
+
+## Overview
+
+1. Register a domain (or use an existing one)
+2. Create an SSL certificate in AWS ACM
+3. Configure your load balancer to use HTTPS
+
+## Step 1: Set Up Your Domain
+
+Register your domain with [Route 53](https://us-east-1.console.aws.amazon.com/route53/) or use an existing domain.
+
+Create an A record pointing to your load balancer:
+
+| Record | Type | Value |
+|--------|------|-------|
+| `api.yourdomain.com` | A (Alias) | Your ALB DNS name |
+
+## Step 2: Create SSL Certificate
+
+<Steps>
+<Step title="Request certificate">
+Go to [AWS ACM](https://us-east-1.console.aws.amazon.com/acm) and request a certificate for your domain (e.g., `*.yourdomain.com` or `api.yourdomain.com`).
+</Step>
+
+<Step title="Validate the certificate">
+Choose DNS validation. ACM will provide CNAME records to add to Route 53.
+
+Click "Create records in Route 53" to add them automatically.
+
+<Note>
+Certificate validation takes 5-30 minutes. Wait until status shows "Issued".
+</Note>
+</Step>
+
+<Step title="Copy the certificate ARN">
+Once issued, copy the ARN. It looks like:
+```
+arn:aws:acm:us-east-1:[ACCOUNT_ID]:certificate/[CERTIFICATE_ID]
+```
+</Step>
+</Steps>
+
+## Step 3: Configure Load Balancer
+
+<Steps>
+<Step title="Update prd_resources.py">
+Add the certificate ARN:
+
+```python infra/prd_resources.py
+prd_fastapi = FastApi(
+    ...
+    load_balancer_enable_https=True,
+    load_balancer_certificate_arn="arn:aws:acm:us-east-1:[ACCOUNT_ID]:certificate/[CERTIFICATE_ID]",
+)
+```
+</Step>
+
+<Step title="Create HTTPS listener">
+```bash
+ag infra up prd:aws:::listener
+```
+</Step>
+
+<Step title="Redirect HTTP to HTTPS">
+```bash
+ag infra patch prd:aws:::listener
+```
+
+All HTTP requests now redirect to HTTPS.
+</Step>
+</Steps>
+
+## Verify HTTPS Works
+
+```bash
+curl https://api.yourdomain.com/health
+```
+
+Should return:
+```json
+{"status": "ok", "instantiated_at": "..."}
+```
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| Certificate not validating | Check CNAME records in Route 53, wait up to 30 min |
+| Certificate not showing in dropdown | Must be in same region as load balancer (us-east-1) |
+| HTTPS not working after setup | Run `ag infra patch prd:aws:::listener` again |
+
+## Next Step
+
+Now you can connect to os.agno.com:
+
+→ [Connect to Control Plane](/production/aws/after-deploy/connect)

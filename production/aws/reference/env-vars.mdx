@@ -1,0 +1,78 @@
+---
+title: "Environment Variables"
+sidebarTitle: "Env Vars"
+description: "Reference for app environment configuration"
+---
+
+Environment variables are set in `dev_resources.py` (local) and `prd_resources.py` (production).
+
+## Production Variables
+
+These variables are set in `prd_resources.py`:
+
+| Variable | Source | Description |
+|----------|--------|-------------|
+| `RUNTIME_ENV` | Hardcoded | `prd` in production |
+| `DATA_DIR` | Hardcoded | `/data` (EFS mount point) |
+| `OPENAI_API_KEY` | Secrets | From `prd_api_secrets.yml` |
+| `EXA_API_KEY` | Secrets | From `prd_api_secrets.yml` (optional) |
+| `DB_HOST` | AWS | RDS endpoint (auto-populated) |
+| `DB_PORT` | AWS | RDS port (auto-populated) |
+| `DB_USER` | Secrets | From `prd_db_secrets.yml` |
+| `DB_PASS` | Secrets | From `prd_db_secrets.yml` |
+| `DB_DATABASE` | AWS | RDS database name (auto-populated) |
+| `WAIT_FOR_DB` | Hardcoded | `True` when database enabled |
+
+<Note>
+`MIGRATE_DB` is **not** set in production by default. Add it manually if you want migrations to run on startup. See [Adding Custom Variables](#adding-custom-variables).
+</Note>
+
+## Development Variables
+
+These variables are set in `dev_resources.py`:
+
+| Variable | Value | Notes |
+|----------|-------|-------|
+| `RUNTIME_ENV` | `dev` | |
+| `DATA_DIR` | `/app/.data` | Local container path |
+| `MIGRATE_DB` | `True` | Auto-migrates on startup |
+| `WAIT_FOR_DB` | `True` | Waits for Docker Postgres |
+
+Database variables (`DB_HOST`, `DB_PORT`, etc.) come from the local Docker container.
+
+## Adding Custom Variables
+
+Add variables to the `container_env` dict in `prd_resources.py`:
+
+```python prd_resources.py
+container_env = {
+    ...
+    "MY_CUSTOM_VAR": "value",
+    "FROM_LOCAL_ENV": getenv("LOCAL_VAR"),
+    "MIGRATE_DB": True,  # Enable auto-migrations
+}
+```
+
+After adding variables:
+
+```bash
+ag infra patch prd:aws:::td && ag infra patch prd:aws:::service
+```
+
+## Reading in Code
+
+```python
+import os
+
+# With default fallback
+my_var = os.getenv("MY_CUSTOM_VAR", "default_value")
+
+# Required (raises if missing)
+api_key = os.environ["OPENAI_API_KEY"]
+```
+
+## Next Steps
+
+- [Secrets](/production/aws/configure/secrets) - API keys and database credentials
+- [Database Setup](/production/aws/configure/database) - Connection configuration
+- [Settings](/production/aws/configure/settings) - Infrastructure configuration

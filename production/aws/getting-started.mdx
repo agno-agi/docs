@@ -1,0 +1,245 @@
+---
+title: "AgentOS on AWS"
+sidebarTitle: "Getting Started"
+description: "Deploy AgentOS to AWS with ECS Fargate"
+---
+
+Deploy AgentOS to AWS with ECS Fargate, RDS PostgreSQL, and an Application Load Balancer. Production-grade infrastructure that runs entirely in your cloud.
+
+## Architecture
+
+<img
+  className="block dark:hidden"
+  src="/images/aws-architecture-light.svg"
+  alt="AWS Architecture"
+/>
+
+<img
+  className="hidden dark:block"
+  src="/images/aws-architecture-dark.svg"
+  alt="AWS Architecture"
+/>
+
+## What You'll Deploy
+
+| Resource | Purpose | Monthly Cost |
+|----------|---------|--------------|
+| ECS Fargate | Serverless container hosting | $30-50 |
+| RDS PostgreSQL | Managed database with pgvector | $25 |
+| Application Load Balancer | HTTP/HTTPS endpoint | $20-25 |
+| AWS Secrets Manager | Secure credential storage | < $1 |
+| Security Groups | Network access controls | Free |
+| **Total** | | **~$75-100** |
+
+Use the [AWS Pricing Calculator](https://calculator.aws/) for detailed estimates.
+
+---
+
+## Deploy to AWS
+
+### Prerequisites
+
+<Steps>
+<Step title="Install tools">
+
+- Install [Docker Desktop](https://docs.docker.com/desktop/install/mac-install/)
+- Install [uv](https://docs.astral.sh/uv/) (Python package manager)
+- Install and configure the [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
+
+</Step>
+
+<Step title="Create and activate a virtual environment">
+```bash
+uv venv --python 3.12
+source .venv/bin/activate
+```
+
+</Step>
+
+<Step title="Install Agno">
+```bash
+uv pip install -U 'agno[infra]'
+```
+
+</Step>
+</Steps>
+
+### Setup Your Project
+
+<Steps>
+<Step title="Create your codebase" stepNumber={4}>
+```bash
+ag infra create --template agentos-aws --name my-agentos
+
+cd my-agentos
+```
+
+<Tip>
+Or clone directly: `git clone https://github.com/agno-agi/agentos-aws-template.git`
+</Tip>
+
+</Step>
+
+<Step title="Set your API key" stepNumber={5}>
+```bash
+export OPENAI_API_KEY=sk-***
+```
+
+</Step>
+</Steps>
+
+### Configure AWS
+
+<Steps>
+<Step title="Create ECR repository" stepNumber={6}>
+
+Create a repository in ECR to store your Docker images:
+
+```bash
+aws ecr create-repository \
+  --repository-name my-agentos \
+  --region us-east-1
+```
+
+Note your ECR URL from the output:
+```
+[ACCOUNT_ID].dkr.ecr.us-east-1.amazonaws.com
+```
+
+</Step>
+
+<Step title="Authenticate Docker with ECR" stepNumber={7}>
+
+```bash
+aws ecr get-login-password --region us-east-1 | \
+  docker login --username AWS --password-stdin \
+  [ACCOUNT_ID].dkr.ecr.us-east-1.amazonaws.com
+```
+
+<Note>
+ECR tokens expire after 12 hours. Re-run this command if you get "no basic auth credentials" errors.
+</Note>
+
+</Step>
+
+<Step title="Configure settings" stepNumber={8}>
+
+Update `infra/settings.py`:
+
+```python
+infra_settings = InfraSettings(
+    infra_name="my-agentos",
+    aws_region="us-east-1",
+    aws_subnet_ids=["subnet-xxx", "subnet-yyy"],
+    image_repo="[ACCOUNT_ID].dkr.ecr.us-east-1.amazonaws.com",
+    push_images=True,
+)
+```
+
+To find your subnet IDs:
+```bash
+aws ec2 describe-subnets --query 'Subnets[*].[SubnetId,AvailabilityZone]' --output table
+```
+
+</Step>
+
+<Step title="Create secrets files" stepNumber={9}>
+
+```bash
+cp infra/secrets/prd_api_secrets.example.yml infra/secrets/prd_api_secrets.yml
+cp infra/secrets/prd_db_secrets.example.yml infra/secrets/prd_db_secrets.yml
+```
+
+Edit both files with your credentials. See [Secrets](/production/aws/configure/secrets) for details.
+
+</Step>
+</Steps>
+
+### Deploy
+
+<Steps>
+<Step title="Test locally (optional)" stepNumber={10}>
+```bash
+ag infra up
+```
+
+Open http://localhost:8000/docs to verify it works.
+
+</Step>
+
+<Step title="Deploy to AWS" stepNumber={11}>
+```bash
+ag infra up prd:aws
+```
+
+Press Enter to confirm. This creates:
+- Docker image pushed to ECR
+- RDS PostgreSQL instance
+- ECS Cluster, Service, and Task Definition
+- Application Load Balancer with Target Group
+
+RDS takes about 5 minutes to provision. Monitor progress in the AWS Console.
+
+</Step>
+
+<Step title="Get your endpoint" stepNumber={12}>
+
+Find your Load Balancer DNS in the AWS Console (EC2 → Load Balancers).
+
+Test your deployment:
+```bash
+curl http://[LOAD_BALANCER_DNS]/health
+```
+
+Should return: `{"status": "ok", "instantiated_at": "..."}`
+
+</Step>
+</Steps>
+
+---
+
+## What's Next?
+
+Your AgentOS is deployed. Follow these steps to finish setup:
+
+<Steps>
+<Step title="Verify deployment">
+Confirm everything is working.
+
+→ [Verify Deployment](/production/aws/after-deploy/verify)
+</Step>
+
+<Step title="Add HTTPS">
+Required to connect to os.agno.com.
+
+→ [Add HTTPS](/production/aws/after-deploy/https)
+</Step>
+
+<Step title="Connect to os.agno.com">
+Monitor and manage your agents from the control plane.
+
+→ [Connect to Control Plane](/production/aws/after-deploy/connect)
+</Step>
+</Steps>
+
+---
+
+## Reference
+
+### Project Structure
+
+```
+my-agentos/
+├── agents/              # Your agents
+├── app/                 # AgentOS application
+├── db/                  # Database tables and migrations
+├── infra/               # Infrastructure configuration
+│   ├── settings.py      # InfraSettings (region, subnets, etc.)
+│   ├── prd_resources.py # Production AWS resources
+│   └── secrets/         # API keys and credentials
+├── scripts/             # Helper scripts (auth_ecr.sh, etc.)
+├── Dockerfile           # Container build
+├── pyproject.toml       # Python dependencies
+└── requirements.txt     # Locked dependencies
+```
+

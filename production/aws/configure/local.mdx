@@ -1,0 +1,94 @@
+---
+title: "Local Development"
+sidebarTitle: "Local"
+description: "Build and run your application locally with Docker"
+---
+
+Local development uses Docker Compose. Resources are defined in `infra/dev_resources.py`.
+
+## Start Local Environment
+
+```bash
+ag infra up
+```
+
+This starts:
+- PostgreSQL database (port 5432)
+- AgentOS API (port 8000)
+
+Access points:
+- **API docs:** http://localhost:8000/docs
+- **Health check:** http://localhost:8000/health
+
+## View Logs
+
+```bash
+docker logs -f ai-api
+```
+
+Expected startup output:
+```
+INFO:     Started server process [1]
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000
+```
+
+## Building Custom Images
+
+By default, the dev environment uses pre-built `agno` images. To build your own:
+
+### 1. Update Settings
+
+```python infra/settings.py
+infra_settings = InfraSettings(
+    ...
+    image_repo="local",
+    build_images=True,
+)
+```
+
+### 2. Build the Image
+
+```bash
+ag infra up dev:docker -t image
+```
+
+Force rebuild (no cache):
+```bash
+ag infra up dev:docker -t image -f
+```
+
+## Common Operations
+
+| Task | Command |
+|------|---------|
+| Start all | `ag infra up` |
+| Stop all | `ag infra down` |
+| Restart containers | `ag infra restart dev:docker -t container` |
+| Rebuild everything | `ag infra up dev:docker -f` |
+| View API logs | `docker logs -f ai-api` |
+| View DB logs | `docker logs -f ai-db` |
+
+## Target Types
+
+The `-t` flag filters what to create:
+
+| Target | Creates |
+|--------|---------|
+| (none) | Everything |
+| `image` | Docker image only |
+| `container` | Containers only |
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| Port 8000 in use | Stop other services: `docker ps` then `docker stop <container>` |
+| Port 5432 in use | Stop local PostgreSQL: `brew services stop postgresql` |
+| Database errors | Restart: `ag infra down && ag infra up` |
+| Old image cached | Force rebuild: `ag infra up dev:docker -t image -f` |
+
+## Next Steps
+
+- [Production Deployment](/production/aws/operate/updates) - Deploy to AWS
+- [CI/CD](/production/aws/operate/ci-cd) - Automate builds

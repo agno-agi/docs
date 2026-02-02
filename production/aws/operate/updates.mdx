@@ -1,0 +1,210 @@
+---
+title: "Production Deployment"
+sidebarTitle: "Production"
+description: "Deploy your application to AWS with ECS Fargate"
+---
+
+Your production application runs on AWS ECS Fargate. Resources are defined in `infra/prd_resources.py`.
+
+## Prerequisites
+
+Before deploying, complete these steps:
+
+| Step | Guide | Why |
+|------|-------|-----|
+| Configure secrets | [Secrets](/production/aws/configure/secrets) | API keys and database password |
+| Configure settings | [Settings](/production/aws/configure/settings) | Region, subnets, image repo |
+| Create ECR repository | [Below](#create-an-ecr-repository) | Store your Docker images |
+
+## Deploy to AWS
+
+Once prerequisites are complete:
+
+```bash
+ag infra up prd:aws
+```
+
+This creates:
+- Docker image pushed to ECR
+- RDS PostgreSQL instance
+- ECS Cluster, Service, and Task Definition
+- Application Load Balancer with Target Group
+- AWS Secrets Manager entries
+
+<Note>
+RDS takes about 5 minutes to provision. You can monitor progress in the AWS Console.
+</Note>
+
+## Verify Deployment
+
+After deployment completes, verify everything is working:
+
+### Check the health endpoint
+
+Get your load balancer DNS from the AWS Console (EC2 → Load Balancers), then:
+
+```bash
+curl http://[LOAD_BALANCER_DNS]/health
+```
+
+Expected response:
+```json
+{"status": "ok", "instantiated_at": "2025-01-01T12:00:00Z"}
+```
+
+### Check CloudWatch logs
+
+```bash
+aws logs tail /ecs/{infra_name}-prd --follow
+```
+
+Look for `Application startup complete` to confirm the app started.
+
+### Check ECS service status
+
+```bash
+aws ecs describe-services \
+  --cluster {infra_name}-prd \
+  --services {infra_name}-prd-service \
+  --query 'services[0].{status:status,running:runningCount,desired:desiredCount}'
+```
+
+## Create an ECR Repository
+
+ECR (Elastic Container Registry) stores your Docker images in AWS.
+
+### Step 1: Create the repository
+
+Create a repository with the same name as your `image_name` setting (default: `agentos-aws-template`):
+
+```bash
+aws ecr create-repository \
+  --repository-name agentos-aws-template \
+  --region us-east-1
+```
+
+<img src="/images/create-ecr-image.png" alt="create-ecr-image" />
+
+### Step 2: Get your ECR URL
+
+Your ECR URL follows this format:
+```
+[ACCOUNT_ID].dkr.ecr.[REGION].amazonaws.com
+```
+
+Get your account ID:
+```bash
+aws sts get-caller-identity --query Account --output text
+```
+
+Example URL: `123456789012.dkr.ecr.us-east-1.amazonaws.com`
+
+### Step 3: Authenticate Docker with ECR
+
+```bash
+aws ecr get-login-password --region us-east-1 | \
+  docker login --username AWS --password-stdin \
+  [ACCOUNT_ID].dkr.ecr.us-east-1.amazonaws.com
+```
+
+Or use the helper script (update with your ECR URL first):
+
+```bash
+./scripts/auth_ecr.sh
+```
+
+<Warning>
+ECR tokens expire after 12 hours. If you get "no basic auth credentials" errors, re-run the authentication command.
+</Warning>
+
+### Step 4: Update settings
+
+Update `infra/settings.py` with your ECR URL:
+
+```python infra/settings.py
+infra_settings = InfraSettings(
+    ...
+    # Your ECR repository URL
+    image_repo="123456789012.dkr.ecr.us-east-1.amazonaws.com",
+    # Build images locally
+    build_images=True,
+    # Push images to ECR after building
+    push_images=True,
+)
+```
+
+## Update Deployments
+
+After making changes to your code or configuration:
+
+### Rebuild and push image
+
+```bash
+ag infra up prd:docker
+```
+
+### Update task definition
+
+Required when you change: image, CPU, memory, or environment variables.
+
+```bash
+ag infra patch prd:aws:::td
+```
+
+### Update service
+
+Triggers a new deployment with the latest task definition:
+
+```bash
+ag infra patch prd:aws:::service
+```
+
+<Note>
+**Shortcut:** If you only rebuilt the image (no config changes), you can skip the task definition update and just patch the service.
+</Note>
+
+## Customize Your Deployment
+
+Edit `infra/prd_resources.py` to customize:
+
+| Setting | Location | Default |
+|---------|----------|---------|
+| CPU | `prd_fastapi` | 1024 (1 vCPU) |
+| Memory | `prd_fastapi` | 2048 (2 GB) |
+| Task count | `ecs_service_count` | 1 |
+| Health check path | `health_check_path` | `/health` |
+
+Example customization:
+
+```python prd_resources.py
+prd_fastapi = FastApi(
+    ...
+    ecs_task_cpu="2048",      # 2 vCPU
+    ecs_task_memory="4096",   # 4 GB
+    ecs_service_count=2,      # 2 tasks for redundancy
+)
+```
+
+After changes, update the task definition and service:
+
+```bash
+ag infra patch prd:aws:::td && ag infra patch prd:aws:::service
+```
+
+## Stop Deployment
+
+To remove all AWS resources:
+
+```bash
+ag infra down prd:aws
+```
+
+<Warning>
+This deletes everything including the database. Back up your data first.
+</Warning>
+
+## Next Steps
+
+- [CI/CD](/production/aws/operate/ci-cd) - Automate builds with GitHub Actions
+- [Domain & HTTPS](/production/aws/after-deploy/https) - Custom domain and SSL
+- [Monitoring](/production/aws/operate/monitoring) - CloudWatch logs and alerts

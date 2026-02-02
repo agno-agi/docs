@@ -1,0 +1,149 @@
+---
+title: "Database Setup"
+sidebarTitle: "Database"
+description: "Configure RDS PostgreSQL and run migrations"
+---
+
+## Overview
+
+AgentOS uses PostgreSQL for:
+- Agent memory and sessions
+- Knowledge embeddings (pgvector)
+- Custom application data
+
+RDS is created automatically by `ag infra up prd:aws`.
+
+## Prerequisites
+
+Complete [Secrets Setup](/production/aws/configure/secrets) first. The database credentials must exist before deployment.
+
+## Database Credentials
+
+Edit `infra/secrets/prd_db_secrets.yml`:
+
+```yaml
+DB_USER: "ai"
+DB_PASS: "YourSecurePassword123"
+```
+
+Generate a secure password:
+
+```bash
+openssl rand -base64 24
+```
+
+<Warning>
+Avoid `@`, `#`, `%`, `&` in passwords. These require URL encoding and cause silent connection failures.
+
+Safe characters: alphanumeric, `!`, `-`, `_`
+</Warning>
+
+## RDS Configuration
+
+Default configuration in `prd_resources.py`:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `engine` | `postgres` | PostgreSQL |
+| `engine_version` | `17.2` | PostgreSQL 17 |
+| `allocated_storage` | `64` | 64 GB storage |
+| `db_instance_class` | `db.t4g.small` | ~$25/month |
+| `db_name` | `ai` | Database name |
+| `port` | `5432` | PostgreSQL port |
+
+### Customize RDS
+
+Edit `prd_resources.py`:
+
+```python prd_resources.py
+prd_db = DbInstance(
+    ...
+    db_instance_class="db.t4g.medium",  # Larger instance
+    allocated_storage=128,               # More storage
+    engine_version="17.2",               # PostgreSQL version
+)
+```
+
+After changes:
+```bash
+ag infra patch prd:aws:::db
+```
+
+<Note>
+Some changes (like instance class) require a reboot. Check AWS Console for status.
+</Note>
+
+## Connection Settings
+
+The app connects via environment variables set automatically in `prd_resources.py`:
+
+| Variable | Source |
+|----------|--------|
+| `DB_HOST` | RDS endpoint (auto-populated) |
+| `DB_PORT` | RDS port (auto-populated) |
+| `DB_USER` | From `prd_db_secrets.yml` |
+| `DB_PASS` | From `prd_db_secrets.yml` |
+| `DB_DATABASE` | RDS database name |
+
+## Migrations
+
+### Option 1: Run on Deployment
+
+Add `MIGRATE_DB` to `prd_resources.py`:
+
+```python prd_resources.py
+container_env = {
+    ...
+    "MIGRATE_DB": True,
+}
+```
+
+Then update and redeploy:
+```bash
+ag infra patch prd:aws:::td && ag infra patch prd:aws:::service
+```
+
+### Option 2: Run Manually via ECS Exec
+
+```bash
+ECS_CLUSTER={infra_name}-prd
+TASK_ARN=$(aws ecs list-tasks --cluster $ECS_CLUSTER --query "taskArns[0]" --output text)
+
+aws ecs execute-command \
+    --cluster $ECS_CLUSTER \
+    --task $TASK_ARN \
+    --container {infra_name}-prd \
+    --interactive \
+    --command "alembic -c db/alembic.ini upgrade head"
+```
+
+## Verify Connection
+
+After deployment, verify the database is accessible:
+
+```bash
+# Get RDS endpoint
+aws rds describe-db-instances \
+  --db-instance-identifier {infra_name}-prd-db \
+  --query 'DBInstances[0].Endpoint.Address' \
+  --output text
+```
+
+Test connection (requires `psql`):
+```bash
+psql -h [RDS_ENDPOINT] -U ai -d ai
+```
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| Cannot connect to RDS | Check security group allows port 5432 from your IP |
+| Connection fails silently | Remove special characters from password |
+| RDS not ready | Wait ~5 minutes, check AWS Console |
+| ECS can't connect | Verify security group allows ECS security group |
+
+## Next Steps
+
+- [Database Tables Reference](/production/aws/reference/database-tables) - SQLAlchemy models
+- [Troubleshooting](/production/aws/operate/troubleshooting) - Common issues

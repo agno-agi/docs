@@ -1,0 +1,112 @@
+---
+title: "Infrastructure Settings"
+sidebarTitle: "Settings"
+description: "Configure AWS region, subnets, and ECR"
+---
+
+The `InfraSettings` object in `infra/settings.py` defines common settings used by your apps and resources.
+
+```python infra/settings.py
+infra_settings = InfraSettings(
+    infra_name="my-agentos",
+    aws_region="us-east-1",
+    aws_az1="us-east-1a",
+    aws_az2="us-east-1b",
+    aws_subnet_ids=["subnet-0abc123...", "subnet-0def456..."],
+    image_repo="123456789012.dkr.ecr.us-east-1.amazonaws.com",
+    build_images=True,
+    push_images=True,
+)
+```
+
+<Note>
+Settings can also be set using environment variables or `.env` file. See `example.env`.
+</Note>
+
+## Required Settings
+
+| Setting | Description | Example |
+|---------|-------------|---------|
+| `infra_name` | Prefix for all AWS resource names | `my-agentos` |
+| `aws_region` | AWS region for resources | `us-east-1` |
+| `aws_subnet_ids` | VPC subnets (minimum 2) | `["subnet-xxx", "subnet-yyy"]` |
+| `image_repo` | ECR repository URL | `123456789012.dkr.ecr.us-east-1.amazonaws.com` |
+
+## What `infra_name` Names
+
+The `infra_name` value prefixes all AWS resources:
+
+| Resource | Name Pattern |
+|----------|--------------|
+| ECS Cluster | `{infra_name}-prd` |
+| ECS Service | `{infra_name}-prd-service` |
+| Load Balancer | `{infra_name}-prd-alb` |
+| RDS Instance | `{infra_name}-prd-db` |
+| Secrets | `{infra_name}-prd-secrets` |
+| CloudWatch Logs | `/ecs/{infra_name}-prd` |
+
+## Image Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `image_repo` | `agnohq` | Repository URL (DockerHub or ECR) |
+| `image_name` | `agentos-aws-template` | Image name |
+| `build_images` | `True` | Build Docker images locally |
+| `push_images` | `False` | Push to registry after build |
+
+For ECR, set `image_repo` to your ECR URL:
+```
+123456789012.dkr.ecr.us-east-1.amazonaws.com
+```
+
+## AWS Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `aws_region` | `us-east-1` | AWS region |
+| `aws_az1` | `us-east-1a` | First availability zone |
+| `aws_az2` | `us-east-1b` | Second availability zone |
+| `aws_subnet_ids` | None | VPC subnets (required for production) |
+| `aws_security_group_ids` | None | Security groups (optional) |
+
+<Note>
+**Why 2 subnets?** AWS requires resources in at least 2 availability zones for high availability. If one zone has issues, your app stays running.
+</Note>
+
+### Finding Your Subnet IDs
+
+```bash
+aws ec2 describe-subnets \
+  --query 'Subnets[*].[SubnetId,AvailabilityZone,CidrBlock]' \
+  --output table
+```
+
+Choose subnets in different availability zones (e.g., `us-east-1a` and `us-east-1b`).
+
+## Optional: EFS Settings
+
+For persistent storage (required for Pal agent's data):
+
+```python infra/settings.py
+infra_settings = InfraSettings(
+    ...
+    efs_file_system_id="fs-0123456789abcdef0",
+    efs_access_point_id="fsap-0123456789abcdef0",
+)
+```
+
+See [EFS Setup](/production/aws/configure/efs) for complete instructions.
+
+## Verify Settings
+
+After updating settings, verify they're correct:
+
+```bash
+python -c "from infra.settings import infra_settings; print(infra_settings)"
+```
+
+## Next Steps
+
+- [Secrets & API Keys](/production/aws/configure/secrets) - API keys and credentials
+- [Database Setup](/production/aws/configure/database) - RDS configuration
+- [Production Deployment](/production/aws/operate/updates) - Deploy to AWS

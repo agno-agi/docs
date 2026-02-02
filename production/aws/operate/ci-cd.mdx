@@ -1,0 +1,150 @@
+---
+title: "CI/CD Automation"
+sidebarTitle: "CI/CD"
+description: "Automate builds with GitHub Actions"
+---
+
+## Choose Your Method
+
+| Method | When to Use | Setup Effort |
+|--------|-------------|--------------|
+| Manual builds | Small teams, infrequent deploys | Low |
+| DockerHub + GitHub | Using DockerHub, simpler setup | Medium |
+| ECR + GitHub OIDC | Using ECR, no stored credentials | Higher |
+
+<Note>
+For manual builds, see [Production Deployment](/production/aws/operate/updates#create-an-ecr-repository). ECR tokens expire after 12 hours.
+</Note>
+
+## PR Validation
+
+Every PR runs automatic validation. The workflow is in `.github/workflows/validate.yml`:
+
+```yaml
+# Runs on every PR
+on:
+  pull_request:
+```
+
+This checks formatting, tests, and types before merging.
+
+## DockerHub with GitHub
+
+Build and push images on GitHub release. Workflow: `.github/workflows/docker-images.yml`
+
+<Steps>
+<Step title="Create Docker Access Token">
+Go to [Docker Hub Settings → Security](https://hub.docker.com/settings/security) and create an access token.
+</Step>
+
+<Step title="Add GitHub Secrets">
+In your GitHub repo, go to **Settings → Secrets and variables → Actions**.
+
+Add these secrets:
+
+| Name | Value |
+|------|-------|
+| `DOCKERHUB_USERNAME` | Your Docker Hub username |
+| `DOCKERHUB_TOKEN` | The access token from Step 1 |
+
+Add this variable:
+
+| Name | Value |
+|------|-------|
+| `DOCKERHUB_NAMESPACE` | Your Docker Hub namespace (usually your username) |
+</Step>
+
+<Step title="Trigger a Release">
+```bash
+gh release create v0.1.0 --title "v0.1.0" -n ""
+```
+
+The workflow builds and pushes `your-namespace/agentos-template:dev` and `:prd` tags.
+</Step>
+</Steps>
+
+## ECR with GitHub OIDC
+
+Build and push to ECR using OpenID Connect. No IAM access keys stored in GitHub.
+
+Workflow: `.github/workflows/ecr-images.yml`
+
+### Set Up OIDC Provider
+
+<Steps>
+<Step title="Add OIDC Identity Provider">
+1. Open IAM Console → **Identity providers** → **Add provider**
+2. Provider type: **OpenID Connect**
+3. Provider URL: `https://token.actions.githubusercontent.com`
+4. Click **Get thumbprint**
+5. Audience: `sts.amazonaws.com`
+</Step>
+
+<Step title="Create IAM Role">
+1. After adding the provider, click **Assign role** → **Create a new role**
+2. Trusted entity: **Web identity**
+3. Identity provider: Select the GitHub provider
+4. Audience: `sts.amazonaws.com`
+5. Add permission: `AmazonEC2ContainerRegistryPowerUser`
+6. Role name: `GithubActionsRole`
+7. Copy the Role ARN (format: `arn:aws:iam::[ACCOUNT_ID]:role/GithubActionsRole`)
+</Step>
+
+<Step title="Update Workflow File">
+Edit `.github/workflows/ecr-images.yml`:
+
+```yaml
+env:
+  ECR_REPO: [ACCOUNT_ID].dkr.ecr.us-east-1.amazonaws.com
+  AWS_ROLE: arn:aws:iam::[ACCOUNT_ID]:role/GithubActionsRole
+  AWS_REGION: us-east-1
+```
+</Step>
+
+<Step title="Change Trigger to Release">
+The workflow defaults to `workflow_dispatch` (manual trigger). To trigger on release:
+
+```yaml
+on:
+  release:
+    types: [published]
+```
+
+If using ECR, disable the DockerHub workflow by changing its trigger:
+
+```yaml
+# In docker-images.yml
+on: workflow_dispatch
+```
+</Step>
+
+<Step title="Trigger Build">
+```bash
+gh release create v0.1.0 --title "v0.1.0" -n ""
+```
+
+Or trigger manually:
+```bash
+gh workflow run ecr-images.yml
+```
+</Step>
+</Steps>
+
+<Note>
+**Why OIDC?** GitHub Actions requests a temporary token from AWS instead of using stored credentials. More secure, no credential rotation needed.
+</Note>
+
+## After CI/CD Builds
+
+After a new image is pushed, update your ECS deployment:
+
+```bash
+ag infra patch prd:aws:::service
+```
+
+This triggers a new deployment with the latest image.
+
+## Next Steps
+
+- [Production Deployment](/production/aws/operate/updates) - Manual deployment steps
+- [Monitoring](/production/aws/operate/monitoring) - Watch your deployments

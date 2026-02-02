@@ -1,0 +1,103 @@
+---
+title: "Python Packages"
+sidebarTitle: "Python Packages"
+description: "Manage dependencies with pyproject.toml"
+---
+
+Dependencies are managed in `pyproject.toml` and compiled to `requirements.txt`.
+
+## Adding a Package
+
+1. Add to `pyproject.toml`
+2. Regenerate `requirements.txt`
+3. Rebuild images
+
+## Update pyproject.toml
+
+Add packages to the `dependencies` array:
+
+```toml pyproject.toml
+[project]
+name = "agentos-aws-template"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "agno",
+    "fastapi",
+    "uvicorn",
+    "your-new-package",  # Add here
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff",
+]
+```
+
+## Generate requirements.txt
+
+```bash
+./scripts/generate_requirements.sh
+```
+
+Or directly with pip-compile:
+
+```bash
+pip-compile \
+    --no-annotate \
+    --pip-args "--no-cache-dir" \
+    -o requirements.txt pyproject.toml
+```
+
+Upgrade all packages to latest versions:
+
+```bash
+./scripts/generate_requirements.sh upgrade
+```
+
+## Rebuild Images
+
+### Development
+
+```bash
+ag infra up dev:docker -t image -f
+ag infra restart dev:docker -t container
+```
+
+### Production
+
+```bash
+ag infra up prd:docker
+ag infra patch prd:aws:::service
+```
+
+## Verify Locally First
+
+Before rebuilding production, test locally:
+
+```bash
+# Rebuild dev image
+ag infra up dev:docker -t image -f
+
+# Restart containers
+ag infra restart dev:docker -t container
+
+# Test your app
+curl http://localhost:8000/health
+```
+
+## If Something Breaks
+
+Roll back by reverting `requirements.txt`:
+
+```bash
+git checkout requirements.txt
+ag infra up dev:docker -t image -f
+ag infra restart dev:docker -t container
+```
+
+## Next Steps
+
+- [Local Development](/production/aws/configure/local) - Docker setup
+- [Production Deployment](/production/aws/operate/updates) - Deploy to AWS
