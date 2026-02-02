@@ -2,25 +2,27 @@
 title: "AgentOS on AWS"
 sidebarTitle: "Getting Started"
 description: "Deploy AgentOS to AWS with ECS Fargate"
+keywords: ["deploy", "AWS", "ECS", "Fargate", "RDS", "PostgreSQL", "production", "infrastructure"]
 ---
 
 Deploy AgentOS to AWS with ECS Fargate, RDS PostgreSQL, and an Application Load Balancer. Production-grade infrastructure that runs entirely in your cloud.
 
 ## Architecture
 
-<img
-  className="block dark:hidden"
-  src="/images/aws-architecture-light.svg"
-  alt="AWS Architecture"
-/>
+<Frame caption="AgentOS deploys as a single container with your agents, connecting to RDS PostgreSQL for storage">
+  <img
+    className="block dark:hidden"
+    src="/images/aws-architecture-light.svg"
+    alt="AWS Architecture"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/aws-architecture-dark.svg"
+    alt="AWS Architecture"
+  />
+</Frame>
 
-<img
-  className="hidden dark:block"
-  src="/images/aws-architecture-dark.svg"
-  alt="AWS Architecture"
-/>
-
-## What You'll Deploy
+## Cost
 
 | Resource | Purpose | Monthly Cost |
 |----------|---------|--------------|
@@ -35,9 +37,7 @@ Use the [AWS Pricing Calculator](https://calculator.aws/) for detailed estimates
 
 ---
 
-## Deploy to AWS
-
-### Prerequisites
+## Prerequisites
 
 <Steps>
 <Step title="Install tools">
@@ -62,12 +62,8 @@ uv pip install -U 'agno[infra]'
 ```
 
 </Step>
-</Steps>
 
-### Setup Your Project
-
-<Steps>
-<Step title="Create your codebase" stepNumber={4}>
+<Step title="Create your codebase">
 ```bash
 ag infra create --template agentos-aws --name my-agentos
 
@@ -80,7 +76,7 @@ Or clone directly: `git clone https://github.com/agno-agi/agentos-aws-template.g
 
 </Step>
 
-<Step title="Set your API key" stepNumber={5}>
+<Step title="Set your API key">
 ```bash
 export OPENAI_API_KEY=sk-***
 ```
@@ -88,12 +84,62 @@ export OPENAI_API_KEY=sk-***
 </Step>
 </Steps>
 
-### Configure AWS
+<Warning>
+HTTPS is required to connect your AgentOS to os.agno.com. You'll configure this after deployment.
+</Warning>
 
-<Steps>
-<Step title="Create ECR repository" stepNumber={6}>
+---
 
-Create a repository in ECR to store your Docker images:
+## Deploy
+
+### Step 1: AWS Setup
+
+Choose your preferred method to create the ECR repository and find your subnet IDs:
+
+<Tabs>
+<Tab title="AWS Console">
+
+**Create ECR repository:**
+
+1. Open [Amazon ECR](https://console.aws.amazon.com/ecr/)
+2. Click **Create repository**
+3. Set repository name to `my-agentos`
+4. Keep defaults and click **Create repository**
+5. Copy the repository URI (e.g., `[ACCOUNT_ID].dkr.ecr.us-east-1.amazonaws.com/my-agentos`)
+
+<Frame caption="ECR Create Repository - set the repository name and keep defaults">
+  <img src="/images/create-ecr-image.png" alt="ECR Create Repository page" />
+</Frame>
+
+**Authenticate Docker with ECR:**
+
+Click **View push commands** in the ECR console and run the login command:
+
+```bash
+aws ecr get-login-password --region us-east-1 | \
+  docker login --username AWS --password-stdin \
+  [ACCOUNT_ID].dkr.ecr.us-east-1.amazonaws.com
+```
+
+<Note>
+ECR tokens expire after 12 hours. Re-run this command if you get authentication errors.
+</Note>
+
+**Find your subnet IDs:**
+
+1. Open [VPC Console](https://console.aws.amazon.com/vpc/) → **Subnets**
+2. Look for subnets with **Auto-assign public IP** = Yes
+3. Note the Subnet IDs for 2+ subnets in different availability zones
+
+<Tip>
+Public subnets typically have "public" in their name or have a route to an Internet Gateway.
+</Tip>
+
+</Tab>
+
+<Tab title="CLI">
+
+**Create ECR repository:**
 
 ```bash
 aws ecr create-repository \
@@ -106,9 +152,7 @@ Note your ECR URL from the output:
 [ACCOUNT_ID].dkr.ecr.us-east-1.amazonaws.com
 ```
 
-</Step>
-
-<Step title="Authenticate Docker with ECR" stepNumber={7}>
+**Authenticate Docker with ECR:**
 
 ```bash
 aws ecr get-login-password --region us-east-1 | \
@@ -117,33 +161,42 @@ aws ecr get-login-password --region us-east-1 | \
 ```
 
 <Note>
-ECR tokens expire after 12 hours. Re-run this command if you get "no basic auth credentials" errors.
+ECR tokens expire after 12 hours. Re-run this command if you get authentication errors.
 </Note>
 
-</Step>
+**Find your subnet IDs:**
 
-<Step title="Configure settings" stepNumber={8}>
+```bash
+aws ec2 describe-subnets --query 'Subnets[*].[SubnetId,AvailabilityZone,MapPublicIpOnLaunch]' --output table
+```
 
-Update `infra/settings.py`:
+<Tip>
+Choose subnets where `MapPublicIpOnLaunch` is `True`. Select subnets in different availability zones for high availability.
+</Tip>
+
+</Tab>
+</Tabs>
+
+### Step 2: Configure
+
+<Steps>
+<Step title="Update settings">
+
+Edit `infra/settings.py` with your AWS details:
 
 ```python
 infra_settings = InfraSettings(
     infra_name="my-agentos",
     aws_region="us-east-1",
-    aws_subnet_ids=["subnet-xxx", "subnet-yyy"],
+    aws_subnet_ids=["subnet-xxx", "subnet-yyy"],  # Your subnet IDs
     image_repo="[ACCOUNT_ID].dkr.ecr.us-east-1.amazonaws.com",
     push_images=True,
 )
 ```
 
-To find your subnet IDs:
-```bash
-aws ec2 describe-subnets --query 'Subnets[*].[SubnetId,AvailabilityZone]' --output table
-```
-
 </Step>
 
-<Step title="Create secrets files" stepNumber={9}>
+<Step title="Create secrets files">
 
 ```bash
 cp infra/secrets/prd_api_secrets.example.yml infra/secrets/prd_api_secrets.yml
@@ -155,91 +208,130 @@ Edit both files with your credentials. See [Secrets](/production/aws/configure/s
 </Step>
 </Steps>
 
-### Deploy
+### Step 3: Test & Deploy
 
 <Steps>
-<Step title="Test locally (optional)" stepNumber={10}>
+<Step title="Test locally (optional)">
+
 ```bash
 ag infra up
 ```
 
-Open http://localhost:8000/docs to verify it works.
+Open http://localhost:8000/docs to verify your agents load correctly.
 
 </Step>
 
-<Step title="Deploy to AWS" stepNumber={11}>
+<Step title="Deploy to AWS">
+
 ```bash
 ag infra up prd:aws
 ```
 
 Press Enter to confirm. This creates:
 - Docker image pushed to ECR
-- RDS PostgreSQL instance
+- RDS PostgreSQL instance with pgvector
 - ECS Cluster, Service, and Task Definition
 - Application Load Balancer with Target Group
+- Security Groups for network isolation
 
-RDS takes about 5 minutes to provision. Monitor progress in the AWS Console.
+<Note>
+RDS takes 5-10 minutes to provision. The deployment will wait for it automatically.
+</Note>
 
 </Step>
+</Steps>
 
-<Step title="Get your endpoint" stepNumber={12}>
+### Step 4: Get Your Endpoint
 
-Find your Load Balancer DNS in the AWS Console (EC2 → Load Balancers).
+<Tabs>
+<Tab title="AWS Console">
+
+1. Open [EC2 Console](https://console.aws.amazon.com/ec2/) → **Load Balancers**
+2. Find your load balancer (named `my-agentos-...`)
+3. Copy the **DNS name**
 
 Test your deployment:
 ```bash
 curl http://[LOAD_BALANCER_DNS]/health
 ```
 
+</Tab>
+
+<Tab title="CLI">
+
+```bash
+aws elbv2 describe-load-balancers \
+  --query 'LoadBalancers[?contains(LoadBalancerName, `my-agentos`)].DNSName' \
+  --output text
+```
+
+Test your deployment:
+```bash
+curl http://[LOAD_BALANCER_DNS]/health
+```
+
+</Tab>
+</Tabs>
+
 Should return: `{"status": "ok", "instantiated_at": "..."}`
 
-</Step>
-</Steps>
+---
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Verify Deployment" icon="check" href="/production/aws/after-deploy/verify">
+    Confirm all services are healthy
+  </Card>
+  <Card title="Add HTTPS" icon="lock" href="/production/aws/after-deploy/https">
+    Required for os.agno.com connection
+  </Card>
+  <Card title="Connect" icon="plug" href="/production/aws/after-deploy/connect">
+    Link to the control plane
+  </Card>
+</CardGroup>
 
 ---
 
-## What's Next?
+## Troubleshooting
 
-Your AgentOS is deployed. Follow these steps to finish setup:
+<AccordionGroup>
+  <Accordion title="'No basic auth credentials' error">
+    ECR tokens expire after 12 hours. Re-run the authentication command:
+    ```bash
+    aws ecr get-login-password --region us-east-1 | \
+      docker login --username AWS --password-stdin \
+      [ACCOUNT_ID].dkr.ecr.us-east-1.amazonaws.com
+    ```
+  </Accordion>
 
-<Steps>
-<Step title="Verify deployment">
-Confirm everything is working.
+  <Accordion title="RDS provisioning takes too long">
+    RDS typically takes 5-10 minutes. Check status in [RDS Console](https://console.aws.amazon.com/rds/) → Databases.
+    Look for the database status to change from "Creating" to "Available".
+  </Accordion>
 
-→ [Verify Deployment](/production/aws/after-deploy/verify)
-</Step>
+  <Accordion title="Can't find public subnets">
+    Public subnets have a route to an Internet Gateway. In the VPC Console:
+    1. Go to **Route Tables**
+    2. Find tables with a route to `igw-xxx` (Internet Gateway)
+    3. Check which subnets are associated with those route tables
+  </Accordion>
 
-<Step title="Add HTTPS">
-Required to connect to os.agno.com.
+  <Accordion title="Health check returns 502 Bad Gateway">
+    The container may still be starting. Wait 2-3 minutes and retry.
 
-→ [Add HTTPS](/production/aws/after-deploy/https)
-</Step>
+    If it persists, check ECS task logs:
+    1. Open [ECS Console](https://console.aws.amazon.com/ecs/) → Clusters → `my-agentos`
+    2. Click on the running task
+    3. Go to **Logs** tab to see container output
+  </Accordion>
 
-<Step title="Connect to os.agno.com">
-Monitor and manage your agents from the control plane.
+  <Accordion title="Task keeps stopping and restarting">
+    This usually indicates the container is crashing. Common causes:
+    - Missing environment variables (check your secrets files)
+    - Invalid API keys
+    - Database connection issues
 
-→ [Connect to Control Plane](/production/aws/after-deploy/connect)
-</Step>
-</Steps>
-
----
-
-## Reference
-
-### Project Structure
-
-```
-my-agentos/
-├── agents/              # Your agents
-├── app/                 # AgentOS application
-├── db/                  # Database tables and migrations
-├── infra/               # Infrastructure configuration
-│   ├── settings.py      # InfraSettings (region, subnets, etc.)
-│   ├── prd_resources.py # Production AWS resources
-│   └── secrets/         # API keys and credentials
-├── scripts/             # Helper scripts (auth_ecr.sh, etc.)
-├── Dockerfile           # Container build
-├── pyproject.toml       # Python dependencies
-└── requirements.txt     # Locked dependencies
-```
-
+    Check the **Stopped** tasks in ECS Console for error messages.
+  </Accordion>
+</AccordionGroup>
