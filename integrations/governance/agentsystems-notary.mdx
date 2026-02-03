@@ -1,0 +1,137 @@
+---
+title: AgentSystems Notary
+description: Tamper-evident audit logging for Agno agents.
+---
+
+## Overview
+
+AgentSystems Notary creates cryptographically verifiable audit trails for AI systems.
+
+## Why
+
+When AI behavior is questioned — by customers, legal teams, or regulators — you need to prove what actually happened. Traditional logs don't work: you control them, so third parties have to trust you didn't modify them.
+
+Tamper-evident logging removes that trust requirement.
+
+## How It Works
+
+Raw LLM interactions stay in your storage — no third party sees them during normal operation. But cryptographic hashes are written to independent storage (Arweave or the AgentSystems API) at the same time.
+
+If there's ever an audit or dispute, you provide the raw logs. The auditor re-hashes them and compares against the stored hashes. Match means verified. Mismatch means tampering detected.
+
+You control your data, but can't alter it without detection.
+
+**What gets logged:**
+- To your storage: input prompt, response text, agent metadata, session IDs, timestamps
+- To ledger: SHA-256 hash + metadata (e.g. namespace, session ID, timestamps)
+
+Raw data stays in your infrastructure.
+
+## Decentralized Hash Storage
+
+Hashes (not raw data) can be written to a public, append-only ledger (Arweave):
+
+- **No vendor lock-in**: Verify with open-source tooling, no account required
+- **No crypto setup**: No wallet, no tokens — transactions are handled by the bundler
+- **Independent**: Not controlled by any single vendor
+
+## Custodied Hash Storage
+
+With a [custodied plan](https://agentsystems.ai/notary), hashes are written to AgentSystems' write-once compliance storage:
+
+- Managed signing, verification UI, support
+- Signed attestations for audits
+
+## Prerequisites
+
+```shell
+pip install agentsystems-notary agno anthropic
+```
+
+## Example (Decentralized)
+
+```python
+import os
+
+from agentsystems_notary import (
+    AgnoNotary,
+    ArweaveHashStorage,
+    AwsS3StorageConfig,
+    LocalKeySignerConfig,
+    RawPayloadStorage,
+)
+from agno.agent import Agent
+from agno.models.anthropic import Claude
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Your S3 bucket for raw LLM payloads
+s3_config = AwsS3StorageConfig(
+    bucket_name=os.environ["ORG_AWS_S3_BUCKET_NAME"],
+    aws_access_key_id=os.environ["ORG_AWS_S3_ACCESS_KEY_ID"],
+    aws_secret_access_key=os.environ["ORG_AWS_S3_SECRET_ACCESS_KEY"],
+    aws_region=os.environ["ORG_AWS_S3_REGION"],
+)
+raw_payload_storage = RawPayloadStorage(storage=s3_config)
+
+# Local RSA key for signing (dev/testing only — use cloud key management in production)
+# Generate with: openssl genrsa -out arweave-key.pem 4096
+signer = LocalKeySignerConfig(
+    private_key_path=os.environ["ARWEAVE_PRIVATE_KEY_PATH"],
+)
+
+# Arweave for decentralized hash storage
+# namespace isolates logs by tenant — use an anonymous ID (written to public ledger)
+arweave_storage = ArweaveHashStorage(
+    namespace="tenant_a1b2c3d4",
+    signer=signer,
+)
+
+# Assemble notary
+notary = AgnoNotary(
+    raw_payload_storage=raw_payload_storage,
+    hash_storage=[arweave_storage],
+    debug=True,
+)
+
+# Attach hooks to agent
+agent = Agent(
+    model=Claude(
+        id="claude-sonnet-4-5-20250929",
+        api_key=os.environ["ANTHROPIC_API_KEY"],
+    ),
+    instructions="You are a helpful assistant.",
+    **notary.get_hooks(),
+)
+
+agent.print_response("What is the capital of France?")
+```
+
+<Note>
+The `namespace` is written to the public ledger. Use an anonymous tenant identifier, not a company name.
+</Note>
+
+## Verification
+
+**Decentralized (Arweave)**: Download raw payloads from your storage bucket, then verify with the open-source CLI:
+
+```shell
+npm install -g agentsystems-verify
+agentsystems-verify --logs logs.zip
+```
+
+The CLI re-hashes each payload and compares against the hashes stored on Arweave.
+
+Alternatively, the [Verify UI](https://verify.agentsystems.ai) supports both decentralized and custodied verification.
+
+## Configuration
+
+- [Raw payload storage options](https://docs.agentsystems.ai/notary/configuration/raw-payload-storage) (AWS S3, GCS, etc.)
+- [Signers for Arweave](https://docs.agentsystems.ai/notary/configuration/signing) (local key, AWS KMS)
+- [Hash storage options](https://docs.agentsystems.ai/notary/configuration/hash-storage) (Arweave, Custodied)
+
+## Resources
+
+- [Documentation](https://docs.agentsystems.ai/notary/)
+- [GitHub](https://github.com/agentsystems/agentsystems-notary)
