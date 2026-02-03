@@ -9,15 +9,15 @@ AgentSystems Notary creates cryptographically verifiable audit trails for AI sys
 
 ## Why
 
-When AI behavior is questioned — by customers, legal teams, or regulators — you need to prove what actually happened. Traditional logs don't work: you control them, so third parties have to trust you didn't modify them.
+When AI behavior is questioned by customers, auditors, regulators, insurers, etc., you need to prove what actually happened. Traditional logs don't work: you control them, so third parties have to trust you didn't modify them.
 
 Tamper-evident logging removes that trust requirement.
 
 ## How It Works
 
-Raw LLM interactions stay in your storage — no third party sees them during normal operation. But cryptographic hashes are written to independent storage (Arweave or the AgentSystems API) at the same time.
+Raw LLM interactions stay in your storage. No third party sees them during normal operation. But cryptographic hashes of each interaction are written to independent storage (Arweave or the AgentSystems API) at the same time.
 
-If there's ever an audit or dispute, you provide the raw logs. The auditor re-hashes them and compares against the stored hashes. Match means verified. Mismatch means tampering detected.
+If there's ever an audit or dispute, you provide the raw logs. The auditor re-hashes them and compares against the stored hashes. A match indicates the logs are unaltered. A mismatch indicates tampering or corruption.
 
 You control your data, but can't alter it without detection.
 
@@ -25,92 +25,112 @@ You control your data, but can't alter it without detection.
 - To your storage: input prompt, response text, agent metadata, session IDs, timestamps
 - To ledger: SHA-256 hash + metadata (e.g. namespace, session ID, timestamps)
 
-Raw data stays in your infrastructure.
+## Hash Storage Options
 
-## Decentralized Hash Storage
+Hashes (not raw data) can be written to either storage option:
 
-Hashes (not raw data) can be written to a public, append-only ledger (Arweave):
+| Storage | Best For | Features |
+|---------|----------|----------|
+| [Decentralized (Arweave)](https://docs.agentsystems.ai/notary/configuration/hash-storage) | No vendor lock-in | Public append-only ledger, open-source verification, no account needed |
+| [Custodied](https://agentsystems.ai/notary) | Managed compliance | Write-once storage, verification UI, signed attestations for audits |
 
-- **No vendor lock-in**: Verify with open-source tooling, no account required
-- **No crypto setup**: No wallet, no tokens — transactions are handled by the bundler
-- **Independent**: Not controlled by any single vendor
-
-## Custodied Hash Storage
-
-With a [custodied plan](https://agentsystems.ai/notary), hashes are written to AgentSystems' write-once compliance storage:
-
-- Managed signing, verification UI, support
-- Signed attestations for audits
+<Info>
+[Custodied plans](https://agentsystems.ai/notary) offer WORM-compliant hash storage, managed signing, and signed attestations.
+</Info>
 
 ## Prerequisites
 
 ```shell
-pip install agentsystems-notary agno anthropic
+pip install agentsystems-notary agno anthropic python-dotenv
 ```
 
 ## Example (Decentralized)
 
-```python
-import os
+<Steps>
+  <Step title="Generate signing key">
+    ```shell
+    openssl genrsa -out arweave-key.pem 4096
+    ```
+    For production, use [AWS KMS or another cloud key management service](https://docs.agentsystems.ai/notary/configuration/signing).
+  </Step>
+  <Step title="Create .env file">
+    Create a `.env` file in your project root:
+    ```
+    # AWS S3 for raw payload storage
+    ORG_AWS_S3_BUCKET_NAME=your-bucket
+    ORG_AWS_S3_ACCESS_KEY_ID=AKIA...
+    ORG_AWS_S3_SECRET_ACCESS_KEY=...
+    ORG_AWS_S3_REGION=us-east-1
 
-from agentsystems_notary import (
-    AgnoNotary,
-    ArweaveHashStorage,
-    AwsS3StorageConfig,
-    LocalKeySignerConfig,
-    RawPayloadStorage,
-)
-from agno.agent import Agent
-from agno.models.anthropic import Claude
-from dotenv import load_dotenv
+    # Path to signing key
+    ARWEAVE_PRIVATE_KEY_PATH=./arweave-key.pem
 
-load_dotenv()
+    # Anthropic
+    ANTHROPIC_API_KEY=sk-ant-...
+    ```
+  </Step>
+  <Step title="Run the agent">
+    ```python
+    import os
 
-# Your S3 bucket for raw LLM payloads
-s3_config = AwsS3StorageConfig(
-    bucket_name=os.environ["ORG_AWS_S3_BUCKET_NAME"],
-    aws_access_key_id=os.environ["ORG_AWS_S3_ACCESS_KEY_ID"],
-    aws_secret_access_key=os.environ["ORG_AWS_S3_SECRET_ACCESS_KEY"],
-    aws_region=os.environ["ORG_AWS_S3_REGION"],
-)
-raw_payload_storage = RawPayloadStorage(storage=s3_config)
+    from agentsystems_notary import (
+        AgnoNotary,
+        ArweaveHashStorage,
+        AwsS3StorageConfig,
+        LocalKeySignerConfig,
+        RawPayloadStorage,
+    )
+    from agno.agent import Agent
+    from agno.models.anthropic import Claude
+    from dotenv import load_dotenv
 
-# Local RSA key for signing (dev/testing only — use cloud key management in production)
-# Generate with: openssl genrsa -out arweave-key.pem 4096
-signer = LocalKeySignerConfig(
-    private_key_path=os.environ["ARWEAVE_PRIVATE_KEY_PATH"],
-)
+    load_dotenv()
 
-# Arweave for decentralized hash storage
-# namespace isolates logs by tenant — use an anonymous ID (written to public ledger)
-arweave_storage = ArweaveHashStorage(
-    namespace="tenant_a1b2c3d4",
-    signer=signer,
-)
+    # Your S3 bucket for raw LLM payloads
+    s3_config = AwsS3StorageConfig(
+        bucket_name=os.environ["ORG_AWS_S3_BUCKET_NAME"],
+        aws_access_key_id=os.environ["ORG_AWS_S3_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["ORG_AWS_S3_SECRET_ACCESS_KEY"],
+        aws_region=os.environ["ORG_AWS_S3_REGION"],
+    )
+    raw_payload_storage = RawPayloadStorage(storage=s3_config)
 
-# Assemble notary
-notary = AgnoNotary(
-    raw_payload_storage=raw_payload_storage,
-    hash_storage=[arweave_storage],
-    debug=True,
-)
+    # Local RSA key for signing
+    signer = LocalKeySignerConfig(
+        private_key_path=os.environ["ARWEAVE_PRIVATE_KEY_PATH"],
+    )
 
-# Attach hooks to agent
-agent = Agent(
-    model=Claude(
-        id="claude-sonnet-4-5-20250929",
-        api_key=os.environ["ANTHROPIC_API_KEY"],
-    ),
-    instructions="You are a helpful assistant.",
-    **notary.get_hooks(),
-)
+    # Arweave for decentralized hash storage
+    arweave_storage = ArweaveHashStorage(
+        namespace="tenant_a1b2c3d4",
+        signer=signer,
+    )
 
-agent.print_response("What is the capital of France?")
-```
+    # Assemble notary
+    notary = AgnoNotary(
+        raw_payload_storage=raw_payload_storage,
+        hash_storage=[arweave_storage],
+        debug=True,
+    )
 
-<Warning>
-The `namespace` is written to the public ledger. Use an anonymous tenant identifier, not a company name.
-</Warning>
+    # Attach hooks to agent
+    agent = Agent(
+        model=Claude(
+            id="claude-sonnet-4-5-20250929",
+            api_key=os.environ["ANTHROPIC_API_KEY"],
+        ),
+        instructions="You are a helpful assistant.",
+        **notary.get_hooks(),
+    )
+
+    agent.print_response("What is the capital of France?")
+    ```
+
+    <Warning>
+    The `namespace` is written to the public ledger. Use an anonymous tenant identifier, not a company name.
+    </Warning>
+  </Step>
+</Steps>
 
 ## Verification
 
