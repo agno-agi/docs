@@ -1,0 +1,269 @@
+---
+title: "CEL Expressions"
+sidebarTitle: "CEL Expressions"
+description: "Use CEL expressions as evaluators, end conditions, and selectors in workflow steps."
+---
+
+[CEL (Common Expression Language)](https://github.com/google/cel-spec) lets you write evaluators, end conditions, and selectors as strings instead of Python functions. CEL expressions are fully serializable, making them editable in Studio and storable in the database.
+
+```bash
+pip install cel-python
+```
+
+## Overview
+
+Three step types accept CEL expressions:
+
+| Step Type | Parameter | Must Return | Description |
+|-----------|-----------|-------------|-------------|
+| `Condition` | `evaluator` | `bool` | `True` runs `steps`, `False` runs `else_steps` |
+| `Loop` | `end_condition` | `bool` | `True` exits the loop |
+| `Router` | `selector` | `string` | Name of the step to execute from `choices` |
+
+Each step type exposes different context variables to the expression:
+
+| Variable | Type | Condition | Router | Loop |
+|----------|------|:---------:|:------:|:----:|
+| `input` | `string` | ✓ | ✓ | |
+| `previous_step_content` | `string` | ✓ | ✓ | |
+| `previous_step_outputs` | `map` | ✓ | ✓ | |
+| `additional_data` | `map` | ✓ | ✓ | |
+| `session_state` | `map` | ✓ | ✓ | |
+| `step_choices` | `list` | | ✓ | |
+| `current_iteration` | `int` | | | ✓ |
+| `max_iterations` | `int` | | | ✓ |
+| `all_success` | `bool` | | | ✓ |
+| `last_step_content` | `string` | | | ✓ |
+| `step_outputs` | `map` | | | ✓ |
+
+## Conditions
+
+Condition evaluators receive step input context and must return a boolean. `True` runs `steps`, `False` runs `else_steps`.
+
+### Route on input content
+
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.workflow import Condition, Step, Workflow
+
+urgent_handler = Agent(
+    name="Urgent Handler",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    instructions="Handle urgent requests with high priority.",
+)
+
+normal_handler = Agent(
+    name="Normal Handler",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    instructions="Handle normal requests thoroughly.",
+)
+
+workflow = Workflow(
+    name="CEL Input Routing",
+    steps=[
+        Condition(
+            name="Urgent Check",
+            evaluator='input.contains("urgent")',
+            steps=[Step(name="Handle Urgent", agent=urgent_handler)],
+            else_steps=[Step(name="Handle Normal", agent=normal_handler)],
+        ),
+    ],
+)
+
+workflow.print_response("This is an urgent request - please help immediately!")
+```
+
+### Branch on previous step output
+
+Run a classifier first, then route based on its output:
+
+```python
+classifier = Agent(
+    name="Classifier",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    instructions="Classify the request as TECHNICAL or GENERAL. Respond with one word.",
+)
+
+workflow = Workflow(
+    name="Classify and Route",
+    steps=[
+        Step(name="Classify", agent=classifier),
+        Condition(
+            name="Route by Classification",
+            evaluator='previous_step_content.contains("TECHNICAL")',
+            steps=[Step(name="Technical Help", agent=technical_agent)],
+            else_steps=[Step(name="General Help", agent=general_agent)],
+        ),
+    ],
+)
+```
+
+### Branch on additional data
+
+```python
+workflow = Workflow(
+    name="Priority Routing",
+    steps=[
+        Condition(
+            name="Priority Gate",
+            evaluator="additional_data.priority > 5",
+            steps=[Step(name="High Priority", agent=high_priority_agent)],
+            else_steps=[Step(name="Low Priority", agent=low_priority_agent)],
+        ),
+    ],
+)
+
+workflow.print_response("Review this report.", additional_data={"priority": 8})
+```
+
+### Branch on session state
+
+```python
+workflow = Workflow(
+    name="Retry Logic",
+    steps=[
+        Step(name="Increment", executor=increment_retry),
+        Condition(
+            name="Retry Check",
+            evaluator="session_state.retry_count <= 3",
+            steps=[Step(name="Attempt", agent=retry_agent)],
+            else_steps=[Step(name="Give Up", agent=fallback_agent)],
+        ),
+    ],
+    session_state={"retry_count": 0},
+)
+```
+
+## Loops
+
+Loop end conditions receive loop output context and must return a boolean. `True` exits the loop.
+
+### Exit after N iterations
+
+```python
+from agno.workflow import Loop, Step, Workflow
+
+workflow = Workflow(
+    name="Iteration Limit",
+    steps=[
+        Loop(
+            name="Writing Loop",
+            max_iterations=10,
+            end_condition="current_iteration >= 2",
+            steps=[Step(name="Write", agent=writer)],
+        ),
+    ],
+)
+```
+
+### Exit on output keyword
+
+```python
+editor = Agent(
+    name="Editor",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    instructions="Edit the text. When polished, include the word DONE at the end.",
+)
+
+workflow = Workflow(
+    name="Content Keyword Loop",
+    steps=[
+        Loop(
+            name="Editing Loop",
+            max_iterations=5,
+            end_condition='last_step_content.contains("DONE")',
+            steps=[Step(name="Edit", agent=editor)],
+        ),
+    ],
+)
+```
+
+### Compound exit condition
+
+```python
+workflow = Workflow(
+    name="Compound Exit",
+    steps=[
+        Loop(
+            name="Research Loop",
+            max_iterations=5,
+            end_condition="all_success && current_iteration >= 2",
+            steps=[
+                Step(name="Research", agent=researcher),
+                Step(name="Review", agent=reviewer),
+            ],
+        ),
+    ],
+)
+```
+
+## Routers
+
+Router selectors receive step input context and must return a string matching a step name from `choices`.
+
+### Route on session state
+
+```python
+from agno.workflow import Step, Workflow
+from agno.workflow.router import Router
+
+workflow = Workflow(
+    name="Style Router",
+    steps=[
+        Router(
+            name="Analysis Style",
+            selector="session_state.preferred_handler",
+            choices=[
+                Step(name="Detailed Analyst", agent=detailed_agent),
+                Step(name="Brief Analyst", agent=brief_agent),
+            ],
+        ),
+    ],
+    session_state={"preferred_handler": "Brief Analyst"},
+)
+```
+
+### Ternary routing on input
+
+```python
+workflow = Workflow(
+    name="Media Router",
+    steps=[
+        Router(
+            name="Media Router",
+            selector='input.contains("video") ? "Video Handler" : "Image Handler"',
+            choices=[
+                Step(name="Video Handler", agent=video_agent),
+                Step(name="Image Handler", agent=image_agent),
+            ],
+        ),
+    ],
+)
+```
+
+### Route using step_choices index
+
+Reference steps by position instead of hardcoding names:
+
+```python
+workflow = Workflow(
+    name="Index Router",
+    steps=[
+        Router(
+            name="Analysis Router",
+            selector='input.contains("quick") ? step_choices[0] : step_choices[1]',
+            choices=[
+                Step(name="Quick Analysis", agent=quick_analyzer),
+                Step(name="Detailed Analysis", agent=detailed_analyzer),
+            ],
+        ),
+    ],
+)
+```
+
+## Developer Resources
+
+- [CEL specification](https://github.com/google/cel-spec)
+- [Workflow reference](/reference/workflows/workflow)
+- [Studio Workflows](/agent-os/studio/workflows)

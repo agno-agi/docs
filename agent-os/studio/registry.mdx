@@ -1,0 +1,84 @@
+---
+title: "Registry"
+sidebarTitle: "Registry"
+description: "Register tools, models, databases, and schemas for use in AgentOS Studio."
+---
+
+**The Registry manages non-serializable components (tools, models, databases, schemas, functions) that Studio depends on.**
+
+```python
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+from agno.models.anthropic import Claude
+from agno.os import AgentOS
+from agno.registry import Registry
+from agno.tools.calculator import CalculatorTools
+from agno.tools.websearch import WebSearchTools
+from agno.vectordb.pgvector import PgVector
+from pydantic import BaseModel
+
+class InputSchema(BaseModel):
+    input: str
+    description: str
+
+def custom_evaluator(input: str) -> bool:
+    return "urgent" in input.lower()
+
+db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai", id="postgres_db")
+
+registry = Registry(
+    name="My Registry",
+    tools=[CalculatorTools(), WebSearchTools()],
+    models=[OpenAIChat(id="gpt-5-mini"), Claude(id="claude-sonnet-4-5")],
+    dbs=[db],
+    vector_dbs=[PgVector(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai", table_name="embeddings")],
+    schemas=[InputSchema],
+    functions=[custom_evaluator],
+)
+
+agent_os = AgentOS(id="my-app", registry=registry, db=db)
+app = agent_os.get_app()
+```
+
+## Component Types
+
+| Type | Field | Description |
+|------|-------|-------------|
+| Tools | `tools` | `Toolkit` instances, `Function` objects, or plain callables |
+| Models | `models` | Model provider instances (OpenAI, Anthropic, etc.) |
+| Databases | `dbs` | `BaseDb` instances for storage |
+| Vector DBs | `vector_dbs` | `VectorDb` instances for knowledge bases |
+| Schemas | `schemas` | Pydantic `BaseModel` subclasses for structured I/O |
+| Functions | `functions` | Python callables used as workflow evaluators, selectors, or executors |
+
+## Registry API
+
+The registry exposes a `GET /registry` endpoint through AgentOS with filtering and pagination.
+
+### Query Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `component_type` | `string` | `None` | Filter by type: `TOOL`, `MODEL`, `DB`, `VECTOR_DB`, `SCHEMA`, `FUNCTION` |
+| `name` | `string` | `None` | Partial name match (case-insensitive) |
+| `page` | `int` | `1` | Page number |
+| `limit` | `int` | `20` | Items per page (1-100) |
+
+### Response Metadata
+
+Each component in the response includes type-specific metadata:
+
+| Component Type | Metadata Fields |
+|---------------|-----------------|
+| Tool | `class_path`, `parameters`, `signature`, toolkit `functions` |
+| Model | `provider`, `model_id` |
+| Database | `db_id` |
+| Vector DB | `collection`, `table_name` |
+| Schema | JSON schema definition |
+| Function | `signature`, `parameters` |
+
+## Developer Resources
+
+- [Registry reference](/reference/agent-os/agent-os)
+- [Studio overview](/agent-os/studio/introduction)
+- [Workflow serialization](/agent-os/studio/workflows)
