@@ -46,7 +46,7 @@ paths:
                 $ref: '#/components/schemas/HealthResponse'
               example:
                 status: ok
-                instantiated_at: '1766137017.573815'
+                instantiated_at: '1768118248.07383'
   /config:
     get:
       tags:
@@ -1277,7 +1277,8 @@ paths:
           description: Successful Response
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/AgentCard'
         '422':
           description: Validation Error
           content:
@@ -1334,7 +1335,7 @@ paths:
       tags:
         - A2A
       summary: Stream Message Agent
-      description: 'Stream a message to an Agno Agent (streaming). The Agent is identified via the path parameter ''{id}''. Optional: Pass user ID via X-User-ID header (recommended) or ''userId'' in params.message.metadata. Returns real-time updates as newline-delimited JSON (NDJSON).'
+      description: 'Stream a message to an Agno Agent (streaming). The Agent is identified via the path parameter ''{id}''. Optional: Pass user ID via X-User-ID header (recommended) or ''userId'' in params.message.metadata. Returns real-time updates as Server-Sent Events (SSE).'
       operationId: stream_message_agent
       parameters:
         - name: id
@@ -1361,6 +1362,201 @@ paths:
           description: Invalid request
         '404':
           description: Agent not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  '/a2a/agents/{id}/v1/tasks':
+    get:
+      tags:
+        - A2A
+      summary: List Agent Tasks
+      description: 'List all A2A Tasks for an Agent. If session_id is provided, returns tasks from that session only. Otherwise, returns tasks from all sessions for this agent.'
+      operationId: list_agent_tasks
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Id
+        - name: session_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: Session Id
+        - name: session_type
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - $ref: '#/components/schemas/SessionType'
+              - type: 'null'
+            title: Session Type
+        - name: user_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: User Id
+        - name: pagesize
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: integer
+              - type: 'null'
+            title: Pagesize
+        - name: request_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: Request Id
+      responses:
+        '200':
+          description: Tasks retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListTasksEndpointResponse'
+              example:
+                jsonrpc: '2.0'
+                id: request-123
+                result:
+                  - id: task-456
+                    context_id: context-789
+                    status:
+                      state: completed
+                    history:
+                      - message_id: msg-1
+                        role: agent
+                        parts:
+                          - kind: text
+                            text: Response from agent
+        '404':
+          description: Agent not found or no tasks found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  '/a2a/agents/{id}/v1/tasks/{task_id}':
+    get:
+      tags:
+        - A2A
+      summary: Get Agent Task
+      description: Retrieve a specific A2A Task by ID for an Agent. Requires session_id query parameter.
+      operationId: get_agent_task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Id
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Task Id
+        - name: session_id
+          in: query
+          required: true
+          schema:
+            type: string
+            title: Session Id
+        - name: session_type
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - $ref: '#/components/schemas/SessionType'
+              - type: 'null'
+            title: Session Type
+        - name: user_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: User Id
+        - name: request_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: Request Id
+      responses:
+        '200':
+          description: Task retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTaskEndpointResponse'
+              example:
+                jsonrpc: '2.0'
+                id: request-123
+                result:
+                  id: task-456
+                  context_id: context-789
+                  status:
+                    state: completed
+                  history:
+                    - message_id: msg-1
+                      role: agent
+                      parts:
+                        - kind: text
+                          text: Response from agent
+        '404':
+          description: Task not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  '/a2a/agents/{id}/v1/tasks/{task_id}:cancel':
+    post:
+      tags:
+        - A2A
+      summary: Cancel Agent Task
+      description: Cancel a running task for an Agent.
+      operationId: cancel_agent_task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Id
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Task Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTaskEndpointResponse'
         '422':
           description: Validation Error
           content:
@@ -1442,7 +1638,7 @@ paths:
       tags:
         - A2A
       summary: Stream Message Team
-      description: 'Stream a message to an Agno Team (streaming). The Team is identified via the path parameter ''{id}''. Optional: Pass user ID via X-User-ID header (recommended) or ''userId'' in params.message.metadata. Returns real-time updates as newline-delimited JSON (NDJSON).'
+      description: 'Stream a message to an Agno Team (streaming). The Team is identified via the path parameter ''{id}''. Optional: Pass user ID via X-User-ID header (recommended) or ''userId'' in params.message.metadata. Returns real-time updates as Server-Sent Events (SSE).'
       operationId: stream_message_team
       parameters:
         - name: id
@@ -1469,6 +1665,201 @@ paths:
           description: Invalid request
         '404':
           description: Team not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  '/a2a/teams/{id}/v1/tasks':
+    get:
+      tags:
+        - A2A
+      summary: List Team Tasks
+      description: 'List all A2A Tasks for a Team. If session_id is provided, returns tasks from that session only. Otherwise, returns tasks from all sessions for this team.'
+      operationId: list_team_tasks
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Id
+        - name: session_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: Session Id
+        - name: session_type
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - $ref: '#/components/schemas/SessionType'
+              - type: 'null'
+            title: Session Type
+        - name: user_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: User Id
+        - name: pagesize
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: integer
+              - type: 'null'
+            title: Pagesize
+        - name: request_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: Request Id
+      responses:
+        '200':
+          description: Tasks retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListTasksEndpointResponse'
+              example:
+                jsonrpc: '2.0'
+                id: request-123
+                result:
+                  - id: task-456
+                    context_id: context-789
+                    status:
+                      state: completed
+                    history:
+                      - message_id: msg-1
+                        role: agent
+                        parts:
+                          - kind: text
+                            text: Response from team
+        '404':
+          description: Team not found or no tasks found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  '/a2a/teams/{id}/v1/tasks/{task_id}':
+    get:
+      tags:
+        - A2A
+      summary: Get Team Task
+      description: Retrieve a specific A2A Task by ID for a Team. Requires session_id query parameter.
+      operationId: get_team_task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Id
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Task Id
+        - name: session_id
+          in: query
+          required: true
+          schema:
+            type: string
+            title: Session Id
+        - name: session_type
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - $ref: '#/components/schemas/SessionType'
+              - type: 'null'
+            title: Session Type
+        - name: user_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: User Id
+        - name: request_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: Request Id
+      responses:
+        '200':
+          description: Task retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTaskEndpointResponse'
+              example:
+                jsonrpc: '2.0'
+                id: request-123
+                result:
+                  id: task-456
+                  context_id: context-789
+                  status:
+                    state: completed
+                  history:
+                    - message_id: msg-1
+                      role: agent
+                      parts:
+                        - kind: text
+                          text: Response from team
+        '404':
+          description: Task not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  '/a2a/teams/{id}/v1/tasks/{task_id}:cancel':
+    post:
+      tags:
+        - A2A
+      summary: Cancel Team Task
+      description: Cancel a running task for a Team.
+      operationId: cancel_team_task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Id
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Task Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTaskEndpointResponse'
         '422':
           description: Validation Error
           content:
@@ -1550,7 +1941,7 @@ paths:
       tags:
         - A2A
       summary: Stream Message Workflow
-      description: 'Stream a message to an Agno Workflow (streaming). The Workflow is identified via the path parameter ''{id}''. Optional: Pass user ID via X-User-ID header (recommended) or ''userId'' in params.message.metadata. Returns real-time updates as newline-delimited JSON (NDJSON).'
+      description: 'Stream a message to an Agno Workflow (streaming). The Workflow is identified via the path parameter ''{id}''. Optional: Pass user ID via X-User-ID header (recommended) or ''userId'' in params.message.metadata. Returns real-time updates as Server-Sent Events (SSE).'
       operationId: stream_message_workflow
       parameters:
         - name: id
@@ -1577,6 +1968,201 @@ paths:
           description: Invalid request
         '404':
           description: Workflow not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  '/a2a/workflows/{id}/v1/tasks':
+    get:
+      tags:
+        - A2A
+      summary: List Workflow Tasks
+      description: 'List all A2A Tasks for a Workflow. If session_id is provided, returns tasks from that session only. Otherwise, returns tasks from all sessions for this workflow.'
+      operationId: list_workflow_tasks
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Id
+        - name: session_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: Session Id
+        - name: session_type
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - $ref: '#/components/schemas/SessionType'
+              - type: 'null'
+            title: Session Type
+        - name: user_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: User Id
+        - name: pagesize
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: integer
+              - type: 'null'
+            title: Pagesize
+        - name: request_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: Request Id
+      responses:
+        '200':
+          description: Tasks retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListTasksEndpointResponse'
+              example:
+                jsonrpc: '2.0'
+                id: request-123
+                result:
+                  - id: task-456
+                    context_id: context-789
+                    status:
+                      state: completed
+                    history:
+                      - message_id: msg-1
+                        role: agent
+                        parts:
+                          - kind: text
+                            text: Response from workflow
+        '404':
+          description: Workflow not found or no tasks found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  '/a2a/workflows/{id}/v1/tasks/{task_id}':
+    get:
+      tags:
+        - A2A
+      summary: Get Workflow Task
+      description: Retrieve a specific A2A Task by ID for a Workflow. Requires session_id query parameter.
+      operationId: get_workflow_task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Id
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Task Id
+        - name: session_id
+          in: query
+          required: true
+          schema:
+            type: string
+            title: Session Id
+        - name: session_type
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - $ref: '#/components/schemas/SessionType'
+              - type: 'null'
+            title: Session Type
+        - name: user_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: User Id
+        - name: request_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            title: Request Id
+      responses:
+        '200':
+          description: Task retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTaskEndpointResponse'
+              example:
+                jsonrpc: '2.0'
+                id: request-123
+                result:
+                  id: task-456
+                  context_id: context-789
+                  status:
+                    state: completed
+                  history:
+                    - message_id: msg-1
+                      role: agent
+                      parts:
+                        - kind: text
+                          text: Response from workflow
+        '404':
+          description: Task not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  '/a2a/workflows/{id}/v1/tasks/{task_id}:cancel':
+    post:
+      tags:
+        - A2A
+      summary: Cancel Workflow Task
+      description: Cancel a running task for a Workflow.
+      operationId: cancel_workflow_task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Id
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Task Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTaskEndpointResponse'
         '422':
           description: Validation Error
           content:
@@ -1620,7 +2206,7 @@ paths:
       tags:
         - A2A
       summary: Stream Message
-      description: '[DEPRECATED] Stream a message to an Agno Agent, Team, or Workflow. The Agent, Team or Workflow is identified via the ''agentId'' field in params.message or X-Agent-ID header. Optional: Pass user ID via X-User-ID header (recommended) or ''userId'' in params.message.metadata. Returns real-time updates as newline-delimited JSON (NDJSON).'
+      description: '[DEPRECATED] Stream a message to an Agno Agent, Team, or Workflow. The Agent, Team or Workflow is identified via the ''agentId'' field in params.message or X-Agent-ID header. Optional: Pass user ID via X-User-ID header (recommended) or ''userId'' in params.message.metadata. Returns real-time updates as Server-Sent Events (SSE).'
       operationId: stream_message
       responses:
         '200':
@@ -1694,6 +2280,7 @@ paths:
           schema:
             anyOf:
               - type: integer
+                minimum: 1
               - type: 'null'
             description: Number of sessions to return per page
             default: 20
@@ -1705,6 +2292,7 @@ paths:
           schema:
             anyOf:
               - type: integer
+                minimum: 0
               - type: 'null'
             description: Page number for pagination
             default: 1
@@ -1898,14 +2486,6 @@ paths:
       security:
         - HTTPBearer: []
       parameters:
-        - name: type
-          in: query
-          required: false
-          schema:
-            $ref: '#/components/schemas/SessionType'
-            description: Default session type filter
-            default: agent
-          description: Default session type filter
         - name: db_id
           in: query
           required: false
@@ -2244,6 +2824,16 @@ paths:
             description: Database ID to use for update operation
             title: Db Id
           description: Database ID to use for update operation
+        - name: table
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Table to use for update operation
+            title: Table
+          description: Table to use for update operation
       requestBody:
         required: true
         content:
@@ -2571,6 +3161,16 @@ paths:
             description: Database ID to query run from
             title: Db Id
           description: Database ID to query run from
+        - name: table
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Table to query run from
+            title: Table
+          description: Table to query run from
       responses:
         '200':
           description: Run retrieved successfully
@@ -2989,6 +3589,7 @@ paths:
           schema:
             anyOf:
               - type: integer
+                minimum: 1
               - type: 'null'
             description: Number of memories to return per page
             default: 20
@@ -3000,6 +3601,7 @@ paths:
           schema:
             anyOf:
               - type: integer
+                minimum: 0
               - type: 'null'
             description: Page number for pagination
             default: 1
@@ -3461,6 +4063,7 @@ paths:
           schema:
             anyOf:
               - type: integer
+                minimum: 1
               - type: 'null'
             description: Number of user statistics to return per page
             default: 20
@@ -3472,6 +4075,7 @@ paths:
           schema:
             anyOf:
               - type: integer
+                minimum: 0
               - type: 'null'
             description: Page number for pagination
             default: 1
@@ -3696,6 +4300,7 @@ paths:
           schema:
             anyOf:
               - type: integer
+                minimum: 1
               - type: 'null'
             description: Number of eval runs to return
             default: 20
@@ -3707,6 +4312,7 @@ paths:
           schema:
             anyOf:
               - type: integer
+                minimum: 0
               - type: 'null'
             description: Page number
             default: 1
@@ -4456,6 +5062,7 @@ paths:
           schema:
             anyOf:
               - type: integer
+                minimum: 1
               - type: 'null'
             description: Number of content entries to return
             default: 20
@@ -4467,6 +5074,7 @@ paths:
           schema:
             anyOf:
               - type: integer
+                minimum: 0
               - type: 'null'
             description: Page number
             default: 1
@@ -5359,7 +5967,7 @@ paths:
           required: false
           schema:
             type: integer
-            minimum: 1
+            minimum: 0
             description: Page number (1-indexed)
             default: 1
             title: Page
@@ -5369,7 +5977,6 @@ paths:
           required: false
           schema:
             type: integer
-            maximum: 100
             minimum: 1
             description: Number of traces per page
             default: 20
@@ -5697,7 +6304,6 @@ paths:
           required: false
           schema:
             type: integer
-            maximum: 100
             minimum: 1
             description: Number of sessions per page
             default: 20
@@ -5780,9 +6386,7 @@ paths:
             anyOf:
               - type: string
               - type: 'null'
-            description: The target version to migrate tables to
             title: Target Version
-          description: The target version to migrate tables to
       responses:
         '200':
           description: All databases migrated successfully
@@ -5844,9 +6448,7 @@ paths:
             anyOf:
               - type: string
               - type: 'null'
-            description: The target version to migrate tables to
             title: Target Version
-          description: The target version to migrate tables to
       responses:
         '200':
           description: Database migrated successfully
@@ -5887,6 +6489,293 @@ paths:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
 components:
   schemas:
+    APIKeySecurityScheme:
+      properties:
+        description:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Description
+        in:
+          $ref: '#/components/schemas/In'
+        name:
+          type: string
+          title: Name
+        type:
+          type: string
+          const: apiKey
+          title: Type
+          default: apiKey
+      type: object
+      required:
+        - in
+        - name
+      title: APIKeySecurityScheme
+      description: Defines a security scheme using an API key.
+    ActivityMessage:
+      properties:
+        id:
+          type: string
+          title: Id
+        role:
+          type: string
+          const: activity
+          title: Role
+          default: activity
+        activityType:
+          type: string
+          title: Activitytype
+        content:
+          additionalProperties: true
+          type: object
+          title: Content
+      additionalProperties: true
+      type: object
+      required:
+        - id
+        - activityType
+        - content
+      title: ActivityMessage
+      description: An activity progress message emitted between chat messages.
+    AgentCapabilities:
+      properties:
+        extensions:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/AgentExtension'
+              type: array
+            - type: 'null'
+          title: Extensions
+        pushNotifications:
+          anyOf:
+            - type: boolean
+            - type: 'null'
+          title: Pushnotifications
+        stateTransitionHistory:
+          anyOf:
+            - type: boolean
+            - type: 'null'
+          title: Statetransitionhistory
+        streaming:
+          anyOf:
+            - type: boolean
+            - type: 'null'
+          title: Streaming
+      type: object
+      title: AgentCapabilities
+      description: Defines optional capabilities supported by an agent.
+    AgentCard:
+      properties:
+        additionalInterfaces:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/AgentInterface'
+              type: array
+            - type: 'null'
+          title: Additionalinterfaces
+        capabilities:
+          $ref: '#/components/schemas/AgentCapabilities'
+        defaultInputModes:
+          items:
+            type: string
+          type: array
+          title: Defaultinputmodes
+        defaultOutputModes:
+          items:
+            type: string
+          type: array
+          title: Defaultoutputmodes
+        description:
+          type: string
+          title: Description
+          examples:
+            - Agent that helps users with recipes and cooking.
+        documentationUrl:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Documentationurl
+        iconUrl:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Iconurl
+        name:
+          type: string
+          title: Name
+          examples:
+            - Recipe Agent
+        preferredTransport:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Preferredtransport
+          default: JSONRPC
+          examples:
+            - JSONRPC
+            - GRPC
+            - HTTP+JSON
+        protocolVersion:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Protocolversion
+          default: 0.3.0
+        provider:
+          anyOf:
+            - $ref: '#/components/schemas/AgentProvider'
+            - type: 'null'
+        security:
+          anyOf:
+            - items:
+                additionalProperties:
+                  items:
+                    type: string
+                  type: array
+                type: object
+              type: array
+            - type: 'null'
+          title: Security
+          examples:
+            - - oauth:
+                  - read
+              - api-key: []
+                mtls: []
+        securitySchemes:
+          anyOf:
+            - additionalProperties:
+                $ref: '#/components/schemas/SecurityScheme'
+              type: object
+            - type: 'null'
+          title: Securityschemes
+        signatures:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/AgentCardSignature'
+              type: array
+            - type: 'null'
+          title: Signatures
+        skills:
+          items:
+            $ref: '#/components/schemas/AgentSkill'
+          type: array
+          title: Skills
+        supportsAuthenticatedExtendedCard:
+          anyOf:
+            - type: boolean
+            - type: 'null'
+          title: Supportsauthenticatedextendedcard
+        url:
+          type: string
+          title: Url
+          examples:
+            - 'https://api.example.com/a2a/v1'
+        version:
+          type: string
+          title: Version
+          examples:
+            - 1.0.0
+      type: object
+      required:
+        - capabilities
+        - defaultInputModes
+        - defaultOutputModes
+        - description
+        - name
+        - skills
+        - url
+        - version
+      title: AgentCard
+      description: |-
+        The AgentCard is a self-describing manifest for an agent. It provides essential
+        metadata including the agent's identity, capabilities, skills, supported
+        communication methods, and security requirements.
+    AgentCardSignature:
+      properties:
+        header:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Header
+        protected:
+          type: string
+          title: Protected
+        signature:
+          type: string
+          title: Signature
+      type: object
+      required:
+        - protected
+        - signature
+      title: AgentCardSignature
+      description: |-
+        AgentCardSignature represents a JWS signature of an AgentCard.
+        This follows the JSON format of an RFC 7515 JSON Web Signature (JWS).
+    AgentExtension:
+      properties:
+        description:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Description
+        params:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Params
+        required:
+          anyOf:
+            - type: boolean
+            - type: 'null'
+          title: Required
+        uri:
+          type: string
+          title: Uri
+      type: object
+      required:
+        - uri
+      title: AgentExtension
+      description: A declaration of a protocol extension supported by an Agent.
+    AgentInterface:
+      properties:
+        transport:
+          type: string
+          title: Transport
+          examples:
+            - JSONRPC
+            - GRPC
+            - HTTP+JSON
+        url:
+          type: string
+          title: Url
+          examples:
+            - 'https://api.example.com/a2a/v1'
+            - 'https://grpc.example.com/a2a'
+            - 'https://rest.example.com/v1'
+      type: object
+      required:
+        - transport
+        - url
+      title: AgentInterface
+      description: |-
+        Declares a combination of a target URL and a transport protocol for interacting with the agent.
+        This allows agents to expose the same functionality over multiple transport mechanisms.
+    AgentProvider:
+      properties:
+        organization:
+          type: string
+          title: Organization
+        url:
+          type: string
+          title: Url
+      type: object
+      required:
+        - organization
+        - url
+      title: AgentProvider
+      description: Represents the service provider of an agent.
     AgentResponse:
       properties:
         id:
@@ -5904,6 +6793,16 @@ components:
             - type: string
             - type: 'null'
           title: Db Id
+        description:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Description
+        role:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Role
         model:
           anyOf:
             - $ref: '#/components/schemas/ModelResponse'
@@ -6083,6 +6982,71 @@ components:
         - session_id
         - session_name
       title: AgentSessionDetailSchema
+    AgentSkill:
+      properties:
+        description:
+          type: string
+          title: Description
+        examples:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: 'null'
+          title: Examples
+          examples:
+            - - I need a recipe for bread
+        id:
+          type: string
+          title: Id
+        inputModes:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: 'null'
+          title: Inputmodes
+        name:
+          type: string
+          title: Name
+        outputModes:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: 'null'
+          title: Outputmodes
+        security:
+          anyOf:
+            - items:
+                additionalProperties:
+                  items:
+                    type: string
+                  type: array
+                type: object
+              type: array
+            - type: 'null'
+          title: Security
+          examples:
+            - - google:
+                  - oidc
+        tags:
+          items:
+            type: string
+          type: array
+          title: Tags
+          examples:
+            - - cooking
+              - customer support
+              - billing
+      type: object
+      required:
+        - description
+        - id
+        - name
+        - tags
+      title: AgentSkill
+      description: Represents a distinct capability or function that an agent can perform.
     AgentSummaryResponse:
       properties:
         id:
@@ -6159,6 +7123,7 @@ components:
           type: string
           const: assistant
           title: Role
+          default: assistant
         content:
           anyOf:
             - type: string
@@ -6176,13 +7141,37 @@ components:
               type: array
             - type: 'null'
           title: Toolcalls
-      additionalProperties: false
+      additionalProperties: true
       type: object
       required:
         - id
-        - role
       title: AssistantMessage
       description: An assistant message.
+    AuthorizationCodeOAuthFlow:
+      properties:
+        authorizationUrl:
+          type: string
+          title: Authorizationurl
+        refreshUrl:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Refreshurl
+        scopes:
+          additionalProperties:
+            type: string
+          type: object
+          title: Scopes
+        tokenUrl:
+          type: string
+          title: Tokenurl
+      type: object
+      required:
+        - authorizationUrl
+        - scopes
+        - tokenUrl
+      title: AuthorizationCodeOAuthFlow
+      description: Defines configuration details for the OAuth 2.0 Authorization Code flow.
     BadRequestResponse:
       properties:
         detail:
@@ -6202,6 +7191,42 @@ components:
       example:
         detail: Bad request
         error_code: BAD_REQUEST
+    BinaryInputContent:
+      properties:
+        type:
+          type: string
+          const: binary
+          title: Type
+          default: binary
+        mimeType:
+          type: string
+          title: Mimetype
+        id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Id
+        url:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Url
+        data:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Data
+        filename:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Filename
+      additionalProperties: true
+      type: object
+      required:
+        - mimeType
+      title: BinaryInputContent
+      description: A binary payload reference in a multimodal user message.
     Body_continue_agent_run:
       properties:
         tools:
@@ -6233,7 +7258,7 @@ components:
         stream:
           type: boolean
           title: Stream
-          default: false
+          default: true
         session_id:
           anyOf:
             - type: string
@@ -6456,6 +7481,27 @@ components:
       required:
         - key
       title: ChunkerSchema
+    ClientCredentialsOAuthFlow:
+      properties:
+        refreshUrl:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Refreshurl
+        scopes:
+          additionalProperties:
+            type: string
+          type: object
+          title: Scopes
+        tokenUrl:
+          type: string
+          title: Tokenurl
+      type: object
+      required:
+        - scopes
+        - tokenUrl
+      title: ClientCredentialsOAuthFlow
+      description: Defines configuration details for the OAuth 2.0 Client Credentials flow.
     ConfigResponse:
       properties:
         os_id:
@@ -6713,7 +7759,7 @@ components:
         value:
           type: string
           title: Value
-      additionalProperties: false
+      additionalProperties: true
       type: object
       required:
         - description
@@ -7063,6 +8109,7 @@ components:
           type: string
           const: developer
           title: Role
+          default: developer
         content:
           type: string
           title: Content
@@ -7071,11 +8118,10 @@ components:
             - type: string
             - type: 'null'
           title: Name
-      additionalProperties: false
+      additionalProperties: true
       type: object
       required:
         - id
-        - role
         - content
       title: DeveloperMessage
       description: A developer message.
@@ -7401,13 +8447,56 @@ components:
         arguments:
           type: string
           title: Arguments
-      additionalProperties: false
+      additionalProperties: true
       type: object
       required:
         - name
         - arguments
       title: FunctionCall
       description: Name and arguments of a function call.
+    GetTaskEndpointResponse:
+      properties:
+        jsonrpc:
+          type: string
+          title: Jsonrpc
+          default: '2.0'
+        id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Id
+        result:
+          $ref: '#/components/schemas/Task'
+      type: object
+      required:
+        - result
+      title: GetTaskEndpointResponse
+      description: Response schema for the Task endpoints.
+    HTTPAuthSecurityScheme:
+      properties:
+        bearerFormat:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Bearerformat
+        description:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Description
+        scheme:
+          type: string
+          title: Scheme
+        type:
+          type: string
+          const: http
+          title: Type
+          default: http
+      type: object
+      required:
+        - scheme
+      title: HTTPAuthSecurityScheme
+      description: Defines a security scheme using HTTP authentication.
     HTTPValidationError:
       properties:
         detail:
@@ -7435,6 +8524,35 @@ components:
       example:
         instantiated_at: '1760169236.778903'
         status: ok
+    ImplicitOAuthFlow:
+      properties:
+        authorizationUrl:
+          type: string
+          title: Authorizationurl
+        refreshUrl:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Refreshurl
+        scopes:
+          additionalProperties:
+            type: string
+          type: object
+          title: Scopes
+      type: object
+      required:
+        - authorizationUrl
+        - scopes
+      title: ImplicitOAuthFlow
+      description: Defines configuration details for the OAuth 2.0 Implicit flow.
+    In:
+      type: string
+      enum:
+        - cookie
+        - header
+        - query
+      title: In
+      description: The location of the API key.
     InterfaceResponse:
       properties:
         type:
@@ -7501,6 +8619,27 @@ components:
       type: object
       title: KnowledgeDomainConfig
       description: Configuration for the Knowledge domain of the AgentOS
+    ListTasksEndpointResponse:
+      properties:
+        jsonrpc:
+          type: string
+          title: Jsonrpc
+          default: '2.0'
+        id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Id
+        result:
+          items:
+            $ref: '#/components/schemas/Task'
+          type: array
+          title: Result
+      type: object
+      required:
+        - result
+      title: ListTasksEndpointResponse
+      description: Response schema for the List Tasks endpoints.
     MemoryConfig:
       properties:
         display_name:
@@ -7586,7 +8725,6 @@ components:
       properties:
         limit:
           type: integer
-          maximum: 100
           minimum: 1
           title: Limit
           description: Number of results per page
@@ -7684,6 +8822,21 @@ components:
           description: Model provider name
       type: object
       title: ModelResponse
+    MutualTLSSecurityScheme:
+      properties:
+        description:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Description
+        type:
+          type: string
+          const: mutualTLS
+          title: Type
+          default: mutualTLS
+      type: object
+      title: MutualTLSSecurityScheme
+      description: Defines a security scheme using mTLS authentication.
     NotFoundResponse:
       properties:
         detail:
@@ -7703,6 +8856,71 @@ components:
       example:
         detail: Not found
         error_code: NOT_FOUND
+    OAuth2SecurityScheme:
+      properties:
+        description:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Description
+        flows:
+          $ref: '#/components/schemas/OAuthFlows'
+        oauth2MetadataUrl:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Oauth2Metadataurl
+        type:
+          type: string
+          const: oauth2
+          title: Type
+          default: oauth2
+      type: object
+      required:
+        - flows
+      title: OAuth2SecurityScheme
+      description: Defines a security scheme using OAuth 2.0.
+    OAuthFlows:
+      properties:
+        authorizationCode:
+          anyOf:
+            - $ref: '#/components/schemas/AuthorizationCodeOAuthFlow'
+            - type: 'null'
+        clientCredentials:
+          anyOf:
+            - $ref: '#/components/schemas/ClientCredentialsOAuthFlow'
+            - type: 'null'
+        implicit:
+          anyOf:
+            - $ref: '#/components/schemas/ImplicitOAuthFlow'
+            - type: 'null'
+        password:
+          anyOf:
+            - $ref: '#/components/schemas/PasswordOAuthFlow'
+            - type: 'null'
+      type: object
+      title: OAuthFlows
+      description: Defines the configuration for the supported OAuth 2.0 flows.
+    OpenIdConnectSecurityScheme:
+      properties:
+        description:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Description
+        openIdConnectUrl:
+          type: string
+          title: Openidconnecturl
+        type:
+          type: string
+          const: openIdConnect
+          title: Type
+          default: openIdConnect
+      type: object
+      required:
+        - openIdConnectUrl
+      title: OpenIdConnectSecurityScheme
+      description: Defines a security scheme using OpenID Connect.
     OptimizeMemoriesRequest:
       properties:
         user_id:
@@ -7913,7 +9131,6 @@ components:
           default: 0
         limit:
           type: integer
-          maximum: 100
           minimum: 1
           title: Limit
           description: Number of items per page
@@ -7944,6 +9161,27 @@ components:
         - $ref: '#/components/schemas/FilePart'
         - $ref: '#/components/schemas/DataPart'
       title: Part
+    PasswordOAuthFlow:
+      properties:
+        refreshUrl:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Refreshurl
+        scopes:
+          additionalProperties:
+            type: string
+          type: object
+          title: Scopes
+        tokenUrl:
+          type: string
+          title: Tokenurl
+      type: object
+      required:
+        - scopes
+        - tokenUrl
+      title: PasswordOAuthFlow
+      description: Defines configuration details for the OAuth 2.0 Resource Owner Password flow.
     ReaderSchema:
       properties:
         id:
@@ -7989,6 +9227,11 @@ components:
         runId:
           type: string
           title: Runid
+        parentRunId:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Parentrunid
         state:
           title: State
         messages:
@@ -7999,9 +9242,11 @@ components:
               - $ref: '#/components/schemas/AssistantMessage'
               - $ref: '#/components/schemas/UserMessage'
               - $ref: '#/components/schemas/ToolMessage'
+              - $ref: '#/components/schemas/ActivityMessage'
             discriminator:
               propertyName: role
               mapping:
+                activity: '#/components/schemas/ActivityMessage'
                 assistant: '#/components/schemas/AssistantMessage'
                 developer: '#/components/schemas/DeveloperMessage'
                 system: '#/components/schemas/SystemMessage'
@@ -8021,7 +9266,7 @@ components:
           title: Context
         forwardedProps:
           title: Forwardedprops
-      additionalProperties: false
+      additionalProperties: true
       type: object
       required:
         - threadId
@@ -8219,6 +9464,14 @@ components:
       required:
         - run_id
       title: RunSchema
+    SecurityScheme:
+      anyOf:
+        - $ref: '#/components/schemas/APIKeySecurityScheme'
+        - $ref: '#/components/schemas/HTTPAuthSecurityScheme'
+        - $ref: '#/components/schemas/OAuth2SecurityScheme'
+        - $ref: '#/components/schemas/OpenIdConnectSecurityScheme'
+        - $ref: '#/components/schemas/MutualTLSSecurityScheme'
+      title: SecurityScheme
     SendMessageSuccessResponse:
       properties:
         id:
@@ -8348,6 +9601,7 @@ components:
           type: string
           const: system
           title: Role
+          default: system
         content:
           type: string
           title: Content
@@ -8356,11 +9610,10 @@ components:
             - type: string
             - type: 'null'
           title: Name
-      additionalProperties: false
+      additionalProperties: true
       type: object
       required:
         - id
-        - role
         - content
       title: SystemMessage
       description: A system message.
@@ -8462,6 +9715,11 @@ components:
             - type: string
             - type: 'null'
           title: Description
+        role:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Role
         model:
           anyOf:
             - $ref: '#/components/schemas/ModelResponse'
@@ -8847,6 +10105,22 @@ components:
           description: Database identifier
       type: object
       title: TeamSummaryResponse
+    TextInputContent:
+      properties:
+        type:
+          type: string
+          const: text
+          title: Type
+          default: text
+        text:
+          type: string
+          title: Text
+      additionalProperties: true
+      type: object
+      required:
+        - text
+      title: TextInputContent
+      description: A text fragment in a multimodal user message.
     TextPart:
       properties:
         kind:
@@ -8878,7 +10152,7 @@ components:
           title: Description
         parameters:
           title: Parameters
-      additionalProperties: false
+      additionalProperties: true
       type: object
       required:
         - name
@@ -8895,13 +10169,13 @@ components:
           type: string
           const: function
           title: Type
+          default: function
         function:
           $ref: '#/components/schemas/FunctionCall'
-      additionalProperties: false
+      additionalProperties: true
       type: object
       required:
         - id
-        - type
         - function
       title: ToolCall
       description: 'A tool call, modelled after OpenAI tool calls.'
@@ -8914,17 +10188,22 @@ components:
           type: string
           const: tool
           title: Role
+          default: tool
         content:
           type: string
           title: Content
         toolCallId:
           type: string
           title: Toolcallid
-      additionalProperties: false
+        error:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Error
+      additionalProperties: true
       type: object
       required:
         - id
-        - role
         - content
         - toolCallId
       title: ToolMessage
@@ -9454,22 +10733,33 @@ components:
           type: string
           const: user
           title: Role
+          default: user
         content:
-          type: string
+          anyOf:
+            - type: string
+            - items:
+                oneOf:
+                  - $ref: '#/components/schemas/TextInputContent'
+                  - $ref: '#/components/schemas/BinaryInputContent'
+                discriminator:
+                  propertyName: type
+                  mapping:
+                    binary: '#/components/schemas/BinaryInputContent'
+                    text: '#/components/schemas/TextInputContent'
+              type: array
           title: Content
         name:
           anyOf:
             - type: string
             - type: 'null'
           title: Name
-      additionalProperties: false
+      additionalProperties: true
       type: object
       required:
         - id
-        - role
         - content
       title: UserMessage
-      description: A user message.
+      description: A user message supporting text or multimodal content.
     UserStatsSchema:
       properties:
         user_id:
