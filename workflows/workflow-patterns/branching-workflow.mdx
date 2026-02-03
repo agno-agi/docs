@@ -18,20 +18,63 @@ Dynamic routing workflows provide intelligent path selection while maintaining p
   alt="Workflows router steps diagram"
 />
 
-## Example
+## Selector Flexibility
+
+The Router selector function supports multiple return types:
+- **String**: Return step name - Router resolves it from choices
+- **Step**: Return Step object directly  
+- **List[Step]**: Return list of steps for chaining
+
+The selector can also receive `step_choices` as an optional second parameter for dynamic selection.
+
+## Example: String-based Selector
+
+The simplest approach - return the step name as a string:
 
 ```python branching_workflow.py
-from agno.workflow import Router, Step, Workflow
+from typing import Union, List
 
-def route_by_topic(step_input) -> List[Step]:
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.workflow.router import Router
+from agno.workflow.step import Step
+from agno.workflow.types import StepInput
+from agno.workflow.workflow import Workflow
+
+tech_expert = Agent(
+    name="tech_expert",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    instructions="You are a tech expert. Provide technical analysis.",
+)
+
+biz_expert = Agent(
+    name="biz_expert",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    instructions="You are a business expert. Provide business insights.",
+)
+
+generalist = Agent(
+    name="generalist",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    instructions="You are a generalist. Provide general information.",
+)
+
+tech_step = Step(name="Tech Research", agent=tech_expert)
+business_step = Step(name="Business Research", agent=biz_expert)
+general_step = Step(name="General Research", agent=generalist)
+
+
+def route_by_topic(step_input: StepInput) -> Union[str, Step, List[Step]]:
+    """Selector can return step name as string - Router resolves it."""
     topic = step_input.input.lower()
 
-    if "tech" in topic:
-        return [Step(name="Tech Research", agent=tech_expert)]
-    elif "business" in topic:
-        return [Step(name="Business Research", agent=biz_expert)]
+    if "tech" in topic or "ai" in topic or "software" in topic:
+        return "Tech Research"  # Return name as string
+    elif "business" in topic or "market" in topic or "finance" in topic:
+        return "Business Research"
     else:
-        return [Step(name="General Research", agent=generalist)]
+        return "General Research"
+
 
 workflow = Workflow(
     name="Expert Routing",
@@ -39,18 +82,94 @@ workflow = Workflow(
         Router(
             name="Topic Router",
             selector=route_by_topic,
-            choices=[tech_step, business_step, general_step]
+            choices=[tech_step, business_step, general_step],
         ),
-        Step(name="Synthesis", agent=synthesizer),
-    ]
+    ],
 )
 
-workflow.print_response("Latest developments in artificial intelligence and machine learning", markdown=True)
+workflow.print_response("Latest developments in artificial intelligence", markdown=True)
+```
+
+## Example: Using step_choices Parameter
+
+Access available choices dynamically for more flexible routing:
+
+```python dynamic_routing.py
+def dynamic_selector(step_input: StepInput, step_choices: list) -> Union[str, Step, List[Step]]:
+    """
+    Selector receives step_choices - can select by name or return Step directly.
+    step_choices contains the prepared Step objects from Router.choices.
+    """
+    user_input = step_input.input.lower()
+
+    # Build name map from step_choices
+    step_map = {s.name: s for s in step_choices if hasattr(s, "name") and s.name}
+
+    # Can return step name as string
+    if "research" in user_input:
+        return "researcher"
+
+    # Can return Step object directly
+    if "write" in user_input:
+        return step_map.get("writer", step_choices[0])
+
+    # Can return list of Steps for chaining
+    if "full" in user_input:
+        return [step_map["researcher"], step_map["writer"], step_map["reviewer"]]
+
+    # Default
+    return step_choices[0]
+
+
+workflow = Workflow(
+    name="Dynamic Routing",
+    steps=[
+        Router(
+            name="Dynamic Router",
+            selector=dynamic_selector,
+            choices=[researcher, writer, reviewer],
+        ),
+    ],
+)
+```
+
+## Example: Nested Choices
+
+Nested lists in choices become Steps containers for sequential execution:
+
+```python nested_routing.py
+def nested_selector(step_input: StepInput, step_choices: list) -> Union[str, Step, List[Step]]:
+    """
+    When choices contains nested lists like [step_a, [step_b, step_c]],
+    the nested list becomes a Steps container in step_choices.
+    """
+    user_input = step_input.input.lower()
+
+    # step_choices[0] = Step for step_a
+    # step_choices[1] = Steps container with [step_b, step_c]
+
+    if "single" in user_input:
+        return step_choices[0]  # Just step_a
+    else:
+        return step_choices[1]  # Steps container: step_b -> step_c
+
+
+workflow = Workflow(
+    name="Nested Choices Routing",
+    steps=[
+        Router(
+            name="Nested Router",
+            selector=nested_selector,
+            choices=[step_a, [step_b, step_c]],  # Nested list becomes Steps container
+        ),
+    ],
+)
 ```
 
 ## Developer Resources
 
 - [Router Steps Workflow](/workflows/usage/router-steps-workflow)
+- [Router with step_choices](/workflows/usage/router-with-step-choices)
 
 ## Reference
 
