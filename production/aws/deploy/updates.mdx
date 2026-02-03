@@ -70,37 +70,13 @@ aws ecs describe-services \
   --query 'services[0].{status:status,running:runningCount,desired:desiredCount}'
 ```
 
-## Create an ECR Repository
+## ECR Authentication
 
-ECR (Elastic Container Registry) stores your Docker images in AWS.
+<Note>
+If you haven't set up ECR yet, see [Getting Started - AWS Setup](/production/aws/getting-started#step-1-aws-setup).
+</Note>
 
-### Step 1: Create the repository
-
-Create a repository with the same name as your `image_name` setting (default: `agentos-aws-template`):
-
-```bash
-aws ecr create-repository \
-  --repository-name agentos-aws-template \
-  --region us-east-1
-```
-
-<img src="/images/create-ecr-image.png" alt="create-ecr-image" />
-
-### Step 2: Get your ECR URL
-
-Your ECR URL follows this format:
-```
-[ACCOUNT_ID].dkr.ecr.[REGION].amazonaws.com
-```
-
-Get your account ID:
-```bash
-aws sts get-caller-identity --query Account --output text
-```
-
-Example URL: `123456789012.dkr.ecr.us-east-1.amazonaws.com`
-
-### Step 3: Authenticate Docker with ECR
+ECR tokens expire after 12 hours. Re-authenticate before pushing:
 
 ```bash
 aws ecr get-login-password --region us-east-1 | \
@@ -108,30 +84,10 @@ aws ecr get-login-password --region us-east-1 | \
   [ACCOUNT_ID].dkr.ecr.us-east-1.amazonaws.com
 ```
 
-Or use the helper script (update with your ECR URL first):
+Or use the helper script:
 
 ```bash
 ./scripts/auth_ecr.sh
-```
-
-<Warning>
-ECR tokens expire after 12 hours. If you get "no basic auth credentials" errors, re-run the authentication command.
-</Warning>
-
-### Step 4: Update settings
-
-Update `infra/settings.py` with your ECR URL:
-
-```python infra/settings.py
-infra_settings = InfraSettings(
-    ...
-    # Your ECR repository URL
-    image_repo="123456789012.dkr.ecr.us-east-1.amazonaws.com",
-    # Build images locally
-    build_images=True,
-    # Push images to ECR after building
-    push_images=True,
-)
 ```
 
 ## Update Deployments
@@ -206,6 +162,14 @@ This deletes everything including the database. Back up your data first.
 
 ## Next Steps
 
-- [CI/CD](/production/aws/operate/ci-cd) - Automate builds with GitHub Actions
-- [Domain & HTTPS](/production/aws/after-deploy/https) - Custom domain and SSL
-- [Monitoring](/production/aws/operate/monitoring) - CloudWatch logs and alerts
+<CardGroup cols={3}>
+  <Card title="CI/CD" icon="rotate" href="/production/aws/manage/ci-cd">
+    Automate with GitHub Actions
+  </Card>
+  <Card title="Monitoring" icon="chart-line" href="/production/aws/manage/monitoring">
+    CloudWatch logs and alerts
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/production/aws/manage/troubleshooting">
+    Common deployment issues
+  </Card>
+</CardGroup>
