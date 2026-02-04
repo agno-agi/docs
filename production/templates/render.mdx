@@ -1,0 +1,366 @@
+---
+title: "AgentOS on Render"
+sidebarTitle: "Render"
+description: "Deploy AgentOS to Render."
+---
+
+This template deploys AgentOS and PostgreSQL with pgvector to Render. Automatic HTTPS and public domain included.
+
+## Deployment Options
+
+Render offers two deployment methods:
+
+| Method | Plan Required | Best For |
+|--------|---------------|----------|
+| [Blueprint (Dashboard)](#blueprint-deployment) | Free or Paid | Most users, free tier |
+| [API (Script)](#api-deployment) | Paid only | Automation, CI/CD |
+
+<Note>
+The Render API does not support creating free-tier services. If you're on Render's free plan, use the Blueprint deployment method.
+</Note>
+
+---
+
+## Blueprint Deployment
+
+Deploy using the Render Dashboard. Works with free and paid plans.
+
+<Steps>
+<Step title="Install tools">
+
+- Install [Docker Desktop](https://docs.docker.com/desktop/install/mac-install/)
+- Install [uv](https://docs.astral.sh/uv/) (Python package manager)
+
+</Step>
+
+<Step title="Create and activate a virtual environment">
+
+```bash
+uv venv --python 3.12
+source .venv/bin/activate
+```
+
+</Step>
+
+<Step title="Install Agno">
+
+```bash
+uv pip install -U 'agno[infra]'
+```
+
+</Step>
+
+<Step title="Create your codebase">
+
+```bash
+ag infra create --template agentos-render --name agentos-render
+
+cd agentos-render
+```
+
+<Tip>
+Or clone directly: `git clone https://github.com/agno-agi/agentos-render-template.git`
+</Tip>
+
+</Step>
+
+<Step title="Test locally (optional)">
+
+Create a `.env` file with your API key:
+```bash
+echo "OPENAI_API_KEY=sk-***" > .env
+```
+
+Start the containers:
+```bash
+docker compose up -d --build
+```
+
+Open http://localhost:8000/docs to verify it works, then stop with `docker compose down`.
+
+</Step>
+
+<Step title="Push to GitHub">
+
+Create a new GitHub repository and push your code:
+
+```bash
+git init
+git add .
+git commit -m "Initial commit"
+git remote add origin git@github.com:YOUR_USERNAME/agentos-render.git
+git push -u origin main
+```
+
+</Step>
+
+<Step title="Create Blueprint on Render">
+
+1. Go to [dashboard.render.com](https://dashboard.render.com)
+2. Click **Blueprints** in the left sidebar
+3. Click **New Blueprint Instance**
+4. Select **Connect Repository** and authorize Render to access your GitHub account
+5. Find and select your `agentos-render` repository
+6. Render automatically detects the `render.yaml` file and displays the resources to create:
+   - **agentos-api** (Web Service)
+   - **agentos-db** (PostgreSQL)
+
+</Step>
+
+<Step title="Configure environment variables">
+
+Render prompts you to set environment variables defined in `render.yaml`:
+
+- **OPENAI_API_KEY** (required): Enter your OpenAI API key
+- **EXA_API_KEY** (optional): Enter your Exa API key for web research features
+
+The database connection variables (`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_DATABASE`) are automatically configured from the PostgreSQL instance.
+
+</Step>
+
+<Step title="Deploy">
+
+1. Review the resources and environment variables
+2. Click **Apply** to start the deployment
+3. Render provisions the PostgreSQL database and deploys your service
+4. Wait for the deployment to complete (~5 minutes)
+
+</Step>
+
+<Step title="Get your domain">
+
+Once deployed, find your service URL in the Render Dashboard:
+
+1. Click on **agentos-api** service
+2. Your URL is displayed at the top (e.g., `https://agentos-api.onrender.com`)
+3. Navigate to `<your-domain>/docs` to see your AgentOS API
+
+</Step>
+
+<Step title="Connect your AgentOS to the control plane">
+
+1. Open [os.agno.com](https://os.agno.com)
+2. Click "Connect OS" and select "Live"
+3. Enter your Render domain as the endpoint
+
+<Frame>
+  <img src="/images/agent-os-connection-dialog.png" alt="AgentOS connection dialog" />
+</Frame>
+
+</Step>
+
+</Steps>
+
+### Managing Your Blueprint Deployment
+
+**View logs**: In the Render Dashboard, click on your service and select the **Logs** tab.
+
+**Redeploy**: Push changes to your GitHub repository. Render automatically redeploys on every push.
+
+**Manual redeploy**: In the Dashboard, click **Manual Deploy** → **Deploy latest commit**.
+
+**Update environment variables**: Go to your service → **Environment** tab → Add or edit variables → Save. This triggers a redeploy.
+
+**Delete resources**: Go to **Blueprints** → Select your Blueprint → **Settings** → **Delete Blueprint**. This removes all associated resources.
+
+---
+
+## API Deployment
+
+Deploy using a script that calls the Render API directly. Requires a paid Render plan.
+
+<Warning>
+The Render API does not support creating free-tier services. This method uses paid plans:
+- **Database**: basic_256mb (~$7/month)
+- **Web Service**: starter (~$7/month)
+
+If you're on Render's free plan, use the [Blueprint deployment](#blueprint-deployment) method instead.
+</Warning>
+
+<Steps>
+<Step title="Install tools">
+
+- Install [Docker Desktop](https://docs.docker.com/desktop/install/mac-install/)
+- Install [uv](https://docs.astral.sh/uv/) (Python package manager)
+- Install the [Render CLI](https://docs.render.com/cli) (optional, for management):
+
+<CodeGroup>
+```bash Mac
+brew install render
+```
+```bash Windows/Linux
+# Download from https://docs.render.com/cli
+```
+</CodeGroup>
+
+</Step>
+
+<Step title="Create and activate a virtual environment">
+
+```bash
+uv venv --python 3.12
+source .venv/bin/activate
+```
+
+</Step>
+
+<Step title="Install Agno">
+
+```bash
+uv pip install -U 'agno[infra]'
+```
+
+</Step>
+
+<Step title="Create your codebase">
+
+```bash
+ag infra create --template agentos-render --name agentos-render
+
+cd agentos-render
+```
+
+<Tip>
+Or clone directly: `git clone https://github.com/agno-agi/agentos-render-template.git`
+</Tip>
+
+</Step>
+
+<Step title="Push to GitHub">
+
+The deployment script requires your code to be in a GitHub repository:
+
+```bash
+git init
+git add .
+git commit -m "Initial commit"
+git remote add origin git@github.com:YOUR_USERNAME/agentos-render.git
+git push -u origin main
+```
+
+</Step>
+
+<Step title="Get your Render API key">
+
+1. Go to [dashboard.render.com](https://dashboard.render.com)
+2. Click your profile icon → **Account Settings**
+3. Scroll to **API Keys**
+4. Click **Create API Key**
+5. Copy the key (starts with `rnd_`)
+
+</Step>
+
+<Step title="Export your API keys">
+
+```bash
+export RENDER_API_KEY=rnd_***
+export OPENAI_API_KEY=sk-***
+export EXA_API_KEY=***  # Optional, for web research
+```
+
+</Step>
+
+<Step title="Deploy to Render">
+
+```bash
+./scripts/render_up.sh
+```
+
+The script:
+1. Creates a PostgreSQL database
+2. Waits for the database to initialize
+3. Creates a web service connected to your GitHub repo
+4. Configures all environment variables
+5. Triggers the deployment
+
+</Step>
+
+<Step title="Get your domain">
+
+The script outputs your service URL. You can also find it using the Render CLI:
+```bash
+render services
+```
+
+Navigate to `<your-domain>/docs` to see your AgentOS API.
+
+</Step>
+
+<Step title="Connect your AgentOS to the control plane">
+
+1. Open [os.agno.com](https://os.agno.com)
+2. Click "Connect OS" and select "Live"
+3. Enter your Render domain as the endpoint
+
+<Frame>
+  <img src="/images/agent-os-connection-dialog.png" alt="AgentOS connection dialog" />
+</Frame>
+
+</Step>
+
+</Steps>
+
+### Managing Your API Deployment
+
+**View logs**:
+```bash
+render logs
+```
+
+**SSH into service**:
+```bash
+render ssh
+```
+
+**Connect to database**:
+```bash
+render psql
+```
+
+**Trigger redeploy**:
+```bash
+render deploys create
+```
+
+---
+
+## Project Structure
+
+```
+agentos-render/
+├── agents/              # Your agents
+├── teams/               # Your teams
+├── workflows/           # Your workflows
+├── app/                 # AgentOS directory
+├── db/                  # Database tables
+├── compose.yaml         # Docker Compose configuration
+├── Dockerfile           # Container build
+├── render.yaml          # Render Blueprint configuration
+├── pyproject.toml       # Python dependencies
+└── scripts/
+    └── render_up.sh     # API deployment script
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Deployment fails">
+    Check the Render logs in the Dashboard or via CLI:
+```bash
+    render logs
+```
+    Common issues: missing environment variables, Docker build errors.
+  </Accordion>
+  <Accordion title="Database connection timeout">
+    Render's PostgreSQL may take a moment to provision. Wait 30-60 seconds and retry.
+  </Accordion>
+  <Accordion title="Service returns 503">
+    The service may still be starting. Wait 2-3 minutes for health checks to pass.
+  </Accordion>
+  <Accordion title="API script fails with 'unknown plan'">
+    Ensure you're using valid plan names. The script uses `basic_256mb` for the database and `starter` for the web service.
+  </Accordion>
+  <Accordion title="Cannot create free-tier services via API">
+    This is a Render limitation. Use the [Blueprint deployment](#blueprint-deployment) method for free-tier services.
+  </Accordion>
+</AccordionGroup>
