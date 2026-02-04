@@ -2,18 +2,30 @@
 title: "AgentOS on Railway"
 sidebarTitle: "Railway"
 description: "Deploy AgentOS to Railway."
+keywords: ["Railway", "deploy", "PostgreSQL", "pgvector", "production", "AgentOS"]
 ---
 
 This template deploys AgentOS and PostgreSQL with pgvector to Railway. Automatic HTTPS and public domain included.
 
-## Step-by-step Guide
+## What's Included
 
-<Steps>
-<Step title="Install tools">
+| Component | Description |
+|-----------|-------------|
+| **AgentOS** | FastAPI server running your AI agents |
+| **PostgreSQL** | Database with pgvector for embeddings |
+| **Automatic HTTPS** | Railway handles TLS certificates |
+| **Public Domain** | your-app.up.railway.app |
 
-- Install [Docker Desktop](https://docs.docker.com/desktop/install/mac-install/)
-- Install [uv](https://docs.astral.sh/uv/) (Python package manager)
-- Install the [Railway CLI](https://docs.railway.com/guides/cli):
+## Prerequisites
+
+You'll need:
+
+- [Docker Desktop](https://docker.com/desktop)
+- [uv](https://docs.astral.sh/uv) (Python package manager)
+- [Railway account](https://railway.app) (free tier works)
+- [OpenAI API key](https://platform.openai.com)
+
+**Install Railway CLI:**
 
 <CodeGroup>
 ```bash Mac
@@ -24,9 +36,14 @@ npm install -g @railway/cli
 ```
 </CodeGroup>
 
-</Step>
+## Deploy
 
-<Step title="Create and activate a virtual environment">
+Let's start by creating the project
+
+### Create Your Project
+
+<Steps>
+<Step title="Set up Python environment">
 
 ```bash
 uv venv --python 3.12
@@ -43,127 +60,139 @@ uv pip install -U 'agno[infra]'
 
 </Step>
 
-<Step title="Create your codebase">
+<Step title="Create from template">
 
 ```bash
-ag infra create --template agentos-railway --name agentos-railway
-
-cd agentos-railway
+ag infra create --template agentos-railway --name my-agentos
+cd my-agentos
 ```
-
-<Tip>
-Or clone directly: `git clone https://github.com/agno-agi/agentos-railway-template.git`
-</Tip>
 
 </Step>
 
-<Step title="Export your API key">
+<Step title="Set your API key">
 
 ```bash
 export OPENAI_API_KEY=sk-***
 ```
 
-<Tip>
-Agno works with any model provider. Just update the agents in your codebase.
-</Tip>
-
 </Step>
+</Steps>
 
-<Step title="Test locally (optional)">
+### Included Agents
 
-```bash
-docker compose up -d --build
-```
+These agents are ready to use once deployed:
 
-Open http://localhost:8000/docs to verify it works, then stop with `docker compose down`.
+<CardGroup cols={3}>
+  <Card title="Pal" icon="graduation-cap">
+    Personal assistant that learns from you. Stores notes, bookmarks, and research findings.
+  </Card>
+  <Card title="Knowledge Agent" icon="book">
+    RAG agent that answers questions from your documents. Pre-loaded with Agno docs.
+  </Card>
+  <Card title="MCP Agent" icon="plug">
+    Connects to external tools via MCP. Extensible with any MCP-compatible service.
+  </Card>
+</CardGroup>
 
-</Step>
+### Deploy to Railway
 
-<Step title="Login to Railway">
+<Steps titleSize="h3">
+<Step title="Login and deploy" stepNumber={5}>
 
 ```bash
 railway login
-```
-
-</Step>
-
-<Step title="Deploy to Railway">
-
-```bash
 ./scripts/railway_up.sh
 ```
 
-This creates the Railway project, provisions the database, and deploys your AgentOS.
+This creates the project, provisions PostgreSQL with pgvector, and deploys your AgentOS. Takes ~2 minutes.
 
 </Step>
 
-<Step title="Get your domain">
+<Step title="Get your domain" stepNumber={6}>
 
 ```bash
 railway open
 ```
 
-Find your domain in the Railway dashboard (e.g., `https://your-app.railway.app`). Navigate to `<railway-domain>/docs` to see your AgentOS API.
+Find your URL in the dashboard (e.g., `my-agentos.up.railway.app`). Navigate to `<railway-domain>/docs` to see your AgentOS API.
 
 </Step>
+</Steps>
 
-<Step title="Connect your AgentOS to the control plane">
+### Connect to Control Plane
 
-1. Open [os.agno.com](https://os.agno.com)
-2. Click "Connect OS" and select "Live"
-3. Enter your Railway domain as the endpoint
+<Steps titleSize="h3">
+<Step title="Connect your AgentOS" stepNumber={7}>
+
+1. Go to [os.agno.com](https://os.agno.com)
+2. Click "Connect OS" → Select "Live"
+3. Paste your Railway domain
 
 <Frame>
-  <img src="/images/agent-os-connection-dialog.png" alt="AgentOS connection dialog" />
+  <img
+    className="block dark:hidden"
+    src="/images/agent-os-connection-railway-light.png"
+    alt="AgentOS connection dialog"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/agent-os-connection-railway.png"
+    alt="AgentOS connection dialog"
+  />
 </Frame>
 
 </Step>
-
 </Steps>
 
-## Tips
+<Check>
+Your AgentOS is live! Manage it from os.agno.com
+</Check>
 
-**Update deployment**: After making changes to your agents:
-```bash
-railway up --service agent_os -d
-```
+## Next Steps
 
-**View logs**:
-```bash
-railway logs --service agent_os
-```
+<CardGroup cols={2}>
+  <Card title="Build Custom Agents" icon="robot" href="/agents/building-agents">
+    Create agents with your own tools and prompts.
+  </Card>
+  <Card title="Add Tools" icon="wrench" href="/tools/overview">
+    Slack, GitHub, databases, and 100+ integrations.
+  </Card>
+  <Card title="Add Knowledge" icon="database" href="/knowledge/overview">
+    Load documents, websites, and databases for RAG.
+  </Card>
+  <Card title="Add Interfaces" icon="comments" href="/production/interfaces/overview">
+    Deploy to Slack, Discord, WhatsApp, or expose via MCP.
+  </Card>
+</CardGroup>
 
-**Stop deployment**:
-```bash
-railway down --service agent_os
-railway down --service pgvector
-```
+## Reference
 
-**Project structure:**
-```
-agentos-railway/
-├── agents/              # Your agents
-├── teams/               # Your teams
-├── workflows/           # Your workflows
-├── app/                 # AgentOS directory
-├── db/                  # Database tables
-├── compose.yml          # Docker Compose configuration
-├── Dockerfile           # Container build
-├── pyproject.toml       # Python dependencies
-└── scripts/             # Helper scripts (including railway_up.sh)
-```
+| Task | Command |
+|------|---------|
+| Deploy updates | `railway up --service agent_os -d` |
+| View logs | `railway logs --service agent_os` |
+| Open dashboard | `railway open` |
+| Set env variable | `railway variables set KEY=value` |
+| Stop service | `railway down --service agent_os` |
+| Scale replicas | Edit `railway.json`: `{"deploy": {"numReplicas": 2}}` |
+| Switch model | `railway variables set ANTHROPIC_API_KEY=sk-ant-***` |
 
 ## Troubleshooting
 
 <AccordionGroup>
-  <Accordion title="Deployment fails">
-    Check the Railway logs:
-```bash
-    railway logs --service agent_os
-```
-    Common issues: missing environment variables, Docker build errors.
+  <Accordion title="'railway: command not found'">
+    Install: `brew install railway` (Mac) or `npm install -g @railway/cli`
   </Accordion>
-  <Accordion title="Database connection timeout">
-    Railway's PostgreSQL may take a moment to provision. Wait 30 seconds and retry.
+
+  <Accordion title="Deployment fails">
+    Run `railway init` first, then `./scripts/railway_up.sh` again.
+  </Accordion>
+
+  <Accordion title="Database timeout">
+    PostgreSQL takes ~30s. Check: `railway logs --service pgvector`
+  </Accordion>
+
+  <Accordion title="502 error">
+    Container starting. Wait 1-2 min. Check: `railway logs --service agent_os`
   </Accordion>
 </AccordionGroup>
