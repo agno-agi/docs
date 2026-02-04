@@ -1,20 +1,29 @@
 ---
 title: "What is AgentOS?"
 sidebarTitle: "Introduction"
-description: "The runtime and control plane for multi-agent systems."
+description: "The runtime, visual builder and control plane for multi-agent systems."
 ---
 
-**AgentOS turns your agents into a production API you can deploy anywhere.** It gives you a pre-built backend for your AI product, so all you need to do is add your agent logic, build your frontend and your product is live.
+**AgentOS turns your Agno SDK agents into a production API ready to deploy anywhere.** 
+It gives you a FastAPI-based backend for your AI product, so all you need to do is add your agent logic,
+build your frontend and your product is live.
 
-You bring the agents and AgentOS turns it into a product:
-- 50+ API endpoints with SSE-compatible streaming. Ready for production on day one.
-- Sessions, memory, knowledge stored in your database. Your data stays in your system.
-- Request-level isolation. No state bleed between users, agents and sessions.
-- JWT-based RBAC with hierarchical scopes. Enterprise-ready from day one.
-- Tracing built-in, stored in your database. No third-party egress. No vendor lock-in.
-- Guardrails, human in the loop, learning machines. The full Agno framework.
+<Check>
+Fully Compatible with the FastAPI Ecosystem.
+AgentOS exposes the underlying FastAPI instance, allowing you to deploy custom routes, background workers, and middleware 
+with zero additional configuration.
+</Check>
 
-Here's an example of an AgentOS serving an Agent with memory, state, and MCP tools:
+AgentOS comprises of two parts:
+1. **Runtime**: To run your Agno agents built using the Agno SDK
+2. **User interface**: Visual agent builder and [control plane](/agent-os/control-plane) that lets you build, monitor, debug and deploy your agents
+
+To use AgentOS, first instantiate and [run it](/agent-os/run-your-os) and then [connect it to the user interface](/agent-os/connect-your-os).
+
+<Tabs>
+<Tab title="Basic AgentOS">
+
+This is a basic AgentOS instance serving an Agent with memory, state, and MCP tools. You can monitor this agent after connecting the AgentOS to the UI.
 
 ```python agno_agent.py
 from agno.os import AgentOS
@@ -36,29 +45,75 @@ app = agent_os.get_app()
 if __name__ == "__main__":
     agent_os.serve(app="agno_agent:app", reload=True)
 ```
+</Tab>
+<Tab title="AgentOS with Builder Components">
+You can create an AgentOS instance with pre-registered components (agents, teams, workflows, tools, database, etc.).
+When you connect this AgentOS to the UI, you view and use these components in the visual editor as draggable nodes for complex system design.
 
-<Check>
+```python agent_os_registry.py
+from agno.agent.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.anthropic import Claude
+from agno.models.openai import OpenAIChat
+from agno.os import AgentOS
+from agno.registry import Registry
+from agno.tools.calculator import CalculatorTools
+from agno.tools.duckduckgo import DuckDuckGoTools
 
-AgentOS runs on FastAPI. Add middleware, custom routes, background tasks, or any FastAPI feature without extra configuration.
+db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai", id="postgres_db")
 
-</Check>
 
-## Control Plane
+def sample_tool():
+    return "Hello, world!"
 
-AgentOS comes with a built-in [control plane](https://os.agno.com) that connects directly to your runtime from your browser. Monitor sessions. Debug with full traces. Manage users and permissions.
 
-<Frame>
-  <video
-    autoPlay
-    muted
-    loop
-    playsInline
-    controls
-    style={{ borderRadius: "0.5rem", width: "100%", height: "auto" }}
-  >
-    <source src="/videos/agentos-agent-chat.mp4" type="video/mp4" />
-  </video>
-</Frame>
+registry = Registry(
+    name="Agno Registry",
+    tools=[DuckDuckGoTools(), sample_tool, CalculatorTools()],
+    models=[
+        OpenAIChat(id="gpt-5-mini"),
+        OpenAIChat(id="gpt-5"),
+        Claude(id="claude-sonnet-4-5"),
+    ],
+    dbs=[db],
+)
+
+agent = Agent(
+    id="registry-agent",
+    model=Claude(id="claude-sonnet-4-5"),
+    db=db,
+)
+
+agent_os = AgentOS(
+    agents=[agent],
+    id="registry-agent-os",
+    registry=registry,
+    db=db,
+)
+
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="agent_os_registry:app", reload=True)
+```
+</Tab>
+</Tabs>
+
+## Architecture
+
+Your AgentOS runs as a container in your cloud. The control plane connects directly from your browser. No proxy servers, no data relay.
+
+<img
+  className="block dark:hidden"
+  src="/images/agent-os/agentos-architecture-light.png"
+  alt="AgentOS Architecture"
+/>
+
+<img
+  className="hidden dark:block"
+  src="/images/agent-os/agentos-architecture-dark.png"
+  alt="AgentOS Architecture"
+/>
 
 ## Private by Design
 
@@ -79,23 +134,17 @@ See [AgentOS Security](/agent-os/security) for more details.
   />
 </Frame>
 
-## Architecture
+## AgentOS Features and Benefits
 
-Your AgentOS runs as a container in your cloud. The control plane connects directly from your browser. No proxy servers, no data relay.
+You bring in your agents and AgentOS turns them into a production-ready agentic system:
+- 50+ API endpoints with SSE-compatible streaming. Ready for production on day one.
+- Sessions, memory, knowledge stored in your database. Your data stays in your system.
+- Request-level isolation. No state bleed between users, agents and sessions.
+- JWT-based RBAC with hierarchical scopes. Enterprise-ready from day one.
+- Tracing built-in, stored in your database. No third-party egress. No vendor lock-in.
+- Guardrails, human in the loop, learning machines. The full Agno framework.
 
-<img
-  className="block dark:hidden"
-  src="/images/agent-os/agentos-architecture-light.png"
-  alt="AgentOS Architecture"
-/>
-
-<img
-  className="hidden dark:block"
-  src="/images/agent-os/agentos-architecture-dark.png"
-  alt="AgentOS Architecture"
-/>
-
-## Get Started
+## Next Steps
 
 <CardGroup cols={2}>
   <Card
@@ -106,11 +155,11 @@ Your AgentOS runs as a container in your cloud. The control plane connects direc
     Create and run your first AgentOS
   </Card>
   <Card
-    title="Connect Your AgentOS"
+    title="Connect AgentOS to UI"
     icon="link"
     href="/agent-os/connect-your-os"
   >
-    Connect your AgentOS to the UI
+    Connect your AgentOS to the Control Plane and Builder UI 
   </Card>
   <Card
     title="Control Plane"
@@ -118,9 +167,9 @@ Your AgentOS runs as a container in your cloud. The control plane connects direc
     href="/agent-os/control-plane"
   >
     Monitor and manage your AgentOS
-  </Card>
+  </Card> 
   <Card
-    title="Overview"
+    title="Learn More"
     icon="book"
     href="/agent-os/overview"
   >
