@@ -3,10 +3,7 @@ title: "Overview"
 description: "Create and configure your AgentOS instance"
 ---
 
-AgentOS turns your Agno agents into a production API. You must first create an AgentOS instance
-with the requisite configuration, [run it](/agent-os/run-your-os) and then [connect it to the user interface](/agent-os/connect-your-os).
-
-## Create AgentOS
+AgentOS turns your Agno agents into a production API.
 
 A minimal AgentOS application looks like this:
 
@@ -27,14 +24,54 @@ if __name__ == "__main__":
     agent_os.serve(app="my_os:app", reload=True)
 ```
 
+Next, [run it](/agent-os/run-your-os) and then [connect it to AgentOS UI](/agent-os/connect-your-os).
+
 ## AgentOS UI
 
-Create and run your AgentOS. Then connect to the AgentOS UI to interact with your agents. The UI offers visual builder called Studio and the AgentOS control plane to monitor, debug and manage your Agno agents.
+AgentOS UI comprises of:
 
-The control plane displays all the Agno agents and workflows created programmatically or via APIs in the AgentOS runtime. You can drag and drop Agno components in the builder canvas to create your agentic system. Only the registered agents, teams, workflows, knowledge bases, tools, etc. will be visible as components in the builder UI available for drag and drop use via the UI. To register Agno components, you can pass them as parameters to the AgentOS constructor or use the `register` method of the AgentOS instance.
+1. **Studio**: Visual agent builder to design your agentic systems.
+2. **Control Plane**: To monitor, debug and manage your Agno agents.
 
-```python
-agent_os.register(agents=[my_agent], teams=[my_team], workflows=[my_workflow], knowledge=[my_knowledge], tools=[my_tools])
+Create agents programmatically via the Agno SDK/APIs or the visual builder.
+
+The control plane displays runtime agents and workflows. Use the builder canvas to visually design systems by dragging and dropping components. To make components visible in the builder UI, register them via the `AgentOS` constructor.
+
+```python agent_os_registry.py
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+from agno.models.anthropic import Claude
+from agno.os import AgentOS
+from agno.registry import Registry
+from agno.tools.calculator import CalculatorTools
+from agno.tools.websearch import WebSearchTools
+from agno.vectordb.pgvector import PgVector
+from pydantic import BaseModel
+
+class InputSchema(BaseModel):
+    input: str
+    description: str
+
+def custom_evaluator(input: str) -> bool:
+    return "urgent" in input.lower()
+
+db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai", id="postgres_db")
+
+registry = Registry(
+    name="My Registry",
+    tools=[CalculatorTools(), WebSearchTools()],
+    models=[OpenAIChat(id="gpt-5-mini"), Claude(id="claude-sonnet-4-5")],
+    dbs=[db],
+    vector_dbs=[PgVector(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai", table_name="embeddings")],
+    schemas=[InputSchema],
+    functions=[custom_evaluator],
+)
+
+agent_os = AgentOS(id="my-app", registry=registry, db=db)
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="agent_os_registry:app", reload=True)
 ```
 
 ## Parameters
