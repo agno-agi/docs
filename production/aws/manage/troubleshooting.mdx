@@ -1,0 +1,197 @@
+---
+title: "Troubleshooting"
+sidebarTitle: "Troubleshooting"
+description: "Common AWS deployment errors and solutions"
+keywords: ["troubleshooting", "errors", "debug", "fix", "issues", "problems", "help"]
+---
+
+Solutions for common issues encountered when deploying to AWS.
+
+## ECS Task Issues
+
+<AccordionGroup>
+  <Accordion title="Load balancer shows unhealthy targets">
+    **Cause:** Container not responding to health checks
+
+    Verify the `/health` endpoint works:
+    ```bash
+    curl http://localhost:8000/health
+    ```
+    Should return: `{"status": "ok", "instantiated_at": "..."}`
+
+    If this fails, check CloudWatch logs for startup errors:
+    ```bash
+    aws logs tail /ecs/{infra_name}-prd --follow
+    ```
+  </Accordion>
+
+  <Accordion title="Task keeps restarting (health check flapping)">
+    **Cause:** Container starts but fails health checks
+
+    Check the logs for the startup sequence:
+    ```bash
+    aws logs tail /ecs/{infra_name}-prd --since 10m
+    ```
+
+    Look for:
+    - `Application startup complete` - Container started
+    - `SIGTERM` - Health check failed, container being killed
+
+    Common causes:
+    - Database connection failing (check `DB_HOST`, `DB_PASS`)
+    - Missing environment variables
+    - App crashes after startup
+  </Accordion>
+
+  <Accordion title="'database is locked' errors">
+    **Cause:** Multiple uvicorn workers with DuckDB
+
+    DuckDB requires single-writer access. Ensure your command uses one worker:
+    ```python
+    command="uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1",
+    ```
+
+    Do NOT increase `--workers` if using Pal agent.
+  </Accordion>
+
+  <Accordion title="Pal loses data after restart">
+    **Cause:** No EFS configured
+
+    Pal stores data in DuckDB at `/data/pal.db`. Without EFS, this is lost on container restart.
+
+    See: [EFS Setup Guide](/production/aws/configure/efs)
+  </Accordion>
+
+  <Accordion title="Secrets not available in task">
+    **Cause:** IAM permissions or secret doesn't exist
+
+    Verify secrets exist:
+    ```bash
+    aws secretsmanager list-secrets \
+      --query "SecretList[?contains(Name, '{infra_name}-prd')].[Name]" \
+      --output table
+    ```
+
+    If missing, redeploy with `ag infra up prd:aws` to create them from your YAML files.
+  </Accordion>
+</AccordionGroup>
+
+## Docker & ECR Issues
+
+<AccordionGroup>
+  <Accordion title="'no basic auth credentials' on image push">
+    **Cause:** Docker not authenticated to ECR
+
+    Run the authentication script:
+    ```bash
+    ./scripts/auth_ecr.sh
+    ```
+
+    Or manually:
+    ```bash
+    aws ecr get-login-password --region us-east-1 | \
+      docker login --username AWS --password-stdin \
+      [ACCOUNT_ID].dkr.ecr.us-east-1.amazonaws.com
+    ```
+
+    ECR tokens expire after 12 hours. Re-run if you get this error after a break.
+  </Accordion>
+
+  <Accordion title="Image push times out">
+    Large images can timeout on slow connections. Try:
+    1. Build with `-f` flag to ensure fresh layers
+    2. Check your network connection
+    3. Consider using GitHub Actions for CI/CD builds
+  </Accordion>
+</AccordionGroup>
+
+## Database Issues
+
+<AccordionGroup>
+  <Accordion title="Database connection fails silently">
+    **Cause:** Special characters in password
+
+    Avoid `@`, `#`, `%`, `&` in `DB_PASS`. These require URL encoding and cause silent connection failures.
+
+    Safe characters: alphanumeric, `!`, `-`, `_`
+  </Accordion>
+
+  <Accordion title="Cannot connect to RDS from ECS">
+    Check security group allows ECS to access RDS:
+    ```bash
+    aws ec2 describe-security-groups \
+      --filters "Name=group-name,Values=*-db-sg" \
+      --query 'SecurityGroups[0].IpPermissions'
+    ```
+
+    The database security group must allow inbound port 5432 from the ECS security group.
+  </Accordion>
+
+  <Accordion title="Cannot connect to RDS from local machine">
+    RDS must be in a public subnet with `publicly_accessible=True` (the default).
+
+    Add your IP to the security group or use a bastion host.
+  </Accordion>
+</AccordionGroup>
+
+## EFS Issues
+
+<AccordionGroup>
+  <Accordion title="Mount target not found">
+    Ensure mount targets exist in the same subnets as your ECS tasks:
+    ```bash
+    aws efs describe-mount-targets --file-system-id fs-xxx
+    ```
+
+    Each subnet in `aws_subnet_ids` needs its own mount target.
+  </Accordion>
+
+  <Accordion title="Permission denied on EFS">
+    Check that your access point uses UID/GID `61000` to match the container user:
+    ```bash
+    aws efs describe-access-points --access-point-id fsap-xxx
+    ```
+
+    The POSIX user should be `Uid: 61000, Gid: 61000`.
+  </Accordion>
+</AccordionGroup>
+
+## Debugging Commands
+
+```bash
+# View ECS service events (replace {infra_name} with your infra_name)
+aws ecs describe-services \
+  --cluster {infra_name}-prd \
+  --services {infra_name}-prd-service \
+  --query 'services[0].events[:5]'
+
+# View recent logs
+aws logs tail /ecs/{infra_name}-prd --follow
+
+# Check task status
+aws ecs list-tasks --cluster {infra_name}-prd
+aws ecs describe-tasks --cluster {infra_name}-prd --tasks [TASK_ARN]
+```
+
+## SSH Access
+
+### Local Development
+
+```bash
+docker exec -it ai-api zsh
+```
+
+### Production (ECS)
+
+```bash
+ECS_CLUSTER={infra_name}-prd
+TASK_ARN=$(aws ecs list-tasks --cluster $ECS_CLUSTER --query "taskArns[0]" --output text)
+
+aws ecs execute-command \
+    --cluster $ECS_CLUSTER \
+    --task $TASK_ARN \
+    --container {infra_name}-prd \
+    --interactive \
+    --command "zsh"
+```
+

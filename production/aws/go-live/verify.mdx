@@ -1,0 +1,76 @@
+---
+title: "Verify Your Deployment"
+sidebarTitle: "Verify"
+description: "Confirm your AWS deployment is working"
+keywords: ["health check", "CloudWatch", "logs", "ECS", "status", "verify", "confirm"]
+---
+
+After running `ag infra up prd:aws`, verify everything is working before proceeding.
+
+## Check the Health Endpoint
+
+Get your load balancer DNS from the AWS Console (EC2 → Load Balancers), then:
+
+```bash
+curl http://[LOAD_BALANCER_DNS]/health
+```
+
+Expected response:
+```json
+{"status": "ok", "instantiated_at": "2025-01-01T12:00:00Z"}
+```
+
+## Check CloudWatch Logs
+
+```bash
+aws logs tail /ecs/{infra_name}-prd --follow
+```
+
+Look for these lines indicating successful startup:
+
+```
+INFO:     Started server process [1]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000
+```
+
+<Note>
+Replace `{infra_name}` with your `infra_name` from `settings.py` (e.g., `agentos-aws-template`).
+</Note>
+
+## Check ECS Service Status
+
+```bash
+aws ecs describe-services \
+  --cluster {infra_name}-prd \
+  --services {infra_name}-prd-service \
+  --query 'services[0].{status:status,running:runningCount,desired:desiredCount}'
+```
+
+Expected output:
+```json
+{
+    "status": "ACTIVE",
+    "running": 1,
+    "desired": 1
+}
+```
+
+## What Success Looks Like
+
+| Check | Expected |
+|-------|----------|
+| Health endpoint | Returns `{"status": "ok", ...}` |
+| CloudWatch logs | Shows "Application startup complete" |
+| ECS service | Running count matches desired count |
+| Load balancer targets | Shows "healthy" in AWS Console |
+
+## If Something Is Wrong
+
+| Symptom | Next Step |
+|---------|-----------|
+| Health returns error | Check [CloudWatch logs](/production/aws/manage/monitoring) |
+| No logs appearing | Check ECS task started in AWS Console |
+| Task keeps restarting | See [Troubleshooting](/production/aws/manage/troubleshooting) |
+
