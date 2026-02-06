@@ -1,0 +1,86 @@
+---
+title: Laminar
+description: Integrate Agno with Laminar to send traces and gain insights into your agent's performance.
+---
+
+## Integrating Agno with Laminar
+
+[Laminar](https://laminar.sh) is an open-source observability and evaluation platform for AI applications built on OpenTelemetry. By integrating Agno with Laminar, you can trace agent execution, tool calls, and LLM usage in a single trace.
+
+## Prerequisites
+
+1. **Install Dependencies**
+
+   Ensure you have the necessary packages installed:
+
+   ```bash
+   uv pip install agno openai lmnr openinference-instrumentation-agno
+   ```
+
+2. **Setup Laminar Project**
+
+   - Sign up for Laminar (cloud) or self-host it.
+   - Create a project and generate a Project API key.
+
+3. **Set Environment Variables**
+
+   Configure your environment with the Laminar Project API key:
+
+   ```bash
+   export LMNR_PROJECT_API_KEY=<your-project-api-key>
+   ```
+
+## Sending Traces to Laminar
+
+- ### Example: Using Laminar with OpenInference
+
+This example instruments Agno so agent and tool spans are captured alongside model calls.
+
+```python
+import os
+
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.tools.yfinance import YFinanceTools
+from lmnr import Laminar
+from openinference.instrumentation.agno import AgnoInstrumentor
+
+# Initialize Laminar before creating agents
+Laminar.initialize(project_api_key=os.environ["LMNR_PROJECT_API_KEY"])
+
+# Instrument Agno to capture agent and tool spans
+AgnoInstrumentor().instrument()
+
+# Create and configure the agent
+agent = Agent(
+    name="Stock Price Agent",
+    model=OpenAIResponses(id="gpt-5.2"),
+    tools=[YFinanceTools()],
+    instructions="You are a stock price agent. Answer questions in the style of a stock analyst.",
+    debug_mode=True,
+)
+
+# Use the agent
+agent.print_response("What is the current price of Tesla?")
+```
+
+## Notes
+
+- **Initialization Order**: Call `Laminar.initialize()` before creating agents so the tracer provider is configured.
+- **Development Mode**: Pass `disable_batch=True` to `Laminar.initialize()` to see traces immediately.
+- **Self-Hosted**: Configure `base_url`, `http_port`, and `grpc_port` (or set `LMNR_BASE_URL`) for a local deployment.
+- **Single-Trace Runs**: If you want all spans under one trace, wrap your run in a parent span and disable Laminar's OpenAI auto-instrumentation:
+
+```python
+from lmnr import Instruments, Laminar
+
+Laminar.initialize(
+    project_api_key=os.environ["LMNR_PROJECT_API_KEY"],
+    disabled_instruments={Instruments.OPENAI},
+)
+
+with Laminar.start_as_current_span("agno.run"):
+    agent.print_response("Run a tool call flow and summarize the results.")
+```
+
+By following these steps, you can effectively integrate Agno with Laminar, enabling comprehensive observability and monitoring of your AI agents.
