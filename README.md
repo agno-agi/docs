@@ -37,7 +37,7 @@ git push
 
 1. In your local `agno` repo, run the `AgentOS` cookbook containing all supported interfaces, using the latest version of Agno.
    ```bash
-   python cookbook/06_agent_os/all_interfaces.py
+   python cookbook/05_agent_os/all_interfaces.py
    ```
 
 2. Download the latest API reference files:
