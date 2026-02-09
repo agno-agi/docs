@@ -1,19 +1,21 @@
 ---
-title: "AWS Deployment Guide"
-sidebarTitle: "Deployment Guide"
-description: "Full deployment guide for AgentOS on AWS using ECS Fargate, RDS, and ALB."
-keywords: ["deploy", "AWS", "ECS", "Fargate", "RDS", "PostgreSQL", "ALB", "production", "infrastructure"]
+title: "AgentOS on AWS"
+description: "Deploy AgentOS on AWS using ECS Fargate, RDS, and ALB template."
+keywords:
+  [
+    "deploy",
+    "AWS",
+    "ECS",
+    "Fargate",
+    "RDS",
+    "PostgreSQL",
+    "ALB",
+    "production",
+    "infrastructure",
+  ]
 ---
 
-## Overview
-
-Deploy AgentOS on AWS with ECS Fargate, RDS PostgreSQL (pgvector), and an Application Load Balancer.
-
-Key points:
-
-- Runs in your AWS account
-- Requires AWS permissions for ECR, ECS, RDS, ELB, IAM, Secrets Manager, and CloudWatch, plus AWS CLI, Docker, `uv`, and an OpenAI API key
-- HTTPS is required to connect to the Control Plane
+Deploy AgentOS to your AWS account using ECS Fargate, RDS PostgreSQL (pgvector), and an Application Load Balancer.
 
 ## Architecture
 
@@ -28,37 +30,43 @@ Key points:
   alt="AWS Architecture"
 />
 
+| Category          | Details                                              |
+| ----------------- | ---------------------------------------------------- |
+| **AWS Services**  | ECR, ECS, RDS, ELB, IAM, Secrets Manager, CloudWatch |
+| **Tools**         | AWS CLI, Docker, `uv`                                |
+| **Configuration** | HTTPS (required for Control Plane), OpenAI API key   |
+
 ### What's Included
 
-| Component | Description |
-|-----------|-------------|
-| **AgentOS** | FastAPI server running your AI agents on ECS Fargate |
-| **PostgreSQL** | RDS database with pgvector for embeddings |
-| **Application Load Balancer** | HTTP/HTTPS ingress and health checks |
-| **Secrets Manager** | Secure storage for API keys and DB credentials |
-| **CloudWatch Logs** | Centralized logs for ECS tasks |
+| Component                     | Description                                          |
+| ----------------------------- | ---------------------------------------------------- |
+| **AgentOS**                   | FastAPI server running your AI agents on ECS Fargate |
+| **PostgreSQL**                | RDS database with pgvector for embeddings            |
+| **Application Load Balancer** | HTTP/HTTPS ingress and health checks                 |
+| **Secrets Manager**           | Secure storage for API keys and DB credentials       |
+| **CloudWatch Logs**           | Centralized logs for ECS tasks                       |
 
 ## Costs
 
-| Resource | Purpose | Monthly Cost |
-|----------|---------|--------------|
-| ECS Fargate | Serverless container hosting | $30-50 |
-| RDS PostgreSQL | Managed database with pgvector | $25 |
-| Application Load Balancer | HTTP/HTTPS endpoint | $20-25 |
-| AWS Secrets Manager | Secure credential storage | < $1 |
-| Security Groups | Network access controls | Free |
-| **Total** | | **~$75-100** |
+| Resource                  | Purpose                        | Monthly Cost |
+| ------------------------- | ------------------------------ | ------------ |
+| ECS Fargate               | Serverless container hosting   | $30-50       |
+| RDS PostgreSQL            | Managed database with pgvector | $25          |
+| Application Load Balancer | HTTP/HTTPS endpoint            | $20-25       |
+| AWS Secrets Manager       | Secure credential storage      | < $1         |
+| Security Groups           | Network access controls        | Free         |
+| **Total**                 |                                | **~$75-100** |
 
 Use the [AWS Pricing Calculator](https://calculator.aws/) for detailed estimates.
 
 ## Deployment Types
 
-| Type | Use Case | Infrastructure | Cost | Availability |
-|------|----------|----------------|------|--------------|
-| Dev | Local testing | Docker + local DB | Low | Single machine |
+| Type | Use Case       | Infrastructure          | Cost   | Availability   |
+| ---- | -------------- | ----------------------- | ------ | -------------- |
+| Dev  | Local testing  | Docker + local DB       | Low    | Single machine |
 | Prod | Live workloads | ECS Fargate + RDS + ALB | Medium | Multi-AZ ready |
 
-## Full Deployment
+## Deploy
 
 ### Prerequisites
 
@@ -109,7 +117,8 @@ aws ecr get-login-password --region us-east-1 | \
 ```
 
 <Note>
-ECR tokens expire after 12 hours. Re-run this command if you get authentication errors.
+  ECR tokens expire after 12 hours. Re-run this command if you get
+  authentication errors.
 </Note>
 
 **Find your subnet IDs:**
@@ -119,7 +128,8 @@ ECR tokens expire after 12 hours. Re-run this command if you get authentication 
 3. Note the Subnet IDs for 2+ subnets in different availability zones
 
 <Tip>
-Public subnets typically have "public" in their name or have a route to an Internet Gateway.
+  Public subnets typically have "public" in their name or have a route to an
+  Internet Gateway.
 </Tip>
 
 </Tab>
@@ -135,6 +145,7 @@ aws ecr create-repository \
 ```
 
 Note your ECR URL from the output:
+
 ```
 [ACCOUNT_ID].dkr.ecr.us-east-1.amazonaws.com
 ```
@@ -148,7 +159,8 @@ aws ecr get-login-password --region us-east-1 | \
 ```
 
 <Note>
-ECR tokens expire after 12 hours. Re-run this command if you get authentication errors.
+  ECR tokens expire after 12 hours. Re-run this command if you get
+  authentication errors.
 </Note>
 
 **Find your subnet IDs:**
@@ -158,7 +170,8 @@ aws ec2 describe-subnets --query 'Subnets[*].[SubnetId,AvailabilityZone,MapPubli
 ```
 
 <Tip>
-Choose subnets where `MapPublicIpOnLaunch` is `True`. Select subnets in different availability zones for high availability.
+  Choose subnets where `MapPublicIpOnLaunch` is `True`. Select subnets in
+  different availability zones for high availability.
 </Tip>
 
 </Tab>
@@ -180,12 +193,12 @@ infra_settings = InfraSettings(
 
 Required settings:
 
-| Setting | Description | Example |
-|---------|-------------|---------|
-| `infra_name` | Prefix for all AWS resource names | `my-agentos` |
-| `aws_region` | AWS region for resources | `us-east-1` |
-| `aws_subnet_ids` | VPC subnets (minimum 2) | `['subnet-xxx', 'subnet-yyy']` |
-| `image_repo` | ECR repository URL | `123456789012.dkr.ecr.us-east-1.amazonaws.com` |
+| Setting          | Description                       | Example                                        |
+| ---------------- | --------------------------------- | ---------------------------------------------- |
+| `infra_name`     | Prefix for all AWS resource names | `my-agentos`                                   |
+| `aws_region`     | AWS region for resources          | `us-east-1`                                    |
+| `aws_subnet_ids` | VPC subnets (minimum 2)           | `['subnet-xxx', 'subnet-yyy']`                 |
+| `image_repo`     | ECR repository URL                | `123456789012.dkr.ecr.us-east-1.amazonaws.com` |
 
 ### Secrets
 
@@ -200,7 +213,7 @@ Edit `infra/secrets/prd_api_secrets.yml`:
 
 ```yaml
 OPENAI_API_KEY: "sk-your-key-here"
-EXA_API_KEY: "exa-your-key-here"  # Optional
+EXA_API_KEY: "exa-your-key-here" # Optional
 ```
 
 Edit `infra/secrets/prd_db_secrets.yml`:
@@ -211,21 +224,22 @@ DB_PASS: "YourSecurePassword123"
 ```
 
 <Warning>
-Avoid `@`, `#`, `%`, `&`, `"`, `'` in `DB_PASS`. These require URL encoding and can cause silent connection failures.
+  Avoid `@`, `#`, `%`, `&`, `"`, `'` in `DB_PASS`. These require URL encoding
+  and can cause silent connection failures.
 </Warning>
 
 ### Database
 
 Default RDS configuration in `prd_resources.py`:
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `engine` | `postgres` | PostgreSQL |
-| `engine_version` | `17.2` | PostgreSQL 17 |
-| `allocated_storage` | `64` | 64 GB storage |
-| `db_instance_class` | `db.t4g.small` | ~$25/month |
-| `db_name` | `ai` | Database name |
-| `port` | `5432` | PostgreSQL port |
+| Setting             | Default        | Description     |
+| ------------------- | -------------- | --------------- |
+| `engine`            | `postgres`     | PostgreSQL      |
+| `engine_version`    | `17.2`         | PostgreSQL 17   |
+| `allocated_storage` | `64`           | 64 GB storage   |
+| `db_instance_class` | `db.t4g.small` | ~$25/month      |
+| `db_name`           | `ai`           | Database name   |
+| `port`              | `5432`         | PostgreSQL port |
 
 To customize:
 
@@ -248,11 +262,11 @@ ag infra patch prd:aws:::db
 
 EFS is required for Pal in production because DuckDB uses local storage.
 
-| Agent | EFS Required | Why |
-|-------|--------------|-----|
-| Pal | Yes | Stores DuckDB at `/data/pal.db` |
-| Knowledge Agent | No | Uses PostgreSQL (RDS) |
-| MCP Agent | No | Stateless |
+| Agent           | EFS Required | Why                             |
+| --------------- | ------------ | ------------------------------- |
+| Pal             | Yes          | Stores DuckDB at `/data/pal.db` |
+| Knowledge Agent | No           | Uses PostgreSQL (RDS)           |
+| MCP Agent       | No           | Stateless                       |
 
 If you use EFS, keep Uvicorn workers at 1. DuckDB needs single-writer access.
 
@@ -280,18 +294,18 @@ ag infra patch prd:aws:::service
 
 Production variables are set in `prd_resources.py`:
 
-| Variable | Source | Description |
-|----------|--------|-------------|
-| `RUNTIME_ENV` | Hardcoded | `prd` in production |
-| `DATA_DIR` | Hardcoded | `/data` (EFS mount point) |
-| `OPENAI_API_KEY` | Secrets | From `prd_api_secrets.yml` |
-| `EXA_API_KEY` | Secrets | From `prd_api_secrets.yml` (optional) |
-| `DB_HOST` | AWS | RDS endpoint (auto-populated) |
-| `DB_PORT` | AWS | RDS port (auto-populated) |
-| `DB_USER` | Secrets | From `prd_db_secrets.yml` |
-| `DB_PASS` | Secrets | From `prd_db_secrets.yml` |
-| `DB_DATABASE` | AWS | RDS database name (auto-populated) |
-| `WAIT_FOR_DB` | Hardcoded | `True` when database enabled |
+| Variable         | Source    | Description                           |
+| ---------------- | --------- | ------------------------------------- |
+| `RUNTIME_ENV`    | Hardcoded | `prd` in production                   |
+| `DATA_DIR`       | Hardcoded | `/data` (EFS mount point)             |
+| `OPENAI_API_KEY` | Secrets   | From `prd_api_secrets.yml`            |
+| `EXA_API_KEY`    | Secrets   | From `prd_api_secrets.yml` (optional) |
+| `DB_HOST`        | AWS       | RDS endpoint (auto-populated)         |
+| `DB_PORT`        | AWS       | RDS port (auto-populated)             |
+| `DB_USER`        | Secrets   | From `prd_db_secrets.yml`             |
+| `DB_PASS`        | Secrets   | From `prd_db_secrets.yml`             |
+| `DB_DATABASE`    | AWS       | RDS database name (auto-populated)    |
+| `WAIT_FOR_DB`    | Hardcoded | `True` when database enabled          |
 
 ### Local Development
 
@@ -333,13 +347,25 @@ curl http://[LOAD_BALANCER_DNS]/health
 ## Next Steps
 
 <CardGroup cols={3}>
-  <Card title="Connect to AgentOS" icon="plug" href="/production/aws/go-live/connect">
+  <Card
+    title="Connect to AgentOS"
+    icon="plug"
+    href="/production/aws/go-live/connect"
+  >
     Add HTTPS and connect to the Control Plane
   </Card>
-  <Card title="Manage & Monitor" icon="repeat" href="/production/aws/manage/manage-monitor">
+  <Card
+    title="Manage & Monitor"
+    icon="repeat"
+    href="/production/aws/manage/manage-monitor"
+  >
     CI/CD, updates, logs, and operational tasks
   </Card>
-  <Card title="Troubleshooting" icon="alert" href="/production/aws/manage/troubleshooting">
+  <Card
+    title="Troubleshooting"
+    icon="alert"
+    href="/production/aws/manage/troubleshooting"
+  >
     Resolve common AWS deployment issues
   </Card>
 </CardGroup>
