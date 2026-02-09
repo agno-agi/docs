@@ -1,0 +1,146 @@
+---
+title: "AgentOS on AWS"
+sidebarTitle: "Getting Started"
+description: "Deploy AgentOS to AWS with ECS Fargate"
+keywords: ["deploy", "AWS", "ECS", "Fargate", "RDS", "PostgreSQL", "production", "infrastructure"]
+---
+
+Deploy AgentOS to AWS with ECS Fargate, RDS PostgreSQL, and an Application Load Balancer. Production-grade infrastructure that runs entirely in your cloud.
+
+## What's Included
+
+| Component | Description |
+|-----------|-------------|
+| **AgentOS** | FastAPI server running your AI agents on ECS Fargate |
+| **PostgreSQL** | RDS database with pgvector for embeddings |
+| **Application Load Balancer** | HTTP/HTTPS ingress and health checks |
+| **Secrets Manager** | Secure storage for API keys and DB credentials |
+| **CloudWatch Logs** | Centralized logs for ECS tasks |
+
+## Prerequisites
+
+You'll need:
+
+- [Docker Desktop](https://docs.docker.com/desktop/install/mac-install/)
+- [uv](https://docs.astral.sh/uv/) (Python package manager)
+- [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) configured with permissions for ECR, ECS, RDS, and ELB
+- [OpenAI API key](https://platform.openai.com)
+
+## Quick Install
+
+<Steps>
+<Step title="Set up Python environment">
+
+```bash
+uv venv --python 3.12
+source .venv/bin/activate
+```
+
+</Step>
+
+<Step title="Install Agno">
+
+```bash
+uv pip install -U 'agno[infra]'
+```
+
+</Step>
+
+<Step title="Create from template">
+
+```bash
+ag infra create --template agentos-aws --name my-agentos
+cd my-agentos
+```
+
+</Step>
+
+<Step title="Set your API key">
+
+```bash
+export OPENAI_API_KEY=sk-***
+```
+
+</Step>
+
+<Step title="Configure AWS settings">
+
+Edit `infra/settings.py`:
+
+```python
+infra_settings = InfraSettings(
+    infra_name="my-agentos",
+    aws_region="us-east-1",
+    aws_subnet_ids=["subnet-xxx", "subnet-yyy"],
+    image_repo="[ACCOUNT_ID].dkr.ecr.us-east-1.amazonaws.com",
+    push_images=True,
+)
+```
+
+<Note>
+You need an ECR repository and public subnet IDs. See the full [AWS Deployment Guide](/production/aws/deployment-guide) for AWS setup steps.
+</Note>
+
+</Step>
+
+<Step title="Create secrets files">
+
+```bash
+cp infra/secrets/prd_api_secrets.example.yml infra/secrets/prd_api_secrets.yml
+cp infra/secrets/prd_db_secrets.example.yml infra/secrets/prd_db_secrets.yml
+```
+
+Edit both files with your credentials.
+
+</Step>
+
+<Step title="Deploy to AWS">
+
+```bash
+ag infra up prd:aws
+```
+
+This creates ECS Fargate, RDS PostgreSQL, and an Application Load Balancer.
+
+</Step>
+
+<Step title="Verify your endpoint">
+
+```bash
+aws elbv2 describe-load-balancers \
+  --query 'LoadBalancers[?contains(LoadBalancerName, `my-agentos`)].DNSName' \
+  --output text
+
+curl http://[LOAD_BALANCER_DNS]/health
+```
+
+</Step>
+</Steps>
+
+<Warning>
+Connecting to the Control Plane is required for production use. Set up [HTTPS](/production/aws/deployment-guide#https), then [connect your AgentOS](/production/aws/deployment-guide#connect-control-plane) after deployment.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Deployment Guide" icon="road" href="/production/aws/deployment-guide">
+    Full setup, architecture, and operational details
+  </Card>
+  <Card title="Verify Deployment" icon="check" href="/production/aws/deployment-guide#verify">
+    Confirm everything is working
+  </Card>
+  <Card title="Connect to Control Plane" icon="plug" href="/production/aws/deployment-guide#connect-control-plane">
+    Manage from os.agno.com
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+For common issues and fixes, see [Troubleshooting](/production/aws/manage/troubleshooting).
+
+Common quick fixes:
+
+- **ECR auth errors:** re-run `aws ecr get-login-password ...` and `docker login`
+- **502 from ALB:** wait 2-3 minutes, then check ECS task logs
+- **RDS slow provisioning:** RDS can take 5-10 minutes

@@ -1,0 +1,438 @@
+---
+title: "AWS Deployment Guide"
+sidebarTitle: "Deployment Guide"
+description: "Full deployment guide for AgentOS on AWS using ECS Fargate, RDS, and ALB."
+keywords: ["deploy", "AWS", "ECS", "Fargate", "RDS", "PostgreSQL", "ALB", "production", "infrastructure"]
+---
+
+This guide covers the full production deployment flow for AgentOS on AWS using ECS Fargate, RDS PostgreSQL with pgvector, and an Application Load Balancer.
+
+## Overview
+
+<img
+  className="block dark:hidden w-full"
+  src="/images/aws-architecture-light.png"
+  alt="AWS Architecture"
+/>
+<img
+  className="hidden dark:block w-full"
+  src="/images/aws-architecture-dark.png"
+  alt="AWS Architecture"
+/>
+
+### Deployment Options
+
+| Option | Use Case | Infrastructure | Cost | Availability |
+|--------|----------|----------------|------|--------------|
+| Dev | Local testing | Docker + local DB | Low | Single machine |
+| Prod | Live workloads | ECS Fargate + RDS + ALB | Medium | Multi-AZ ready |
+
+### What's Included
+
+| Component | Description |
+|-----------|-------------|
+| **AgentOS** | FastAPI server running your AI agents on ECS Fargate |
+| **PostgreSQL** | RDS database with pgvector for embeddings |
+| **Application Load Balancer** | HTTP/HTTPS ingress and health checks |
+| **Secrets Manager** | Secure storage for API keys and DB credentials |
+| **CloudWatch Logs** | Centralized logs for ECS tasks |
+
+### Costs
+
+| Resource | Purpose | Monthly Cost |
+|----------|---------|--------------|
+| ECS Fargate | Serverless container hosting | $30-50 |
+| RDS PostgreSQL | Managed database with pgvector | $25 |
+| Application Load Balancer | HTTP/HTTPS endpoint | $20-25 |
+| AWS Secrets Manager | Secure credential storage | < $1 |
+| Security Groups | Network access controls | Free |
+| **Total** | | **~$75-100** |
+
+Use the [AWS Pricing Calculator](https://calculator.aws/) for detailed estimates.
+
+## Prerequisites
+
+You must complete these before running deployment steps:
+
+- AWS account with permissions for ECR, ECS, RDS, ELB, IAM, Secrets Manager, and CloudWatch
+- AWS CLI configured with an access key and default region
+- Docker Desktop installed
+- `uv` installed
+- OpenAI API key
+
+## Create Your Codebase
+
+```bash
+uv venv --python 3.12
+source .venv/bin/activate
+uv pip install -U 'agno[infra]'
+
+ag infra create --template agentos-aws --name my-agentos
+cd my-agentos
+```
+
+## AWS Setup
+
+Create an ECR repository and identify public subnets.
+
+<Tabs>
+<Tab title="AWS Console">
+
+**Create ECR repository:**
+
+1. Open [Amazon ECR](https://console.aws.amazon.com/ecr/)
+2. Click **Create repository**
+3. Set repository name to `my-agentos`
+4. Keep defaults and click **Create repository**
+5. Copy the repository URI (e.g., `[ACCOUNT_ID].dkr.ecr.us-east-1.amazonaws.com/my-agentos`)
+
+<Frame caption="ECR Create Repository - set the repository name and keep defaults">
+  <img src="/images/create-ecr-image.png" alt="ECR Create Repository page" />
+</Frame>
+
+**Authenticate Docker with ECR:**
+
+```bash
+aws ecr get-login-password --region us-east-1 | \
+  docker login --username AWS --password-stdin \
+  [ACCOUNT_ID].dkr.ecr.us-east-1.amazonaws.com
+```
+
+<Note>
+ECR tokens expire after 12 hours. Re-run this command if you get authentication errors.
+</Note>
+
+**Find your subnet IDs:**
+
+1. Open [VPC Console](https://console.aws.amazon.com/vpc/) -> **Subnets**
+2. Look for subnets with **Auto-assign public IP** = Yes
+3. Note the Subnet IDs for 2+ subnets in different availability zones
+
+<Tip>
+Public subnets typically have "public" in their name or have a route to an Internet Gateway.
+</Tip>
+
+</Tab>
+
+<Tab title="CLI">
+
+**Create ECR repository:**
+
+```bash
+aws ecr create-repository \
+  --repository-name my-agentos \
+  --region us-east-1
+```
+
+Note your ECR URL from the output:
+```
+[ACCOUNT_ID].dkr.ecr.us-east-1.amazonaws.com
+```
+
+**Authenticate Docker with ECR:**
+
+```bash
+aws ecr get-login-password --region us-east-1 | \
+  docker login --username AWS --password-stdin \
+  [ACCOUNT_ID].dkr.ecr.us-east-1.amazonaws.com
+```
+
+<Note>
+ECR tokens expire after 12 hours. Re-run this command if you get authentication errors.
+</Note>
+
+**Find your subnet IDs:**
+
+```bash
+aws ec2 describe-subnets --query 'Subnets[*].[SubnetId,AvailabilityZone,MapPublicIpOnLaunch]' --output table
+```
+
+<Tip>
+Choose subnets where `MapPublicIpOnLaunch` is `True`. Select subnets in different availability zones for high availability.
+</Tip>
+
+</Tab>
+</Tabs>
+
+## Configure
+
+### Settings
+
+Update `infra/settings.py`:
+
+```python
+infra_settings = InfraSettings(
+    infra_name="my-agentos",
+    aws_region="us-east-1",
+    aws_subnet_ids=["subnet-xxx", "subnet-yyy"],
+    image_repo="[ACCOUNT_ID].dkr.ecr.us-east-1.amazonaws.com",
+    push_images=True,
+)
+```
+
+Required settings:
+
+| Setting | Description | Example |
+|---------|-------------|---------|
+| `infra_name` | Prefix for all AWS resource names | `my-agentos` |
+| `aws_region` | AWS region for resources | `us-east-1` |
+| `aws_subnet_ids` | VPC subnets (minimum 2) | `['subnet-xxx', 'subnet-yyy']` |
+| `image_repo` | ECR repository URL | `123456789012.dkr.ecr.us-east-1.amazonaws.com` |
+
+### Secrets
+
+Copy secrets templates:
+
+```bash
+cp infra/secrets/prd_api_secrets.example.yml infra/secrets/prd_api_secrets.yml
+cp infra/secrets/prd_db_secrets.example.yml infra/secrets/prd_db_secrets.yml
+```
+
+Edit `infra/secrets/prd_api_secrets.yml`:
+
+```yaml
+OPENAI_API_KEY: "sk-your-key-here"
+EXA_API_KEY: "exa-your-key-here"  # Optional
+```
+
+Edit `infra/secrets/prd_db_secrets.yml`:
+
+```yaml
+DB_USER: "ai"
+DB_PASS: "YourSecurePassword123"
+```
+
+<Warning>
+Avoid `@`, `#`, `%`, `&`, `"`, `'` in `DB_PASS`. These require URL encoding and can cause silent connection failures.
+</Warning>
+
+### Database
+
+Default RDS configuration in `prd_resources.py`:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `engine` | `postgres` | PostgreSQL |
+| `engine_version` | `17.2` | PostgreSQL 17 |
+| `allocated_storage` | `64` | 64 GB storage |
+| `db_instance_class` | `db.t4g.small` | ~$25/month |
+| `db_name` | `ai` | Database name |
+| `port` | `5432` | PostgreSQL port |
+
+To customize:
+
+```python
+prd_db = DbInstance(
+    ...
+    db_instance_class="db.t4g.medium",
+    allocated_storage=128,
+    engine_version="17.2",
+)
+```
+
+Apply changes:
+
+```bash
+ag infra patch prd:aws:::db
+```
+
+### EFS
+
+EFS is required for Pal in production because DuckDB uses local storage.
+
+| Agent | EFS Required | Why |
+|-------|--------------|-----|
+| Pal | Yes | Stores DuckDB at `/data/pal.db` |
+| Knowledge Agent | No | Uses PostgreSQL (RDS) |
+| MCP Agent | No | Stateless |
+
+If you use EFS, keep Uvicorn workers at 1. DuckDB needs single-writer access.
+
+### Packages
+
+Add dependencies in `pyproject.toml`, then rebuild:
+
+```toml
+[project]
+dependencies = [
+    "agno",
+    "fastapi",
+    "uvicorn",
+    "your-new-package",
+]
+```
+
+```bash
+./scripts/generate_requirements.sh
+ag infra up prd:docker
+ag infra patch prd:aws:::service
+```
+
+### Environment Variables
+
+Production variables are set in `prd_resources.py`:
+
+| Variable | Source | Description |
+|----------|--------|-------------|
+| `RUNTIME_ENV` | Hardcoded | `prd` in production |
+| `DATA_DIR` | Hardcoded | `/data` (EFS mount point) |
+| `OPENAI_API_KEY` | Secrets | From `prd_api_secrets.yml` |
+| `EXA_API_KEY` | Secrets | From `prd_api_secrets.yml` (optional) |
+| `DB_HOST` | AWS | RDS endpoint (auto-populated) |
+| `DB_PORT` | AWS | RDS port (auto-populated) |
+| `DB_USER` | Secrets | From `prd_db_secrets.yml` |
+| `DB_PASS` | Secrets | From `prd_db_secrets.yml` |
+| `DB_DATABASE` | AWS | RDS database name (auto-populated) |
+| `WAIT_FOR_DB` | Hardcoded | `True` when database enabled |
+
+### Local Development
+
+Run locally with Docker Compose:
+
+```bash
+ag infra up
+```
+
+Access points:
+
+- API docs: http://localhost:8000/docs
+- Health check: http://localhost:8000/health
+
+## Deploy and Update
+
+### Deploy
+
+```bash
+ag infra up prd:aws
+```
+
+This creates:
+
+- Docker image pushed to ECR
+- RDS PostgreSQL instance with pgvector
+- ECS Cluster, Service, and Task Definition
+- Application Load Balancer with Target Group
+- Security Groups and Secrets Manager entries
+
+### Verify
+
+```bash
+aws elbv2 describe-load-balancers \
+  --query 'LoadBalancers[?contains(LoadBalancerName, `my-agentos`)].DNSName' \
+  --output text
+
+curl http://[LOAD_BALANCER_DNS]/health
+```
+
+### HTTPS
+
+HTTPS is required to connect to the Control Plane.
+
+1. Request a certificate in AWS ACM
+2. Add the certificate ARN to `prd_resources.py`
+3. Create HTTPS listener and redirect HTTP
+
+```python
+prd_fastapi = FastApi(
+    ...
+    load_balancer_enable_https=True,
+    load_balancer_certificate_arn="arn:aws:acm:us-east-1:[ACCOUNT_ID]:certificate/[CERTIFICATE_ID]",
+)
+```
+
+```bash
+ag infra up prd:aws:::listener
+ag infra patch prd:aws:::listener
+```
+
+### Connect Control Plane
+
+After HTTPS is configured, connect your deployment at [os.agno.com](https://os.agno.com).
+
+### Update Deployments
+
+Rebuild and push image:
+
+```bash
+ag infra up prd:docker
+```
+
+Update task definition:
+
+```bash
+ag infra patch prd:aws:::td
+```
+
+Update service:
+
+```bash
+ag infra patch prd:aws:::service
+```
+
+### Stop Deployment
+
+```bash
+ag infra down prd:aws
+```
+
+<Warning>
+This deletes everything including the database. Back up your data first.
+</Warning>
+
+## Manage
+
+### CI/CD
+
+Choose a method:
+
+| Method | When to Use | Setup Effort |
+|--------|-------------|--------------|
+| Manual builds | Small teams, infrequent deploys | Low |
+| DockerHub + GitHub | Using DockerHub, simpler setup | Medium |
+| ECR + GitHub OIDC | Using ECR, no stored credentials | Higher |
+
+### Monitoring
+
+Tail logs:
+
+```bash
+aws logs tail /ecs/{infra_name}-prd --follow
+```
+
+Check service status:
+
+```bash
+aws ecs describe-services \
+  --cluster {infra_name}-prd \
+  --services {infra_name}-prd-service \
+  --query 'services[0].{status:status,running:runningCount,desired:desiredCount}'
+```
+
+### Code Quality
+
+Format and validate before pushing:
+
+```bash
+./scripts/format.sh
+./scripts/validate.sh
+```
+
+## Troubleshooting
+
+| Issue | Cause | Fix |
+|-------|-------|-----|
+| ALB targets unhealthy | App not responding on `/health` | Check logs and health endpoint |
+| Task keeps restarting | Startup failure or health check failure | Inspect CloudWatch logs for errors |
+| `database is locked` | Multiple Uvicorn workers with DuckDB | Keep `--workers 1` when using Pal |
+| Pal loses data | No EFS | Add EFS and mount `/data` |
+| `CannotPullContainerError` | ECR auth expired | Re-run ECR login command |
+
+## Next Steps
+
+| Task | Guide |
+|------|-------|
+| Connect the Control Plane | [Connect Control Plane](#connect-control-plane) |
+| Set up HTTPS | [HTTPS](#https) |
+| Monitor the deployment | [Monitoring](#monitoring) |
+| Configure CI/CD | [CI/CD](#cicd) |
+| Debug issues | [Troubleshooting](#troubleshooting) |
