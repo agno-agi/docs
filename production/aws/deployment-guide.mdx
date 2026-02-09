@@ -7,11 +7,11 @@ keywords: ["deploy", "AWS", "ECS", "Fargate", "RDS", "PostgreSQL", "ALB", "produ
 
 ## Overview
 
-This guide covers the full production deployment flow for AgentOS on AWS using ECS Fargate, RDS PostgreSQL with pgvector, and an Application Load Balancer.
+Deploy AgentOS on AWS with ECS Fargate, RDS PostgreSQL (pgvector), and an Application Load Balancer.
 
-Key points upfront:
+Key points:
 
-- Production-grade infrastructure that runs entirely in your cloud
+- Runs in your AWS account
 - Requires AWS permissions for ECR, ECS, RDS, ELB, IAM, Secrets Manager, and CloudWatch, plus AWS CLI, Docker, `uv`, and an OpenAI API key
 - HTTPS is required to connect to the Control Plane
 
@@ -62,7 +62,7 @@ Use the [AWS Pricing Calculator](https://calculator.aws/) for detailed estimates
 
 ### Prerequisites
 
-You must complete these before running deployment steps:
+Complete these before deployment:
 
 - AWS account with permissions for ECR, ECS, RDS, ELB, IAM, Secrets Manager, and CloudWatch
 - AWS CLI configured with an access key and default region
@@ -312,7 +312,7 @@ Access points:
 ag infra up prd:aws
 ```
 
-This creates:
+Creates:
 
 - Docker image pushed to ECR
 - RDS PostgreSQL instance with pgvector
@@ -330,143 +330,16 @@ aws elbv2 describe-load-balancers \
 curl http://[LOAD_BALANCER_DNS]/health
 ```
 
-## Connecting to AgentOS
-
-### HTTPS
-
-HTTPS is required to connect to the Control Plane.
-
-1. Request a certificate in AWS ACM
-2. Add the certificate ARN to `prd_resources.py`
-3. Create HTTPS listener and redirect HTTP
-
-```python
-prd_fastapi = FastApi(
-    ...
-    load_balancer_enable_https=True,
-    load_balancer_certificate_arn="arn:aws:acm:us-east-1:[ACCOUNT_ID]:certificate/[CERTIFICATE_ID]",
-)
-```
-
-```bash
-ag infra up prd:aws:::listener
-ag infra patch prd:aws:::listener
-```
-
-### Connect Control Plane
-
-After HTTPS is configured, connect your deployment at [os.agno.com](https://os.agno.com).
-
-## Manage AWS Deployment
-
-### CI/CD
-
-Choose a method:
-
-| Method | When to Use | Setup Effort |
-|--------|-------------|--------------|
-| Manual builds | Small teams, infrequent deploys | Low |
-| DockerHub + GitHub | Using DockerHub, simpler setup | Medium |
-| ECR + GitHub OIDC | Using ECR, no stored credentials | Higher |
-
-### Update Deployments
-
-Rebuild and push image:
-
-```bash
-ag infra up prd:docker
-```
-
-Update task definition:
-
-```bash
-ag infra patch prd:aws:::td
-```
-
-Update service:
-
-```bash
-ag infra patch prd:aws:::service
-```
-
-### Stop Deployment
-
-```bash
-ag infra down prd:aws
-```
-
-<Warning>
-This deletes everything including the database. Back up your data first.
-</Warning>
-
-### Code Quality
-
-Format and validate before pushing:
-
-```bash
-./scripts/format.sh
-./scripts/validate.sh
-```
-
-### Other AWS Details
-
-- Secrets and API keys: see [Secrets](#secrets)
-- Runtime configuration: see [Environment Variables](#environment-variables)
-- Persistent storage needs: see [EFS](#efs)
-- Database defaults: see [Database](#database)
-
-## Monitor
-
-### Monitoring
-
-Tail logs:
-
-```bash
-aws logs tail /ecs/{infra_name}-prd --follow
-```
-
-Check service status:
-
-```bash
-aws ecs describe-services \
-  --cluster {infra_name}-prd \
-  --services {infra_name}-prd-service \
-  --query 'services[0].{status:status,running:runningCount,desired:desiredCount}'
-```
-
-### Debugging
-
-Use CloudWatch logs and the ECS service status checks above to debug deployment issues.
-
-## Troubleshooting
-
-| Issue | Cause | Fix |
-|-------|-------|-----|
-| ALB targets unhealthy | App not responding on `/health` | Check logs and health endpoint |
-| Task keeps restarting | Startup failure or health check failure | Inspect CloudWatch logs for errors |
-| `database is locked` | Multiple Uvicorn workers with DuckDB | Keep `--workers 1` when using Pal |
-| Pal loses data | No EFS | Add EFS and mount `/data` |
-| `CannotPullContainerError` | ECR auth expired | Re-run ECR login command |
-
 ## Next Steps
 
 <CardGroup cols={3}>
-  <Card title="Connect Control Plane" icon="plug" href="#connect-control-plane">
-    Link your deployment to os.agno.com
+  <Card title="Connect to AgentOS" icon="plug" href="/production/aws/go-live/connect">
+    Add HTTPS and connect to the Control Plane
   </Card>
-  <Card title="Set Up HTTPS" icon="lock" href="#https">
-    Required before connecting to the Control Plane
+  <Card title="Manage & Monitor" icon="repeat" href="/production/aws/manage/manage-monitor">
+    CI/CD, updates, logs, and operational tasks
   </Card>
-  <Card title="Monitoring" icon="activity" href="#monitoring">
-    Watch logs and service health
-  </Card>
-  <Card title="CI/CD" icon="repeat" href="#cicd">
-    Automate builds and releases
-  </Card>
-  <Card title="Update Deployments" icon="upload" href="#update-deployments">
-    Push new images and roll updates
-  </Card>
-  <Card title="Troubleshooting" icon="alert" href="#troubleshooting">
+  <Card title="Troubleshooting" icon="alert" href="/production/aws/manage/troubleshooting">
     Resolve common AWS deployment issues
   </Card>
 </CardGroup>

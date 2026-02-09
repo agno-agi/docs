@@ -1,0 +1,85 @@
+---
+title: "Manage & Monitor"
+sidebarTitle: "Manage & Monitor"
+description: "Operate, update, and monitor your AWS deployment"
+keywords: ["manage", "monitor", "CI/CD", "deploy", "update", "logs", "CloudWatch", "operations"]
+---
+
+Operate, update, and monitor your AWS deployment.
+
+## CI/CD
+
+Choose a method:
+
+| Method | When to Use | Setup Effort |
+|--------|-------------|--------------|
+| Manual builds | Small teams, infrequent deploys | Low |
+| DockerHub + GitHub | Using DockerHub, simpler setup | Medium |
+| ECR + GitHub OIDC | Using ECR, no stored credentials | Higher |
+
+## Update Deployments
+
+Rebuild and push image:
+
+```bash
+ag infra up prd:docker
+```
+
+Update task definition:
+
+```bash
+ag infra patch prd:aws:::td
+```
+
+Update service:
+
+```bash
+ag infra patch prd:aws:::service
+```
+
+## Stop Deployment
+
+```bash
+ag infra down prd:aws
+```
+
+<Warning>
+This deletes everything including the database. Back up your data first.
+</Warning>
+
+## Code Quality
+
+Format and validate before pushing:
+
+```bash
+./scripts/format.sh
+./scripts/validate.sh
+```
+
+## Other AWS Details
+
+- Secrets and API keys: [Secrets](/production/aws/deployment-guide#secrets)
+- Runtime configuration: [Environment Variables](/production/aws/deployment-guide#environment-variables)
+- Persistent storage needs: [EFS](/production/aws/deployment-guide#efs)
+- Database defaults: [Database](/production/aws/deployment-guide#database)
+
+## Monitoring
+
+Tail logs:
+
+```bash
+aws logs tail /ecs/{infra_name}-prd --follow
+```
+
+Check service status:
+
+```bash
+aws ecs describe-services \
+  --cluster {infra_name}-prd \
+  --services {infra_name}-prd-service \
+  --query 'services[0].{status:status,running:runningCount,desired:desiredCount}'
+```
+
+## Debugging
+
+Use CloudWatch logs and the ECS service status checks above to debug deployment issues.
