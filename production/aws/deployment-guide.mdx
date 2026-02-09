@@ -5,9 +5,17 @@ description: "Full deployment guide for AgentOS on AWS using ECS Fargate, RDS, a
 keywords: ["deploy", "AWS", "ECS", "Fargate", "RDS", "PostgreSQL", "ALB", "production", "infrastructure"]
 ---
 
+## Overview
+
 This guide covers the full production deployment flow for AgentOS on AWS using ECS Fargate, RDS PostgreSQL with pgvector, and an Application Load Balancer.
 
-## Overview
+Key points upfront:
+
+- Production-grade infrastructure that runs entirely in your cloud
+- Requires AWS permissions for ECR, ECS, RDS, ELB, IAM, Secrets Manager, and CloudWatch, plus AWS CLI, Docker, `uv`, and an OpenAI API key
+- HTTPS is required to connect to the Control Plane
+
+## Architecture
 
 <img
   className="block dark:hidden w-full"
@@ -20,13 +28,6 @@ This guide covers the full production deployment flow for AgentOS on AWS using E
   alt="AWS Architecture"
 />
 
-### Deployment Options
-
-| Option | Use Case | Infrastructure | Cost | Availability |
-|--------|----------|----------------|------|--------------|
-| Dev | Local testing | Docker + local DB | Low | Single machine |
-| Prod | Live workloads | ECS Fargate + RDS + ALB | Medium | Multi-AZ ready |
-
 ### What's Included
 
 | Component | Description |
@@ -37,7 +38,7 @@ This guide covers the full production deployment flow for AgentOS on AWS using E
 | **Secrets Manager** | Secure storage for API keys and DB credentials |
 | **CloudWatch Logs** | Centralized logs for ECS tasks |
 
-### Costs
+## Costs
 
 | Resource | Purpose | Monthly Cost |
 |----------|---------|--------------|
@@ -50,7 +51,16 @@ This guide covers the full production deployment flow for AgentOS on AWS using E
 
 Use the [AWS Pricing Calculator](https://calculator.aws/) for detailed estimates.
 
-## Prerequisites
+## Deployment Types
+
+| Type | Use Case | Infrastructure | Cost | Availability |
+|------|----------|----------------|------|--------------|
+| Dev | Local testing | Docker + local DB | Low | Single machine |
+| Prod | Live workloads | ECS Fargate + RDS + ALB | Medium | Multi-AZ ready |
+
+## Full Deployment
+
+### Prerequisites
 
 You must complete these before running deployment steps:
 
@@ -60,7 +70,7 @@ You must complete these before running deployment steps:
 - `uv` installed
 - OpenAI API key
 
-## Create Your Codebase
+### Create Your Codebase
 
 ```bash
 uv venv --python 3.12
@@ -71,7 +81,7 @@ ag infra create --template agentos-aws --name my-agentos
 cd my-agentos
 ```
 
-## AWS Setup
+### AWS Setup
 
 Create an ECR repository and identify public subnets.
 
@@ -153,8 +163,6 @@ Choose subnets where `MapPublicIpOnLaunch` is `True`. Select subnets in differen
 
 </Tab>
 </Tabs>
-
-## Configure
 
 ### Settings
 
@@ -298,8 +306,6 @@ Access points:
 - API docs: http://localhost:8000/docs
 - Health check: http://localhost:8000/health
 
-## Deploy and Update
-
 ### Deploy
 
 ```bash
@@ -323,6 +329,8 @@ aws elbv2 describe-load-balancers \
 
 curl http://[LOAD_BALANCER_DNS]/health
 ```
+
+## Connecting to AgentOS
 
 ### HTTPS
 
@@ -348,6 +356,18 @@ ag infra patch prd:aws:::listener
 ### Connect Control Plane
 
 After HTTPS is configured, connect your deployment at [os.agno.com](https://os.agno.com).
+
+## Manage AWS Deployment
+
+### CI/CD
+
+Choose a method:
+
+| Method | When to Use | Setup Effort |
+|--------|-------------|--------------|
+| Manual builds | Small teams, infrequent deploys | Low |
+| DockerHub + GitHub | Using DockerHub, simpler setup | Medium |
+| ECR + GitHub OIDC | Using ECR, no stored credentials | Higher |
 
 ### Update Deployments
 
@@ -379,17 +399,23 @@ ag infra down prd:aws
 This deletes everything including the database. Back up your data first.
 </Warning>
 
-## Manage
+### Code Quality
 
-### CI/CD
+Format and validate before pushing:
 
-Choose a method:
+```bash
+./scripts/format.sh
+./scripts/validate.sh
+```
 
-| Method | When to Use | Setup Effort |
-|--------|-------------|--------------|
-| Manual builds | Small teams, infrequent deploys | Low |
-| DockerHub + GitHub | Using DockerHub, simpler setup | Medium |
-| ECR + GitHub OIDC | Using ECR, no stored credentials | Higher |
+### Other AWS Details
+
+- Secrets and API keys: see [Secrets](#secrets)
+- Runtime configuration: see [Environment Variables](#environment-variables)
+- Persistent storage needs: see [EFS](#efs)
+- Database defaults: see [Database](#database)
+
+## Monitor
 
 ### Monitoring
 
@@ -408,14 +434,9 @@ aws ecs describe-services \
   --query 'services[0].{status:status,running:runningCount,desired:desiredCount}'
 ```
 
-### Code Quality
+### Debugging
 
-Format and validate before pushing:
-
-```bash
-./scripts/format.sh
-./scripts/validate.sh
-```
+Use CloudWatch logs and the ECS service status checks above to debug deployment issues.
 
 ## Troubleshooting
 
@@ -429,10 +450,23 @@ Format and validate before pushing:
 
 ## Next Steps
 
-| Task | Guide |
-|------|-------|
-| Connect the Control Plane | [Connect Control Plane](#connect-control-plane) |
-| Set up HTTPS | [HTTPS](#https) |
-| Monitor the deployment | [Monitoring](#monitoring) |
-| Configure CI/CD | [CI/CD](#cicd) |
-| Debug issues | [Troubleshooting](#troubleshooting) |
+<CardGroup cols={3}>
+  <Card title="Connect Control Plane" icon="plug" href="#connect-control-plane">
+    Link your deployment to os.agno.com
+  </Card>
+  <Card title="Set Up HTTPS" icon="lock" href="#https">
+    Required before connecting to the Control Plane
+  </Card>
+  <Card title="Monitoring" icon="activity" href="#monitoring">
+    Watch logs and service health
+  </Card>
+  <Card title="CI/CD" icon="repeat" href="#cicd">
+    Automate builds and releases
+  </Card>
+  <Card title="Update Deployments" icon="upload" href="#update-deployments">
+    Push new images and roll updates
+  </Card>
+  <Card title="Troubleshooting" icon="alert" href="#troubleshooting">
+    Resolve common AWS deployment issues
+  </Card>
+</CardGroup>
