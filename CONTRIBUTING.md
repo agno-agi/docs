@@ -57,7 +57,7 @@ The documentation is organized into the following main sections:
 - **evals/** - Evaluation documentation
 - **faq/** - Frequently asked questions
 - **videos/** - Video assets for the docs
-- **_snippets/** - Reusable code snippets
+- **\_snippets/** - Reusable code snippets
 
 ## Writing Guidelines
 
@@ -131,10 +131,4 @@ Ensure your documentation meets our quality standards:
 - Run `mint build` to catch any build errors.
 - Preview your changes locally to ensure proper formatting.
 
-Message us on [Discord](https://discord.gg/4MtYHHrgA8) or post on [Discourse](https://community.agno.com/) if you have any questions or need help with your contribution.
-
-## 📚 Resources
-
-- <a href="https://docs.agno.com/introduction" target="_blank" rel="noopener noreferrer">Documentation</a>
-- <a href="https://discord.gg/4MtYHHrgA8" target="_blank" rel="noopener noreferrer">Discord</a>
-- <a href="https://community.agno.com/" target="_blank" rel="noopener noreferrer">Discourse</a>
+[Reach out](https://docs.agno.com/get-help) if you have any questions or need help with your contribution.
