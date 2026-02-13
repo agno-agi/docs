@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Agno AgentOS
-  description: An agent operating system.
+  description: Your multi-agent operating system.
   version: 1.0.0
 paths:
   /:
@@ -27,7 +27,6 @@ paths:
                   summary: Example home response
                   value:
                     name: AgentOS API
-                    description: AI Agent Operating System API
                     id: demo-os
                     version: 1.0.0
   /health:
@@ -46,7 +45,7 @@ paths:
                 $ref: '#/components/schemas/HealthResponse'
               example:
                 status: ok
-                instantiated_at: '1766137017.573815'
+                instantiated_at: '2025-06-10T12:00:00Z'
   /config:
     get:
       tags:
@@ -268,6 +267,78 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+    get:
+      tags:
+        - Agents
+      summary: List Agent Runs
+      description: |-
+        List runs for an agent within a session, optionally filtered by status.
+
+        Useful for monitoring background runs and viewing run history.
+      operationId: list_agent_runs
+      security:
+        - HTTPBearer: []
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Agent Id
+        - name: session_id
+          in: query
+          required: true
+          schema:
+            type: string
+            description: Session ID to list runs for
+            title: Session Id
+          description: Session ID to list runs for
+        - name: status
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: 'Filter by run status (PENDING, RUNNING, COMPLETED, ERROR)'
+            title: Status
+          description: 'Filter by run status (PENDING, RUNNING, COMPLETED, ERROR)'
+      responses:
+        '200':
+          description: List of runs retrieved successfully
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
   '/agents/{agent_id}/runs/{run_id}/cancel':
     post:
       tags:
@@ -394,6 +465,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NotFoundResponse'
+        '409':
+          description: 'Run is not paused (e.g. run is already running, continued, or errored). Only PAUSED runs can be continued.'
         '422':
           description: Validation Error
           content:
@@ -555,6 +628,75 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+  '/agents/{agent_id}/runs/{run_id}':
+    get:
+      tags:
+        - Agents
+      summary: Get Agent Run
+      description: |-
+        Retrieve the status and output of an agent run. Use this to poll for background run completion.
+
+        Requires the `session_id` that was returned when the run was created.
+      operationId: get_agent_run
+      security:
+        - HTTPBearer: []
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Agent Id
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Run Id
+        - name: session_id
+          in: query
+          required: true
+          schema:
+            type: string
+            description: Session ID for the run
+            title: Session Id
+          description: Session ID for the run
+      responses:
+        '200':
+          description: Run output retrieved successfully
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Agent or run not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
   '/teams/{team_id}/runs':
     post:
       tags:
@@ -601,6 +743,78 @@ paths:
 
         '400':
           description: Invalid request or unsupported file type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Team not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+    get:
+      tags:
+        - Teams
+      summary: List Team Runs
+      description: |-
+        List runs for a team within a session, optionally filtered by status.
+
+        Useful for monitoring background runs and viewing run history.
+      operationId: list_team_runs
+      security:
+        - HTTPBearer: []
+      parameters:
+        - name: team_id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Team Id
+        - name: session_id
+          in: query
+          required: true
+          schema:
+            type: string
+            description: Session ID to list runs for
+            title: Session Id
+          description: Session ID to list runs for
+        - name: status
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: 'Filter by run status (PENDING, RUNNING, COMPLETED, ERROR)'
+            title: Status
+          description: 'Filter by run status (PENDING, RUNNING, COMPLETED, ERROR)'
+      responses:
+        '200':
+          description: List of runs retrieved successfully
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Bad Request
           content:
             application/json:
               schema:
@@ -908,6 +1122,75 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+  '/teams/{team_id}/runs/{run_id}':
+    get:
+      tags:
+        - Teams
+      summary: Get Team Run
+      description: |-
+        Retrieve the status and output of a team run. Use this to poll for background run completion.
+
+        Requires the `session_id` that was returned when the run was created.
+      operationId: get_team_run
+      security:
+        - HTTPBearer: []
+      parameters:
+        - name: team_id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Team Id
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Run Id
+        - name: session_id
+          in: query
+          required: true
+          schema:
+            type: string
+            description: Session ID for the run
+            title: Session Id
+          description: Session ID for the run
+      responses:
+        '200':
+          description: Run output retrieved successfully
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Team or run not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
   /workflows:
     get:
       tags:
@@ -1165,6 +1448,75 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+  '/workflows/{workflow_id}/runs/{run_id}':
+    get:
+      tags:
+        - Workflows
+      summary: Get Workflow Run
+      description: |-
+        Retrieve the status and output of a workflow run. Use this to poll for run completion.
+
+        Requires the `session_id` that was returned when the run was created.
+      operationId: get_workflow_run
+      security:
+        - HTTPBearer: []
+      parameters:
+        - name: workflow_id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Workflow Id
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Run Id
+        - name: session_id
+          in: query
+          required: true
+          schema:
+            type: string
+            description: Session ID for the run
+            title: Session Id
+          description: Session ID for the run
+      responses:
+        '200':
+          description: Run output retrieved successfully
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Workflow or run not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
   /slack/events:
     post:
       tags:
@@ -1329,6 +1681,58 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  '/a2a/agents/{id}/v1/tasks:get':
+    post:
+      tags:
+        - A2A
+      summary: Get Agent Task
+      description: Get the status and result of an agent task by ID.
+      operationId: get_agent_task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  '/a2a/agents/{id}/v1/tasks:cancel':
+    post:
+      tags:
+        - A2A
+      summary: Cancel Agent Task
+      description: Cancel a running agent task.
+      operationId: cancel_agent_task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   '/a2a/agents/{id}/v1/message:stream':
     post:
       tags:
@@ -1431,6 +1835,58 @@ paths:
           description: Invalid request
         '404':
           description: Team not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  '/a2a/teams/{id}/v1/tasks:get':
+    post:
+      tags:
+        - A2A
+      summary: Get Team Task
+      description: Get the status and result of a team task by ID.
+      operationId: get_team_task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  '/a2a/teams/{id}/v1/tasks:cancel':
+    post:
+      tags:
+        - A2A
+      summary: Cancel Team Task
+      description: Cancel a running team task.
+      operationId: cancel_team_task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
         '422':
           description: Validation Error
           content:
@@ -1694,6 +2150,7 @@ paths:
           schema:
             anyOf:
               - type: integer
+                minimum: 1
               - type: 'null'
             description: Number of sessions to return per page
             default: 20
@@ -1705,6 +2162,7 @@ paths:
           schema:
             anyOf:
               - type: integer
+                minimum: 0
               - type: 'null'
             description: Page number for pagination
             default: 1
@@ -1898,14 +2356,6 @@ paths:
       security:
         - HTTPBearer: []
       parameters:
-        - name: type
-          in: query
-          required: false
-          schema:
-            $ref: '#/components/schemas/SessionType'
-            description: Default session type filter
-            default: agent
-          description: Default session type filter
         - name: db_id
           in: query
           required: false
@@ -2244,6 +2694,16 @@ paths:
             description: Database ID to use for update operation
             title: Db Id
           description: Database ID to use for update operation
+        - name: table
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Table to use for update operation
+            title: Table
+          description: Table to use for update operation
       requestBody:
         required: true
         content:
@@ -2571,6 +3031,16 @@ paths:
             description: Database ID to query run from
             title: Db Id
           description: Database ID to query run from
+        - name: table
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Table to query run from
+            title: Table
+          description: Table to query run from
       responses:
         '200':
           description: Run retrieved successfully
@@ -2989,6 +3459,7 @@ paths:
           schema:
             anyOf:
               - type: integer
+                minimum: 1
               - type: 'null'
             description: Number of memories to return per page
             default: 20
@@ -3000,6 +3471,7 @@ paths:
           schema:
             anyOf:
               - type: integer
+                minimum: 0
               - type: 'null'
             description: Page number for pagination
             default: 1
@@ -3375,6 +3847,16 @@ paths:
       security:
         - HTTPBearer: []
       parameters:
+        - name: user_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: User ID to filter topics for
+            title: User Id
+          description: User ID to filter topics for
         - name: db_id
           in: query
           required: false
@@ -3461,6 +3943,7 @@ paths:
           schema:
             anyOf:
               - type: integer
+                minimum: 1
               - type: 'null'
             description: Number of user statistics to return per page
             default: 20
@@ -3472,11 +3955,22 @@ paths:
           schema:
             anyOf:
               - type: integer
+                minimum: 0
               - type: 'null'
             description: Page number for pagination
             default: 1
             title: Page
           description: Page number for pagination
+        - name: user_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: User ID to filter statistics for
+            title: User Id
+          description: User ID to filter statistics for
         - name: db_id
           in: query
           required: false
@@ -3696,6 +4190,7 @@ paths:
           schema:
             anyOf:
               - type: integer
+                minimum: 1
               - type: 'null'
             description: Number of eval runs to return
             default: 20
@@ -3707,6 +4202,7 @@ paths:
           schema:
             anyOf:
               - type: integer
+                minimum: 0
               - type: 'null'
             description: Page number
             default: 1
@@ -4242,9 +4738,9 @@ paths:
                       - model_id: gpt-4o
                         model_provider: OpenAI
                         count: 5
-                    date: '2025-07-31T00:00:00'
-                    created_at: 1753993132
-                    updated_at: 1753993741
+                    date: '2025-07-31T00:00:00Z'
+                    created_at: '2025-07-31T12:38:52Z'
+                    updated_at: '2025-07-31T12:49:01Z'
         '400':
           description: Invalid date range parameters
           content:
@@ -4338,9 +4834,9 @@ paths:
                     - model_id: gpt-4o
                       model_provider: OpenAI
                       count: 2
-                  date: '2025-08-12T00:00:00'
-                  created_at: 1755016907
-                  updated_at: 1755016907
+                  date: '2025-08-12T00:00:00Z'
+                  created_at: '2025-08-12T08:01:47Z'
+                  updated_at: '2025-08-12T08:01:47Z'
         '400':
           description: Bad Request
           content:
@@ -4391,6 +4887,16 @@ paths:
             description: Database ID to use for content storage
             title: Db Id
           description: Database ID to use for content storage
+        - name: knowledge_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Knowledge base ID to upload to
+            title: Knowledge Id
+          description: Knowledge base ID to upload to
       requestBody:
         content:
           multipart/form-data:
@@ -4456,6 +4962,7 @@ paths:
           schema:
             anyOf:
               - type: integer
+                minimum: 1
               - type: 'null'
             description: Number of content entries to return
             default: 20
@@ -4467,6 +4974,7 @@ paths:
           schema:
             anyOf:
               - type: integer
+                minimum: 0
               - type: 'null'
             description: Page number
             default: 1
@@ -4501,9 +5009,19 @@ paths:
             anyOf:
               - type: string
               - type: 'null'
-            description: The ID of the database to use
+            description: Database ID to use
             title: Db Id
-          description: The ID of the database to use
+          description: Database ID to use
+        - name: knowledge_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Knowledge base ID to use
+            title: Knowledge Id
+          description: Knowledge base ID to use
       responses:
         '200':
           description: Content list retrieved successfully
@@ -4575,9 +5093,19 @@ paths:
             anyOf:
               - type: string
               - type: 'null'
-            description: The ID of the database to use
+            description: Database ID to use
             title: Db Id
-          description: The ID of the database to use
+          description: Database ID to use
+        - name: knowledge_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Knowledge base ID to use
+            title: Knowledge Id
+          description: Knowledge base ID to use
       responses:
         '200':
           description: Successful Response
@@ -4614,6 +5142,86 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+  /knowledge/remote-content:
+    post:
+      tags:
+        - Knowledge
+      summary: Upload Remote Content
+      description: 'Upload content from a remote source (S3, GCS, SharePoint, GitHub) to the knowledge base. Content is processed asynchronously in the background.'
+      operationId: upload_remote_content
+      security:
+        - HTTPBearer: []
+      parameters:
+        - name: db_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Database ID to use for content storage
+            title: Db Id
+          description: Database ID to use for content storage
+        - name: knowledge_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Knowledge base ID to upload to
+            title: Knowledge Id
+          description: Knowledge base ID to upload to
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Body_upload_remote_content'
+      responses:
+        '202':
+          description: Remote content upload accepted for processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentResponseSchema'
+              example:
+                id: content-456
+                name: reports/q1-2024.pdf
+                description: Q1 Report from S3
+                metadata:
+                  source: s3-docs
+                status: processing
+        '400':
+          description: Invalid request - unknown config or missing path
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '422':
+          description: Validation error in request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
   '/knowledge/content/{content_id}':
     patch:
       tags:
@@ -4639,9 +5247,19 @@ paths:
             anyOf:
               - type: string
               - type: 'null'
-            description: The ID of the database to use
+            description: Database ID to use
             title: Db Id
-          description: The ID of the database to use
+          description: Database ID to use
+        - name: knowledge_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Knowledge base ID to use
+            title: Knowledge Id
+          description: Knowledge base ID to use
       requestBody:
         content:
           application/x-www-form-urlencoded:
@@ -4718,9 +5336,19 @@ paths:
             anyOf:
               - type: string
               - type: 'null'
-            description: The ID of the database to use
+            description: Database ID to use
             title: Db Id
-          description: The ID of the database to use
+          description: Database ID to use
+        - name: knowledge_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Knowledge base ID to use
+            title: Knowledge Id
+          description: Knowledge base ID to use
       responses:
         '200':
           description: Content details retrieved successfully
@@ -4792,9 +5420,19 @@ paths:
             anyOf:
               - type: string
               - type: 'null'
-            description: The ID of the database to use
+            description: Database ID to use
             title: Db Id
-          description: The ID of the database to use
+          description: Database ID to use
+        - name: knowledge_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Knowledge base ID to use
+            title: Knowledge Id
+          description: Knowledge base ID to use
       responses:
         '200':
           description: Successful Response
@@ -4855,9 +5493,19 @@ paths:
             anyOf:
               - type: string
               - type: 'null'
-            description: The ID of the database to use
+            description: Database ID to use
             title: Db Id
-          description: The ID of the database to use
+          description: Database ID to use
+        - name: knowledge_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Knowledge base ID to use
+            title: Knowledge Id
+          description: Knowledge base ID to use
       responses:
         '200':
           description: Content status retrieved successfully
@@ -4979,9 +5627,19 @@ paths:
             anyOf:
               - type: string
               - type: 'null'
-            description: The ID of the database to use
+            description: Database ID to use
             title: Db Id
-          description: The ID of the database to use
+          description: Database ID to use
+        - name: knowledge_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Knowledge base ID to use
+            title: Knowledge Id
+          description: Knowledge base ID to use
       responses:
         '200':
           description: Knowledge configuration retrieved successfully
@@ -5107,6 +5765,7 @@ paths:
                     name: TextReader
                     description: Reads text files
                     chunkers:
+                      - CodeChunker
                       - FixedSizeChunker
                       - AgenticChunker
                       - DocumentChunker
@@ -5131,10 +5790,15 @@ paths:
                     - gcs
                   .csv:
                     - csv
+                    - field_labeled_csv
                   .xlsx:
-                    - csv
+                    - excel
                   .xls:
-                    - csv
+                    - excel
+                  application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+                    - excel
+                  application/vnd.ms-excel:
+                    - excel
                   .docx:
                     - docx
                   .doc:
@@ -5154,6 +5818,12 @@ paths:
                     description: Chunking strategy that uses an LLM to determine natural breakpoints in the text
                     metadata:
                       chunk_size: 5000
+                  CodeChunker:
+                    key: CodeChunker
+                    name: CodeChunker
+                    description: 'The CodeChunker splits code into chunks based on its structure, leveraging Abstract Syntax Trees (ASTs) to create contextually relevant segments'
+                    metadata:
+                      chunk_size: 2048
                   DocumentChunker:
                     key: DocumentChunker
                     name: DocumentChunker
@@ -5359,7 +6029,7 @@ paths:
           required: false
           schema:
             type: integer
-            minimum: 1
+            minimum: 0
             description: Page number (1-indexed)
             default: 1
             title: Page
@@ -5369,7 +6039,6 @@ paths:
           required: false
           schema:
             type: integer
-            maximum: 100
             minimum: 1
             description: Number of traces per page
             default: 20
@@ -5697,7 +6366,6 @@ paths:
           required: false
           schema:
             type: integer
-            maximum: 100
             minimum: 1
             description: Number of sessions per page
             default: 20
@@ -5780,9 +6448,7 @@ paths:
             anyOf:
               - type: string
               - type: 'null'
-            description: The target version to migrate tables to
             title: Target Version
-          description: The target version to migrate tables to
       responses:
         '200':
           description: All databases migrated successfully
@@ -5844,9 +6510,7 @@ paths:
             anyOf:
               - type: string
               - type: 'null'
-            description: The target version to migrate tables to
             title: Target Version
-          description: The target version to migrate tables to
       responses:
         '200':
           description: Database migrated successfully
@@ -5887,6 +6551,31 @@ paths:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
 components:
   schemas:
+    ActivityMessage:
+      properties:
+        id:
+          type: string
+          title: Id
+        role:
+          type: string
+          const: activity
+          title: Role
+          default: activity
+        activityType:
+          type: string
+          title: Activitytype
+        content:
+          additionalProperties: true
+          type: object
+          title: Content
+      additionalProperties: true
+      type: object
+      required:
+        - id
+        - activityType
+        - content
+      title: ActivityMessage
+      description: An activity progress message emitted between chat messages.
     AgentResponse:
       properties:
         id:
@@ -5904,6 +6593,16 @@ components:
             - type: string
             - type: 'null'
           title: Db Id
+        description:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Description
+        role:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Role
         model:
           anyOf:
             - $ref: '#/components/schemas/ModelResponse'
@@ -6159,6 +6858,7 @@ components:
           type: string
           const: assistant
           title: Role
+          default: assistant
         content:
           anyOf:
             - type: string
@@ -6169,6 +6869,11 @@ components:
             - type: string
             - type: 'null'
           title: Name
+        encryptedValue:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Encryptedvalue
         toolCalls:
           anyOf:
             - items:
@@ -6176,11 +6881,10 @@ components:
               type: array
             - type: 'null'
           title: Toolcalls
-      additionalProperties: false
+      additionalProperties: true
       type: object
       required:
         - id
-        - role
       title: AssistantMessage
       description: An assistant message.
     BadRequestResponse:
@@ -6202,6 +6906,42 @@ components:
       example:
         detail: Bad request
         error_code: BAD_REQUEST
+    BinaryInputContent:
+      properties:
+        type:
+          type: string
+          const: binary
+          title: Type
+          default: binary
+        mimeType:
+          type: string
+          title: Mimetype
+        id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Id
+        url:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Url
+        data:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Data
+        filename:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Filename
+      additionalProperties: true
+      type: object
+      required:
+        - mimeType
+      title: BinaryInputContent
+      description: A binary payload reference in a multimodal user message.
     Body_continue_agent_run:
       properties:
         tools:
@@ -6233,7 +6973,7 @@ components:
         stream:
           type: boolean
           title: Stream
-          default: false
+          default: true
         session_id:
           anyOf:
             - type: string
@@ -6252,6 +6992,15 @@ components:
               type: array
             - type: 'null'
           title: Files
+        version:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Version
+        background:
+          type: boolean
+          title: Background
+          default: false
       type: object
       required:
         - message
@@ -6287,6 +7036,15 @@ components:
               type: array
             - type: 'null'
           title: Files
+        version:
+          anyOf:
+            - type: integer
+            - type: 'null'
+          title: Version
+        background:
+          type: boolean
+          title: Background
+          default: false
       type: object
       required:
         - message
@@ -6310,6 +7068,11 @@ components:
             - type: string
             - type: 'null'
           title: User Id
+        version:
+          anyOf:
+            - type: integer
+            - type: 'null'
+          title: Version
       type: object
       required:
         - message
@@ -6417,6 +7180,63 @@ components:
           description: Chunk overlap to use for processing
       type: object
       title: Body_upload_content
+    Body_upload_remote_content:
+      properties:
+        config_id:
+          type: string
+          title: Config Id
+          description: ID of the configured remote content source (from /knowledge/config)
+        path:
+          type: string
+          title: Path
+          description: Path to file or folder in the remote source
+        name:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Name
+          description: Content name (auto-generated if not provided)
+        description:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Description
+          description: Content description
+        metadata:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Metadata
+          description: JSON metadata object
+        reader_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Reader Id
+          description: ID of the reader to use for processing
+        chunker:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Chunker
+          description: Chunking strategy to apply
+        chunk_size:
+          anyOf:
+            - type: integer
+            - type: 'null'
+          title: Chunk Size
+          description: Chunk size for processing
+        chunk_overlap:
+          anyOf:
+            - type: integer
+            - type: 'null'
+          title: Chunk Overlap
+          description: Chunk overlap for processing
+      type: object
+      required:
+        - config_id
+        - path
+      title: Body_upload_remote_content
     ChatConfig:
       properties:
         quick_prompts:
@@ -6482,12 +7302,18 @@ components:
             - type: 'null'
           title: Available Models
           description: List of available models
+        os_database:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Os Database
+          description: ID of the database used for the OS instance
         databases:
           items:
             type: string
           type: array
           title: Databases
-          description: List of database IDs
+          description: List of database IDs used by the components of the OS instance
         chat:
           anyOf:
             - $ref: '#/components/schemas/ChatConfig'
@@ -6601,6 +7427,14 @@ components:
             - type: 'null'
           title: Vector Dbs
           description: Configured vector databases
+        remote_content_sources:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/RemoteContentSourceSchema'
+              type: array
+            - type: 'null'
+          title: Remote Content Sources
+          description: 'Configured remote content sources (S3, GCS, SharePoint, GitHub)'
       type: object
       title: ConfigResponseSchema
     ContentResponseSchema:
@@ -6713,7 +7547,7 @@ components:
         value:
           type: string
           title: Value
-      additionalProperties: false
+      additionalProperties: true
       type: object
       required:
         - description
@@ -6816,26 +7650,6 @@ components:
       required:
         - db_id
       title: 'DatabaseConfig[EvalsDomainConfig]'
-    DatabaseConfig_KnowledgeDomainConfig_:
-      properties:
-        db_id:
-          type: string
-          title: Db Id
-        domain_config:
-          anyOf:
-            - $ref: '#/components/schemas/KnowledgeDomainConfig'
-            - type: 'null'
-        tables:
-          anyOf:
-            - items:
-                type: string
-              type: array
-            - type: 'null'
-          title: Tables
-      type: object
-      required:
-        - db_id
-      title: 'DatabaseConfig[KnowledgeDomainConfig]'
     DatabaseConfig_MemoryDomainConfig_:
       properties:
         db_id:
@@ -6975,15 +7789,15 @@ components:
           title: Date
           description: Date for which these metrics are aggregated
         created_at:
-          type: integer
-          minimum: 0
+          type: string
+          format: date-time
           title: Created At
-          description: Unix timestamp when metrics were created
+          description: Timestamp when metrics were created
         updated_at:
-          type: integer
-          minimum: 0
+          type: string
+          format: date-time
           title: Updated At
-          description: Unix timestamp when metrics were last updated
+          description: Timestamp when metrics were last updated
       type: object
       required:
         - id
@@ -7063,6 +7877,7 @@ components:
           type: string
           const: developer
           title: Role
+          default: developer
         content:
           type: string
           title: Content
@@ -7071,11 +7886,15 @@ components:
             - type: string
             - type: 'null'
           title: Name
-      additionalProperties: false
+        encryptedValue:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Encryptedvalue
+      additionalProperties: true
       type: object
       required:
         - id
-        - role
         - content
       title: DeveloperMessage
       description: A developer message.
@@ -7401,7 +8220,7 @@ components:
         arguments:
           type: string
           title: Arguments
-      additionalProperties: false
+      additionalProperties: true
       type: object
       required:
         - name
@@ -7425,15 +8244,16 @@ components:
           description: Health status of the service
         instantiated_at:
           type: string
+          format: date-time
           title: Instantiated At
-          description: Unix timestamp when service was instantiated
+          description: Timestamp when service was instantiated
       type: object
       required:
         - status
         - instantiated_at
       title: HealthResponse
       example:
-        instantiated_at: '1760169236.778903'
+        instantiated_at: '2025-06-10T12:00:00Z'
         status: ok
     InterfaceResponse:
       properties:
@@ -7484,13 +8304,40 @@ components:
         dbs:
           anyOf:
             - items:
-                $ref: '#/components/schemas/DatabaseConfig_KnowledgeDomainConfig_'
+                $ref: '#/components/schemas/KnowledgeDatabaseConfig'
               type: array
             - type: 'null'
           title: Dbs
+        knowledge_instances:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/KnowledgeInstanceConfig'
+              type: array
+            - type: 'null'
+          title: Knowledge Instances
       type: object
       title: KnowledgeConfig
       description: Configuration for the Knowledge domain of the AgentOS
+    KnowledgeDatabaseConfig:
+      properties:
+        db_id:
+          type: string
+          title: Db Id
+        domain_config:
+          anyOf:
+            - $ref: '#/components/schemas/KnowledgeDomainConfig'
+            - type: 'null'
+        tables:
+          items:
+            type: string
+          type: array
+          title: Tables
+          default: []
+      type: object
+      required:
+        - db_id
+      title: KnowledgeDatabaseConfig
+      description: Configuration for a knowledge database with its tables
     KnowledgeDomainConfig:
       properties:
         display_name:
@@ -7501,6 +8348,33 @@ components:
       type: object
       title: KnowledgeDomainConfig
       description: Configuration for the Knowledge domain of the AgentOS
+    KnowledgeInstanceConfig:
+      properties:
+        id:
+          type: string
+          title: Id
+        name:
+          type: string
+          title: Name
+        description:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Description
+        db_id:
+          type: string
+          title: Db Id
+        table:
+          type: string
+          title: Table
+      type: object
+      required:
+        - id
+        - name
+        - db_id
+        - table
+      title: KnowledgeInstanceConfig
+      description: Configuration for a single knowledge instance
     MemoryConfig:
       properties:
         display_name:
@@ -7586,7 +8460,6 @@ components:
       properties:
         limit:
           type: integer
-          maximum: 100
           minimum: 1
           title: Limit
           description: Number of results per page
@@ -7913,7 +8786,6 @@ components:
           default: 0
         limit:
           type: integer
-          maximum: 100
           minimum: 1
           title: Limit
           description: Number of items per page
@@ -7974,6 +8846,59 @@ components:
       required:
         - id
       title: ReaderSchema
+    ReasoningMessage:
+      properties:
+        id:
+          type: string
+          title: Id
+        role:
+          type: string
+          const: reasoning
+          title: Role
+          default: reasoning
+        content:
+          type: string
+          title: Content
+        encryptedValue:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Encryptedvalue
+      additionalProperties: true
+      type: object
+      required:
+        - id
+        - content
+      title: ReasoningMessage
+      description: A reasoning message containing the agent's internal reasoning process.
+    RemoteContentSourceSchema:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: Unique identifier for the content source
+        name:
+          type: string
+          title: Name
+          description: Display name for the content source
+        type:
+          type: string
+          title: Type
+          description: 'Type of content source (s3, gcs, sharepoint, github, azureblob)'
+        metadata:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Metadata
+          description: Custom metadata for the content source
+      type: object
+      required:
+        - id
+        - name
+        - type
+      title: RemoteContentSourceSchema
+      description: Schema for remote content source configuration.
     Role:
       type: string
       enum:
@@ -7989,6 +8914,11 @@ components:
         runId:
           type: string
           title: Runid
+        parentRunId:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Parentrunid
         state:
           title: State
         messages:
@@ -7999,11 +8929,15 @@ components:
               - $ref: '#/components/schemas/AssistantMessage'
               - $ref: '#/components/schemas/UserMessage'
               - $ref: '#/components/schemas/ToolMessage'
+              - $ref: '#/components/schemas/ActivityMessage'
+              - $ref: '#/components/schemas/ReasoningMessage'
             discriminator:
               propertyName: role
               mapping:
+                activity: '#/components/schemas/ActivityMessage'
                 assistant: '#/components/schemas/AssistantMessage'
                 developer: '#/components/schemas/DeveloperMessage'
+                reasoning: '#/components/schemas/ReasoningMessage'
                 system: '#/components/schemas/SystemMessage'
                 tool: '#/components/schemas/ToolMessage'
                 user: '#/components/schemas/UserMessage'
@@ -8021,7 +8955,7 @@ components:
           title: Context
         forwardedProps:
           title: Forwardedprops
-      additionalProperties: false
+      additionalProperties: true
       type: object
       required:
         - threadId
@@ -8057,6 +8991,12 @@ components:
             - type: 'null'
           title: User Id
           description: User ID associated with the run
+        status:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Status
+          description: 'Run status (PENDING, RUNNING, COMPLETED, ERROR, etc.)'
         run_input:
           anyOf:
             - type: string
@@ -8348,6 +9288,7 @@ components:
           type: string
           const: system
           title: Role
+          default: system
         content:
           type: string
           title: Content
@@ -8356,11 +9297,15 @@ components:
             - type: string
             - type: 'null'
           title: Name
-      additionalProperties: false
+        encryptedValue:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Encryptedvalue
+      additionalProperties: true
       type: object
       required:
         - id
-        - role
         - content
       title: SystemMessage
       description: A system message.
@@ -8462,6 +9407,11 @@ components:
             - type: string
             - type: 'null'
           title: Description
+        role:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Role
         model:
           anyOf:
             - $ref: '#/components/schemas/ModelResponse'
@@ -8566,6 +9516,12 @@ components:
             - type: 'null'
           title: Team Id
           description: Team ID that executed this run
+        status:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Status
+          description: 'Run status (PENDING, RUNNING, COMPLETED, ERROR, etc.)'
         content:
           anyOf:
             - type: string
@@ -8847,6 +9803,22 @@ components:
           description: Database identifier
       type: object
       title: TeamSummaryResponse
+    TextInputContent:
+      properties:
+        type:
+          type: string
+          const: text
+          title: Type
+          default: text
+        text:
+          type: string
+          title: Text
+      additionalProperties: true
+      type: object
+      required:
+        - text
+      title: TextInputContent
+      description: A text fragment in a multimodal user message.
     TextPart:
       properties:
         kind:
@@ -8878,7 +9850,7 @@ components:
           title: Description
         parameters:
           title: Parameters
-      additionalProperties: false
+      additionalProperties: true
       type: object
       required:
         - name
@@ -8895,13 +9867,18 @@ components:
           type: string
           const: function
           title: Type
+          default: function
         function:
           $ref: '#/components/schemas/FunctionCall'
-      additionalProperties: false
+        encryptedValue:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Encryptedvalue
+      additionalProperties: true
       type: object
       required:
         - id
-        - type
         - function
       title: ToolCall
       description: 'A tool call, modelled after OpenAI tool calls.'
@@ -8914,17 +9891,27 @@ components:
           type: string
           const: tool
           title: Role
+          default: tool
         content:
           type: string
           title: Content
         toolCallId:
           type: string
           title: Toolcallid
-      additionalProperties: false
+        error:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Error
+        encryptedValue:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Encryptedvalue
+      additionalProperties: true
       type: object
       required:
         - id
-        - role
         - content
         - toolCallId
       title: ToolMessage
@@ -9454,22 +10441,38 @@ components:
           type: string
           const: user
           title: Role
+          default: user
         content:
-          type: string
+          anyOf:
+            - type: string
+            - items:
+                oneOf:
+                  - $ref: '#/components/schemas/TextInputContent'
+                  - $ref: '#/components/schemas/BinaryInputContent'
+                discriminator:
+                  propertyName: type
+                  mapping:
+                    binary: '#/components/schemas/BinaryInputContent'
+                    text: '#/components/schemas/TextInputContent'
+              type: array
           title: Content
         name:
           anyOf:
             - type: string
             - type: 'null'
           title: Name
-      additionalProperties: false
+        encryptedValue:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Encryptedvalue
+      additionalProperties: true
       type: object
       required:
         - id
-        - role
         - content
       title: UserMessage
-      description: A user message.
+      description: A user message supporting text or multimodal content.
     UserStatsSchema:
       properties:
         user_id:
@@ -9509,6 +10512,11 @@ components:
         type:
           type: string
           title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
       type: object
       required:
         - loc
@@ -9575,7 +10583,13 @@ components:
             - type: string
             - type: 'null'
           title: Db Id
-          description: The content database ID to search in
+          description: Database ID to search in
+        knowledge_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Knowledge Id
+          description: Knowledge base ID to search in
         vector_db_ids:
           anyOf:
             - items:
@@ -9824,10 +10838,11 @@ components:
           description: Performance and usage metrics
         created_at:
           anyOf:
-            - type: integer
+            - type: string
+              format: date-time
             - type: 'null'
           title: Created At
-          description: Unix timestamp of run creation
+          description: Run creation timestamp
         reasoning_content:
           anyOf:
             - type: string
@@ -9973,16 +10988,18 @@ components:
           description: Additional metadata
         created_at:
           anyOf:
-            - type: integer
+            - type: string
+              format: date-time
             - type: 'null'
           title: Created At
-          description: Unix timestamp of session creation
+          description: Session creation timestamp
         updated_at:
           anyOf:
-            - type: integer
+            - type: string
+              format: date-time
             - type: 'null'
           title: Updated At
-          description: Unix timestamp of last update
+          description: Last update timestamp
       type: object
       required:
         - session_id
