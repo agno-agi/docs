@@ -25,21 +25,25 @@ The default flow:
 4. Members execute and return results (concurrently in async mode)
 5. Leader synthesizes results into a final response
 
-You can customize this flow with three patterns:
+You can customize this flow with team modes:
 
-| Pattern | Configuration | Behavior |
-|---------|--------------|----------|
-| **Supervisor** (default) | Default settings | Leader selects members, formulates tasks, synthesizes results |
-| **Router** | `respond_directly=True` + `determine_input_for_members=False` | Leader routes to member, returns member response directly |
-| **Broadcast** | `delegate_to_all_members=True` | Leader delegates to all members simultaneously |
+| Mode | Configuration | Behavior |
+|------|--------------|----------|
+| **Coordinate** (default) | `mode=TeamMode.coordinate` (or omit `mode`) | Leader selects members, formulates tasks, synthesizes results |
+| **Route** | `mode=TeamMode.route` | Leader routes to one member and returns their response directly |
+| **Broadcast** | `mode=TeamMode.broadcast` | Leader delegates the same task to all members simultaneously |
+| **Tasks** | `mode=TeamMode.tasks` | Leader builds and executes a shared task list until the goal is complete |
 
-## Supervisor Pattern (Default)
+Use `TeamMode` from `agno.team.mode` to set the mode explicitly. The legacy flags still work, but `mode` is the recommended approach.
+
+## Coordinate Mode (Default)
 
 The leader controls everything: which members to use, what task to give them, and how to combine their outputs.
 
 ```python
 from agno.team import Team
 from agno.agent import Agent
+from agno.team.mode import TeamMode
 from agno.models.openai import OpenAIResponses
 from agno.tools.hackernews import HackerNewsTools
 from agno.tools.yfinance import YFinanceTools
@@ -51,6 +55,7 @@ team = Team(
         Agent(name="News Agent", role="Get tech news", tools=[HackerNewsTools()]),
         Agent(name="Finance Agent", role="Get stock data", tools=[YFinanceTools()])
     ],
+    mode=TeamMode.coordinate,
     instructions="Research the topic thoroughly, then synthesize findings into a clear report."
 )
 
@@ -62,25 +67,26 @@ Use this when:
 - You want quality control over the final output
 - The leader should add context or reasoning to member outputs
 
-## Router Pattern
+## Route Mode
 
-The leader selects which member handles the request, then passes the request through unchanged and returns the member's response directly.
+The leader selects which member handles the request and returns the member's response directly. By default the leader can still craft the task; set `determine_input_for_members=False` to pass the user input through unchanged.
 
 <img
   className="block dark:hidden"
   src="/images/teams/team-passthrough-light.png"
-  alt="Router pattern flow"
+  alt="Route mode flow"
 />
 
 <img
   className="hidden dark:block"
   src="/images/teams/team-passthrough-dark.png"
-  alt="Router pattern flow"
+  alt="Route mode flow"
 />
 
 ```python
 from agno.team import Team
 from agno.agent import Agent
+from agno.team.mode import TeamMode
 from agno.models.openai import OpenAIResponses
 
 team = Team(
@@ -90,7 +96,7 @@ team = Team(
         Agent(name="English Agent", role="Answer questions in English"),
         Agent(name="Japanese Agent", role="Answer questions in Japanese"),
     ],
-    respond_directly=True,            # Return member response without synthesis
+    mode=TeamMode.route,
     determine_input_for_members=False # Pass user input unchanged to member
 )
 
@@ -103,9 +109,11 @@ Use this when:
 - The leader shouldn't modify the request or response
 - You want lower latency (no synthesis step)
 
-### Configuration Options
+### Legacy Configuration Flags
 
-**`respond_directly=True`**: Return member responses without leader synthesis.
+These flags still work, but are overridden by `mode` when set.
+
+**`respond_directly=True`**: Return member responses without leader synthesis (maps to `TeamMode.route`).
 
 <img
   className="block dark:hidden"
@@ -119,7 +127,7 @@ Use this when:
   alt="Direct response flow"
 />
 
-**`determine_input_for_members=False`**: Send user input directly to members instead of having the leader formulate a task.
+**`determine_input_for_members=False`**: Send user input directly to members instead of having the leader formulate a task (works with any mode).
 
 <img
   className="block dark:hidden"
@@ -143,26 +151,27 @@ team = Team(
 )
 ```
 
-## Broadcast Pattern
+## Broadcast Mode
 
 The leader delegates to all members at once. Useful for gathering multiple perspectives or parallel research.
 
 <img
   className="block dark:hidden"
   src="/images/teams/team-delegate-to-all-members-light.png"
-  alt="Broadcast pattern flow"
+  alt="Broadcast mode flow"
 />
 
 <img
   className="hidden dark:block"
   src="/images/teams/team-delegate-to-all-members-dark.png"
-  alt="Broadcast pattern flow"
+  alt="Broadcast mode flow"
 />
 
 ```python
 import asyncio
 from agno.team import Team
 from agno.agent import Agent
+from agno.team.mode import TeamMode
 from agno.models.openai import OpenAIResponses
 from agno.tools.hackernews import HackerNewsTools
 from agno.tools.arxiv import ArxivTools
@@ -176,7 +185,7 @@ team = Team(
         Agent(name="Academic Researcher", role="Find academic papers", tools=[ArxivTools()]),
         Agent(name="Web Researcher", role="Search the web", tools=[DuckDuckGoTools()]),
     ],
-    delegate_to_all_members=True,
+    mode=TeamMode.broadcast,
     instructions="Synthesize findings from all researchers into a comprehensive report."
 )
 
@@ -190,8 +199,32 @@ Use this when:
 - Parallel execution improves latency
 
 <Note>
-`delegate_to_all_members=True` is not compatible with `respond_directly=True`.
+If both `delegate_to_all_members=True` and `respond_directly=True` are set, broadcast wins and `respond_directly` is disabled.
 </Note>
+
+## Tasks Mode
+
+Tasks mode is an autonomous loop where the leader decomposes the goal into tasks, executes them, and marks the goal complete.
+
+```python
+from agno.team import Team
+from agno.agent import Agent
+from agno.team.mode import TeamMode
+from agno.models.openai import OpenAIResponses
+
+team = Team(
+    name="Ops Team",
+    model=OpenAIResponses(id="gpt-4o"),
+    members=[
+        Agent(name="Research Agent", role="Collect findings"),
+        Agent(name="Writer Agent", role="Draft the final report"),
+    ],
+    mode=TeamMode.tasks,
+    max_iterations=6
+)
+
+team.print_response("Compile a short report on recent AI agent frameworks.")
+```
 
 ## Structured Input
 
@@ -229,27 +262,30 @@ team.print_response(input=request)
 
 ### Token Costs
 
-Each pattern has different token overhead:
+Each mode has different token overhead:
 
-| Pattern | Coordination Cost | When to Use |
-|---------|------------------|-------------|
-| Supervisor | High (decomposition + synthesis) | Quality matters more than cost |
-| Router | Low (selection only) | Simple routing, cost-sensitive |
+| Mode | Coordination Cost | When to Use |
+|------|------------------|-------------|
+| Coordinate | High (decomposition + synthesis) | Quality matters more than cost |
+| Route | Low (selection only) | Simple routing, cost-sensitive |
 | Broadcast | Medium (synthesis only) | Parallel research, multiple perspectives |
+| Tasks | High (planning + iterative loop) | Multi-step goals with dependencies |
 
 ### Latency
 
-- **Supervisor**: Sequential (leader thinks → members execute → leader synthesizes)
-- **Router**: Fast (leader selects → member executes)
+- **Coordinate**: Sequential (leader thinks → members execute → leader synthesizes)
+- **Route**: Fast (leader selects → member executes)
 - **Broadcast with async**: Parallel member execution, but synthesis adds latency
+- **Tasks**: Iterative; multiple cycles until tasks are complete or `max_iterations` is reached
 
 ### Error Handling
 
 What happens when a member fails?
 
-- **Supervisor**: Leader can work with partial results from other members
-- **Router**: Failure is returned directly to caller
+- **Coordinate**: Leader can work with partial results from other members
+- **Route**: Failure is returned directly to caller
 - **Broadcast**: Leader synthesizes available results, may note missing data
+- **Tasks**: Task list tracks failed/blocked tasks; the leader can retry or reassign until completion
 
 ## Developer Resources
 
