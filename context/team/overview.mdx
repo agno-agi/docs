@@ -120,13 +120,13 @@ member.
 ```
 
 <Tip>
-By default, instructions are not wrapped in `<instructions>` tags. If you prefer to wrap instructions in XML tags (for example, when using models that benefit from XML structure), set `add_instruction_tags=True`:
+By default, instructions are not wrapped in `<instructions>` tags. If you prefer to wrap instructions in XML tags (for example, when using models that benefit from XML structure), set `use_instruction_tags=True`:
 
 ```python
 team = Team(
     members=[news_agent, finance_agent],
     instructions=["Coordinate the team to provide comprehensive research"],
-    add_instruction_tags=True,  # Instructions will be wrapped in <instructions> tags
+    use_instruction_tags=True,  # Instructions will be wrapped in <instructions> tags
 )
 ```
 </Tip>
@@ -139,7 +139,7 @@ The Team creates a default system message that can be customized using the follo
 | -------------------------------- | ----------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `description`                    | `str`       | `None`  | A description of the Team that is added to the start of the system message.                                                                                               |
 | `instructions`                   | `List[str]` | `None`  | List of instructions added to the system prompt in `<instructions>` tags. Default instructions are also created depending on values for `markdown`, `expected_output` etc. |
-| `add_instruction_tags`           | `bool`      | `True`  | If True, wrap the instructions in `<instructions>` tags. Set to False to pass instructions as-is without XML tags.                                                         |
+| `use_instruction_tags`           | `bool`      | `False` | If True, wrap the instructions in `<instructions>` tags. Set to False to pass instructions as-is without XML tags.                                                         |
 | `additional_context`             | `str`       | `None`  | Additional context added to the end of the system message.                                                                                                                 |
 | `expected_output`                | `str`       | `None`  | Provide the expected output from the Team. This is added to the end of the system message.                                                                                |
 | `markdown`                       | `bool`      | `False` | Add an instruction to format the output using markdown.                                                                                                                    |
@@ -157,16 +157,14 @@ The Team creates a default system message that can be customized using the follo
 | `system_message`                 | `str`       | `None`  | Override the default system message.                                                                                                                                       |
 | `respond_directly`               | `bool`      | `False` | If True, the team leader won't process responses from members and instead will return them directly. Cannot be used with `delegate_to_all_members=True`.                   |
 | `delegate_to_all_members`        | `bool`      | `False` | If True, the team leader will delegate the task to all members simultaneously, instead of one by one. When running async (using `arun`) members will run concurrently. Cannot be used with `respond_directly=True`. |
-| `member_timeout`                 | `float`     | `None`  | Timeout in seconds for member delegations. Prevents hanging on unresponsive members.                                                                                       |
 | `determine_input_for_members`    | `bool`      | `True`  | Set to false if you want to send the run input directly to the member agents.                                                                                             |
 | `share_member_interactions`      | `bool`      | `False` | If True, send all previous member interactions to members.                                                                                                                 |
-| `max_interactions_to_share`      | `int`       | `None`  | Maximum number of member interactions to share when `share_member_interactions=True`. Limits context size.                                                                 |
 | `get_member_information_tool`    | `bool`      | `False` | If True, add a tool to get information about the team members.                                                                                                             |
 
 See the full [Team reference](/reference/teams/team) for more information.
 
 <Warning>
-**Configuration Validation**: Setting `delegate_to_all_members=True` and `respond_directly=True` together is not allowed and will raise a `ValueError`. These settings are incompatible because `delegate_to_all_members` requires the team leader to coordinate responses, while `respond_directly` bypasses that coordination.
+**Configuration Warning**: Setting `delegate_to_all_members=True` and `respond_directly=True` together logs a warning and disables `respond_directly`.
 </Warning>
 
 ### Orchestration Parameters
@@ -175,8 +173,6 @@ The Team class provides several parameters to control how the team leader orches
 
 | Parameter                     | Type    | Default | Description                                                                                                    |
 | ----------------------------- | ------- | ------- | -------------------------------------------------------------------------------------------------------------- |
-| `member_timeout`              | `float` | `None`  | Timeout in seconds for member delegations. Useful for preventing the team from hanging on unresponsive members |
-| `max_interactions_to_share`   | `int`   | `None`  | Limits the number of member interactions shared when `share_member_interactions=True` to prevent context explosion |
 | `share_member_interactions`   | `bool`  | `False` | When True, previous member interactions are shared with members receiving new delegations                      |
 
 ```python
@@ -186,9 +182,7 @@ from agno.team import Team
 # Create a team with orchestration controls
 team = Team(
     members=[research_agent, analysis_agent],
-    member_timeout=30.0,  # 30 second timeout for member responses
     share_member_interactions=True,
-    max_interactions_to_share=5,  # Only share the last 5 interactions to limit context size
 )
 ```
 
