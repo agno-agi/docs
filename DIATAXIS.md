@@ -70,7 +70,7 @@ The reader owns the outcome.
 
 - "This guide shows you how to..."
 - "If you want x, do y." (conditional imperatives)
-- "Refer to the [X reference](/reference/x) for the full list of options."
+- "Refer to the [Contributing Guide](https://github.com/agno-agi/agno/blob/main/CONTRIBUTING.md) for details."
 
 **Anti-patterns:**
 
@@ -175,10 +175,10 @@ Two questions to classify any piece of content:
 1. **Action or Cognition?** Is the reader trying to DO something, or UNDERSTAND something?
 2. **Acquisition or Application?** Is the reader LEARNING, or WORKING?
 
-|  | Acquisition (learning) | Application (working) |
-|---|---|---|
-| **Action** (doing) | Tutorial | How-to Guide |
-| **Cognition** (thinking) | Explanation | Reference |
+|                          | Acquisition (learning) | Application (working) |
+| ------------------------ | ---------------------- | --------------------- |
+| **Action** (doing)       | Tutorial               | How-to Guide          |
+| **Cognition** (thinking) | Explanation            | Reference             |
 
 Apply this at any scale: a whole page, a section, or a single paragraph that feels wrong.
 
@@ -192,14 +192,14 @@ Documentation degrades when types bleed into each other. This is the most common
 
 ### Common Failures in SDK Docs
 
-| Blur | What happens | Fix |
-|------|-------------|-----|
-| Tutorial + Explanation | Tutorial stops to explain concepts for 3 paragraphs | Move explanation to a linked "What are X?" page |
-| How-to + Tutorial | How-to guide teaches basics before getting to the task | Assume competence. Link to the tutorial. |
-| Reference + Explanation | API reference includes paragraphs about design decisions | Move "why" content to an explanation page. Keep reference austere. |
-| How-to + Reference | How-to guide includes complete parameter tables | Link to reference. Show only the parameters needed for this task. |
-| Explanation + Instruction | Concept page includes "First, install... Then configure..." | Move instructions to a how-to guide. Keep explanation discursive. |
-| Tutorial + How-to | Tutorial offers choices ("you could also use Pinecone instead") | Tutorials follow one path. Move alternatives to how-to guides. |
+| Blur                      | What happens                                                    | Fix                                                                |
+| ------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Tutorial + Explanation    | Tutorial stops to explain concepts for 3 paragraphs             | Move explanation to a linked "What are X?" page                    |
+| How-to + Tutorial         | How-to guide teaches basics before getting to the task          | Assume competence. Link to the tutorial.                           |
+| Reference + Explanation   | API reference includes paragraphs about design decisions        | Move "why" content to an explanation page. Keep reference austere. |
+| How-to + Reference        | How-to guide includes complete parameter tables                 | Link to reference. Show only the parameters needed for this task.  |
+| Explanation + Instruction | Concept page includes "First, install... Then configure..."     | Move instructions to a how-to guide. Keep explanation discursive.  |
+| Tutorial + How-to         | Tutorial offers choices ("you could also use Pinecone instead") | Tutorials follow one path. Move alternatives to how-to guides.     |
 
 ### The Test
 
