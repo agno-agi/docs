@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: Agno AgentOS
+  title: Documentation all API references
   description: Your multi-agent operating system.
   version: 1.0.0
 paths:
@@ -5904,6 +5904,211 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+  '/knowledge/{knowledge_id}/sources':
+    get:
+      tags:
+        - Knowledge
+      summary: List Content Sources
+      description: 'List all registered content sources (S3, GCS, SharePoint, GitHub) for the knowledge base.'
+      operationId: list_content_sources
+      security:
+        - HTTPBearer: []
+      parameters:
+        - name: knowledge_id
+          in: path
+          required: true
+          schema:
+            type: string
+            description: ID of the knowledge base
+            title: Knowledge Id
+          description: ID of the knowledge base
+        - name: db_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: The ID of the database to use
+            title: Db Id
+          description: The ID of the database to use
+      responses:
+        '200':
+          description: Content sources retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RemoteContentSourceSchema'
+                title: Response List Content Sources
+              example:
+                - id: company-s3
+                  name: Company Documents
+                  type: s3
+                  prefix: documents/
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Knowledge base not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+  '/knowledge/{knowledge_id}/sources/{source_id}/files':
+    get:
+      tags:
+        - Knowledge
+      summary: List Files in Source
+      description: List available files and folders in a specific content source. Supports pagination and folder navigation.
+      operationId: list_source_files
+      security:
+        - HTTPBearer: []
+      parameters:
+        - name: knowledge_id
+          in: path
+          required: true
+          schema:
+            type: string
+            description: ID of the knowledge base
+            title: Knowledge Id
+          description: ID of the knowledge base
+        - name: source_id
+          in: path
+          required: true
+          schema:
+            type: string
+            description: ID of the content source
+            title: Source Id
+          description: ID of the content source
+        - name: prefix
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Path prefix to filter files
+            title: Prefix
+          description: Path prefix to filter files
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            maximum: 1000
+            minimum: 1
+            description: Number of files per page
+            default: 100
+            title: Limit
+          description: Number of files per page
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            description: Page number (1-indexed)
+            default: 1
+            title: Page
+          description: Page number (1-indexed)
+        - name: delimiter
+          in: query
+          required: false
+          schema:
+            type: string
+            description: Folder delimiter (enables folder grouping)
+            default: /
+            title: Delimiter
+          description: Folder delimiter (enables folder grouping)
+        - name: db_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: The ID of the database to use
+            title: Db Id
+          description: The ID of the database to use
+      responses:
+        '200':
+          description: Files listed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceFilesResponseSchema'
+              example:
+                source_id: company-s3
+                source_name: Company Documents
+                prefix: reports/
+                folders:
+                  - prefix: reports/2024/
+                    name: '2024'
+                    is_empty: false
+                files:
+                  - key: reports/annual-summary.pdf
+                    name: annual-summary.pdf
+                    size: 102400
+                    last_modified: '2024-01-15T10:30:00Z'
+                    content_type: application/pdf
+                meta:
+                  page: 1
+                  limit: 100
+                  total_pages: 1
+                  total_count: 1
+        '400':
+          description: Unsupported source type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Knowledge base or content source not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
   /traces:
     get:
       tags:
@@ -7250,94 +7455,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ComponentResponse'
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BadRequestResponse'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UnauthenticatedResponse'
-        '404':
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NotFoundResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationErrorResponse'
-        '500':
-          description: Internal Server Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InternalServerErrorResponse'
-  /registry:
-    get:
-      tags:
-        - Registry
-      summary: List Registry
-      description: List all resources in the registry with optional filtering.
-      operationId: list_registry
-      security:
-        - HTTPBearer: []
-      parameters:
-        - name: resource_type
-          in: query
-          required: false
-          schema:
-            anyOf:
-              - $ref: '#/components/schemas/RegistryResourceType'
-              - type: 'null'
-            description: Filter by resource type
-            title: Resource Type
-          description: Filter by resource type
-        - name: name
-          in: query
-          required: false
-          schema:
-            anyOf:
-              - type: string
-              - type: 'null'
-            description: Filter by name (partial match)
-            title: Name
-          description: Filter by name (partial match)
-        - name: page
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            description: Page number
-            default: 1
-            title: Page
-          description: Page number
-        - name: limit
-          in: query
-          required: false
-          schema:
-            type: integer
-            maximum: 100
-            minimum: 1
-            description: Items per page
-            default: 20
-            title: Limit
-          description: Items per page
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PaginatedResponse_RegistryContentResponse_'
         '400':
           description: Bad Request
           content:
@@ -9331,6 +9448,12 @@ components:
       description: Enumeration of possible content processing statuses.
     ContentStatusResponse:
       properties:
+        id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Id
+          description: Content ID
         status:
           $ref: '#/components/schemas/ContentStatus'
           description: Current processing status of the content
@@ -10517,22 +10640,6 @@ components:
         - data
         - meta
       title: 'PaginatedResponse[EvalSchema]'
-    PaginatedResponse_RegistryContentResponse_:
-      properties:
-        data:
-          items:
-            $ref: '#/components/schemas/RegistryContentResponse'
-          type: array
-          title: Data
-          description: List of items for the current page
-        meta:
-          $ref: '#/components/schemas/PaginationInfo'
-          description: Pagination metadata
-      type: object
-      required:
-        - data
-        - meta
-      title: 'PaginatedResponse[RegistryContentResponse]'
     PaginatedResponse_ScheduleResponse_:
       properties:
         data:
@@ -10756,40 +10863,6 @@ components:
         - content
       title: ReasoningMessage
       description: A reasoning message containing the agent's internal reasoning process.
-    RegistryContentResponse:
-      properties:
-        name:
-          type: string
-          title: Name
-        type:
-          $ref: '#/components/schemas/RegistryResourceType'
-        description:
-          anyOf:
-            - type: string
-            - type: 'null'
-          title: Description
-        metadata:
-          anyOf:
-            - additionalProperties: true
-              type: object
-            - type: 'null'
-          title: Metadata
-      type: object
-      required:
-        - name
-        - type
-      title: RegistryContentResponse
-    RegistryResourceType:
-      type: string
-      enum:
-        - tool
-        - model
-        - db
-        - vector_db
-        - schema
-        - function
-      title: RegistryResourceType
-      description: Types of resources that can be stored in a registry.
     RemoteContentSourceSchema:
       properties:
         id:
@@ -10811,6 +10884,12 @@ components:
             - type: 'null'
           title: Metadata
           description: Custom metadata for the content source
+        prefix:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Prefix
+          description: Default path prefix for this source
       type: object
       required:
         - id
@@ -11500,6 +11579,100 @@ components:
         - asc
         - desc
       title: SortOrder
+    SourceFileSchema:
+      properties:
+        key:
+          type: string
+          title: Key
+          description: Full path/key of the file
+        name:
+          type: string
+          title: Name
+          description: Display name (filename)
+        size:
+          anyOf:
+            - type: integer
+            - type: 'null'
+          title: Size
+          description: File size in bytes
+        last_modified:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+          title: Last Modified
+          description: ISO 8601 timestamp of last modification
+        content_type:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Content Type
+          description: MIME type of the file
+      type: object
+      required:
+        - key
+        - name
+      title: SourceFileSchema
+      description: Schema for a file in a content source.
+    SourceFilesResponseSchema:
+      properties:
+        source_id:
+          type: string
+          title: Source Id
+          description: ID of the content source
+        source_name:
+          type: string
+          title: Source Name
+          description: Name of the content source
+        prefix:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Prefix
+          description: Prefix filter that was applied
+        folders:
+          items:
+            $ref: '#/components/schemas/SourceFolderSchema'
+          type: array
+          title: Folders
+          description: Subfolders at this level
+        files:
+          items:
+            $ref: '#/components/schemas/SourceFileSchema'
+          type: array
+          title: Files
+          description: List of files at this level
+        meta:
+          $ref: '#/components/schemas/PaginationInfo'
+          description: Pagination metadata
+      type: object
+      required:
+        - source_id
+        - source_name
+        - meta
+      title: SourceFilesResponseSchema
+      description: Response schema for listing files in a content source.
+    SourceFolderSchema:
+      properties:
+        prefix:
+          type: string
+          title: Prefix
+          description: Full prefix to use for navigating into this folder
+        name:
+          type: string
+          title: Name
+          description: Display name of the folder
+        is_empty:
+          type: boolean
+          title: Is Empty
+          description: Whether the folder contains any files
+          default: false
+      type: object
+      required:
+        - prefix
+        - name
+      title: SourceFolderSchema
+      description: Schema for a folder in a content source.
     SystemMessage:
       properties:
         id:
