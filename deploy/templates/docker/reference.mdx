@@ -1,0 +1,155 @@
+---
+title: "Docker Reference"
+sidebarTitle: "Reference"
+description: "Manage, customize, and troubleshoot your Docker deployment."
+---
+
+## Manage
+
+| Task | Command |
+| :--- | :--- |
+| Start containers | `docker compose up -d --build` |
+| View logs | `docker compose logs -f` |
+| Restart containers | `docker compose restart` |
+| Stop containers | `docker compose down` |
+| Stop and remove data | `docker compose down -v` |
+| Rebuild after changes | `docker compose up -d --build` |
+
+## Customize
+
+<AccordionGroup>
+  <Accordion title="Add an agent">
+
+  Create `agents/my_agent.py`:
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from db import get_postgres_db
+
+my_agent = Agent(
+    id="my-agent",
+    name="My Agent",
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=get_postgres_db(),
+    instructions="You are a helpful assistant.",
+)
+```
+
+Register in `app/main.py`:
+```python
+from agents.my_agent import my_agent
+
+agent_os = AgentOS(
+    name="AgentOS",
+    agents=[knowledge_agent, mcp_agent, my_agent],
+)
+```
+
+Restart: `docker compose restart`
+
+  </Accordion>
+
+  <Accordion title="Add tools">
+
+  Agno includes 100+ tool integrations. See the [full list](/tools/overview).
+```python
+from agno.tools.slack import SlackTools
+from agno.tools.google_calendar import GoogleCalendarTools
+
+my_agent = Agent(
+    tools=[
+        SlackTools(),
+        GoogleCalendarTools(),
+    ],
+)
+```
+
+  </Accordion>
+
+  <Accordion title="Load knowledge">
+
+  Load documents for the Knowledge Agent:
+```bash
+docker exec -it agentos-api python -m agents.knowledge_agent
+```
+
+  Try it:
+```
+What is Agno?
+How do I create my first agent?
+What documents are in your knowledge base?
+```
+
+  </Accordion>
+
+  <Accordion title="Use a different model">
+
+  Add your API key to `.env` and update your agent:
+```python
+from agno.models.anthropic import Claude
+
+my_agent = Agent(
+    model=Claude(id="claude-sonnet-4-5"),
+)
+```
+
+  Add `anthropic` to `pyproject.toml` and regenerate requirements:
+```bash
+./scripts/generate_requirements.sh
+docker compose up -d --build
+```
+
+  </Accordion>
+
+  <Accordion title="Add dependencies">
+
+1. Edit `pyproject.toml`
+2. Regenerate requirements: `./scripts/generate_requirements.sh`
+3. Rebuild: `docker compose up -d --build`
+
+  </Accordion>
+</AccordionGroup>
+
+## Local Development
+
+Run without Docker for faster iteration:
+```bash
+# Install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Set up environment
+./scripts/venv_setup.sh
+source .venv/bin/activate
+
+# Start PostgreSQL (required)
+docker compose up -d agentos-db
+
+# Run AgentOS
+python -m app.main
+```
+
+## Environment Variables
+
+| Variable | Required | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `OPENAI_API_KEY` | Yes | — | OpenAI API key |
+| `DB_HOST` | No | `localhost` | Database host |
+| `DB_PORT` | No | `5432` | Database port |
+| `DB_USER` | No | `ai` | Database user |
+| `DB_PASS` | No | `ai` | Database password |
+| `DB_DATABASE` | No | `ai` | Database name |
+| `RUNTIME_ENV` | No | `dev` | Set to `prd` for production |
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Port already in use">
+    Modify `compose.yaml`: change `"8000:8000"` to `"8080:8000"` under the `agentos-api` service ports.
+  </Accordion>
+  <Accordion title="Database connection issues">
+    Ensure PostgreSQL is running: `docker compose ps`. If the database isn't ready, wait a few seconds and try again.
+  </Accordion>
+  <Accordion title="Container keeps restarting">
+    Check logs: `docker compose logs agentos-api`. Common causes: missing `OPENAI_API_KEY` in `.env` or database not yet available.
+  </Accordion>
+</AccordionGroup>

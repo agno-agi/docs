@@ -1,0 +1,164 @@
+---
+title: "Railway Reference"
+sidebarTitle: "Reference"
+description: "Manage, customize, and troubleshoot your Railway deployment."
+---
+
+## Manage
+
+| Task | Command |
+| :--- | :--- |
+| Deploy updates | `railway up --service agent-os -d` |
+| View logs | `railway logs --service agent-os` |
+| Open dashboard | `railway open` |
+| Set env variable | `railway variables set KEY=value` |
+| Stop service | `railway down --service agent-os` |
+| Stop database | `railway down --service pgvector` |
+| Scale replicas | Edit `railway.json`: `{"deploy": {"numReplicas": 2}}` |
+
+## Customize
+
+<AccordionGroup>
+  <Accordion title="Add an agent">
+
+  Create `agents/my_agent.py`:
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from db import get_postgres_db
+
+my_agent = Agent(
+    id="my-agent",
+    name="My Agent",
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=get_postgres_db(),
+    instructions="You are a helpful assistant.",
+)
+```
+
+Register in `app/main.py`:
+```python
+from agents.my_agent import my_agent
+
+agent_os = AgentOS(
+    name="AgentOS",
+    agents=[knowledge_agent, mcp_agent, my_agent],
+)
+```
+
+Restart: `docker compose restart`
+
+  </Accordion>
+
+  <Accordion title="Add tools">
+
+  Agno includes 100+ tool integrations. See the [full list](/tools/overview).
+```python
+from agno.tools.slack import SlackTools
+from agno.tools.google_calendar import GoogleCalendarTools
+
+my_agent = Agent(
+    tools=[
+        SlackTools(),
+        GoogleCalendarTools(),
+    ],
+)
+```
+
+  </Accordion>
+
+  <Accordion title="Load knowledge">
+
+  Load documents for the Knowledge Agent:
+```bash
+# Local
+docker exec -it agentos-api python -m agents.knowledge_agent
+
+# Railway
+railway run python -m agents.knowledge_agent
+```
+
+  Try it:
+```
+What is Agno?
+How do I create my first agent?
+What documents are in your knowledge base?
+```
+
+  </Accordion>
+
+  <Accordion title="Use a different model">
+
+  Add your API key to `.env` and update your agent:
+```python
+from agno.models.anthropic import Claude
+
+my_agent = Agent(
+    model=Claude(id="claude-sonnet-4-5"),
+)
+```
+
+  Add `anthropic` to `pyproject.toml` and regenerate requirements:
+```bash
+./scripts/generate_requirements.sh
+docker compose up -d --build
+```
+
+  </Accordion>
+
+  <Accordion title="Add dependencies">
+
+1. Edit `pyproject.toml`
+2. Regenerate requirements: `./scripts/generate_requirements.sh`
+3. Rebuild: `docker compose up -d --build`
+
+  </Accordion>
+</AccordionGroup>
+
+## Local Development
+
+Run without Docker for faster iteration:
+```bash
+# Install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Set up environment
+./scripts/venv_setup.sh
+source .venv/bin/activate
+
+# Start PostgreSQL (required)
+docker compose up -d agentos-db
+
+# Run AgentOS
+python -m app.main
+```
+
+## Environment Variables
+
+| Variable | Required | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `OPENAI_API_KEY` | Yes | — | OpenAI API key |
+| `PORT` | No | `8000` | API server port |
+| `DB_HOST` | No | `localhost` | Database host |
+| `DB_PORT` | No | `5432` | Database port |
+| `DB_USER` | No | `ai` | Database user |
+| `DB_PASS` | No | `ai` | Database password |
+| `DB_DATABASE` | No | `ai` | Database name |
+| `RUNTIME_ENV` | No | `prd` | Set to `dev` for auto-reload |
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="'railway: command not found'">
+    Install: `brew install railway` (Mac) or `npm install -g @railway/cli`
+  </Accordion>
+  <Accordion title="Deployment fails">
+    Run `railway init` first, then `./scripts/railway_up.sh` again.
+  </Accordion>
+  <Accordion title="Database timeout">
+    PostgreSQL takes ~30s to start. Check: `railway logs --service pgvector`
+  </Accordion>
+  <Accordion title="502 error">
+    Container is still starting. Wait 1-2 min. Check: `railway logs --service agent-os`
+  </Accordion>
+</AccordionGroup>

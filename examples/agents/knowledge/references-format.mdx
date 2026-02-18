@@ -1,0 +1,69 @@
+---
+title: "References Format"
+description: "Control how knowledge base references are formatted for the agent."
+---
+```python
+"""
+References Format
+=============================
+
+Control how knowledge base references are formatted for the agent.
+
+By default, references are returned as JSON. Set references_format="yaml"
+to return them as YAML instead.
+"""
+
+from agno.agent import Agent
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.knowledge.knowledge import Knowledge
+from agno.models.openai import OpenAIResponses
+from agno.vectordb.pgvector import PgVector, SearchType
+
+db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
+knowledge = Knowledge(
+    vector_db=PgVector(
+        table_name="recipes_yaml_demo",
+        db_url=db_url,
+        search_type=SearchType.hybrid,
+        embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+    ),
+)
+
+# ---------------------------------------------------------------------------
+# Create Agent
+# ---------------------------------------------------------------------------
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    knowledge=knowledge,
+    search_knowledge=True,
+    # Format knowledge references as YAML instead of the default JSON
+    references_format="yaml",
+    markdown=True,
+)
+
+# ---------------------------------------------------------------------------
+# Run Agent
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    knowledge.insert(url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf")
+    agent.print_response(
+        "How do I make chicken and galangal in coconut milk soup?",
+        stream=True,
+    )
+```
+
+## Run the Example
+```bash
+# Clone and setup repo
+git clone https://github.com/agno-agi/agno.git
+cd agno/cookbook/02_agents/07_knowledge
+
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+# Optiona: Run PgVector (needs docker)
+./cookbook/scripts/run_pgvector.sh
+
+python references_format.py
+```

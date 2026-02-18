@@ -14,6 +14,7 @@ Define these four things before you write:
 2. **What does the user need to do?** (the code)
 3. **What decisions might they face?** (tables)
 4. **Where do they go next?** (links)
+5. **What type of page is this?** (tutorial, how-to, reference, or explanation. See [DIATAXIS.md](./DIATAXIS.md))
 
 If you can't answer these clearly, the page will ramble.
 
@@ -35,6 +36,19 @@ Every page should follow this pattern:
    Table of options/decisions.
    Links to related pages.
 ````
+
+## Page Types
+
+Every page serves one primary documentation need. See [DIATAXIS.md](./DIATAXIS.md) for the complete framework.
+
+| Type | Purpose | Agno Examples |
+|------|---------|---------------|
+| Tutorial | Guided lesson for new users | First Agent, First Multi-Agent System |
+| How-to Guide | Task directions for competent users | Provider setup pages, usage examples |
+| Reference | Technical description of the machinery | API reference, parameter tables |
+| Explanation | Understanding-oriented discussion | "What are X?" overview pages |
+
+If a page mixes types (e.g., a how-to that stops to explain concepts), extract the foreign content into its own page and link to it.
 
 ## Context Hygiene
 
@@ -176,6 +190,21 @@ Analogies and editorializing waste space.
 ✅ "Troubleshoot and inspect agent behavior."
 ````
 
+### 13. No contrastive negation
+
+Don't define things by what they aren't. State what they are directly.
+````
+❌ "Agents aren't just chatbots — they're autonomous programs that control
+   execution flow."
+❌ "This isn't a simple wrapper. It's a full orchestration layer."
+❌ "Knowledge isn't just storage — it's retrieval-augmented generation."
+
+✅ "Agents are autonomous programs where a language model controls
+   execution flow."
+✅ "The orchestration layer manages tool calls, memory, and model routing."
+✅ "Knowledge adds retrieval-augmented generation to your agent."
+````
+
 ## Words and Phrases to Avoid
 
 | Word/Phrase | Why | Use Instead |
@@ -191,6 +220,7 @@ Analogies and editorializing waste space.
 | "Happy building!" | Unnecessary | End with links |
 | "Here's how it looks:" | Filler | [Remove] |
 | Em dashes (—) | AI tell | Periods or rewrite |
+| "It's not X, it's Y" / "X isn't just Y" | Contrastive negation, AI tell | State what it is directly |
 
 ## Capitalization & Terminology
 
@@ -223,6 +253,8 @@ Use consistently when describing Agno:
 - Show the minimal working example first, then variations
 
 ## Page Templates
+
+Choose the template that matches your page type (see [DIATAXIS.md](./DIATAXIS.md)). The Overview template maps to Explanation, the Tutorial/Guide template maps to Tutorial or How-to, and the Usage/Example template maps to How-to.
 
 ### Overview Page
 ````markdown

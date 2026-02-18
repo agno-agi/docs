@@ -1,15 +1,48 @@
 ---
 title: Your First Agent
-sidebarTitle: "First Agent"
-description: "Build your first learning agent."
+description: "Build and run your first agent in 20 lines of code."
 keywords: [agno, agent, quickstart, tutorial]
 mode: "wide"
 ---
 
-## Setup
+Let's build an agent that can answer questions about Agno, remembers previous conversations, and runs as a production API — all in about 20 lines.
+
+Save the following code as `agno_assist.py`:
+
+```python agno_assist.py lines
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.anthropic import Claude
+from agno.os import AgentOS
+from agno.tools.mcp import MCPTools
+
+agno_assist = Agent(
+    name="Agno Assist",
+    model=Claude(id="claude-sonnet-4-5"),
+    db=SqliteDb(db_file="agno.db"),                     # session storage
+    tools=[MCPTools(url="https://docs.agno.com/mcp")],  # Agno docs via MCP
+    add_datetime_to_context=True,
+    add_history_to_context=True,                         # include past runs
+    num_history_runs=3,                                  # last 3 conversations
+    markdown=True,
+)
+
+# Serve via AgentOS → streaming, auth, session isolation, API endpoints
+agent_os = AgentOS(agents=[agno_assist])
+app = agent_os.get_app()
+```
+
+<Check>
+
+That's it. This gives you streaming responses, per-user session isolation, and a full API — no extra configuration.
+
+</Check>
+
+## Run your AgentOS
 
 <Steps>
-  <Step title="Create and activate a virtual environment">
+  <Step title="Set up your virtual environment">
+
     <CodeGroup>
     ```bash Mac
     uv venv --python 3.12
@@ -20,220 +53,86 @@ mode: "wide"
     .venv\Scripts\activate
     ```
     </CodeGroup>
+
   </Step>
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U agno openai sqlalchemy chromadb
+    uv pip install -U 'agno[os]' anthropic mcp
     ```
   </Step>
-  <Step title="Export your API key">
+  <Step title="Export your Anthropic API key">
+
     <CodeGroup>
     ```bash Mac
-    export OPENAI_API_KEY=sk-***
+    export ANTHROPIC_API_KEY=sk-***
     ```
     ```bash Windows
-    setx OPENAI_API_KEY sk-***
+    setx ANTHROPIC_API_KEY sk-***
     ```
     </CodeGroup>
+
+  </Step>
+  <Step title="Run your AgentOS">
+    ```bash
+    fastapi dev agno_assist.py
+    ```
+
+    This starts your AgentOS at `http://localhost:8000`. View the auto-generated API docs at `http://localhost:8000/docs`. You can add your own routes, middleware, or any FastAPI feature on top.
+
   </Step>
 </Steps>
 
-## Create an Agent
+## Connect to the AgentOS UI
 
-```python basic_agent.py
-from agno.agent import Agent
-from agno.models.openai import OpenAIResponses
+The [AgentOS UI](https://os.agno.com) connects directly to your runtime, letting you monitor, manage, and test your agents.
 
-agent = Agent(model=OpenAIResponses(id="gpt-5.2"))
+1. Open [os.agno.com](https://os.agno.com) and sign in.
+2. Click **"Add new OS"** in the top navigation.
+3. Select **"Local"** to connect to a local AgentOS.
+4. Enter your endpoint URL (default: `http://localhost:8000`).
+5. Name it something like "Development OS".
+6. Click **"Connect"**.
 
-agent.print_response("Hi! I'm Alice. I work at Anthropic as a research scientist.", stream=True)
-```
+<Frame>
+  <video
+    autoPlay
+    muted
+    loop
+    controls
+    playsInline
+    style={{ borderRadius: "0.5rem", width: "100%", height: "auto" }}
+  >
+    <source src="/videos/agent-os-connect-1.mp4" type="video/mp4" />
+  </video>
+</Frame>
 
-```bash
-python basic_agent.py
-```
+Once connected, you'll see your OS with a live status indicator.
 
-That's a basic agent. It responds, but it doesn't remember anything.
+## Chat with your Agent
 
-## Add Learning
+Go to **Chat** in the sidebar, select your Agent, and ask "What is Agno?" — the agent will pull from the Agno docs MCP server to answer.
 
-Add a database and set `learning=True`:
+<Frame>
+  <video
+    autoPlay
+    muted
+    loop
+    controls
+    playsInline
+    style={{ borderRadius: "0.5rem", width: "100%", height: "auto" }}
+  >
+    <source src="/videos/agno-agent-chat.mp4" type="video/mp4" />
+  </video>
+</Frame>
 
-```python 01_always_learn.py
-from agno.agent import Agent
-from agno.db.sqlite import SqliteDb
-from agno.models.openai import OpenAIResponses
+<Tip>
 
-agent = Agent(
-    model=OpenAIResponses(id="gpt-5.2"),
-    db=SqliteDb(db_file="tmp/agents.db"),
-    add_history_to_context=True,
-    learning=True,
-    markdown=True,
-)
+Click **Sessions** in the sidebar to view your Agent's conversations. Data is stored in your local database — no third-party tracing required.
 
-if __name__ == "__main__":
-    user_id = "alice@example.com"
-
-    # Session 1: Share information naturally
-    print("\n--- Session 1: Extraction happens automatically ---\n")
-    agent.print_response(
-        "Hi! I'm Alice. I work at Anthropic as a research scientist. "
-        "I prefer concise responses without too much explanation.",
-        user_id=user_id,
-        session_id="session_1",
-        stream=True,
-    )
-    lm = agent.get_learning_machine()
-    lm.user_profile_store.print(user_id=user_id)
-    lm.user_memory_store.print(user_id=user_id)
-
-    # Session 2: New session - agent remembers
-    print("\n--- Session 2: Agent remembers across sessions ---\n")
-    agent.print_response(
-        "What do you know about me?",
-        user_id=user_id,
-        session_id="session_2",
-        stream=True,
-    )
-```
-
-```bash
-python 01_always_learn.py
-```
-
-Session 2 is a new conversation. Different session ID. But the agent remembers Alice.
-
-**How it works:** When you set `learning=True`, the agent extracts user profile and memories in parallel with generating the response, stores them in the database, and recalls them in future sessions. No tool calls visible. The agent learns in the background.
-
-## Agentic Learning
-
-For more control, use agentic mode. The agent receives tools and decides what to save.
-
-```python 02_agentic_learn.py
-from agno.agent import Agent
-from agno.db.sqlite import SqliteDb
-from agno.learn import (
-    LearningMachine,
-    LearningMode,
-    UserMemoryConfig,
-    UserProfileConfig,
-)
-from agno.models.openai import OpenAIResponses
-
-agent = Agent(
-    model=OpenAIResponses(id="gpt-5.2"),
-    db=SqliteDb(db_file="tmp/agents.db"),
-    add_history_to_context=True,
-    learning=LearningMachine(
-        user_profile=UserProfileConfig(mode=LearningMode.AGENTIC),
-        user_memory=UserMemoryConfig(mode=LearningMode.AGENTIC),
-    ),
-    markdown=True,
-)
-
-if __name__ == "__main__":
-    user_id = "alice@example.com"
-
-    # Session 1: Agent decides what to save via tool calls
-    print("\n--- Session 1: Agent uses tools to save profile and memories ---\n")
-    agent.print_response(
-        "Hi! I'm Alice. I work at Anthropic as a research scientist. "
-        "I prefer concise responses without too much explanation.",
-        user_id=user_id,
-        session_id="session_1",
-        stream=True,
-    )
-    lm = agent.get_learning_machine()
-    lm.user_profile_store.print(user_id=user_id)
-    lm.user_memory_store.print(user_id=user_id)
-
-    # Session 2: New session - agent remembers
-    print("\n--- Session 2: Agent remembers across sessions ---\n")
-    agent.print_response(
-        "What do you know about me?",
-        user_id=user_id,
-        session_id="session_2",
-        stream=True,
-    )
-```
-
-```bash
-python 02_agentic_learn.py
-```
-
-Watch for tool calls in the output. The agent explicitly decides when to save.
-
-## Cross-User Insights
-
-Agents can learn knowledge that transfers across users. One user teaches the agent, another benefits.
-
-```python 03_learned_knowledge.py
-from agno.agent import Agent
-from agno.db.sqlite import SqliteDb
-from agno.knowledge import Knowledge
-from agno.knowledge.embedder.openai import OpenAIEmbedder
-from agno.learn import LearnedKnowledgeConfig, LearningMachine, LearningMode
-from agno.models.openai import OpenAIResponses
-from agno.vectordb.chroma import ChromaDb, SearchType
-
-knowledge = Knowledge(
-    name="Agent Learnings",
-    vector_db=ChromaDb(
-        name="learnings",
-        path="tmp/chromadb",
-        persistent_client=True,
-        search_type=SearchType.hybrid,
-        embedder=OpenAIEmbedder(id="text-embedding-3-small"),
-    ),
-)
-
-agent = Agent(
-    model=OpenAIResponses(id="gpt-5.2"),
-    db=SqliteDb(db_file="tmp/agents.db"),
-    add_history_to_context=True,
-    learning=LearningMachine(
-        knowledge=knowledge,
-        learned_knowledge=LearnedKnowledgeConfig(mode=LearningMode.AGENTIC),
-    ),
-    markdown=True,
-)
-
-if __name__ == "__main__":
-    # Session 1: User 1 teaches the agent
-    print("\n--- Session 1: User 1 saves a learning ---\n")
-    agent.print_response(
-        "We're trying to reduce our cloud egress costs. Remember this.",
-        user_id="engineer_1@example.com",
-        session_id="session_1",
-        stream=True,
-    )
-    lm = agent.get_learning_machine()
-    lm.learned_knowledge_store.print(query="cloud")
-
-    # Session 2: User 2 benefits from the learning
-    print("\n--- Session 2: User 2 asks a related question ---\n")
-    agent.print_response(
-        "I'm picking a cloud provider for a data pipeline. Key considerations?",
-        user_id="engineer_2@example.com",
-        session_id="session_2",
-        stream=True,
-    )
-```
-
-```bash
-python 03_learned_knowledge.py
-```
-
-User 2 gets advice informed by User 1's insight. No shared context. No explicit handoff.
+</Tip>
 
 ## Next
 
-<CardGroup cols={2}>
-  <Card title="Your First Multi-Agent System" icon="code-branch" href="/first-multi-agent-system">
-    Build your first multi-agent system.
-  </Card>
-  <Card title="Build Agents" icon="user-robot" href="/agents/overview">
-    Configuration, tools, and advanced patterns
-  </Card>
-</CardGroup>
+- [Explore the SDK →](/agents/overview)
+- [Deploy AgentOS to your cloud →](/deploy/introduction)
+- [Browse 2000+ code examples →](/examples/introduction)

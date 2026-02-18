@@ -1,0 +1,254 @@
+# Build docs/examples to match cookbook 1:1
+
+## Objective
+
+Build and sync `docs/examples/` so every section maps 1:1 to the `cookbook/` directory structure. Each cookbook subdirectory becomes a collapsible group in the sidebar. **Every single `.py` file in every cookbook directory gets its own dedicated MDX page.** No skipping files, no combining multiple files into one page, no summarizing. If a cookbook directory has 20 `.py` files, that section gets 20 pages.
+
+NOTE: Always read the README in that section to help with the file order.
+
+## Overview page
+
+The examples/overview.mdx is the entrypoint to the examples documentation, we will update it separately.
+
+## Example: Quickstart Section
+
+Start with the Quickstart section, it maps `cookbook/00_quickstart/` that looks like this:
+
+**Cookbook files:**
+```
+cookbook/00_quickstart/
+  agent_with_tools.py
+  agent_with_structured_output.py
+  agent_with_storage.py
+  ...13 total .py files
+```
+
+1. Read the cookbook/00_quickstart/README.md identify file order.
+
+2. Update the **docs.json structure** to match (nested collapsible group):
+
+```json
+{
+  "group": "Examples",
+  "pages": [
+    "examples/overview",
+    {
+      "group": "Quickstart",
+      "pages": [
+        "examples/quickstart/overview",
+        "examples/quickstart/agent-with-tools",
+        "examples/quickstart/agent-with-structured-output",
+        "...1 page per .py file"
+      ]
+    }
+  ]
+}
+```
+
+3. Create MDX pages.
+
+**MDX page structure** (each page has the full Python code inlined):
+
+```mdx
+---
+title: Agent with Tools
+description: One-line description of the file.
+---
+
+Small intro paragraph.
+
+\```python
+<entire contents of cookbook/00_quickstart/agent_with_tools.py pasted here>
+\```
+
+## Run the Example
+
+\```bash
+# Clone and setup repo
+git clone https://github.com/agno-agi/agno.git
+cd agno/cookbook/00_quickstart
+
+# Create and activate virual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+# Optiona: Run PgVector (needs docker) [Add this only if needed]
+./cookbook/scripts/run_pgvector.sh
+
+# Export relevant API keys
+export GOOGLE_API_KEY="***"
+
+# Run the example
+python agent_with_tools.py
+\```
+```
+
+Note: don't forget the new lines/spaces in the `Run the Example` code
+
+### Sections that need restructuring
+
+#### 1. Quickstart (`cookbook/01_quickstart/`)
+
+#### 2. Agents (`cookbook/02_agents/`)
+
+#### 3. Teams (`cookbook/03_teams/`)
+
+#### 4. Workflows (`cookbook/04_workflows/`)
+
+#### 5. AgentOS (`cookbook/05_agent_os/`)
+
+#### 6. Storage (`cookbook/06_storage/`)
+
+#### 7. Knowledge (`cookbook/07_knowledge/`)
+
+#### 8. Learning (`cookbook/08_learning/`)
+
+#### 9. Evals (`cookbook/09_evals/`)
+
+#### 10. Reasoning (`cookbook/10_reasoning/`)
+
+#### 11. Memory (`cookbook/10_memory/`)
+
+#### 12. Models (`cookbook/90_memory/`)
+
+#### 13. Tools (`cookbook/91_tools/`)
+
+#### 14. Integrations (`cookbook/92_integrations/`)
+
+## Implementation Instructions
+
+For each section:
+
+### Step 1: Scan the cookbook directory
+
+```bash
+# List all .py files (excluding __init__.py)
+find cookbook/<section>/ -name "*.py" ! -name "__init__.py" | sort
+```
+
+**Every file must be considered to become a page. No exceptions.**
+
+### Step 2: Read the README in that folder
+
+### Step 3: Create MDX pages
+
+For each `.py` file that deserves to become a page, create an MDX page at the corresponding path under `docs/examples/`.
+
+**Naming convention:**
+- Cookbook: `cookbook/02_agents/04_tools/tool_choice.py`
+- MDX: `docs/examples/agents/tools/tool-choice.mdx`
+- Rule: Strip number prefixes from directories, convert underscores to hyphens.
+  - Preserve a leading underscore in filenames (e.g., `_agents.py` → `_agents.mdx`) so special script names remain unambiguous.
+
+**Page template:**
+```mdx
+---
+title: <Human readable title from the Python file's docstring or filename>
+description: <One-line description of the file.>
+---
+
+<Small intro paragraph from the docstring>
+
+\```python
+<FULL contents of the .py file, pasted inline>
+\```
+
+## Run the Example
+
+\```bash
+# Clone and setup repo
+git clone https://github.com/agno-agi/agno.git
+cd agno/cookbook/00_quickstart
+
+# Create and activate virual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+# Optiona: Run PgVector (needs docker) [Add this only if needed]
+./cookbook/scripts/run_pgvector.sh
+
+# Export relevant API keys
+export OPENAI_API_KEY="sk-***"
+
+# Run the example
+python agent_with_tools.py
+\```
+```
+
+Note: don't forget the new lines/spaces in the `Run the Example` code
+
+**CRITICAL: Inline all code.** Do NOT use external file references like `\```python cookbook/path/to/file.py`. Mintlify cannot fetch external files. Paste the entire Python file contents inline.
+
+### Step 4: Create overview pages
+
+Each collapsible group needs an overview page that lists all examples in a table:
+
+```mdx
+---
+title: <Section Name>
+sidebarTitle: Overview
+description: <Section description>
+---
+
+| Example | Description |
+|---------|-------------|
+| [Example Name](/examples/agents/tools/tool-choice) | What this example demonstrates |
+| ... | ... |
+
+```
+
+### Step 5: Update docs.json
+
+Use **nested collapsible groups** (the Quickstart pattern) for each subsection. Each cookbook subdirectory with multiple .py files becomes a collapsible group.
+
+```json
+{
+  "group": "Agents",
+  "pages": [
+    "examples/agents/overview",
+    {
+      "group": "Input & Output",
+      "pages": [
+        "examples/agents/input-output/overview",
+        "examples/agents/input-output/streaming",
+        "examples/agents/input-output/..."
+      ]
+    },
+    {
+      "group": "Tools",
+      "pages": [
+        "examples/agents/tools/overview",
+        "examples/agents/tools/tool-choice",
+        "examples/agents/tools/..."
+      ]
+    }
+  ]
+}
+```
+
+## Critical Rule
+
+**Every single `.py` file (excluding `__init__.py`) in every cookbook directory must be considered to have its own dedicated MDX page.** Do not skip files. Do not combine multiple files into one page. Do not summarize. The mapping is strictly 1:1: one cookbook `.py` file = one MDX page with the full code inlined.
+
+## Style Rules
+
+- No emojis
+- No "Learn how to..." intros - just state what it does
+- Code-first: lead with the code block, then key concepts table
+- Tables over prose
+- Keep descriptions under 1 line
+- Title should match the cookbook file's purpose, not the filename
+- Use the Python file's docstring for the description when available
+
+## Priority Order
+
+0. Quickstart (do now)
+1. Agents (biggest section, most subdirectories)
+2. Teams
+3. Workflows
+4. Knowledge
+5. Learning
+6. Storage
+7. Models (add missing providers)
+8. Tools
+9. Evals, Reasoning, Memory, Agent OS (currently just overviews)

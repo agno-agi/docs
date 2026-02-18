@@ -1,0 +1,58 @@
+---
+title: "Output Guardrail"
+description: "Validate and constrain agent output with guardrails."
+---
+Output Guardrail.
+
+```python
+"""
+Output Guardrail
+=============================
+
+Output Guardrail.
+"""
+
+from agno.agent import Agent
+from agno.exceptions import CheckTrigger, OutputCheckError
+from agno.models.openai import OpenAIResponses
+from agno.run.agent import RunOutput
+
+
+def enforce_non_empty_output(run_output: RunOutput) -> None:
+    """Reject empty or very short responses."""
+    content = (run_output.content or "").strip()
+    if len(content) < 20:
+        raise OutputCheckError(
+            "Output is too short to be useful.",
+            check_trigger=CheckTrigger.OUTPUT_NOT_ALLOWED,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Create Agent
+# ---------------------------------------------------------------------------
+agent = Agent(
+    name="Output-Checked Agent",
+    model=OpenAIResponses(id="gpt-5.2"),
+    post_hooks=[enforce_non_empty_output],
+)
+
+# ---------------------------------------------------------------------------
+# Run Agent
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    agent.print_response("Summarize the key ideas in clean architecture.", stream=True)
+```
+
+## Run the Example
+```bash
+# Clone and setup repo
+git clone https://github.com/agno-agi/agno.git
+cd agno/cookbook/02_agents/08_guardrails
+
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+python output_guardrail.py
+```

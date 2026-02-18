@@ -1,0 +1,144 @@
+---
+title: "Dash"
+sidebarTitle: "Overview"
+description: "Self-learning data agent that grounds answers in 6 layers of context."
+---
+
+**Dash is a self-learning data agent that gets better with every query.**
+
+Most Text-to-SQL agents are stateless. They make mistakes, you fix them, then they make the same mistake again because every session starts fresh. Dash fixes this by grounding its answers in 6 layers of context and learning from every run.
+
+Checkout the [repo](https://github.com/agno-agi/dash) for more details.
+
+## How It Works
+
+Dash retrieves relevant context at query time via hybrid search, generates grounded SQL, executes it, and delivers insights.
+
+### The Six Layers of Context
+
+| Layer | Purpose | Source |
+|-------|---------|--------|
+| **Table Usage** | Schema, columns, relationships | `knowledge/tables/*.json` |
+| **Human Annotations** | Metrics, definitions, business rules | `knowledge/business/*.json` |
+| **Query Patterns** | SQL that is known to work | `knowledge/queries/*.sql` |
+| **Institutional Knowledge** | Docs, wikis, external references | MCP (optional) |
+| **Learnings** | Error patterns and discovered fixes | Agno `LearningMachine` |
+| **Runtime Context** | Live schema changes | `introspect_schema` tool |
+
+### Self-Learning
+
+Dash improves without retraining or fine-tuning through two complementary systems:
+
+| System | Stores | How it evolves |
+|--------|--------|----------------|
+| **Knowledge** | Validated queries, table schemas, business rules | Curated by your team and refined by Dash |
+| **Learnings** | Error patterns, column quirks, team conventions | Managed automatically by the Learning Machine |
+
+When a query fails because `position` is TEXT and not INTEGER, Dash saves that. Next time, it knows. When your team is focused on IPO prep, Dash learns that "revenue" means ARR, not bookings, and that the board wants cohort retention broken out by enterprise vs SMB.
+
+### Insights, Not Just Rows
+
+Dash reasons about what makes an answer useful, not just technically correct.
+
+**Question:** Who won the most races in 2019?
+
+| Typical SQL Agent | Dash |
+|-------------------|------|
+| `Hamilton: 11` | Lewis Hamilton dominated 2019 with **11 wins out of 21 races**, more than double Bottas's 4 wins. This performance secured his sixth world championship. |
+
+## Run Locally
+
+```bash
+git clone https://github.com/agno-agi/dash.git && cd dash
+
+cp example.env .env
+# Edit .env and add your OPENAI_API_KEY
+
+docker compose up -d --build
+
+# Load sample data (F1 races 1950-2020) and knowledge base
+docker exec -it dash-api python -m dash.scripts.load_data
+docker exec -it dash-api python -m dash.scripts.load_knowledge
+```
+
+Confirm Dash is running at `http://localhost:8000/docs`.
+
+### Connect to the control plane
+
+1. Open [os.agno.com](https://os.agno.com) and sign in
+2. Click **Add OS** → **Local**
+3. Enter `http://localhost:8000`
+
+<Frame>
+  <video
+    autoPlay
+    muted
+    loop
+    controls
+    playsInline
+    style={{ borderRadius: "0.5rem", width: "100%", height: "auto" }}
+  >
+    <source src="/videos/dash-ui-demo.mp4" type="video/mp4" />
+  </video>
+</Frame>
+
+## Deploy to Railway
+
+```bash
+railway login
+./scripts/railway_up.sh
+```
+
+The script provisions PostgreSQL, configures environment variables, and deploys your application.
+
+Then load your data and knowledge in production:
+
+```bash
+railway run python -m dash.scripts.load_data
+railway run python -m dash.scripts.load_knowledge
+```
+
+Connect via the control plane:
+
+1. Open [os.agno.com](https://os.agno.com)
+2. Click **Add OS** → **Live**
+3. Enter your Railway domain
+
+## Example Prompts
+
+Try these on the sample F1 dataset:
+
+- Who won the most F1 World Championships?
+- How many races has Lewis Hamilton won?
+- Compare Ferrari vs Mercedes points 2015-2020
+
+## Adding Your Own Data
+
+Dash works best when it understands how your organization talks about data. The knowledge base lives in three directories:
+
+**`knowledge/tables/`** for table metadata: schema descriptions, column meanings, data quality notes.
+
+**`knowledge/queries/`** for validated SQL patterns that are known to work.
+
+**`knowledge/business/`** for metric definitions, business rules, and common gotchas.
+
+Load or update knowledge at any time:
+
+```bash
+python -m dash.scripts.load_knowledge            # upsert changes
+python -m dash.scripts.load_knowledge --recreate  # fresh start
+```
+
+## Run Evals
+
+Dash ships with an evaluation suite: string matching, LLM grading, and golden SQL comparison.
+
+```bash
+docker exec -it dash-api python -m dash.evals.run_evals         # string matching
+docker exec -it dash-api python -m dash.evals.run_evals -g      # LLM grader
+docker exec -it dash-api python -m dash.evals.run_evals -g -r   # both + golden SQL
+```
+
+## Source
+
+For architecture details, knowledge format reference, and local development setup, see the [GitHub repo](https://github.com/agno-agi/dash).

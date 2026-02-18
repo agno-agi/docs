@@ -1,0 +1,65 @@
+---
+title: "Arxiv Reader Async"
+description: "Run Arxiv Reader Async."
+---
+```python
+import asyncio
+
+from agno.agent import Agent
+from agno.knowledge.knowledge import Knowledge
+from agno.knowledge.reader.arxiv_reader import ArxivReader
+from agno.vectordb.pgvector import PgVector
+
+db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
+
+knowledge = Knowledge(
+    # Table name: ai.arxiv_documents
+    vector_db=PgVector(
+        table_name="arxiv_documents",
+        db_url=db_url,
+    ),
+)
+
+# Create an agent with the knowledge
+agent = Agent(
+    knowledge=knowledge,
+    search_knowledge=True,
+)
+
+
+def main():
+    # Load the knowledge
+    asyncio.run(
+        knowledge.ainsert(
+            topics=["Generative AI", "Machine Learning"],
+            reader=ArxivReader(),
+        )
+    )
+
+    # Create and use the agent
+    asyncio.run(
+        agent.aprint_response(
+            "What can you tell me about Generative AI?", markdown=True
+        )
+    )
+
+
+if __name__ == "__main__":
+    main()
+```
+
+## Run the Example
+```bash
+# Clone and setup repo
+git clone https://github.com/agno-agi/agno.git
+cd agno/cookbook/07_knowledge/readers
+
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+# Optiona: Run PgVector (needs docker)
+./cookbook/scripts/run_pgvector.sh
+
+python arxiv_reader_async.py
+```
