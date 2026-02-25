@@ -1,0 +1,183 @@
+---
+title: Error Handling HITL
+sidebarTitle: Error Handling
+description: Pause on step failures to let users retry or skip.
+keywords: [workflow, error, HITL, retry, skip, pause, exception]
+---
+
+Steps can pause when they encounter errors, letting users decide to retry or skip the failed step.
+
+## Error Pause Mode
+
+Set `on_error=OnError.pause` to pause when a step fails:
+
+```python
+from agno.workflow import Workflow, OnError
+from agno.workflow.step import Step
+from agno.workflow.types import StepInput, StepOutput
+from agno.db.sqlite import SqliteDb
+import random
+
+def unreliable_api_call(step_input: StepInput) -> StepOutput:
+    if random.random() < 0.7:  # 70% failure rate
+        raise Exception("API call failed: Connection timeout")
+    return StepOutput(content="API call succeeded")
+
+def process_data(step_input: StepInput) -> StepOutput:
+    return StepOutput(content=f"Processed: {step_input.previous_step_content}")
+
+workflow = Workflow(
+    name="api_workflow",
+    db=SqliteDb(db_file="workflow.db"),
+    steps=[
+        Step(
+            name="fetch_data",
+            executor=unreliable_api_call,
+            on_error=OnError.pause,
+        ),
+        Step(name="process", executor=process_data),
+    ],
+)
+
+run_output = workflow.run("Fetch and process")
+
+while run_output.is_paused:
+    for req in run_output.steps_with_errors:
+        print(f"Step '{req.step_name}' failed")
+        print(f"Error: {req.error_message}")
+        print(f"Retry count: {req.retry_count}")
+        
+        choice = input("Retry or skip? (r/s): ").lower()
+        if choice == "r":
+            req.retry()
+        else:
+            req.skip()
+    
+    run_output = workflow.continue_run(run_output)
+
+print(run_output.content)
+```
+
+## OnError Options
+
+| Value | Behavior |
+|-------|----------|
+| `OnError.fail` | Fail the workflow immediately (default) |
+| `OnError.skip` | Skip the step and continue |
+| `OnError.pause` | Pause for user decision (retry or skip) |
+
+## ErrorRequirement Properties
+
+When a step fails with `on_error=OnError.pause`, an `ErrorRequirement` is created:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `step_name` | `str` | Name of the failed step |
+| `error_message` | `str` | The exception message |
+| `error_type` | `str` | Exception class name (e.g., "ValueError") |
+| `retry_count` | `int` | Number of retry attempts so far |
+
+## ErrorRequirement Methods
+
+| Method | Description |
+|--------|-------------|
+| `req.retry()` | Retry the failed step |
+| `req.skip()` | Skip the step and continue |
+
+## Retry Behavior
+
+When you call `req.retry()`:
+1. The step executes again with the same input
+2. `retry_count` increments
+3. If it fails again, the workflow pauses again
+4. You can retry indefinitely or skip after some attempts
+
+```python
+for req in run_output.steps_with_errors:
+    if req.retry_count < 3:
+        print(f"Retrying (attempt {req.retry_count + 1}/3)")
+        req.retry()
+    else:
+        print("Max retries reached, skipping")
+        req.skip()
+```
+
+## Skip Behavior
+
+When you call `req.skip()`:
+1. The step is marked as skipped (not failed)
+2. The workflow continues with the next step
+3. `step_input.previous_step_content` will be `None` for the next step
+
+## Combining with Confirmation
+
+A step can have both error handling and confirmation:
+
+```python
+Step(
+    name="risky_operation",
+    executor=risky_function,
+    requires_confirmation=True,
+    confirmation_message="Execute risky operation?",
+    on_error=OnError.pause,
+)
+```
+
+The confirmation happens first. If confirmed and the step fails, the error pause activates.
+
+## Streaming
+
+Handle error HITL in streaming workflows:
+
+```python
+from agno.run.workflow import StepPausedEvent
+
+for event in workflow.run("input", stream=True, stream_events=True):
+    if isinstance(event, StepPausedEvent):
+        print(f"Paused at: {event.step_name}")
+
+session = workflow.get_session()
+run_output = session.runs[-1]
+
+while run_output.is_paused:
+    for req in run_output.steps_with_errors:
+        print(f"Error: {req.error_message}")
+        req.retry()  # or req.skip()
+    
+    for event in workflow.continue_run(run_output, stream=True, stream_events=True):
+        pass
+    
+    session = workflow.get_session()
+    run_output = session.runs[-1]
+```
+
+## Error Types
+
+Common error scenarios and handling:
+
+| Scenario | Recommended Action |
+|----------|-------------------|
+| Network timeout | Retry a few times, then skip |
+| Rate limit | Retry after delay |
+| Invalid input | Skip (retry won't help) |
+| Resource unavailable | Retry or skip based on criticality |
+
+```python
+for req in run_output.steps_with_errors:
+    if "timeout" in req.error_message.lower():
+        if req.retry_count < 3:
+            req.retry()
+        else:
+            req.skip()
+    elif "rate limit" in req.error_message.lower():
+        import time
+        time.sleep(5)  # Wait before retry
+        req.retry()
+    else:
+        req.skip()  # Unknown error, skip
+```
+
+## Developer Resources
+
+- [Workflow HITL overview](/workflows/hitl/overview)
+- [Step reference](/reference/workflows/step)

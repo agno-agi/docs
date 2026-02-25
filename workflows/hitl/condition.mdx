@@ -1,0 +1,149 @@
+---
+title: Condition HITL
+sidebarTitle: Condition
+description: Let users decide which branch to execute in conditional workflows.
+keywords: [workflow, condition, HITL, confirmation, branching, decision]
+---
+
+Conditions support confirmation HITL, allowing users to decide which branch to execute at runtime.
+
+## User-Controlled Branching
+
+When `requires_confirmation=True`, the condition pauses for user decision:
+- **Confirm**: Execute the `steps` branch (if branch)
+- **Reject**: Behavior depends on `on_reject` setting
+
+```python
+from agno.workflow import Workflow, OnReject
+from agno.workflow.condition import Condition
+from agno.workflow.step import Step
+from agno.workflow.types import StepInput, StepOutput
+from agno.db.sqlite import SqliteDb
+
+def detailed_analysis(step_input: StepInput) -> StepOutput:
+    return StepOutput(content="Detailed analysis: Full review completed")
+
+def quick_summary(step_input: StepInput) -> StepOutput:
+    return StepOutput(content="Quick summary: Key highlights identified")
+
+workflow = Workflow(
+    name="analysis_workflow",
+    db=SqliteDb(db_file="workflow.db"),
+    steps=[
+        Step(name="analyze", executor=analyze_data),
+        Condition(
+            name="analysis_depth",
+            steps=[Step(name="detailed", executor=detailed_analysis)],
+            else_steps=[Step(name="quick", executor=quick_summary)],
+            requires_confirmation=True,
+            confirmation_message="Perform detailed analysis?",
+            on_reject=OnReject.else_branch,
+        ),
+        Step(name="report", executor=generate_report),
+    ],
+)
+
+run_output = workflow.run("Analyze Q4 data")
+
+if run_output.is_paused:
+    for req in run_output.steps_requiring_confirmation:
+        print(f"Decision: {req.step_name}")
+        print(f"Message: {req.confirmation_message}")
+        
+        if input("Confirm? (y/n): ").lower() == "y":
+            req.confirm()
+            print("Executing 'if' branch")
+        else:
+            req.reject()
+            print("Executing 'else' branch")
+    
+    run_output = workflow.continue_run(run_output)
+
+print(run_output.content)
+```
+
+## Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `requires_confirmation` | `bool` | Pause for user decision |
+| `confirmation_message` | `str` | Message shown to the user |
+| `on_reject` | `OnReject` | Action when rejected |
+
+## OnReject Options
+
+| Value | Behavior |
+|-------|----------|
+| `OnReject.else_branch` | Execute `else_steps` (default) |
+| `OnReject.skip` | Skip the entire condition |
+| `OnReject.cancel` | Cancel the workflow |
+
+## Branch Execution
+
+| User Action | on_reject | Result |
+|-------------|-----------|--------|
+| Confirm | any | Execute `steps` |
+| Reject | `else_branch` | Execute `else_steps` |
+| Reject | `skip` | Skip condition, continue workflow |
+| Reject | `cancel` | Cancel workflow |
+
+## Without else_steps
+
+If no `else_steps` are defined and user rejects with `on_reject=OnReject.else_branch`, the condition is skipped:
+
+```python
+Condition(
+    name="optional_processing",
+    steps=[Step(name="process", executor=process)],
+    # No else_steps defined
+    requires_confirmation=True,
+    confirmation_message="Run optional processing?",
+    on_reject=OnReject.else_branch,  # Will skip if rejected
+)
+```
+
+## Combining with Evaluator
+
+When `requires_confirmation=True`, the `evaluator` is ignored. The user's decision takes precedence:
+
+```python
+Condition(
+    name="user_controlled",
+    # evaluator is ignored when requires_confirmation=True
+    steps=[Step(name="if_branch", ...)],
+    else_steps=[Step(name="else_branch", ...)],
+    requires_confirmation=True,
+    confirmation_message="Proceed with if branch?",
+)
+```
+
+## Streaming
+
+Handle condition HITL in streaming workflows:
+
+```python
+from agno.run.workflow import StepPausedEvent
+
+for event in workflow.run("input", stream=True, stream_events=True):
+    if isinstance(event, StepPausedEvent):
+        print(f"Paused at: {event.step_name}")
+
+session = workflow.get_session()
+run_output = session.runs[-1]
+
+while run_output.is_paused:
+    for req in run_output.steps_requiring_confirmation:
+        req.confirm()  # or req.reject()
+    
+    for event in workflow.continue_run(run_output, stream=True, stream_events=True):
+        pass
+    
+    session = workflow.get_session()
+    run_output = session.runs[-1]
+```
+
+## Developer Resources
+
+- [Workflow HITL overview](/workflows/hitl/overview)
+- [Condition reference](/reference/workflows/conditional-steps)
+- [Conditional workflow pattern](/workflows/workflow-patterns/conditional-workflow)

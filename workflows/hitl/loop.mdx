@@ -1,0 +1,125 @@
+---
+title: Loop HITL
+sidebarTitle: Loop
+description: Confirm before starting iterative execution in workflows.
+keywords: [workflow, loop, HITL, confirmation, iteration]
+---
+
+Loops support confirmation HITL, pausing before the first iteration to let users decide whether to start the loop.
+
+## Start Confirmation
+
+When `requires_confirmation=True`, the loop pauses before executing:
+- **Confirm**: Execute the loop iterations
+- **Reject**: Skip the entire loop
+
+```python
+from agno.workflow import Workflow
+from agno.workflow.loop import Loop
+from agno.workflow.step import Step
+from agno.workflow.types import StepInput, StepOutput
+from agno.db.sqlite import SqliteDb
+
+def refine_analysis(step_input: StepInput) -> StepOutput:
+    return StepOutput(content="Iteration complete: Quality improved")
+
+workflow = Workflow(
+    name="refinement_workflow",
+    db=SqliteDb(db_file="workflow.db"),
+    steps=[
+        Step(name="prepare", executor=prepare_data),
+        Loop(
+            name="refinement_loop",
+            steps=[Step(name="refine", executor=refine_analysis)],
+            max_iterations=5,
+            requires_confirmation=True,
+            confirmation_message="Start refinement loop? (up to 5 iterations)",
+        ),
+        Step(name="finalize", executor=finalize_results),
+    ],
+)
+
+run_output = workflow.run("Process data")
+
+if run_output.is_paused:
+    for req in run_output.steps_requiring_confirmation:
+        print(f"Loop: {req.step_name}")
+        print(f"Message: {req.confirmation_message}")
+        
+        if input("Start loop? (y/n): ").lower() == "y":
+            req.confirm()
+            print("Starting loop")
+        else:
+            req.reject()
+            print("Skipping loop")
+    
+    run_output = workflow.continue_run(run_output)
+
+print(run_output.content)
+```
+
+## Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `requires_confirmation` | `bool` | Pause before first iteration |
+| `confirmation_message` | `str` | Message shown to the user |
+| `on_reject` | `OnReject` | Action when rejected: `skip` (default), `cancel` |
+
+## Loop Behavior
+
+The confirmation happens once before the loop starts. Individual iterations do not pause for confirmation.
+
+| User Action | Result |
+|-------------|--------|
+| Confirm | Execute all iterations (up to `max_iterations` or until `should_continue` returns `False`) |
+| Reject | Skip the loop entirely |
+
+## With should_continue
+
+The `should_continue` function controls iteration. Confirmation happens before any iteration:
+
+```python
+def check_quality(step_input: StepInput, iteration: int) -> bool:
+    # Continue if quality threshold not met
+    return iteration < 3  # Example: max 3 iterations
+
+Loop(
+    name="quality_loop",
+    steps=[Step(name="improve", executor=improve_quality)],
+    should_continue=check_quality,
+    requires_confirmation=True,
+    confirmation_message="Start quality improvement loop?",
+)
+```
+
+## Streaming
+
+Handle loop HITL in streaming workflows:
+
+```python
+from agno.run.workflow import StepPausedEvent
+
+for event in workflow.run("input", stream=True, stream_events=True):
+    if isinstance(event, StepPausedEvent):
+        print(f"Paused at: {event.step_name}")
+
+session = workflow.get_session()
+run_output = session.runs[-1]
+
+while run_output.is_paused:
+    for req in run_output.steps_requiring_confirmation:
+        req.confirm()
+    
+    for event in workflow.continue_run(run_output, stream=True, stream_events=True):
+        pass
+    
+    session = workflow.get_session()
+    run_output = session.runs[-1]
+```
+
+## Developer Resources
+
+- [Workflow HITL overview](/workflows/hitl/overview)
+- [Loop reference](/reference/workflows/loop-steps)
+- [Iterative workflow pattern](/workflows/workflow-patterns/iterative-workflow)

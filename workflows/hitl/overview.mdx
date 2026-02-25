@@ -1,0 +1,289 @@
+---
+title: Human-in-the-Loop in Workflows
+sidebarTitle: Overview
+description: Pause workflow execution for user confirmation, input, or decisions at the step level.
+keywords: [workflow, HITL, human-in-the-loop, confirmation, user input, pause, step]
+mode: wide
+---
+
+Human-in-the-Loop (HITL) in Workflows enables you to pause execution at any step to collect user confirmation, input, or decisions. The workflow state is persisted, allowing you to resume execution after the user responds.
+
+<Note>
+User input is currently supported for `Step` (to collect parameters) and `Router` (to select routes). Other primitives (`Condition`, `Loop`, `Steps`) support confirmation only.
+</Note>
+
+<Warning>
+Agent tool-level HITL (e.g., `@tool(requires_confirmation=True)`) is **not** propagated to the workflow. If an agent inside a step has tool-level HITL, the workflow will continue but the paused tool may not execute. Use workflow-level HITL (`Step.requires_confirmation`) instead.
+</Warning>
+
+```python
+from agno.workflow import Workflow, OnReject
+from agno.workflow.step import Step
+from agno.db.sqlite import SqliteDb
+
+workflow = Workflow(
+    name="data_pipeline",
+    db=SqliteDb(db_file="workflow.db"),  # Required for HITL
+    steps=[
+        Step(name="fetch_data", agent=fetch_agent),
+        Step(
+            name="process_data",
+            agent=process_agent,
+            requires_confirmation=True,
+            confirmation_message="Process sensitive data?",
+            on_reject=OnReject.skip,
+        ),
+        Step(name="save_results", agent=save_agent),
+    ],
+)
+
+run_output = workflow.run("Process user data")
+
+if run_output.is_paused:
+    for req in run_output.steps_requiring_confirmation:
+        req.confirm()  # or req.reject()
+    run_output = workflow.continue_run(run_output)
+```
+
+## Requirements
+
+HITL workflows require a database to persist state between pauses:
+
+```python
+from agno.db.sqlite import SqliteDb
+from agno.db.postgres import PostgresDb
+
+# SQLite for development
+workflow = Workflow(db=SqliteDb(db_file="workflow.db"), ...)
+
+# PostgreSQL for production
+workflow = Workflow(db=PostgresDb(db_url="postgresql://..."), ...)
+```
+
+## HITL Types
+
+| Type | Use Case | Flag |
+|------|----------|------|
+| [Confirmation](#confirmation) | Approve/reject before step execution | `requires_confirmation=True` |
+| [User Input](#user-input) | Collect parameters before step execution | `requires_user_input=True` |
+| [Route Selection](#route-selection) | User chooses which path(s) to execute | **Router** with `requires_user_input=True` |
+| [Error Handling](#error-handling) | Retry or skip failed steps | `on_error=OnError.pause` |
+
+## Supported Primitives
+
+HITL is supported on all workflow primitives:
+
+| Primitive | Confirmation | User Input | Route Selection |
+|-----------|--------------|------------|-----------------|
+| [Step](/workflows/hitl/step) | ✓ | ✓ | - |
+| [Steps](/workflows/hitl/steps) | ✓ | - | - |
+| [Condition](/workflows/hitl/condition) | ✓ | - | - |
+| [Loop](/workflows/hitl/loop) | ✓ | - | - |
+| [Router](/workflows/hitl/router) | ✓ | - | ✓ |
+
+## Run Output Properties
+
+When a workflow pauses, check these properties on `WorkflowRunOutput`:
+
+| Property | Description |
+|----------|-------------|
+| `is_paused` | `True` if workflow is waiting for user action |
+| `steps_requiring_confirmation` | Steps needing confirm/reject |
+| `steps_requiring_user_input` | Steps needing user input values |
+| `steps_requiring_route` | Routers needing route selection |
+| `steps_with_errors` | Steps that failed with `on_error="pause"` |
+
+## Confirmation
+
+Pause before executing a step. User confirms to proceed or rejects to skip/cancel.
+
+```python
+Step(
+    name="delete_records",
+    agent=delete_agent,
+    requires_confirmation=True,
+    confirmation_message="Delete 1000 records?",
+    on_reject=OnReject.skip,  # cancel | skip (default)
+)
+```
+
+Handle in your code:
+
+```python
+for req in run_output.steps_requiring_confirmation:
+    print(req.confirmation_message)
+    if user_approves():
+        req.confirm()
+    else:
+        req.reject()
+```
+
+## User Input
+
+Collect parameters from the user before step execution.
+
+```python
+from agno.workflow.types import UserInputField
+
+Step(
+    name="generate_report",
+    agent=report_agent,
+    requires_user_input=True,
+    user_input_message="Configure report settings:",
+    user_input_schema=[
+        UserInputField(name="format", field_type="str", required=True),
+        UserInputField(name="include_charts", field_type="bool", required=False),
+    ],
+)
+```
+
+Handle in your code:
+
+```python
+for req in run_output.steps_requiring_user_input:
+    print(req.user_input_message)
+    for field in req.user_input_schema:
+        value = get_user_value(field.name, field.field_type)
+        req.set_user_input(**{field.name: value})
+```
+
+<Tip>
+User input is available in the custom function step via `step_input.additional_data["user_input"]`.
+</Tip>
+
+## Route Selection
+
+Let users choose which path(s) a Router executes.
+
+```python
+from agno.workflow.router import Router
+
+Router(
+    name="analysis_router",
+    choices=[
+        Step(name="quick_analysis", ...),
+        Step(name="deep_analysis", ...),
+    ],
+    requires_user_input=True,
+    user_input_message="Select analysis type:",
+    allow_multiple_selections=False,
+)
+```
+
+Handle in your code:
+
+```python
+for req in run_output.steps_requiring_route:
+    print(req.available_choices)  # ["quick_analysis", "deep_analysis"]
+    req.select("deep_analysis")
+    # or req.select_multiple(["quick_analysis", "deep_analysis"])
+```
+
+## Error Handling
+
+Pause when a step fails, letting the user retry or skip. 
+`This is only at the Step level.`
+
+```python
+from agno.workflow import OnError
+
+Step(
+    name="api_call",
+    executor=unreliable_function,
+    on_error=OnError.pause,  # fail | skip(default) | pause
+)
+```
+
+Handle in your code:
+
+```python
+for req in run_output.steps_with_errors:
+    print(f"Error: {req.error_message}")
+    if should_retry():
+        req.retry()
+    else:
+        req.skip()
+```
+
+## OnReject Behavior
+
+The `on_reject` parameter controls what happens when a user rejects a step:
+
+| Value | Behavior |
+|-------|----------|
+| `OnReject.skip` | Skip the step and continue with the next (default for most primitives) |
+| `OnReject.cancel` | Cancel the entire workflow |
+| `OnReject.else_branch` | For Condition only: execute `else_steps` (default for Condition) |
+
+## Streaming
+
+HITL works with streaming workflows. Check for pauses in the event stream:
+
+```python
+for event in workflow.run("input", stream=True, stream_events=True):
+    if isinstance(event, StepPausedEvent):
+        # Handle pause
+        pass
+
+session = workflow.get_session()
+run_output = session.runs[-1]
+
+if run_output.is_paused:
+    # Handle requirements
+    workflow.continue_run(run_output, stream=True, stream_events=True)
+```
+
+## The @pause Decorator
+
+Mark custom function steps with HITL configuration using the `@pause` decorator:
+
+```python
+from agno.workflow.decorators import pause
+from agno.workflow.types import UserInputField
+
+@pause(
+    requires_user_input=True,
+    user_input_message="Enter parameters:",
+    user_input_schema=[
+        UserInputField(name="threshold", field_type="float", required=True),
+    ],
+)
+def process_data(step_input: StepInput) -> StepOutput:
+    threshold = step_input.additional_data["user_input"]["threshold"]
+    return StepOutput(content=f"Processed with threshold {threshold}")
+
+# The decorator config is auto-detected when used in a custom function step
+Step(name="process", executor=process_data)
+```
+
+## Guides
+
+<CardGroup cols={3}>
+  <Card title="Step HITL" icon="pause" href="/workflows/hitl/step">
+    Confirmation and user input on individual steps
+  </Card>
+  <Card title="Router HITL" icon="route" href="/workflows/hitl/router">
+    User-driven route selection and confirmation
+  </Card>
+  <Card title="Condition HITL" icon="code-branch" href="/workflows/hitl/condition">
+    User-controlled branching decisions
+  </Card>
+  <Card title="Loop HITL" icon="rotate" href="/workflows/hitl/loop">
+    Confirm before starting iterative execution
+  </Card>
+  <Card title="Steps HITL" icon="layer-group" href="/workflows/hitl/steps">
+    Confirm before executing a pipeline
+  </Card>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/workflows/hitl/error-handling">
+    Retry or skip failed steps
+  </Card>
+</CardGroup>
+
+## Developer Resources
+
+- [Cookbooks](https://github.com/agno-agi/agno/tree/main/cookbook/04_workflows/_07_human_in_the_loop)
+- [Step reference](/reference/workflows/step)
+- [Router reference](/reference/workflows/router-steps)
+- [Condition reference](/reference/workflows/conditional-steps)
+- [Loop reference](/reference/workflows/loop-steps)
+- [Steps reference](/reference/workflows/steps-step)

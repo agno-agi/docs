@@ -1,0 +1,116 @@
+---
+title: Steps HITL
+sidebarTitle: Steps (Pipeline)
+description: Confirm before executing a pipeline of grouped steps.
+keywords: [workflow, steps, pipeline, HITL, confirmation]
+---
+
+The `Steps` component groups multiple steps into a pipeline. It supports confirmation HITL, pausing before the entire pipeline executes.
+
+## Pipeline Confirmation
+
+When `requires_confirmation=True`, the pipeline pauses before executing any of its steps:
+- **Confirm**: Execute all steps in the pipeline
+- **Reject**: Skip the entire pipeline
+
+```python
+from agno.workflow import Workflow
+from agno.workflow.step import Step
+from agno.workflow.steps import Steps
+from agno.workflow.types import StepInput, StepOutput
+from agno.db.sqlite import SqliteDb
+
+def validate_data(step_input: StepInput) -> StepOutput:
+    return StepOutput(content="Validation: Schema verified")
+
+def transform_data(step_input: StepInput) -> StepOutput:
+    return StepOutput(content="Transform: Data normalized")
+
+def enrich_data(step_input: StepInput) -> StepOutput:
+    return StepOutput(content="Enrichment: External data merged")
+
+workflow = Workflow(
+    name="data_pipeline",
+    db=SqliteDb(db_file="workflow.db"),
+    steps=[
+        Step(name="collect", executor=collect_data),
+        Steps(
+            name="advanced_processing",
+            steps=[
+                Step(name="validate", executor=validate_data),
+                Step(name="transform", executor=transform_data),
+                Step(name="enrich", executor=enrich_data),
+            ],
+            requires_confirmation=True,
+            confirmation_message="Run advanced processing pipeline?",
+        ),
+        Step(name="report", executor=generate_report),
+    ],
+)
+
+run_output = workflow.run("Process data")
+
+if run_output.is_paused:
+    for req in run_output.steps_requiring_confirmation:
+        print(f"Pipeline: {req.step_name}")
+        print(f"Message: {req.confirmation_message}")
+        
+        if input("Run pipeline? (y/n): ").lower() == "y":
+            req.confirm()
+            print("Executing pipeline")
+        else:
+            req.reject()
+            print("Skipping pipeline")
+    
+    run_output = workflow.continue_run(run_output)
+
+print(run_output.content)
+```
+
+## Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `requires_confirmation` | `bool` | Pause before executing the pipeline |
+| `confirmation_message` | `str` | Message shown to the user |
+| `on_reject` | `OnReject` | Action when rejected: `skip` (default), `cancel` |
+
+## Pipeline Behavior
+
+The confirmation happens once before the pipeline starts. Individual steps within the pipeline do not pause for confirmation (unless they have their own HITL configuration).
+
+| User Action | Result |
+|-------------|--------|
+| Confirm | Execute all steps in sequence |
+| Reject | Skip all steps in the pipeline |
+
+## Streaming
+
+Handle pipeline HITL in streaming workflows:
+
+```python
+from agno.run.workflow import StepPausedEvent
+
+for event in workflow.run("input", stream=True, stream_events=True):
+    if isinstance(event, StepPausedEvent):
+        print(f"Paused at: {event.step_name}")
+
+session = workflow.get_session()
+run_output = session.runs[-1]
+
+while run_output.is_paused:
+    for req in run_output.steps_requiring_confirmation:
+        req.confirm()
+    
+    for event in workflow.continue_run(run_output, stream=True, stream_events=True):
+        pass
+    
+    session = workflow.get_session()
+    run_output = session.runs[-1]
+```
+
+## Developer Resources
+
+- [Workflow HITL overview](/workflows/hitl/overview)
+- [Steps reference](/reference/workflows/steps-step)
+- [Grouped steps workflow pattern](/workflows/workflow-patterns/grouped-steps-workflow)
