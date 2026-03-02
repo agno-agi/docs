@@ -1,0 +1,182 @@
+---
+title: "AWS Reference"
+sidebarTitle: "Reference"
+description: "Manage, customize, and troubleshoot your AWS deployment."
+---
+
+## Manage
+
+| Task | Command |
+| :--- | :--- |
+| Deploy updates | `ag infra patch --env prd` |
+| Stop deployment | `ag infra down --env prd` |
+| Force rebuild | `ag infra up --env dev -f` |
+| Restart local | `ag infra up` |
+
+<Warning>
+  `ag infra down --env prd` removes all AWS resources, including the database. Back up your data first.
+</Warning>
+
+## Customize
+
+<AccordionGroup>
+  <Accordion title="Add an agent">
+
+  Create `agents/my_agent.py`:
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from db import get_postgres_db
+
+my_agent = Agent(
+    id="my-agent",
+    name="My Agent",
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=get_postgres_db(),
+    instructions="You are a helpful assistant.",
+)
+```
+
+Register in `app/main.py`:
+```python
+from agents.my_agent import my_agent
+
+agent_os = AgentOS(
+    name="AgentOS",
+    agents=[knowledge_agent, mcp_agent, my_agent],
+)
+```
+
+Restart locally:
+```bash
+ag infra up --env dev
+```
+
+  </Accordion>
+
+  <Accordion title="Add tools">
+
+  Agno includes 100+ tool integrations. See the [full list](/tools/overview).
+```python
+from agno.tools.slack import SlackTools
+from agno.tools.google_calendar import GoogleCalendarTools
+
+my_agent = Agent(
+    tools=[
+        SlackTools(),
+        GoogleCalendarTools(),
+    ],
+)
+```
+
+  </Accordion>
+
+  <Accordion title="Load knowledge">
+
+  Load documents for the Knowledge Agent:
+```bash
+# Local
+docker exec -it agentos-aws-template-api python -m agents.knowledge_agent
+```
+
+For production (ECS):
+```bash
+ECS_CLUSTER=agentos-aws-template-prd
+TASK_ARN=$(aws ecs list-tasks --cluster $ECS_CLUSTER --query "taskArns[0]" --output text)
+
+aws ecs execute-command --cluster $ECS_CLUSTER \
+  --task $TASK_ARN \
+  --container agentos-aws-template-prd-api \
+  --interactive \
+  --command "python -m agents.knowledge_agent"
+```
+
+  Try it:
+```
+What is Agno?
+How do I create my first agent?
+What documents are in your knowledge base?
+```
+
+  </Accordion>
+
+  <Accordion title="Use a different model">
+
+  Update your agent:
+```python
+from agno.models.anthropic import Claude
+
+my_agent = Agent(
+    model=Claude(id="claude-sonnet-4-5"),
+)
+```
+
+  Add the dependency to `pyproject.toml` and regenerate requirements:
+```bash
+./scripts/generate_requirements.sh
+ag infra up --env dev
+```
+
+  </Accordion>
+
+  <Accordion title="Add dependencies">
+
+1. Edit `pyproject.toml`
+2. Regenerate requirements: `./scripts/generate_requirements.sh`
+3. Rebuild: `ag infra up --env dev`
+
+To upgrade all libraries:
+```bash
+./scripts/generate_requirements.sh upgrade
+```
+
+  </Accordion>
+</AccordionGroup>
+
+## Local Development
+
+Run without Docker for faster iteration:
+```bash
+# Set up environment
+./scripts/venv_setup.sh
+source .venv/bin/activate
+
+# Start PostgreSQL (required)
+docker run -d --name agentos-db \
+  -e POSTGRES_USER=ai -e POSTGRES_PASSWORD=ai -e POSTGRES_DB=ai \
+  -p 5432:5432 pgvector/pgvector:pg17
+
+# Run AgentOS
+python -m app.main
+```
+
+## Environment Variables
+
+| Variable | Required | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `OPENAI_API_KEY` | Yes | — | OpenAI API key |
+| `PORT` | No | `8000` | API server port (set in `infra/dev_resources.py`) |
+| `DB_HOST` | No | `localhost` | Database host |
+| `DB_PORT` | No | `5432` | Database port |
+| `DB_USER` | No | `ai` | Database user |
+| `DB_PASS` | No | `ai` | Database password |
+| `DB_DATABASE` | No | `ai` | Database name |
+| `RUNTIME_ENV` | No | `prd` | Set to `dev` for auto-reload |
+| `WAIT_FOR_DB` | No | `True` | Wait for database before API startup |
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="AWS credentials error">
+    Reconfigure credentials with `aws configure`, then validate with `aws sts get-caller-identity`.
+  </Accordion>
+  <Accordion title="RDS connection timeout">
+    RDS can take about 5 minutes to become available. Check status in AWS Console (RDS → Databases).
+  </Accordion>
+  <Accordion title="ECS task failing">
+    Check CloudWatch logs for container startup errors, missing environment variables, or database connectivity issues.
+  </Accordion>
+  <Accordion title="Load Balancer returns 503">
+    The ECS service may still be starting. Wait 2-3 minutes for target health checks to pass.
+  </Accordion>
+</AccordionGroup>

@@ -1,0 +1,120 @@
+---
+title: Scheduler  
+description: "Create and manage cron schedules with the Scheduler SDK and AgentOS."
+---
+
+Use Scheduler to create cron jobs, execute AgentOS endpoints, and track run history.
+
+```bash
+pip install agno[scheduler]
+```
+
+```python
+from agno.db.sqlite import SqliteDb
+from agno.scheduler import ScheduleManager
+
+db = SqliteDb(id="scheduler-demo", db_file="tmp/scheduler.db")
+mgr = ScheduleManager(db)
+
+schedule = mgr.create(
+    name="weekday-report",
+    cron="0 9 * * 1-5",
+    endpoint="/agents/reporter/runs",
+    payload={"message": "Generate morning report"},
+    timezone="UTC",
+    max_retries=2,
+    retry_delay_seconds=30,
+)
+
+for s in mgr.list(enabled=True):
+    print(s.name, s.next_run_at)
+
+mgr.disable(schedule.id)
+```
+
+## Run with AgentOS
+
+Enable scheduler polling inside AgentOS:
+
+```python
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIChat
+from agno.os import AgentOS
+
+db = SqliteDb(id="os-db", db_file="tmp/os.db")
+
+greeter = Agent(
+    id="greeter",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    instructions=["Reply with a short greeting."],
+    db=db,
+)
+
+app = AgentOS(
+    agents=[greeter],
+    db=db,
+    scheduler=True,
+    scheduler_poll_interval=15,
+).get_app()
+```
+
+Create a schedule through the Scheduler API:
+
+```bash
+curl -X POST http://localhost:7777/schedules \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "greeting-every-5m",
+    "cron_expr": "*/5 * * * *",
+    "endpoint": "/agents/greeter/runs",
+    "method": "POST",
+    "payload": {"message": "Say hello"},
+    "timezone": "UTC",
+    "max_retries": 2,
+    "retry_delay_seconds": 30,
+    "timeout_seconds": 3600
+  }'
+```
+
+## Components
+
+| Component | Description |
+|---|---|
+| `ScheduleManager` | SDK API for create, list, update, enable, disable, delete, and run history |
+| `SchedulePoller` | Claims due schedules on an interval and executes them concurrently |
+| `ScheduleExecutor` | Calls schedule endpoints, handles retries, and writes run records |
+| Scheduler API | REST endpoints for schedule lifecycle and manual trigger |
+
+## Schedule Fields
+
+| Field | Default | Notes |
+|---|---|---|
+| `method` | `POST` | Allowed: `GET`, `POST`, `PUT`, `PATCH`, `DELETE` |
+| `timezone` | `UTC` | IANA timezone string |
+| `timeout_seconds` | `3600` | Request and polling timeout |
+| `max_retries` | `0` | Retries after first failure |
+| `retry_delay_seconds` | `60` | Delay between retry attempts |
+
+## Behavior
+
+| Topic | Behavior |
+|---|---|
+| Cron format | Standard 5-field syntax: minute hour day-of-month month day-of-week |
+| Endpoint format | Endpoint must be a path like `/agents/greeter/runs` |
+| Validation | Invalid cron or timezone raises `ValueError` in SDK and `422` in API |
+| Duplicate name | `ScheduleManager.create()` supports `if_exists="raise"`, `"skip"`, or `"update"` |
+| Triggering | Use `POST /schedules/{id}/trigger` or `SchedulePoller.trigger()` |
+| Run history | Each run stores status, attempt, timings, error, input, output, and requirements |
+
+
+## Next Steps
+
+| Task | Guide |
+|---|---|
+| View schedules in AgentOS | [os.agno.com/schedules](https://os.agno.com/schedules) |
+| Deploy cron jobs for agents, workflows | [AgentOS Scheduler](/agent-os/scheduler/overview) |
+| Manage schedule lifecycle | [Schedule Management](/examples/agent-os/scheduler/schedule-management) |
+| Validate cron and timezone inputs | [Schedule Validation](/examples/agent-os/scheduler/schedule-validation) |
+| Inspect run records | [Run History](/examples/agent-os/scheduler/run-history) |
+| Check API request and response schemas | [Schedule API schemas](/reference-api/schema/schedules/create-schedule) |

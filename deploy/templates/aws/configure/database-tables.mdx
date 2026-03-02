@@ -54,7 +54,7 @@ from db.tables.user import UsersTable
 Run the alembic command to create a database migration in the dev container:
 
 ```bash
-docker exec -it ai-api alembic -c db/alembic.ini revision --autogenerate -m "Initialize DB"
+docker exec -it {infra_name}-api alembic -c db/alembic.ini revision --autogenerate -m "Initialize DB"
 ```
 
 ## Migrate dev database
@@ -62,7 +62,7 @@ docker exec -it ai-api alembic -c db/alembic.ini revision --autogenerate -m "Ini
 Run the alembic command to migrate the dev database:
 
 ```bash
-docker exec -it ai-api alembic -c db/alembic.ini upgrade head
+docker exec -it {infra_name}-api alembic -c db/alembic.ini upgrade head
 ```
 
 ### Optional: Add test user
@@ -107,24 +107,21 @@ if __name__ == "__main__":
 Run the script to add a test adding a user:
 
 ```bash
-docker exec -it ai-api python db/tables/test_add_user.py
+docker exec -it {infra_name}-api python db/tables/test_add_user.py
 ```
 
 ## Migrate production database
 
 We recommended migrating the production database by setting the environment variable `MIGRATE_DB = True` and restarting the production service. This runs `alembic -c db/alembic.ini upgrade head` from the entrypoint script at container startup.
 
-### Update the `workspace/prd_resources.py` file
+### Update `infra/prd_resources.py`
 
-```python workspace/prd_resources.py
-...
-# -*- Build container environment
+```python infra/prd_resources.py
 container_env = {
     ...
     # Migrate database on startup using alembic
-    "MIGRATE_DB": ws_settings.prd_db_enabled,
+    "MIGRATE_DB": True,
 }
-...
 ```
 
 ### Update the ECS Task Definition
@@ -133,12 +130,12 @@ Because we updated the Environment Variables, we need to update the Task Definit
 
 <CodeGroup>
 
-```bash terminal
+```bash Full Options
 ag infra patch --env prd --infra aws --name td
 ```
 
-```bash shorthand
-ag infra patch -e prd -i aws -n td
+```bash Shorthand
+ag infra patch prd:aws::td
 ```
 
 </CodeGroup>
@@ -149,12 +146,12 @@ After updating the task definition, redeploy the production application:
 
 <CodeGroup>
 
-```bash terminal
+```bash Full Options
 ag infra patch --env prd --infra aws --name service
 ```
 
-```bash shorthand
-ag infra patch -e prd -i aws -n service
+```bash Shorthand
+ag infra patch prd:aws::service
 ```
 
 </CodeGroup>
@@ -164,9 +161,9 @@ ag infra patch -e prd -i aws -n service
 Another approach is to SSH into the production container to run the migration manually. Your ECS tasks are already enabled with SSH access. Run the alembic command to migrate the production database:
 
 ```bash
-ECS_CLUSTER=ai-app-prd-cluster
-TASK_ARN=$(aws ecs list-tasks --cluster ai-app-prd-cluster --query "taskArns[0]" --output text)
-CONTAINER_NAME=ai-api-prd
+ECS_CLUSTER={infra_name}-prd
+TASK_ARN=$(aws ecs list-tasks --cluster $ECS_CLUSTER --query "taskArns[0]" --output text)
+CONTAINER_NAME={infra_name}-prd-api
 
 aws ecs execute-command --cluster $ECS_CLUSTER \
     --task $TASK_ARN \
@@ -188,7 +185,7 @@ These commands have been run and are described for completeness
 The migrations directory was created using:
 
 ```bash
-docker exec -it ai-api cd db && alembic init migrations
+docker exec -it {infra_name}-api sh -c "cd db && alembic init migrations"
 ```
 
 - After running the above command, the `db/migrations` directory should be created.
