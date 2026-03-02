@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Agno API Reference
   description: 'The all-in-one, private, secure agent platform that runs in your cloud.'
-  version: 2.5.4
+  version: 2.5.5
 paths:
   /:
     get:
@@ -1523,7 +1523,7 @@ paths:
         - Slack
       summary: Slack Events
       description: Process incoming Slack events
-      operationId: slack_events_agent
+      operationId: slack_events_simple_team
       responses:
         '200':
           description: Event processed successfully
@@ -1533,7 +1533,7 @@ paths:
                 anyOf:
                   - $ref: '#/components/schemas/SlackChallengeResponse'
                   - $ref: '#/components/schemas/SlackEventResponse'
-                title: Response Slack Events Agent
+                title: Response Slack Events Simple Team
         '400':
           description: Missing Slack headers
         '403':
@@ -6346,6 +6346,60 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+  /traces/filter-schema:
+    get:
+      tags:
+        - Traces
+        - Traces
+      summary: Get Trace Filter Schema
+      description: |-
+        Returns the available filterable fields, their types, valid operators, and enum values.
+
+        The frontend uses this to dynamically build the filter bar UI:
+        - Field dropdown populated from `fields[].key`
+        - Operator dropdown changes per field type
+        - Value input shows autocomplete for enum fields (e.g., status)
+        - Logical operators (AND, OR) for combining clauses
+      operationId: get_traces_filter_schema
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FilterSchemaResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+      security:
+        - HTTPBearer: []
   '/traces/{trace_id}':
     get:
       tags:
@@ -6662,6 +6716,107 @@ paths:
                 $ref: '#/components/schemas/ValidationErrorResponse'
         '500':
           description: Failed to retrieve statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+  /traces/search:
+    post:
+      tags:
+        - Traces
+        - Traces
+      summary: Search Traces with Advanced Filters
+      description: |-
+        Search traces using the FilterExpr DSL for complex, composable queries.
+
+        **Group By Mode:**
+        - `run` (default): Returns `PaginatedResponse[TraceDetail]` with full span trees
+        - `session`: Returns `PaginatedResponse[TraceSessionStats]` with aggregated session stats
+
+        **Supported Operators:**
+        - Comparison: `EQ`, `NEQ`, `GT`, `GTE`, `LT`, `LTE`
+        - Inclusion: `IN`
+        - String matching: `CONTAINS` (case-insensitive substring), `STARTSWITH` (prefix)
+        - Logical: `AND`, `OR`, `NOT`
+
+        **Filterable Fields:**
+        trace_id, name, status, start_time, end_time, duration_ms, run_id, session_id, user_id, agent_id, team_id, workflow_id, created_at
+
+        **Example Request Body (runs):**
+        ```json
+        {
+          "filter": {"op": "EQ", "key": "status", "value": "OK"},
+          "group_by": "run",
+          "page": 1,
+          "limit": 20
+        }
+        ```
+
+        **Example Request Body (sessions):**
+        ```json
+        {
+          "filter": {"op": "CONTAINS", "key": "agent_id", "value": "stock"},
+          "group_by": "session",
+          "page": 1,
+          "limit": 20
+        }
+        ```
+      operationId: search_traces
+      security:
+        - HTTPBearer: []
+      parameters:
+        - name: db_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Database ID to query traces from
+            title: Db Id
+          description: Database ID to query traces from
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TraceSearchRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/PaginatedResponse_TraceDetail_'
+                  - $ref: '#/components/schemas/PaginatedResponse_TraceSessionStats_'
+                title: Response Search Traces
+        '400':
+          description: Invalid filter expression
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
           content:
             application/json:
               schema:
@@ -10272,6 +10427,64 @@ components:
         - uri
       title: FileWithUri
       description: Represents a file with its content located at a specific URI.
+    FilterFieldSchema:
+      properties:
+        key:
+          type: string
+          title: Key
+          description: Column/field name used in filter expressions
+        label:
+          type: string
+          title: Label
+          description: Human-readable display label for the UI
+        type:
+          type: string
+          title: Type
+          description: 'Field data type: string, number, datetime, enum'
+        operators:
+          items:
+            type: string
+          type: array
+          title: Operators
+          description: List of valid filter operators for this field
+        values:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: 'null'
+          title: Values
+          description: Allowed enum values (for autocomplete/dropdown)
+      type: object
+      required:
+        - key
+        - label
+        - type
+        - operators
+      title: FilterFieldSchema
+      description: Schema describing a single filterable field for the frontend filter bar.
+    FilterSchemaResponse:
+      properties:
+        fields:
+          items:
+            $ref: '#/components/schemas/FilterFieldSchema'
+          type: array
+          title: Fields
+          description: Available filterable fields
+        logical_operators:
+          items:
+            type: string
+          type: array
+          title: Logical Operators
+          description: Logical operators for combining filter clauses
+          default:
+            - AND
+            - OR
+      type: object
+      required:
+        - fields
+      title: FilterSchemaResponse
+      description: 'Response for the filter schema endpoint. Tells the FE what fields, operators, and values are available.'
     FunctionCall:
       properties:
         name:
@@ -10836,6 +11049,22 @@ components:
         - data
         - meta
       title: 'PaginatedResponse[SessionSchema]'
+    PaginatedResponse_TraceDetail_:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/TraceDetail'
+          type: array
+          title: Data
+          description: List of items for the current page
+        meta:
+          $ref: '#/components/schemas/PaginationInfo'
+          description: Pagination metadata
+      type: object
+      required:
+        - data
+        - meta
+      title: 'PaginatedResponse[TraceDetail]'
     PaginatedResponse_TraceSessionStats_:
       properties:
         data:
@@ -11018,6 +11247,11 @@ components:
           title: Name
         type:
           $ref: '#/components/schemas/RegistryResourceType'
+        id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Id
         description:
           anyOf:
             - type: string
@@ -11043,6 +11277,8 @@ components:
         - vector_db
         - schema
         - function
+        - agent
+        - team
       title: RegistryResourceType
       description: Types of resources that can be stored in a registry.
     RemoteContentSourceSchema:
@@ -11744,17 +11980,14 @@ components:
       required:
         - challenge
       title: SlackChallengeResponse
-      description: Response model for Slack URL verification challenge
     SlackEventResponse:
       properties:
         status:
           type: string
           title: Status
-          description: Processing status
           default: ok
       type: object
       title: SlackEventResponse
-      description: Response model for Slack event processing
     SortOrder:
       type: string
       enum:
@@ -12721,6 +12954,68 @@ components:
         - status
       title: TraceNode
       description: Recursive node structure for rendering trace hierarchy in the frontend
+    TraceSearchGroupBy:
+      type: string
+      enum:
+        - run
+        - session
+      title: TraceSearchGroupBy
+      description: Grouping options for trace search results.
+    TraceSearchRequest:
+      properties:
+        filter:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Filter
+          description: 'FilterExpr DSL as JSON dict. Supports operators: EQ, NEQ, GT, GTE, LT, LTE, IN, CONTAINS, STARTSWITH, AND, OR, NOT.'
+        group_by:
+          $ref: '#/components/schemas/TraceSearchGroupBy'
+          description: 'Grouping mode: ''run'' returns individual TraceDetail, ''session'' returns aggregated TraceSessionStats.'
+          default: run
+        page:
+          type: integer
+          minimum: 1
+          title: Page
+          description: Page number (1-indexed)
+          default: 1
+        limit:
+          type: integer
+          maximum: 100
+          minimum: 1
+          title: Limit
+          description: Number of traces per page (max 100)
+          default: 20
+      type: object
+      title: TraceSearchRequest
+      description: |-
+        Request body for POST /traces/search with advanced filtering.
+
+        The filter field accepts a FilterExpr DSL dict supporting composable queries
+        with AND/OR/NOT logic and operators like EQ, NEQ, GT, GTE, LT, LTE, IN, CONTAINS, STARTSWITH.
+
+        Example for run grouping (default):
+            {
+                "filter": {
+                    "op": "AND",
+                    "conditions": [
+                        {"op": "EQ", "key": "status", "value": "OK"},
+                        {"op": "CONTAINS", "key": "user_id", "value": "admin"}
+                    ]
+                },
+                "group_by": "run",
+                "page": 1,
+                "limit": 20
+            }
+
+        Example for session grouping:
+            {
+                "filter": {"op": "EQ", "key": "agent_id", "value": "my-agent"},
+                "group_by": "session",
+                "page": 1,
+                "limit": 20
+            }
     TraceSessionStats:
       properties:
         session_id:
