@@ -21,6 +21,7 @@ The `TeamRunOutput` class represents the response from a team run, containing bo
 | `team_name` | `str` | `None` | Name of the team |
 | `session_id` | `str` | `None` | Session Id for the run |
 | `parent_run_id` | `str` | `None` | Parent run ID if this is a nested run |
+| `user_id` | `str` | `None` | User Id for the run |
 | `tools` | `List[ToolExecution]` | `None` | List of tools provided to the model |
 | `images` | `List[Image]` | `None` | List of images from member runs |
 | `videos` | `List[Video]` | `None` | List of videos from member runs |
@@ -32,6 +33,7 @@ The `TeamRunOutput` class represents the response from a team run, containing bo
 | `citations` | `Citations` | `None` | Any citations used in the response |
 | `model_provider_data` | `Any` | `None` | Model provider specific metadata|
 | `metadata` | `Dict[str, Any]` | `None` | Additional metadata for the run |
+| `session_state` | `Dict[str, Any]` | `None` | Session state for the run |
 | `references` | `List[MessageReferences]` | `None` | Message references |
 | `additional_input` | `List[Message]` | `None` | Additional input messages |
 | `reasoning_steps` | `List[ReasoningStep]` | `None` | Reasoning steps taken during execution |
@@ -39,6 +41,7 @@ The `TeamRunOutput` class represents the response from a team run, containing bo
 | `created_at` | `int` | Current timestamp | Unix timestamp of the response creation |
 | `events` | `List[Union[RunOutputEvent, TeamRunOutputEvent]]` | `None` | List of events that occurred during the run |
 | `status` | `RunStatus` | `RunStatus.running` | Current status of the run |
+| `requirements` | `List[RunRequirement]` | `None` | HITL requirements to continue a paused run |
 | `workflow_step_id` | `str` | `None` | FK: Points to StepOutput.step_id |
 
 ## TeamRunOutputEvent Types
@@ -56,6 +59,8 @@ The following events are sent by the `Team.run()` function depending on the team
 | `TeamRunCompleted` | Signals successful completion of the team run |
 | `TeamRunError` | Indicates an error occurred during the team run |
 | `TeamRunCancelled` | Signals that the team run was cancelled |
+| `TeamRunPaused` | Indicates that the team run is paused for HITL requirements |
+| `TeamRunContinued` | Indicates that a paused team run has continued |
 
 ### Pre-Hook Events
 
@@ -77,6 +82,7 @@ The following events are sent by the `Team.run()` function depending on the team
 |------------|-------------|
 | `TeamToolCallStarted` | Indicates the start of a tool call |
 | `TeamToolCallCompleted` | Signals completion of a tool call, including tool call results |
+| `TeamToolCallError` | Indicates a tool call error |
 
 ### Reasoning Events
 
@@ -84,6 +90,7 @@ The following events are sent by the `Team.run()` function depending on the team
 |------------|-------------|
 | `TeamReasoningStarted` | Indicates the start of the team's reasoning process |
 | `TeamReasoningStep` | Contains a single step in the reasoning process |
+| `TeamReasoningContentDelta` | Streams reasoning content chunks |
 | `TeamReasoningCompleted` | Signals completion of the reasoning process |
 
 ### Memory Events
@@ -100,6 +107,40 @@ The following events are sent by the `Team.run()` function depending on the team
 | `TeamSessionSummaryStarted` | Indicates the start of session summary generation |
 | `TeamSessionSummaryCompleted` | Signals completion of session summary generation |
 
+### Parser Model Events
+
+| Event Type | Description |
+|------------|-------------|
+| `TeamParserModelResponseStarted` | Indicates the start of parser model response |
+| `TeamParserModelResponseCompleted` | Signals completion of parser model response |
+
+### Output Model Events
+
+| Event Type | Description |
+|------------|-------------|
+| `TeamOutputModelResponseStarted` | Indicates the start of output model response |
+| `TeamOutputModelResponseCompleted` | Signals completion of output model response |
+
+### Model Request Events
+
+| Event Type | Description |
+|------------|-------------|
+| `TeamModelRequestStarted` | Indicates the start of a model request |
+| `TeamModelRequestCompleted` | Signals completion of a model request |
+
+### Compression Events
+
+| Event Type | Description |
+|------------|-------------|
+| `TeamCompressionStarted` | Indicates the start of tool result compression |
+| `TeamCompressionCompleted` | Signals completion of tool result compression |
+
+### Custom Events
+
+| Event Type | Description |
+|------------|-------------|
+| `CustomEvent` | Custom event emitted by the team |
+
 ## Event Attributes
 
 ### Base TeamRunOutputEvent
@@ -113,6 +154,7 @@ All events inherit from `BaseTeamRunEvent` which provides these common attribute
 | `team_id` | `str` | `""` | ID of the team generating the event |
 | `team_name` | `str` | `""` | Name of the team generating the event |
 | `run_id` | `Optional[str]` | `None` | ID of the current run |
+| `parent_run_id` | `Optional[str]` | `None` | Parent run ID if this is a nested run |
 | `session_id` | `Optional[str]` | `None` | ID of the current session |
 | `workflow_id` | `Optional[str]` | `None` | ID of the workflow |
 | `workflow_run_id` | `Optional[str]` | `None` | ID of the workflow's run |
@@ -188,6 +230,9 @@ All events inherit from `BaseTeamRunEvent` which provides these common attribute
 |-----------|------|---------|-------------|
 | `event` | `str` | `"TeamRunError"` | Event type |
 | `content` | `Optional[str]` | `None` | Error message |
+| `error_type` | `Optional[str]` | `None` | Error type |
+| `error_id` | `Optional[str]` | `None` | Error identifier |
+| `additional_data` | `Optional[Dict[str, Any]]` | `None` | Additional error data |
 
 ### RunCancelledEvent
 
@@ -195,6 +240,20 @@ All events inherit from `BaseTeamRunEvent` which provides these common attribute
 |-----------|------|---------|-------------|
 | `event` | `str` | `"TeamRunCancelled"` | Event type |
 | `reason` | `Optional[str]` | `None` | Reason for cancellation |
+
+### RunPausedEvent
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `event` | `str` | `"TeamRunPaused"` | Event type |
+| `tools` | `Optional[List[ToolExecution]]` | `None` | Tool executions for pending requirements |
+| `requirements` | `Optional[List[RunRequirement]]` | `None` | HITL requirements for the run |
+
+### RunContinuedEvent
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `event` | `str` | `"TeamRunContinued"` | Event type |
 
 ### PreHookStartedEvent
 
@@ -244,6 +303,14 @@ All events inherit from `BaseTeamRunEvent` which provides these common attribute
 | `videos` | `Optional[List[Video]]` | `None` | Videos produced by the tool |
 | `audio` | `Optional[List[Audio]]` | `None` | Audio produced by the tool |
 
+### ToolCallErrorEvent
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `event` | `str` | `"TeamToolCallError"` | Event type |
+| `tool` | `Optional[ToolExecution]` | `None` | The tool that failed |
+| `error` | `Optional[str]` | `None` | Error message |
+
 ### ReasoningStartedEvent
 
 | Attribute | Type | Default | Description |
@@ -259,6 +326,13 @@ All events inherit from `BaseTeamRunEvent` which provides these common attribute
 | `content` | `Optional[Any]` | `None` | Content of the reasoning step |
 | `content_type` | `str` | `"str"` | Type of the content |
 | `reasoning_content` | `str` | `""` | Detailed reasoning content |
+
+### ReasoningContentDeltaEvent
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `event` | `str` | `"TeamReasoningContentDelta"` | Event type |
+| `reasoning_content` | `str` | `""` | Reasoning content chunk |
 
 ### ReasoningCompletedEvent
 
@@ -279,6 +353,7 @@ All events inherit from `BaseTeamRunEvent` which provides these common attribute
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `event` | `str` | `"TeamMemoryUpdateCompleted"` | Event type |
+| `memories` | `Optional[List[Any]]` | `None` | Memories updated by the run |
 
 ### SessionSummaryStartedEvent
 
@@ -316,6 +391,44 @@ All events inherit from `BaseTeamRunEvent` which provides these common attribute
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `event` | `str` | `"TeamOutputModelResponseCompleted"` | Event type |
+
+### ModelRequestStartedEvent
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `event` | `str` | `"TeamModelRequestStarted"` | Event type |
+| `model` | `Optional[str]` | `None` | Model identifier |
+| `model_provider` | `Optional[str]` | `None` | Model provider |
+
+### ModelRequestCompletedEvent
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `event` | `str` | `"TeamModelRequestCompleted"` | Event type |
+| `model` | `Optional[str]` | `None` | Model identifier |
+| `model_provider` | `Optional[str]` | `None` | Model provider |
+| `input_tokens` | `Optional[int]` | `None` | Input token count |
+| `output_tokens` | `Optional[int]` | `None` | Output token count |
+| `total_tokens` | `Optional[int]` | `None` | Total token count |
+| `time_to_first_token` | `Optional[float]` | `None` | Time to first token in seconds |
+| `reasoning_tokens` | `Optional[int]` | `None` | Reasoning token count |
+| `cache_read_tokens` | `Optional[int]` | `None` | Cache read token count |
+| `cache_write_tokens` | `Optional[int]` | `None` | Cache write token count |
+
+### CompressionStartedEvent
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `event` | `str` | `"TeamCompressionStarted"` | Event type |
+
+### CompressionCompletedEvent
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `event` | `str` | `"TeamCompressionCompleted"` | Event type |
+| `tool_results_compressed` | `Optional[int]` | `None` | Number of compressed tool results |
+| `original_size` | `Optional[int]` | `None` | Original size in bytes |
+| `compressed_size` | `Optional[int]` | `None` | Compressed size in bytes |
 
 ### CustomEvent
 

@@ -53,6 +53,8 @@ team = Team(
 )
 ```
 
+<Snippet file="team-snippet.mdx" />
+
 Tasks mode runs an iterative task loop. Use `max_iterations` to cap how many cycles the leader can run.
 
 ```python
@@ -66,10 +68,6 @@ team = Team(
     max_iterations=6
 )
 ```
-
-## Callable Factories
-
-You can define members, tools, or knowledge as callables that are resolved at runtime with access to the run context.
 
 ## Team Members
 
@@ -150,6 +148,45 @@ team = Team(
     members=[agent_with_model, agent_without_model]
 )
 ```
+
+## Callable Factories
+
+Build dynamically configurable teams with [Callable Factories](/teams/overview#callable-factories). 
+
+Agno framework supports the Callable Factory Pattern for Team configurations just as it does for individual Agents. This allows you to dynamically resolve team members, tools, and knowledge at runtime based on the specific session or user context.
+
+You can pass a function to the `members`, `tools`, or `knowledge` parameters of a Team. The framework uses signature inspection to inject the team instance and `run_context`.
+
+```python
+from agno.team import Team
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+
+def get_team_members(team: Team, run_context: any):
+    """
+    Dynamic member factory: 
+    Only include the 'Analyst' if the user is a premium user.
+    """
+    members = [Agent(name="Generalist", model=OpenAIChat(id="gpt-5"))]
+    
+    # Logic based on session/user metadata
+    if run_context.user_id == "premium_user_123":
+        members.append(Agent(name="Analyst", role="High-level data insights"))
+        
+    return members
+
+# Initialize team with the factory function
+agent_team = Team(
+    name="Dynamic Team",
+    members=get_team_members,  # Callable factory
+    show_tool_calls=True,
+    cache_callables=True       # Optional: Cache the result for the session
+)
+```
+
+### Callable Caching Settings
+
+<Snippet file="concept-callable-factories-caching.mdx" />
 
 ## Team Features
 

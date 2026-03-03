@@ -1,5 +1,13 @@
 # Agno Docs
 
+Agno documentation site built with Mintlify.
+
+## Quickstart
+
+1. Install the Mintlify CLI: `npm i -g mint`
+2. From the repo root (the folder with `docs.json`), run `mint dev`
+3. Open the local site at `http://localhost:3000`
+
 ## Contributing
 
 We welcome contributions to improve the Agno documentation! Please read our [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines on:
@@ -11,7 +19,7 @@ We welcome contributions to improve the Agno documentation! Please read our [CON
 
 ## Development
 
-Install the [Mintlify CLI](https://www.npmjs.com/package/mintlify) to run documentation site locally:
+Install the [Mintlify CLI](https://www.npmjs.com/package/mintlify) to run the documentation site locally:
 
 ```
 npm i -g mint
@@ -25,7 +33,7 @@ mint dev
 
 ## Publishing Changes
 
-Publish changes by pushing to the main branch
+Publish changes by pushing to the main branch via a PR.
 
 ```
 git add .

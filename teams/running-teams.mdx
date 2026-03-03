@@ -48,9 +48,15 @@ When you call `run()`:
 7. **Post-hooks execute** (if configured)
 8. **Session and metrics are stored** (if database configured)
 
+[Callable factories](./overview#callable-factories) are resolved after session state is loaded, so factories can access `run_context` and `session_state`. Async factories require `arun()` or `aprint_response()`.
+
+<Snippet file="team-execution-style.mdx" />
+
 In `TeamMode.tasks`, the leader uses task management tools to build and execute a shared task list, looping until the goal is complete or `max_iterations` is reached.
 
 Teams can pause for human-in-the-loop requirements (e.g., approvals or user input). When a run requires confirmation, the run returns with pending requirements so you can collect input or resolve approvals before continuing.
+Paused runs return `status=RunStatus.paused` and `requirements` on the `TeamRunOutput`.
+Human oversight is a control path. Runs can pause for confirmation or external execution and resume when requirements are resolved.
 
 <Accordion title="Execution Flow Diagram">
 <img
@@ -94,6 +100,10 @@ stream = team.run(
 for event in stream:
     if event.event == TeamRunEvent.run_content:
         print(event.content, end="", flush=True)
+    elif event.event == TeamRunEvent.run_paused:
+        print("Run paused")
+    elif event.event == TeamRunEvent.run_continued:
+        print("Run continued")
     elif event.event == TeamRunEvent.tool_call_started:
         print(f"Tool call started")
     elif event.event == TeamRunEvent.tool_call_completed:
