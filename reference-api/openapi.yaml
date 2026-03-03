@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Agno API Reference
   description: 'The all-in-one, private, secure agent platform that runs in your cloud.'
-  version: 2.5.5
+  version: 2.5.6
 paths:
   /:
     get:
@@ -411,9 +411,11 @@ paths:
         **Use Cases:**
         - Resume execution after tool approval/rejection
         - Provide manual tool execution results
+        - Resume after admin approval (tools can be empty; resolution fetched from DB)
 
         **Tools Parameter:**
         JSON string containing array of tool execution objects with results.
+        Can be empty when an admin-required approval has been resolved.
       operationId: continue_agent_run
       security:
         - HTTPBearer: []
@@ -431,7 +433,6 @@ paths:
             type: string
             title: Run Id
       requestBody:
-        required: true
         content:
           application/x-www-form-urlencoded:
             schema:
@@ -459,6 +460,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UnauthenticatedResponse'
+        '403':
+          description: Run has a pending admin approval and cannot be continued by the user yet.
         '404':
           description: Agent not found
           content:
@@ -7670,94 +7673,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
-  /registry:
-    get:
-      tags:
-        - Registry
-      summary: List Registry
-      description: List all resources in the registry with optional filtering.
-      operationId: list_registry
-      security:
-        - HTTPBearer: []
-      parameters:
-        - name: resource_type
-          in: query
-          required: false
-          schema:
-            anyOf:
-              - $ref: '#/components/schemas/RegistryResourceType'
-              - type: 'null'
-            description: Filter by resource type
-            title: Resource Type
-          description: Filter by resource type
-        - name: name
-          in: query
-          required: false
-          schema:
-            anyOf:
-              - type: string
-              - type: 'null'
-            description: Filter by name (partial match)
-            title: Name
-          description: Filter by name (partial match)
-        - name: page
-          in: query
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            description: Page number
-            default: 1
-            title: Page
-          description: Page number
-        - name: limit
-          in: query
-          required: false
-          schema:
-            type: integer
-            maximum: 100
-            minimum: 1
-            description: Items per page
-            default: 20
-            title: Limit
-          description: Items per page
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PaginatedResponse_RegistryContentResponse_'
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BadRequestResponse'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UnauthenticatedResponse'
-        '404':
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NotFoundResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationErrorResponse'
-        '500':
-          description: Internal Server Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InternalServerErrorResponse'
   /schedules:
     get:
       tags:
@@ -8236,6 +8151,34 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  '/approvals/{approval_id}/status':
+    get:
+      tags:
+        - Approvals
+      summary: Get Approval Status
+      operationId: get_approval_status_approvals__approval_id__status_get
+      security:
+        - HTTPBearer: []
+      parameters:
+        - name: approval_id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Approval Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalStatusResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   '/approvals/{approval_id}':
     get:
       tags:
@@ -8321,6 +8264,94 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /registry:
+    get:
+      tags:
+        - Registry
+      summary: List Registry
+      description: List all resources in the registry with optional filtering.
+      operationId: list_registry
+      security:
+        - HTTPBearer: []
+      parameters:
+        - name: resource_type
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - $ref: '#/components/schemas/RegistryResourceType'
+              - type: 'null'
+            description: Filter by resource type
+            title: Resource Type
+          description: Filter by resource type
+        - name: name
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Filter by name (partial match)
+            title: Name
+          description: Filter by name (partial match)
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            description: Page number
+            default: 1
+            title: Page
+          description: Page number
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            maximum: 100
+            minimum: 1
+            description: Items per page
+            default: 20
+            title: Limit
+          description: Items per page
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse_RegistryContentResponse_'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
 components:
   schemas:
     ActivityMessage:
@@ -8747,6 +8778,10 @@ components:
             - type: integer
             - type: 'null'
           title: Updated At
+        run_status:
+          anyOf:
+            - $ref: '#/components/schemas/RunStatus'
+            - type: 'null'
       type: object
       required:
         - id
@@ -8756,6 +8791,34 @@ components:
         - source_type
       title: ApprovalResponse
       description: Response model for a single approval.
+    ApprovalStatusResponse:
+      properties:
+        approval_id:
+          type: string
+          title: Approval Id
+        status:
+          type: string
+          title: Status
+        run_id:
+          type: string
+          title: Run Id
+        resolved_at:
+          anyOf:
+            - type: integer
+            - type: 'null'
+          title: Resolved At
+        resolved_by:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Resolved By
+      type: object
+      required:
+        - approval_id
+        - status
+        - run_id
+      title: ApprovalStatusResponse
+      description: Lightweight response model for polling approval status.
     Artifact:
       properties:
         artifactId:
@@ -8893,6 +8956,7 @@ components:
         tools:
           type: string
           title: Tools
+          default: ''
         session_id:
           anyOf:
             - type: string
@@ -8908,8 +8972,6 @@ components:
           title: Stream
           default: true
       type: object
-      required:
-        - tools
       title: Body_continue_agent_run
     Body_create_agent_run:
       properties:
@@ -11575,6 +11637,17 @@ components:
       required:
         - run_id
       title: RunSchema
+    RunStatus:
+      type: string
+      enum:
+        - PENDING
+        - RUNNING
+        - COMPLETED
+        - PAUSED
+        - CANCELLED
+        - ERROR
+      title: RunStatus
+      description: State of the main run response
     ScheduleCreate:
       properties:
         name:
