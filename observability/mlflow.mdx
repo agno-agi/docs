@@ -33,6 +33,24 @@ description: Integrate Agno with MLflow to automatically capture OpenTelemetry-n
 
    </Tip>
 
+## Set Environment Variables
+
+Set the environment variables for the MLflow server URL and experiment name:
+
+```bash
+export MLFLOW_TRACKING_URI="http://localhost:5000"
+export MLFLOW_EXPERIMENT_NAME="Agno Agent"
+```
+
+Alternatively, you can set these in your code using Python APIs. If you do this, you must call this before calling `mlflow.agno.autolog()`.
+
+```python
+import mlflow
+
+mlflow.set_tracking_uri("http://localhost:5000")
+mlflow.set_experiment("Agno Agent")
+```
+
 ## Enable Automatic Tracing in Your Code
 
 Call `mlflow.agno.autolog()` once at startup, then use your Agno agent as usual. MLflow will automatically record traces of model/tool calls and agent steps.
@@ -46,14 +64,10 @@ from agno.tools.yfinance import YFinanceTools
 # Enable MLflow tracing for Agno
 mlflow.agno.autolog()
 
-# Specify the MLflow server URL and experiment name (optional)
-mlflow.set_tracking_uri("http://localhost:5000")
-mlflow.set_experiment("Agno Agent")
-
 # Create and use the agent
 agent = Agent(
     model=OpenAIChat(id="gpt-5-mini"),
-    tools=[YFinanceTools(stock_price=True)],
+    tools=[YFinanceTools()],
     instructions="Use tables to display data. Don't include any other text.",
     markdown=True,
 )
@@ -66,11 +80,53 @@ Access the MLflow UI to view the traces. If you started the UI locally, open `ht
 
 <Frame caption="MLflow Traces">
   <img
-    src="/images/mlflow-trace.png"
+    src="/images/mlflow-trace-basic.png"
     style={{ borderRadius: '10px', width: '100%', maxWidth: '800px' }}
     alt="Agno traces in MLflow"
   />
 </Frame>
+
+## AgentOS example
+
+You can instrument your AgentOS application with MLflow by using the same approach as above. Simply call `mlflow.agno.autolog()` before creating your AgentOS instance.
+
+```python agno_assist.py
+import mlflow
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.anthropic import Claude
+from agno.os import AgentOS
+from agno.tools.mcp import MCPTools
+
+# Setup automatic tracing for Agno
+mlflow.agno.autolog()
+
+agno_assist = Agent(
+    name="Agno Assist",
+    model=Claude(id="claude-sonnet-4-5"),
+    db=SqliteDb(db_file="agno.db"),                     # session storage
+    tools=[MCPTools(url="https://docs.agno.com/mcp")],  # Agno docs via MCP
+    add_datetime_to_context=True,
+    add_history_to_context=True,                         # include past runs
+    num_history_runs=3,                                  # last 3 conversations
+    markdown=True,
+)
+
+# Serve via AgentOS → streaming, auth, session isolation, API endpoints
+agent_os = AgentOS(agents=[agno_assist], tracing=True)
+app = agent_os.get_app()
+```
+
+Then run your AgentOS application following the [instructions](/agent-os/run-your-os). MLflow will automatically record traces of model/tool calls and agent steps.
+
+<Frame caption="MLflow Traces">
+  <img
+    src="/images/mlflow-trace-agentos.png"
+    style={{ borderRadius: '10px', width: '100%', maxWidth: '800px' }}
+    alt="Agno traces in MLflow"
+  />
+</Frame>
+
 
 ## Notes
 
