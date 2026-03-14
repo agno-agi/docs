@@ -1,0 +1,322 @@
+---
+title: Examples
+description: Real-world examples using the HubSpot integration
+---
+
+## Sales Automation Agent
+
+This agent automates the sales qualification process:
+
+```python
+from agno import Agent
+from agno.integrations import HubSpotIntegration
+import os
+
+# Initialize integration
+hubspot = HubSpotIntegration(
+    api_key=os.getenv("HUBSPOT_API_KEY")
+)
+
+# Create sales agent
+sales_agent = Agent(
+    name="Sales Qualifier",
+    instructions="""You are a sales qualification agent. When given information about a lead:
+    1. Create or update their contact record
+    2. Assess their qualification based on budget, authority, need, and timeline (BANT)
+    3. If qualified (budget > $10k, decision maker, clear need, timeline < 6 months):
+       - Update lifecycle stage to 'qualified lead'
+       - Create a deal in the pipeline
+       - Associate the contact with the deal
+    4. If not qualified, update their lead status appropriately""",
+    integrations=[hubspot]
+)
+
+# Process a lead
+response = await sales_agent.run(
+    """New lead from website:
+    Name: Sarah Johnson
+    Email: sarah.johnson@techcorp.com
+    Company: TechCorp Solutions
+    Title: VP of Engineering
+    Budget: $25,000
+    Need: Looking for automation tools for their development team
+    Timeline: Want to implement within 3 months
+    Current solution: Using multiple disconnected tools"""
+)
+
+print(response)
+```
+
+## Customer Data Enrichment
+
+Automatically enrich customer records with additional information:
+
+```python
+from agno import Agent
+from agno.integrations import HubSpotIntegration
+
+# Create enrichment agent
+enrichment_agent = Agent(
+    name="Data Enricher",
+    instructions="""You enrich HubSpot records with additional information.
+    When given a company domain:
+    1. Look up the company in HubSpot
+    2. Research additional information about the company
+    3. Update the company record with:
+       - Industry classification
+       - Employee count
+       - Annual revenue (if public)
+       - Key technologies they use
+       - Recent news or updates
+    4. Find and update associated contacts with their LinkedIn URLs""",
+    integrations=[hubspot]
+)
+
+# Enrich a company
+await enrichment_agent.run("Enrich data for company with domain: acme.com")
+```
+
+## Support Ticket Handler
+
+Handle customer support requests and update CRM accordingly:
+
+```python
+from agno import Agent
+from agno.integrations import HubSpotIntegration
+
+support_agent = Agent(
+    name="Support Handler",
+    instructions="""You handle customer support requests. When receiving a support ticket:
+    1. Look up the customer by email in HubSpot
+    2. Check their deal history and current subscriptions
+    3. Create or update a support ticket (as a deal in support pipeline)
+    4. If they're not a customer yet, update their lifecycle stage
+    5. Log all interactions in the contact timeline
+    6. If it's a product issue, check if other customers reported similar issues""",
+    integrations=[hubspot]
+)
+
+# Handle support request
+ticket_response = await support_agent.run(
+    """Support ticket:
+    From: john.doe@example.com
+    Subject: Cannot access dashboard
+    Message: I'm getting a 404 error when trying to access my dashboard.
+    This started happening after the update yesterday."""
+)
+```
+
+## Multi-Agent Sales Team
+
+Create a team of specialized agents working together:
+
+```python
+from agno import Agent, Team
+from agno.integrations import HubSpotIntegration
+
+hubspot = HubSpotIntegration(api_key=os.getenv("HUBSPOT_API_KEY"))
+
+# Lead researcher agent
+researcher = Agent(
+    name="Lead Researcher",
+    instructions="""Research potential leads and companies.
+    Find company information and key contacts.""",
+    integrations=[hubspot]
+)
+
+# Qualifier agent
+qualifier = Agent(
+    name="Lead Qualifier",
+    instructions="""Qualify leads based on BANT criteria.
+    Update their lifecycle stage and create qualified lead notes.""",
+    integrations=[hubspot]
+)
+
+# Deal creator agent
+deal_maker = Agent(
+    name="Deal Creator",
+    instructions="""Create and manage deals for qualified leads.
+    Set appropriate deal stages and associate with contacts/companies.""",
+    integrations=[hubspot]
+)
+
+# Create team
+sales_team = Team(
+    agents=[researcher, qualifier, deal_maker],
+    instructions="""Work together to process new leads:
+    1. Researcher finds and creates contact/company records
+    2. Qualifier assesses the lead quality
+    3. Deal Creator creates deals for qualified leads"""
+)
+
+# Process a batch of leads
+await sales_team.run(
+    """Process these new leads:
+    1. Mike Smith (mike@startup.io) - Interested in Pro plan
+    2. Lisa Wang (lisa@enterprise.com) - Needs enterprise features
+    3. Tom Brown (tom@smallbiz.net) - Just exploring options"""
+)
+```
+
+## Campaign Performance Tracker
+
+Track and analyze marketing campaign performance:
+
+```python
+async def analyze_campaign(agent, campaign_name, start_date, end_date):
+    """Analyze campaign performance using HubSpot data."""
+    
+    analysis = await agent.run(f"""
+    Analyze the '{campaign_name}' campaign performance:
+    1. Find all contacts created between {start_date} and {end_date}
+       with campaign source = '{campaign_name}'
+    2. Calculate:
+       - Total leads generated
+       - Conversion rate to qualified leads
+       - Deals created and their total value
+       - Average deal size
+    3. Compare with previous campaign if available
+    4. Provide recommendations for improvement
+    """)
+    
+    return analysis
+
+# Create analytics agent
+analytics_agent = Agent(
+    name="Campaign Analyst",
+    instructions="""You analyze marketing campaign performance using HubSpot data.
+    Provide detailed metrics and actionable insights.""",
+    integrations=[hubspot]
+)
+
+# Analyze campaign
+report = await analyze_campaign(
+    analytics_agent,
+    "Summer Product Launch",
+    "2024-06-01",
+    "2024-08-31"
+)
+```
+
+## Deal Pipeline Manager
+
+Manage deals through the sales pipeline:
+
+```python
+from datetime import datetime, timedelta
+
+pipeline_agent = Agent(
+    name="Pipeline Manager",
+    instructions="""You manage the sales pipeline. Your responsibilities:
+    1. Review all open deals
+    2. Identify deals that haven't been updated in 7+ days
+    3. Check deals approaching their close date
+    4. Move deals to appropriate stages based on activity
+    5. Flag at-risk deals
+    6. Create summary report of pipeline health""",
+    integrations=[hubspot]
+)
+
+# Daily pipeline review
+async def daily_pipeline_review():
+    today = datetime.now()
+    next_week = today + timedelta(days=7)
+    
+    report = await pipeline_agent.run(f"""
+    Perform daily pipeline review:
+    - Check all deals in 'Qualified to Buy' stage
+    - Find deals with close date before {next_week.strftime('%Y-%m-%d')}
+    - Identify stalled deals (no activity in 7+ days)
+    - Calculate total pipeline value by stage
+    """)
+    
+    return report
+
+# Run review
+pipeline_report = await daily_pipeline_review()
+```
+
+## Contact Segmentation
+
+Segment contacts for targeted marketing:
+
+```python
+segmentation_agent = Agent(
+    name="Contact Segmenter",
+    instructions="""You segment contacts for marketing campaigns.
+    Create smart lists based on various criteria.""",
+    integrations=[hubspot]
+)
+
+# Create segments
+segments = await segmentation_agent.run("""
+Create the following contact segments:
+
+1. High-Value Prospects:
+   - Lifecycle stage = 'lead' or 'qualified lead'
+   - Company size > 100 employees
+   - Has engaged with content in last 30 days
+
+2. Churned Customers:
+   - Lifecycle stage = 'former customer'
+   - Deal closed lost in last 90 days
+   - Was a customer for > 6 months
+
+3. Expansion Opportunities:
+   - Lifecycle stage = 'customer'
+   - Current deal value < $10k
+   - Company size > 50 employees
+
+For each segment, provide:
+- Number of contacts
+- Key characteristics
+- Recommended marketing approach
+""")
+```
+
+## Integration with Other Tools
+
+Combine HubSpot with other integrations:
+
+```python
+from agno.integrations import HubSpotIntegration, SlackIntegration
+
+# Initialize integrations
+hubspot = HubSpotIntegration(api_key=os.getenv("HUBSPOT_API_KEY"))
+slack = SlackIntegration(token=os.getenv("SLACK_TOKEN"))
+
+# Create notification agent
+notification_agent = Agent(
+    name="Deal Notifier",
+    instructions="""Monitor HubSpot for important events and notify the team:
+    1. When a deal reaches 'Contract Sent' stage, notify #sales
+    2. When a new qualified lead is created, notify #marketing
+    3. When a deal is closed won, celebrate in #general
+    Include relevant details in notifications.""",
+    integrations=[hubspot, slack]
+)
+
+# Set up monitoring
+await notification_agent.run(
+    "Check for any deals that moved to 'Contract Sent' stage today"
+)
+```
+
+## Best Practices from Examples
+
+<Tip>
+These examples demonstrate several best practices:
+</Tip>
+
+1. **Clear Instructions**: Give agents specific, step-by-step instructions
+2. **Error Handling**: Always consider edge cases (contact not found, etc.)
+3. **Batch Processing**: Process multiple records efficiently
+4. **Data Validation**: Validate data before creating/updating records
+5. **Logging**: Log important actions for audit trails
+6. **Modular Design**: Break complex tasks into specialized agents
+
+## Next Steps
+
+- [View more examples on GitHub](https://github.com/agno-agi/examples)
+- [Read integration best practices](/integrations/best-practices)
+- [Explore other integrations](/integrations)
