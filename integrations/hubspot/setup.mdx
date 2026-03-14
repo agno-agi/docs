@@ -1,0 +1,264 @@
+---
+title: Setup
+description: Configure the HubSpot integration for your agents
+---
+
+## Prerequisites
+
+Before setting up the HubSpot integration, ensure you have:
+
+1. A HubSpot account (Free tier or higher)
+2. API access enabled for your account
+3. Appropriate permissions for the operations you want to perform
+
+## Authentication Methods
+
+The HubSpot integration supports two authentication methods:
+
+### API Key Authentication
+
+<Warning>
+HubSpot is deprecating API keys in favor of private apps. For new integrations, we recommend using OAuth with a private app.
+</Warning>
+
+1. Navigate to your [HubSpot API key settings](https://app.hubspot.com/settings)
+2. Generate or copy your existing API key
+3. Set the environment variable:
+
+```bash
+export HUBSPOT_API_KEY="your-api-key-here"
+```
+
+### Private App (OAuth) Authentication
+
+<Steps>
+  <Step title="Create a Private App">
+    1. Go to Settings → Integrations → Private Apps
+    2. Click "Create a private app"
+    3. Name your app (e.g., "Agno Integration")
+  </Step>
+  
+  <Step title="Configure Scopes">
+    Select the required scopes for your use case:
+    - `crm.objects.contacts.read` and `.write` for contact operations
+    - `crm.objects.companies.read` and `.write` for company operations
+    - `crm.objects.deals.read` and `.write` for deal operations
+  </Step>
+  
+  <Step title="Generate Access Token">
+    1. Click "Create app"
+    2. Copy the generated access token
+    3. Set the environment variable:
+    
+    ```bash
+    export HUBSPOT_ACCESS_TOKEN="your-access-token-here"
+    ```
+  </Step>
+</Steps>
+
+## Configuration
+
+### Basic Setup
+
+```python
+from agno.integrations import HubSpotIntegration
+import os
+
+# Using API key
+hubspot = HubSpotIntegration(
+    api_key=os.getenv("HUBSPOT_API_KEY")
+)
+
+# Using OAuth token
+hubspot = HubSpotIntegration(
+    access_token=os.getenv("HUBSPOT_ACCESS_TOKEN")
+)
+```
+
+### Advanced Configuration
+
+```python
+hubspot = HubSpotIntegration(
+    api_key=os.getenv("HUBSPOT_API_KEY"),
+    # Custom timeout for long-running operations
+    timeout=60,
+    # Number of retry attempts for failed requests
+    retry_attempts=5,
+    # Custom base URL (for sandbox environments)
+    base_url="https://api.hubapi.com"
+)
+```
+
+## Adding to Your Agent
+
+### Single Agent Setup
+
+```python
+from agno import Agent
+
+agent = Agent(
+    name="CRM Assistant",
+    instructions="You help manage customer relationships in HubSpot.",
+    integrations=[hubspot]
+)
+```
+
+### Multiple Agent Setup
+
+```python
+from agno import Agent, Team
+
+# Sales agent with HubSpot access
+sales_agent = Agent(
+    name="Sales Agent",
+    instructions="You manage deals and opportunities.",
+    integrations=[hubspot]
+)
+
+# Support agent with HubSpot access
+support_agent = Agent(
+    name="Support Agent", 
+    instructions="You help customers and update their information.",
+    integrations=[hubspot]
+)
+
+# Create a team
+team = Team(
+    agents=[sales_agent, support_agent]
+)
+```
+
+## Verifying Your Setup
+
+Test your configuration with a simple script:
+
+```python
+import asyncio
+from agno import Agent
+from agno.integrations import HubSpotIntegration
+
+async def test_hubspot():
+    # Initialize integration
+    hubspot = HubSpotIntegration(
+        api_key=os.getenv("HUBSPOT_API_KEY")
+    )
+    
+    # Create test agent
+    agent = Agent(
+        name="Test Agent",
+        instructions="Search for contacts with email containing 'test'",
+        integrations=[hubspot]
+    )
+    
+    # Run test query
+    result = await agent.run("Search for any test contacts")
+    print(result)
+
+# Run the test
+asyncio.run(test_hubspot())
+```
+
+## Environment Configuration
+
+### Development Environment
+
+Create a `.env` file in your project root:
+
+```bash
+# HubSpot Configuration
+HUBSPOT_API_KEY=your-api-key
+# Or use OAuth
+HUBSPOT_ACCESS_TOKEN=your-access-token
+
+# Optional: For testing
+HUBSPOT_TEST_MODE=true
+HUBSPOT_SANDBOX_URL=https://api.hubapi.qa.com
+```
+
+### Production Environment
+
+For production deployments, use your platform's secret management:
+
+<CodeGroup>
+
+```bash Docker
+docker run -e HUBSPOT_API_KEY=$HUBSPOT_API_KEY myapp
+```
+
+```bash Kubernetes
+kubectl create secret generic hubspot-creds \
+  --from-literal=api-key=$HUBSPOT_API_KEY
+```
+
+```python Python
+# Using environment variables
+import os
+api_key = os.environ["HUBSPOT_API_KEY"]
+
+# Using a secrets manager
+from aws_secretsmanager import get_secret
+api_key = get_secret("hubspot/api-key")
+```
+
+</CodeGroup>
+
+## Required Permissions
+
+Ensure your HubSpot user or app has the following permissions:
+
+| Operation | Required Scope |
+|-----------|---------------|
+| Read contacts | `crm.objects.contacts.read` |
+| Create/Update contacts | `crm.objects.contacts.write` |
+| Read companies | `crm.objects.companies.read` |
+| Create/Update companies | `crm.objects.companies.write` |
+| Read deals | `crm.objects.deals.read` |
+| Create/Update deals | `crm.objects.deals.write` |
+| Manage associations | `crm.schemas.read` |
+
+## Troubleshooting
+
+### Common Issues
+
+<AccordionGroup>
+  <Accordion title="Authentication Error (401)">
+    - Verify your API key or access token is correct
+    - Check if the key has been revoked or expired
+    - Ensure you're using the correct authentication method
+  </Accordion>
+  
+  <Accordion title="Permission Denied (403)">
+    - Check if your user/app has the required scopes
+    - Verify you have access to the specific objects
+    - For private apps, review the selected scopes
+  </Accordion>
+  
+  <Accordion title="Rate Limit Exceeded (429)">
+    The integration handles rate limiting automatically, but you can:
+    - Reduce the frequency of requests
+    - Implement caching for frequently accessed data
+    - Use batch operations where available
+  </Accordion>
+</AccordionGroup>
+
+### Debug Mode
+
+Enable debug logging to troubleshoot issues:
+
+```python
+import logging
+
+# Enable debug logging
+logging.basicConfig(level=logging.DEBUG)
+
+# Create integration with debug info
+hubspot = HubSpotIntegration(
+    api_key=os.getenv("HUBSPOT_API_KEY")
+)
+```
+
+## Next Steps
+
+- [Explore available tools](/integrations/hubspot/tools)
+- [View examples](/integrations/hubspot/examples)
+- [Read best practices](/integrations/hubspot/best-practices)
