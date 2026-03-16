@@ -91,11 +91,30 @@ curl -X POST http://localhost:7777/agents/data_manager/runs \
 
 # 2. Continue with approval (use the run_id and tool_call_id from response)
 curl -X POST http://localhost:7777/agents/data_manager/runs/{run_id}/continue \
-  -F "tools=[{\"tool_call_id\": \"{tool_call_id}\", \"tool_name\": \"delete_records\", \"tool_args\": {\"table_name\": \"users\", \"count\": 50}}, \"confirmed\": true}]" \
+  -F 'tools=[{"tool_call_id":"{tool_call_id}","tool_name":"delete_records","tool_args":{"table_name":"users","count":50},"confirmed":true}]' \
+  -F "session_id=test_session" \
+  -F "user_id=test_user" \
+  -F "stream=false"
+
+# 3. Continue after admin approval is resolved in DB
+curl -X POST http://localhost:7777/agents/data_manager/runs/{run_id}/continue \
+  -F "tools=" \
   -F "session_id=test_session" \
   -F "user_id=test_user" \
   -F "stream=false"
 ```
+
+If an admin resolves a required approval in the database, you can continue with an empty `tools` value. Non-admin users receive `403` if a required approval is still pending.
+
+## Approval Status API
+
+Poll a single approval record:
+
+```bash
+GET /approvals/{approval_id}/status
+```
+
+When a run pauses, each tool that requires approval is stamped with `approval_id`. Store that ID and poll for status changes. Admins with the `approvals:write` scope can continue once the approval is resolved.
 
 ## Usage
 
