@@ -1,0 +1,124 @@
+---
+title: GitHub Copilot
+description: Use GPT-4.1, Claude, Gemini and other Copilot models via GitHub Copilot.
+---
+
+GitHub Copilot exposes an OpenAI-compatible chat API. The `CopilotChat` provider automatically exchanges your GitHub OAuth token for a short-lived Copilot session token, so you only need to provide `GITHUB_COPILOT_TOKEN` once.
+
+## Getting your token
+
+Run these three steps once to obtain a long-lived GitHub OAuth token via the device flow:
+
+**Step 1 — Request a device code:**
+
+<CodeGroup>
+
+```bash Mac / Linux
+curl -s -X POST https://github.com/login/device/code \
+  -H "accept: application/json" \
+  -H "content-type: application/json" \
+  -d '{"client_id":"Iv1.b507a08c87ecfe98","scope":"read:user"}'
+```
+
+```powershell Windows
+curl.exe -s -X POST https://github.com/login/device/code `
+  -H "accept: application/json" `
+  -H "content-type: application/json" `
+  -d '{"client_id":"Iv1.b507a08c87ecfe98","scope":"read:user"}'
+```
+
+</CodeGroup>
+
+**Step 2 — Visit [https://github.com/login/device](https://github.com/login/device) and enter the `user_code`.**
+
+**Step 3 — Poll for the token** (replace `<DEVICE_CODE>` with the value from Step 1):
+
+<CodeGroup>
+
+```bash Mac / Linux
+curl -s -X POST https://github.com/login/oauth/access_token \
+  -H "accept: application/json" \
+  -H "content-type: application/json" \
+  -d '{"client_id":"Iv1.b507a08c87ecfe98","device_code":"<DEVICE_CODE>","grant_type":"urn:ietf:params:oauth:grant-type:device_code"}'
+```
+
+```powershell Windows
+curl.exe -s -X POST https://github.com/login/oauth/access_token `
+  -H "accept: application/json" `
+  -H "content-type: application/json" `
+  -d '{"client_id":"Iv1.b507a08c87ecfe98","device_code":"<DEVICE_CODE>","grant_type":"urn:ietf:params:oauth:grant-type:device_code"}'
+```
+
+</CodeGroup>
+
+The `access_token` (`ghu_*`) in the response is your `GITHUB_COPILOT_TOKEN`.
+
+## Basic Agent
+
+```python
+from agno.agent import Agent
+from agno.models.copilot import CopilotChat
+
+agent = Agent(
+    model=CopilotChat(id="gpt-4.1"),
+    markdown=True,
+)
+
+agent.print_response("Explain the CAP theorem", stream=True)
+```
+
+## Tool Use
+
+```python
+from agno.agent import Agent
+from agno.models.copilot import CopilotChat
+from agno.tools.websearch import WebSearchTools
+
+agent = Agent(
+    model=CopilotChat(id="gpt-4.1"),
+    tools=[WebSearchTools()],
+    markdown=True,
+)
+
+agent.print_response("Whats happening in France?", stream=True)
+```
+
+## Structured Output
+
+```python
+from typing import List
+
+from agno.agent import Agent
+from agno.models.copilot import CopilotChat
+from pydantic import BaseModel, Field
+
+
+class MovieScript(BaseModel):
+    setting: str = Field(..., description="Provide a nice setting for a blockbuster movie.")
+    ending: str = Field(..., description="Ending of the movie. If not available, provide a happy ending.")
+    genre: str = Field(..., description="Genre of the movie. If not available, select action, thriller or romantic comedy.")
+    name: str = Field(..., description="Give a name to this movie")
+    characters: List[str] = Field(..., description="Name of characters for this movie.")
+    storyline: str = Field(..., description="3 sentence storyline for the movie. Make it exciting!")
+
+
+agent = Agent(
+    model=CopilotChat(id="gpt-4.1"),
+    output_schema=MovieScript,
+)
+
+agent.print_response("New York")
+```
+
+## Run Examples
+
+```bash
+export GITHUB_COPILOT_TOKEN=ghu_xxxxxxxxxxxxxxxxxxxx
+
+git clone https://github.com/agno-agi/agno.git
+cd agno/cookbook/90_models/copilot
+
+python basic.py
+python tool_use.py
+python structured_output.py
+```

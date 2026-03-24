@@ -1,0 +1,184 @@
+---
+title: GitHub Copilot
+sidebarTitle: Overview
+description: Use GitHub Copilot models (GPT-4.1, o4-mini, Claude Sonnet and more) with Agno agents.
+---
+
+GitHub Copilot exposes a chat completions API at `https://api.githubcopilot.com/` that is compatible with the OpenAI API spec.
+With Agno's `CopilotChat` provider you simply supply your GitHub OAuth token — the provider automatically exchanges it for a short-lived Copilot access token and refreshes it before every call.
+
+## Available Models
+
+GitHub Copilot exposes the models available to your Copilot subscription. The table below lists the currently known model IDs.
+
+**GPT (OpenAI)**
+
+| Model ID | Name |
+| --- | --- |
+| `gpt-4.1` | GPT-4.1 (default) |
+| `gpt-4.1-2025-04-14` | GPT-4.1 (dated snapshot) |
+| `gpt-41-copilot` | GPT-4.1 Copilot |
+| `gpt-4o` | GPT-4o |
+| `gpt-4o-2024-11-20` | GPT-4o (Nov 2024) |
+| `gpt-4o-mini` | GPT-4o mini |
+| `gpt-5.1` | GPT-5.1 |
+| `gpt-5.1-codex-max` | GPT-5.1 Codex Max |
+| `gpt-5.2` | GPT-5.2 |
+| `gpt-5.2-codex` | GPT-5.2 Codex |
+| `gpt-5.3-codex` | GPT-5.3 Codex |
+| `gpt-5.4` | GPT-5.4 |
+| `gpt-5.4-mini` | GPT-5.4 mini |
+| `gpt-5-mini` | GPT-5 mini |
+
+**Claude (Anthropic)**
+
+| Model ID | Name |
+| --- | --- |
+| `claude-sonnet-4` | Claude Sonnet 4 |
+| `claude-sonnet-4.5` | Claude Sonnet 4.5 |
+| `claude-sonnet-4.6` | Claude Sonnet 4.6 |
+| `claude-opus-4.5` | Claude Opus 4.5 |
+| `claude-opus-4.6` | Claude Opus 4.6 |
+| `claude-haiku-4.5` | Claude Haiku 4.5 |
+
+**Gemini (Google)**
+
+| Model ID | Name |
+| --- | --- |
+| `gemini-2.5-pro` | Gemini 2.5 Pro |
+| `gemini-3-pro-preview` | Gemini 3 Pro (Preview) |
+| `gemini-3-flash-preview` | Gemini 3 Flash (Preview) |
+| `gemini-3.1-pro-preview` | Gemini 3.1 Pro (Preview) |
+
+**Grok (xAI)**
+
+| Model ID | Name |
+| --- | --- |
+| `grok-code-fast-1` | Grok Code Fast 1 |
+
+<Note>Model availability depends on your Copilot subscription tier. We recommend experimenting to find the best model for your use-case.</Note>
+
+## Authentication
+
+The provider needs a **GitHub OAuth token** (`ghu_*`) with Copilot access. Set it as the `GITHUB_COPILOT_TOKEN` environment variable.
+
+### Getting your GitHub token
+
+Run these three steps once. The resulting token is long-lived until you revoke it.
+
+**Step 1 — Request a device code:**
+
+<CodeGroup>
+
+```bash Mac / Linux
+curl -s -X POST https://github.com/login/device/code \
+  -H "accept: application/json" \
+  -H "content-type: application/json" \
+  -d '{"client_id":"Iv1.b507a08c87ecfe98","scope":"read:user"}'
+```
+
+```powershell Windows
+curl.exe -s -X POST https://github.com/login/device/code `
+  -H "accept: application/json" `
+  -H "content-type: application/json" `
+  -d '{"client_id":"Iv1.b507a08c87ecfe98","scope":"read:user"}'
+```
+
+</CodeGroup>
+
+You will receive a response like:
+
+```json
+{
+  "device_code": "...",
+  "user_code": "XXXX-XXXX",
+  "verification_uri": "https://github.com/login/device"
+}
+```
+
+**Step 2 — Authorize in the browser:**
+
+Visit [https://github.com/login/device](https://github.com/login/device) and enter the `user_code` shown above.
+
+**Step 3 — Poll for the token** (replace `<DEVICE_CODE>` with the value from Step 1):
+
+<CodeGroup>
+
+```bash Mac / Linux
+curl -s -X POST https://github.com/login/oauth/access_token \
+  -H "accept: application/json" \
+  -H "content-type: application/json" \
+  -d '{"client_id":"Iv1.b507a08c87ecfe98","device_code":"<DEVICE_CODE>","grant_type":"urn:ietf:params:oauth:grant-type:device_code"}'
+```
+
+```powershell Windows
+curl.exe -s -X POST https://github.com/login/oauth/access_token `
+  -H "accept: application/json" `
+  -H "content-type: application/json" `
+  -d '{"client_id":"Iv1.b507a08c87ecfe98","device_code":"<DEVICE_CODE>","grant_type":"urn:ietf:params:oauth:grant-type:device_code"}'
+```
+
+</CodeGroup>
+
+The response contains your `access_token` (`ghu_*`). That is your `GITHUB_COPILOT_TOKEN`.
+
+### Set the environment variable
+
+<CodeGroup>
+
+```bash Mac / Linux
+export GITHUB_COPILOT_TOKEN=ghu_xxxxxxxxxxxxxxxxxxxx
+```
+
+```bash Windows
+setx GITHUB_COPILOT_TOKEN ghu_xxxxxxxxxxxxxxxxxxxx
+```
+
+</CodeGroup>
+
+## Example
+
+Use `CopilotChat` with your `Agent`:
+
+<CodeGroup>
+
+```python agent.py
+from agno.agent import Agent
+from agno.models.copilot import CopilotChat
+
+agent = Agent(
+    model=CopilotChat(id="gpt-4.1"),
+    markdown=True,
+)
+
+agent.print_response("Share a 2 sentence horror story.")
+```
+
+</CodeGroup>
+
+You can also use the string syntax:
+
+<CodeGroup>
+
+```python agent.py
+from agno.agent import Agent
+
+agent = Agent(model="copilot:gpt-4.1", markdown=True)
+agent.print_response("Share a 2 sentence horror story.")
+```
+
+</CodeGroup>
+
+<Note> View more examples [here](/models/providers/gateways/copilot/usage/basic). </Note>
+
+## Params
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `id` | `str` | `"gpt-4.1"` | The Copilot model ID to use |
+| `name` | `str` | `"CopilotChat"` | Display name for the model |
+| `provider` | `str` | `"Copilot"` | Provider identifier |
+| `github_token` | `Optional[str]` | `None` | GitHub OAuth token. Falls back to `GITHUB_COPILOT_TOKEN` env var |
+| `base_url` | `str` | `"https://api.githubcopilot.com/"` | Copilot API base URL |
+
+`CopilotChat` also supports all params of [OpenAI](/reference/models/openai).
