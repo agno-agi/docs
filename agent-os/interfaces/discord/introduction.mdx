@@ -1,0 +1,172 @@
+---
+title: Discord
+sidebarTitle: "Discord"
+description: Host agents as Discord bots with slash commands and @mention support.
+---
+
+Use the Discord interface to serve Agents, Teams, or Workflows on Discord. It supports two concurrent transports: HTTP webhook for slash commands and Gateway WebSocket for @mentions and DMs.
+
+## Setup Steps
+
+Follow the Discord setup guide in the [production docs](/production/interfaces/discord).
+
+Required configuration:
+
+- `DISCORD_BOT_TOKEN` (Bot token from the Developer Portal)
+- `DISCORD_PUBLIC_KEY` (Application public key for signature verification)
+- `DISCORD_APPLICATION_ID` (Application ID for webhook API calls)
+- A registered `/ask` slash command
+- An ngrok tunnel (for local development) with the Interactions Endpoint URL pointing to `/discord/interactions`
+
+## Example Usage
+
+Create an agent, expose it with the `Discord` interface, and serve via `AgentOS`:
+
+```python basic.py
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.os import AgentOS
+from agno.os.interfaces.discord import Discord
+
+basic_agent = Agent(
+    name="Basic Agent",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    add_history_to_context=True,
+    num_history_runs=3,
+    add_datetime_to_context=True,
+)
+
+agent_os = AgentOS(
+    agents=[basic_agent],
+    interfaces=[Discord(agent=basic_agent, stream=True)],
+)
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="basic:app", port=7777, reload=True)
+```
+
+## Core Components
+
+- `Discord` (interface): Wraps an Agno `Agent`, `Team`, or `Workflow` for Discord integration via FastAPI.
+- `AgentOS.serve`: Serves the FastAPI app using Uvicorn.
+
+## `Discord` Interface
+
+Main entry point for Agno Discord applications.
+
+### Initialization Parameters
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `agent` | `Optional[Agent]` | `None` | Agno `Agent` instance. |
+| `team` | `Optional[Team]` | `None` | Agno `Team` instance. |
+| `workflow` | `Optional[Workflow]` | `None` | Agno `Workflow` instance. |
+| `prefix` | `str` | `"/discord"` | Custom FastAPI route prefix. |
+| `tags` | `Optional[List[str]]` | `None` | FastAPI route tags. Defaults to `["Discord"]`. |
+| `stream` | `bool` | `False` | Enable streaming responses that progressively update the message. Only works for Agent and Team. |
+| `show_reasoning` | `bool` | `True` | Show reasoning content (wrapped in italics) before the final answer. |
+| `max_message_chars` | `int` | `1900` | Maximum characters per message. Discord's limit is 2000; 1900 leaves room for the `[1/N]` prefix on multi-part messages. |
+| `allowed_guild_ids` | `Optional[List[str]]` | `None` | Restrict the bot to specific guild (server) IDs. |
+| `allowed_channel_ids` | `Optional[List[str]]` | `None` | Restrict the bot to specific channel IDs. |
+| `discord_bot_token` | `Optional[str]` | `None` | Bot token. Falls back to `DISCORD_BOT_TOKEN` env var. |
+| `reply_in_thread` | `bool` | `True` | Create a new thread for each @mention conversation in guild channels. |
+
+Provide exactly one of `agent`, `team`, or `workflow`.
+
+### Key Method
+
+| Method | Return Type | Description |
+| --- | --- | --- |
+| `get_router` | `APIRouter` | Returns the FastAPI router with Discord endpoints attached. |
+| `get_lifespan` | `Optional[Any]` | Returns a FastAPI lifespan that manages the Gateway WebSocket and HTTP session cleanup. |
+
+## Transports
+
+### HTTP Webhook (Slash Commands)
+
+Always available. Handles the `/ask` slash command via Discord's Interactions API.
+
+**Flow:**
+1. User runs `/ask message:Hello`
+2. Discord sends a signed POST to `/discord/interactions`
+3. Bot verifies the Ed25519 signature and responds with a deferred message
+4. Background task processes the request and edits the response
+
+**Endpoint:** `POST /discord/interactions`
+
+- Handles PING verification and APPLICATION_COMMAND interactions
+- Verifies Ed25519 signatures using `DISCORD_PUBLIC_KEY`
+- Includes replay protection (rejects requests older than 5 minutes)
+
+### Gateway WebSocket (@Mentions and DMs)
+
+Auto-activates when `discord.py` is installed and a bot token is available. Falls back to HTTP-only otherwise.
+
+**Flow:**
+1. User @mentions the bot or sends a DM
+2. Bot receives the message via WebSocket
+3. Bot creates a thread (if `reply_in_thread=True`) and processes the message
+4. Response is sent to the thread/channel
+
+**Features:**
+- Typing indicator shown while processing
+- Auto-thread creation for guild @mentions
+- Replies in-place for existing threads and DMs
+
+## Streaming Mode
+
+When `stream=True`, the bot progressively updates the response message as content is generated:
+
+1. Sends an initial message with the first content chunk
+2. Edits the message every ~1 second as more content arrives
+3. Final edit with the complete response when generation finishes
+4. Overflow content (beyond 2000 chars) is sent as follow-up messages
+
+Streaming works for both HTTP webhook and Gateway transports. It is only supported for Agent and Team — Workflows and Remote entities fall back to non-streaming mode.
+
+## Session ID Scheme
+
+Session IDs use a `dc:` prefix to namespace Discord sessions:
+
+| Format | Context |
+| --- | --- |
+| `dc:dm:{channel_id}` | Direct messages |
+| `dc:thread:{channel_id}` | Thread channels (including auto-created threads) |
+| `dc:channel:{channel_id}:user:{user_id}` | Guild channels (scoped per user) |
+
+## Media Support
+
+### Inbound (User to Bot)
+
+The bot accepts attachments on the `/ask` slash command and on @mention messages. Files are classified by content type:
+
+| Content Type | Agno Media Type |
+| --- | --- |
+| `image/*` | `Image` |
+| `video/*` | `Video` |
+| `audio/*` | `Audio` |
+| Everything else | `File` |
+
+Attachments larger than 25 MB are skipped.
+
+### Outbound (Bot to User)
+
+Tool-generated media (e.g., DALL-E images, ElevenLabs audio) is sent as Discord file attachments.
+
+## Testing the Integration
+
+1. Start the server: `python my_bot.py`
+2. Start ngrok: `ngrok http 7777`
+3. Set the Interactions Endpoint URL in the Developer Portal
+4. Test slash commands: `/ask message:Hello`
+5. Test @mentions: `@YourBot What is quantum computing?`
+6. Test DMs: Send a direct message to the bot
+
+## Troubleshooting
+
+- **403 Invalid signature** — Verify `DISCORD_PUBLIC_KEY` is set correctly
+- **Bot not responding to @mentions** — Ensure the Gateway is connected (check logs for "Discord Gateway connected as ...")
+- **Slash command not appearing** — Register commands via the API (see setup guide) and wait a few minutes for propagation
+- **Thread creation fails** — Bot needs `Manage Threads` permission in the channel
+- **"This interaction failed"** — Check that your server is reachable via ngrok and the Interactions Endpoint URL is correct

@@ -1,34 +1,43 @@
 ---
 title: "Discord Bot"
-description: "Create a Discord bot powered by Agno agents for community support, moderation, or custom commands."
+description: "Build a Discord bot that responds to messages, handles media, and supports streaming responses using agents."
 ---
 
-Agno makes it easy to deploy your agents on Discord with just 2 extra lines of code.
+Agno and AgentOS make it easy to deploy your agents on Discord with just 2 extra lines of code.
 
-This example creates a simple Agno agent for answering questions in your Discord server:
+This example creates a simple agent for answering questions:
 
 ```python
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
-from agno.integrations.discord import DiscordClient
+from agno.os import AgentOS
+from agno.os.interfaces.discord import Discord
 
-basic_agent = Agent(
-    name="Basic Agent",
-    model=OpenAIChat(id="gpt-5.2"), 
+discord_agent = Agent(
+    name="Discord Bot",
+    model=OpenAIChat(id="gpt-4o-mini"),
     add_history_to_context=True,
     num_history_runs=3,
     add_datetime_to_context=True,
+    markdown=True,
 )
 
-discord_agent = DiscordClient(basic_agent)
+agent_os = AgentOS(
+    agents=[discord_agent],
+    interfaces=[Discord(agent=discord_agent, stream=True)],
+)
+app = agent_os.get_app()
+
 if __name__ == "__main__":
-    discord_agent.serve()
+    agent_os.serve(app="discord_bot:app", port=7777, reload=True)
 ```
 
-
+<Note>
+Install Discord dependencies: `pip install 'agno[discord]'`
+</Note>
 
 <Note>
-The Discord bot automatically creates threads for conversations and maintains context within each thread.
+The bot automatically creates threads for each @mention conversation and uses per-thread session tracking to maintain context. In DMs, each channel gets its own session.
 </Note>
 
 ## Setup and Configuration
@@ -37,79 +46,108 @@ The Discord bot automatically creates threads for conversations and maintains co
 
 <Step title="Prerequisites">
 Ensure you have the following:
+- A Discord account
+- ngrok (for development)
 - Python 3.7+
-- A Discord account with server management permissions
-- Install the Discord library: `pip install discord.py`
 </Step>
 
 <Step title="Create a Discord Application">
-1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
 2. Click "New Application"
 3. Provide an application name (e.g., "My Agno Bot")
-4. Accept the Developer Terms of Service
-5. Click "Create"
+4. Accept the Developer Terms of Service and click "Create"
+5. Note the **Application ID** and **Public Key** from the "General Information" page
 </Step>
 
 <Step title="Create a Bot User">
 1. In your application settings, navigate to the "Bot" section
-2. Click "Add Bot"
-3. Confirm by clicking "Yes, do it!"
-4. In the "Token" section, click "Copy" to copy your bot token
-5. Save this token securely
+2. Click "Reset Token" to generate a new bot token
+3. Copy and save this token securely — you won't be able to see it again
 </Step>
 
-<Step title="Configure Bot Permissions and Intents">
-1. In the Bot settings, scroll down to "Privileged Gateway Intents"
-2. Enable the following intents:
-   - **Server Members Intent** (for member-related events)
-   - **Message Content Intent** (required for reading message content)
-3. Set "Bot Permissions" to ensure your bot has permission to:
-   - Send Messages
-   - Read Message History
-   - Create Public Threads
-   - Attach Files
-   - Embed Links
+<Step title="Configure Bot Permissions">
+In the Bot settings, ensure your bot has these permissions:
+- Send Messages
+- Read Message History
+- Create Public Threads
+- Send Messages in Threads
+- Manage Threads
+- Attach Files
+- Embed Links
+</Step>
+
+<Step title="Invite Bot to Your Server">
+1. In your application settings, go to "OAuth2" > "URL Generator"
+2. Under "Scopes", select `bot` and `applications.commands`
+3. Under "Bot Permissions", select the permissions listed above
+4. Copy the generated URL, open it in your browser, and select your server
 </Step>
 
 <Step title="Setup Environment Variables">
-
-Find your bot token in the Discord Developer Portal under "Bot" > "Token".
-
-Create a `.env` file in your project root with the following content, replacing the placeholder with your actual bot token:
+Create a `.env` file in your project root:
 ```bash
-DISCORD_BOT_TOKEN="your_bot_token_here"
+DISCORD_BOT_TOKEN="your-bot-token"
+DISCORD_PUBLIC_KEY="your-public-key"
+DISCORD_APPLICATION_ID="your-application-id"
 ```
-
 </Step>
 
-<Step title="Invite Bot to Your Discord Server">
-1. In your application settings, go to "OAuth2" > "URL Generator"
-2. Under "Scopes", select:
-   - `bot`
-3. Under "Bot Permissions", select the permissions your bot needs:
-   - **Send Messages**
-   - **Create Public Threads**
-   - **Read Message History**
-   - **Attach Files**
-   - **Embed Links**
-4. Copy the generated URL, navigate to it in your browser, and select the server where you want to add the bot
+<Step title="Register Slash Commands">
+Register the `/ask` slash command with Discord:
+```bash
+curl -X PUT \
+  -H "Authorization: Bot $DISCORD_BOT_TOKEN" \
+  -H "Content-Type: application/json" \
+  "https://discord.com/api/v10/applications/$DISCORD_APPLICATION_ID/commands" \
+  -d '[{
+    "name": "ask",
+    "description": "Send a message to the bot",
+    "type": 1,
+    "options": [
+      {"name": "message", "description": "Your message", "type": 3, "required": true},
+      {"name": "file", "description": "Optional file attachment", "type": 11, "required": false}
+    ]
+  }]'
+```
 </Step>
 
-<Step title="Test Your Bot">
-1. Run your bot: `python discord_bot.py`
-2. Go to your Discord server
-3. Send a message in any channel where your bot has access
-4. Your bot should automatically create a thread and respond
+<Step title="Setup Webhook with ngrok (Development)">
+1. Run ngrok to expose your local server:
+   ```bash
+   ngrok http 7777
+   ```
+2. Copy the `https://` URL provided by ngrok
+3. Set the interactions endpoint in the Discord Developer Portal:
+   - Go to "General Information"
+   - Set "Interactions Endpoint URL" to `https://<your-ngrok-url>/discord/interactions`
+   - Discord will send a verification PING — your server must be running
+</Step>
+
+<Step title="Configure for Production">
+For production deployments:
+1. Replace the ngrok URL with your production domain
+2. Update the Interactions Endpoint URL in the Developer Portal to `https://<your-domain>/discord/interactions`
 </Step>
 
 </Steps>
 
 <Note>
-Unlike Slack and WhatsApp bots, Discord bots don't require webhooks or ngrok. They connect directly to Discord's Gateway API. You can deploy them on any service that supports continuous Python runtime (Railway, Render, AWS EC2, etc.). See [deployment tutorials](/production/templates/overview) for production setup.
+ngrok is used only for local development and testing. For production deployments, see the [deployment tutorials](/production/templates/overview).
 </Note>
+
+## How It Works
+
+The Discord interface uses two concurrent transports:
+
+1. **HTTP Webhook** - Handles `/ask` slash commands via Discord's Interactions API. The bot responds with a deferred message, processes the request in the background, and edits the response.
+
+2. **Gateway WebSocket** - Listens for @mentions and DMs via a persistent WebSocket connection. Auto-activates when `discord.py` is installed and `DISCORD_BOT_TOKEN` is set.
+
+Both transports share the same processing core, so your agent logic is written once.
 
 ## Developer Resources
 
-- [Discord Integration](/integrations/discord/overview)
+- [Discord Interface](/agent-os/interfaces/discord/introduction)
 - [Deployment Templates](/production/templates/overview)
+- [Agent reference](/reference/agents/agent)
 - [Discord](https://agno.link/discord)
