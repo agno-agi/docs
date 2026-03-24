@@ -1,0 +1,193 @@
+---
+title: Telegram
+description: Host agents as Telegram bots.
+---
+
+Use the Telegram interface to serve Agents, Teams, or Workflows on Telegram. It mounts webhook routes on a FastAPI app and sends responses back to Telegram chats.
+
+## Setup Steps
+
+Follow the Telegram setup guide in the [cookbook](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/interfaces/telegram/README.md).
+
+Required configuration:
+
+- `TELEGRAM_TOKEN` (Bot token from [@BotFather](https://t.me/BotFather))
+- An ngrok tunnel (for local development) with the webhook pointing to `/telegram/webhook`
+- Optional: `TELEGRAM_WEBHOOK_SECRET` for production webhook validation
+
+<Note>
+Install the Telegram SDK: `pip install 'agno[telegram]'`
+</Note>
+
+<Note>
+In DMs, each chat gets its own session ID (`tg:{chat_id}`). In groups, sessions are scoped by reply thread (`tg:{chat_id}:thread:{message_id}`), so each conversation thread maintains its own context.
+</Note>
+
+## Example Usage
+
+Create an agent, expose it with the `Telegram` interface, and serve via `AgentOS`:
+
+```python basic.py
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.os import AgentOS
+from agno.os.interfaces.telegram import Telegram
+
+telegram_agent = Agent(
+    name="Telegram Bot",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    add_history_to_context=True,
+    num_history_runs=3,
+    add_datetime_to_context=True,
+    markdown=True,
+)
+
+agent_os = AgentOS(
+    agents=[telegram_agent],
+    interfaces=[Telegram(agent=telegram_agent)],
+)
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="basic:app", port=7777, reload=True)
+```
+
+### Streaming
+
+Enable streaming to progressively update a Telegram message as tokens arrive, similar to how ChatGPT's Telegram bot works:
+
+```python streaming.py
+agent_os = AgentOS(
+    agents=[telegram_agent],
+    interfaces=[
+        Telegram(
+            agent=telegram_agent,
+            stream=True,
+        )
+    ],
+)
+```
+
+When `stream=True`, the bot sends an initial message and edits it every ~1 second as new content arrives. This is supported for `Agent` only; `Team` and `Workflow` fall back to non-streaming.
+
+### Team
+
+```python team.py
+from agno.team import Team
+
+telegram_team = Team(
+    name="Research Team",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    members=[researcher, writer],
+    markdown=True,
+)
+
+agent_os = AgentOS(
+    teams=[telegram_team],
+    interfaces=[Telegram(team=telegram_team)],
+)
+```
+
+### Workflow
+
+```python workflow.py
+from agno.workflow.workflow import Workflow
+from agno.workflow.step import Step
+from agno.workflow.steps import Steps
+
+telegram_workflow = Workflow(
+    name="Draft-Edit Workflow",
+    steps=[Steps(name="pipeline", steps=[draft_step, edit_step])],
+)
+
+agent_os = AgentOS(
+    workflows=[telegram_workflow],
+    interfaces=[Telegram(workflow=telegram_workflow)],
+)
+```
+
+## Core Components
+
+- `Telegram` (interface): Wraps an Agno `Agent`, `Team`, or `Workflow` for Telegram integration via FastAPI.
+- `AgentOS.serve`: Serves the FastAPI app using Uvicorn.
+
+## `Telegram` Interface
+
+Main entry point for Agno Telegram applications.
+
+### Initialization Parameters
+
+| Parameter                | Type                       | Default     | Description                                                                                                                |
+| ------------------------ | -------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `agent`                  | `Optional[Agent]`          | `None`      | Agno `Agent` instance.                                                                                                     |
+| `team`                   | `Optional[Team]`           | `None`      | Agno `Team` instance.                                                                                                      |
+| `workflow`               | `Optional[Workflow]`       | `None`      | Agno `Workflow` instance.                                                                                                  |
+| `prefix`                 | `str`                      | `"/telegram"` | Custom FastAPI route prefix for the Telegram interface.                                                                  |
+| `tags`                   | `Optional[List[str]]`      | `None`      | FastAPI route tags for API documentation. Defaults to `["Telegram"]` if not provided.                                      |
+| `reply_to_mentions_only` | `bool`                     | `True`      | When `True`, bot responds only to @mentions and replies in groups. All DMs are always processed.                           |
+| `reply_to_bot_messages`  | `bool`                     | `True`      | When `True`, bot also responds when a user replies to one of the bot's messages in a group.                               |
+| `stream`                 | `bool`                     | `False`     | When `True`, progressively edits the Telegram message as content streams in. Agent only.                                  |
+| `start_message`          | `str`                      | `"Hello!..."` | Custom response for the `/start` command.                                                                                |
+| `help_message`           | `str`                      | `"Send me..."` | Custom response for the `/help` command.                                                                                |
+| `error_message`          | `str`                      | `"Sorry..."` | Custom message sent when an error occurs during processing.                                                               |
+
+Provide `agent`, `team`, or `workflow`.
+
+### Key Method
+
+| Method       | Parameters | Return Type | Description                                        |
+| ------------ | ---------- | ----------- | -------------------------------------------------- |
+| `get_router` | None       | `APIRouter` | Returns the FastAPI router and attaches endpoints. |
+
+## Supported Media
+
+The Telegram interface handles inbound and outbound media:
+
+**Inbound** (user sends to bot):
+- Text messages
+- Photos (with optional caption)
+- Stickers
+- Voice messages and audio files
+- Videos, video notes, and animations
+- Documents (any file type)
+
+**Outbound** (bot sends to user):
+- Text (auto-chunked at 4096 characters)
+- Images (URL, bytes, or base64)
+- Audio files
+- Videos
+- Documents/files
+
+## Endpoints
+
+Mounted under the `/telegram` prefix:
+
+### `GET /telegram/status`
+
+- Health/status check for the interface.
+
+### `POST /telegram/webhook`
+
+- Receives Telegram webhook updates.
+- Validates webhook secret token via `X-Telegram-Bot-Api-Secret-Token` header; bypassed when `APP_ENV=development`.
+- Processes text, photo, sticker, voice, audio, video, and document messages.
+- Sends replies back to the originating chat (splits messages over 4096 characters).
+- In groups, replies are threaded to the original message.
+- Responses: `200 {"status": "processing"}` or `{"status": "ignored"}`, `403` invalid token, `500` errors.
+
+## Testing the Integration
+
+1. Create a bot via [@BotFather](https://t.me/BotFather) and get the token
+2. Set `TELEGRAM_TOKEN` and `APP_ENV=development`
+3. Run the app: `python basic.py`
+4. Start ngrok: `ngrok http 7777`
+5. Set the webhook: `curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://<NGROK_URL>/telegram/webhook"`
+6. Message the bot on Telegram
+
+## Troubleshooting
+
+- Verify `TELEGRAM_TOKEN` is set correctly
+- Check that `APP_ENV=development` is set for local testing (bypasses webhook secret validation)
+- Confirm the ngrok URL is correct and the webhook is set (`/getWebhookInfo`)
+- For groups, ensure the bot has been added to the group and is @mentioned
+- Review application logs for download failures or API errors

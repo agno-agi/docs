@@ -1,0 +1,129 @@
+---
+title: "Telegram Bot"
+description: "Build a Telegram bot that responds to messages, handles media, and supports streaming responses using agents."
+---
+
+Agno and AgentOS make it easy to deploy your agents on Telegram with just 2 extra lines of code.
+
+This example creates a simple agent for answering questions:
+
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.os import AgentOS
+from agno.os.interfaces.telegram import Telegram
+
+telegram_agent = Agent(
+    name="Telegram Bot",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    add_history_to_context=True,
+    num_history_runs=3,
+    add_datetime_to_context=True,
+    markdown=True,
+)
+
+agent_os = AgentOS(
+    agents=[telegram_agent],
+    interfaces=[Telegram(agent=telegram_agent)],
+)
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="telegram_bot:app", port=7777, reload=True)
+```
+
+<Note>
+Install the Telegram dependency: `pip install 'agno[telegram]'`
+</Note>
+
+<Note>
+In DMs, each chat gets its own session. In group chats, sessions are scoped by reply thread so each conversation maintains its own context.
+</Note>
+
+## Setup and Configuration
+
+<Steps>
+
+<Step title="Prerequisites">
+Ensure you have the following:
+- A Telegram account
+- ngrok (for development)
+- Python 3.7+
+</Step>
+
+<Step title="Create a Telegram Bot">
+1. Open Telegram and search for [@BotFather](https://t.me/BotFather)
+2. Send `/newbot`
+3. Follow the prompts to choose a name and username for your bot
+4. BotFather will respond with your bot token (looks like `123456789:ABCdefGHIjklMNOpqrsTUVwxyz`)
+5. Save this token securely
+</Step>
+
+<Step title="Setup Environment Variables">
+Create a `.env` file in your project root:
+```bash
+TELEGRAM_TOKEN="your-bot-token-from-botfather"
+```
+
+For development, also set:
+```bash
+APP_ENV="development"
+```
+This bypasses webhook secret validation for local testing.
+</Step>
+
+<Step title="Setup Webhook with ngrok">
+1. Run ngrok to expose your local server:
+   ```bash
+   ngrok http 7777
+   ```
+2. Copy the `https://` URL provided by ngrok
+3. Set the webhook by running:
+   ```bash
+   curl "https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook?url=https://<YOUR_NGROK_URL>/telegram/webhook"
+   ```
+4. Verify the webhook is set:
+   ```bash
+   curl "https://api.telegram.org/bot<YOUR_TOKEN>/getWebhookInfo"
+   ```
+</Step>
+
+<Step title="Configure for Production">
+For production deployments, set a webhook secret for request validation:
+```bash
+TELEGRAM_WEBHOOK_SECRET="your-random-secret-string"
+APP_ENV="production"
+```
+
+Set the webhook with the secret token:
+```bash
+curl "https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook?url=https://<YOUR_DOMAIN>/telegram/webhook&secret_token=<YOUR_SECRET>"
+```
+</Step>
+
+<Step title="Configure Bot Settings (Optional)">
+Use BotFather to customize your bot:
+- `/setdescription` - Set the bot's description
+- `/setabouttext` - Set the "About" text
+- `/setuserpic` - Set the bot's profile picture
+- `/setcommands` - Set the command menu (e.g., `/start`, `/help`)
+
+To allow the bot to read all messages in groups (not just @mentions):
+1. Send `/mybots` to BotFather
+2. Select your bot
+3. Go to "Bot Settings" > "Group Privacy"
+4. Disable privacy mode
+</Step>
+
+</Steps>
+
+<Note>
+ngrok is used only for local development and testing. For production deployments, see the [deployment tutorials](/production/templates/overview).
+</Note>
+
+## Developer Resources
+
+- [Telegram Interface](/agent-os/interfaces/telegram/introduction)
+- [Deployment Templates](/production/templates/overview)
+- [Agent reference](/reference/agents/agent)
+- [Discord](https://agno.link/discord)
