@@ -1,59 +1,65 @@
 ---
 title: WhatsApp
-description: Host agents as WhatsApp applications
+description: Host agents as WhatsApp applications.
 ---
 
-Use the WhatsApp interface to serve Agents or Teams via WhatsApp. It mounts webhook routes on a FastAPI app and sends responses back to WhatsApp users and threads.
+Use the WhatsApp interface to serve Agents, Teams, or Workflows on WhatsApp. It mounts webhook routes on a FastAPI app and sends responses back to WhatsApp users.
 
 ## Setup
 
-Set up your WhatsApp Business API and configure the webhook URL to point to your AgentOS instance.
+Follow the WhatsApp setup guide in the [deploy overview](/deploy/interfaces/whatsapp/overview).
 
 Required environment variables:
 
-- `WHATSAPP_ACCESS_TOKEN`
-- `WHATSAPP_PHONE_NUMBER_ID`
-- `WHATSAPP_VERIFY_TOKEN`
+- `WHATSAPP_ACCESS_TOKEN` (from Meta App Dashboard)
+- `WHATSAPP_PHONE_NUMBER_ID` (from WhatsApp API Setup)
+- `WHATSAPP_VERIFY_TOKEN` (a string you create for webhook verification)
 - Optional (production): `WHATSAPP_APP_SECRET` and `APP_ENV=production`
 
 <Note>
 The user's phone number is automatically used as the `user_id` for runs. This ensures that sessions and memory are appropriately scoped to the user.
 
-The phone number is also used for the `session_id`, so a single WhatsApp conversation corresponds to a single session. This should be considered when managing session history.
+The phone number is also used for the `session_id` (format: `wa:{phone_number}`), so a single WhatsApp conversation corresponds to a single session.
 </Note>
 
 ## Example Usage
 
 Create an agent, expose it with the `Whatsapp` interface, and serve via `AgentOS`:
 
-```python
+```python basic.py
 from agno.agent import Agent
-from agno.models.openai import OpenAIResponses
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIChat
 from agno.os import AgentOS
 from agno.os.interfaces.whatsapp import Whatsapp
 
-image_agent = Agent(
-    model=OpenAIResponses(id="gpt-5.2"), # Ensure OPENAI_API_KEY is set
-    tools=[OpenAITools(image_model="gpt-image-1")],
-    markdown=True,
+agent_db = SqliteDb(db_file="tmp/persistent_memory.db")
+
+basic_agent = Agent(
+    name="Basic Agent",
+    model=OpenAIChat(id="gpt-4o"),
+    db=agent_db,
     add_history_to_context=True,
+    num_history_runs=3,
+    add_datetime_to_context=True,
+    markdown=True,
 )
 
 agent_os = AgentOS(
-    agents=[image_agent],
-    interfaces=[Whatsapp(agent=image_agent)],
+    agents=[basic_agent],
+    interfaces=[Whatsapp(agent=basic_agent)],
 )
 app = agent_os.get_app()
 
 if __name__ == "__main__":
-    agent_os.serve(app="basic:app", port=8000, reload=True)
+    agent_os.serve(app="basic:app", port=7777, reload=True)
 ```
 
 See the [WhatsApp Examples](/agent-os/usage/interfaces/whatsapp/basic) for more usage patterns.
 
 ## Core Components
 
-- `Whatsapp` (interface): Wraps an Agno `Agent` or `Team` for WhatsApp via FastAPI.
+- `Whatsapp` (interface): Wraps an Agno `Agent`, `Team`, or `Workflow` for WhatsApp via FastAPI.
 - `AgentOS.serve`: Serves the FastAPI app using Uvicorn.
 
 ## `Whatsapp` Interface
@@ -62,18 +68,21 @@ Main entry point for Agno WhatsApp applications.
 
 ### Initialization Parameters
 
-| Parameter | Type              | Default | Description            |
-| --------- | ----------------- | ------- | ---------------------- |
-| `agent`   | `Optional[Agent]` | `None`  | Agno `Agent` instance. |
-| `team`    | `Optional[Team]`  | `None`  | Agno `Team` instance.  |
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `agent` | `Optional[Agent]` | `None` | Agno `Agent` instance. |
+| `team` | `Optional[Team]` | `None` | Agno `Team` instance. |
+| `workflow` | `Optional[Workflow]` | `None` | Agno `Workflow` instance. |
+| `prefix` | `str` | `"/whatsapp"` | Custom FastAPI route prefix for the WhatsApp interface. |
+| `tags` | `Optional[List[str]]` | `None` | FastAPI route tags for API documentation. Defaults to `["Whatsapp"]` if not provided. |
 
-Provide `agent` or `team`.
+Provide `agent`, `team`, or `workflow`.
 
 ### Key Method
 
-| Method       | Parameters               | Return Type | Description                                        |
-| ------------ | ------------------------ | ----------- | -------------------------------------------------- |
-| `get_router` | `use_async: bool = True` | `APIRouter` | Returns the FastAPI router and attaches endpoints. |
+| Method | Parameters | Return Type | Description |
+| --- | --- | --- | --- |
+| `get_router` | None | `APIRouter` | Returns the FastAPI router and attaches endpoints. |
 
 ## Endpoints
 
@@ -81,17 +90,55 @@ Mounted under the `/whatsapp` prefix:
 
 ### `GET /whatsapp/status`
 
-- Health/status of the interface.
+- Health/status check for the interface.
+- Returns `{"status": "available"}`.
 
 ### `GET /whatsapp/webhook`
 
-- Verifies WhatsApp webhook (`hub.challenge`).
-- Returns `hub.challenge` on success; `403` on token mismatch; `500` if `WHATSAPP_VERIFY_TOKEN` missing.
+- Handles WhatsApp webhook verification (`hub.challenge`).
+- Returns `hub.challenge` on success; `403` on token mismatch; `500` if `WHATSAPP_VERIFY_TOKEN` is not set.
 
 ### `POST /whatsapp/webhook`
 
 - Receives WhatsApp messages and events.
-- Validates signature (`X-Hub-Signature-256`); bypassed in development mode.
-- Processes text, image, video, audio, and document messages via the agent/team.
-- Sends replies (splits long messages; uploads and sends generated images).
+- Validates the `X-Hub-Signature-256` header; bypassed when `APP_ENV=development`.
+- Processes text, image, video, audio, and document messages via the agent/team/workflow.
+- Sends replies back to the user (splits long messages at WhatsApp's 4096 character limit; uploads and sends generated images).
 - Responses: `200 {"status": "processing"}` or `{"status": "ignored"}`, `403` invalid signature, `500` errors.
+
+## Session Management
+
+Sessions are scoped by phone number:
+
+- **Session ID format**: `wa:{phone_number}`
+- The user's phone number is used as both the `user_id` and the base for the `session_id`
+- Each WhatsApp conversation maps to a single session
+
+This means all messages from the same phone number share the same conversation context.
+
+## Media Support
+
+**Inbound** (user sends to bot): images, video, audio, and documents. Media is downloaded via the WhatsApp Business API and passed to the agent as image, video, audio, or file inputs.
+
+**Outbound** (agent sends to user): generated images are uploaded to the WhatsApp Media API and sent as native WhatsApp image messages. Text responses are split into batches if they exceed the 4096 character limit.
+
+## Reasoning Support
+
+When the agent produces reasoning content (e.g., from ReasoningTools or ThinkingTools), it is sent as a separate italicized message before the main response.
+
+## Testing the Integration
+
+1. Run the app locally: `python <my-app>.py` (ensure ngrok is running)
+2. In your Meta App's WhatsApp Setup, configure the webhook URL to `https://YOUR-NGROK-URL/whatsapp/webhook`
+3. Subscribe to the `messages` webhook field
+4. Send a message from your test phone number to the WhatsApp Business number
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| 403 errors on webhook | Invalid signature in production mode | Set `APP_ENV=development` for local testing, or set `WHATSAPP_APP_SECRET` with your Meta App Secret |
+| Webhook verification fails | Token mismatch or app not running | Ensure `WHATSAPP_VERIFY_TOKEN` matches and the app is running before clicking "Verify and save" |
+| No response from the bot | Missing access token or phone number ID | Verify `WHATSAPP_ACCESS_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID` are set correctly |
+| Images not sending | Upload failure | Check `WHATSAPP_ACCESS_TOKEN` has permission to upload media |
+| `500` on webhook verify | `WHATSAPP_VERIFY_TOKEN` not set | Export `WHATSAPP_VERIFY_TOKEN` before running |
