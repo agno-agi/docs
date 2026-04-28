@@ -1,43 +1,17 @@
 ---
 title: RAG
-description: "Hybrid search across structured and unstructured knowledge in Pal and Dash."
+description: "Hybrid search grounding text-to-SQL in the Dash team."
 ---
 
-[Pal](https://github.com/agno-agi/demo-os/tree/main/agents/pal) and [Dash](https://github.com/agno-agi/demo-os/tree/main/agents/dash) both use retrieval to ground answers, with different content but the same underlying primitive.
+The [Dash team](https://github.com/agno-agi/demo-os/tree/main/agents/dash) uses retrieval to ground every SQL query in known patterns. Hallucinated SQL is the failure mode RAG prevents.
 
-| Agent | What it retrieves | Why retrieval |
-|-------|-------------------|---------------|
-| **Pal** | Wiki articles, meeting notes, voice guides, raw research dumps | The user's personal knowledge accumulates over time. Search beats stuffing it all in context. |
-| **Dash** | Table descriptions, validated SQL queries, business rules | The Analyst grounds every query in known patterns. Hallucinated SQL is the failure mode RAG prevents. |
-
-## Pal: knowledge that compounds
-
-Pal stores everything the user feeds it (URLs ingested, articles compiled, meetings) in a vector-indexed wiki. The Navigator agent searches it before answering:
-
-```python
-from agno.knowledge import Knowledge
-from agno.vector_db.pgvector import PgVector
-
-pal_knowledge = Knowledge(
-    vector_db=PgVector(
-        table_name="pal_knowledge",
-        db_url=DB_URL,
-        search_type="hybrid",  # semantic + keyword
-    ),
-)
-
-navigator = Agent(
-    knowledge=pal_knowledge,
-    add_knowledge_to_context=True,
-    search_knowledge=True,
-)
-```
-
-`search_type="hybrid"` runs both vector similarity and BM25 keyword search, then merges results. Catches both "what's the same idea worded differently?" (semantic) and "find the doc that mentions this exact term" (keyword).
+| What it retrieves | Why retrieval |
+|-------------------|---------------|
+| Table descriptions, validated SQL queries, business rules | The Analyst grounds every query in known patterns. Without retrieval, the model invents column names and misreads enum values. |
 
 ## Dash: SQL grounded in known patterns
 
-Dash holds three kinds of knowledge under one [`Knowledge`](https://github.com/agno-agi/demo-os/blob/main/agents/dash/knowledge/) instance:
+Dash holds three kinds of knowledge under one [`Knowledge`](https://github.com/agno-agi/demo-os/tree/main/agents/dash/knowledge) instance:
 
 | Knowledge | Purpose |
 |-----------|---------|
@@ -47,14 +21,32 @@ Dash holds three kinds of knowledge under one [`Knowledge`](https://github.com/a
 
 When a user asks "what's our MRR trend?", the Analyst retrieves matching table descriptions, similar past queries, and the MRR definition. The model writes SQL with all of that in context. Hallucination rate drops.
 
+```python
+from agno.knowledge import Knowledge
+from agno.vector_db.pgvector import PgVector
+
+dash_knowledge = Knowledge(
+    vector_db=PgVector(
+        table_name="dash_knowledge",
+        db_url=DB_URL,
+        search_type="hybrid",  # semantic + keyword
+    ),
+)
+
+analyst = Agent(
+    knowledge=dash_knowledge,
+    add_knowledge_to_context=True,
+    search_knowledge=True,
+)
+```
+
+`search_type="hybrid"` runs both vector similarity and BM25 keyword search, then merges results. Catches both "what's the same idea worded differently?" (semantic) and "find the doc that mentions this exact term" (keyword).
+
 ## Loading knowledge
 
 Knowledge content gets loaded once at boot or via a script:
 
 ```bash
-# Pal: voice guides, system docs
-python -m agents.pal.scripts.load_knowledge
-
 # Dash: table metadata, queries, business rules
 python -m agents.dash.scripts.load_knowledge
 ```
@@ -77,10 +69,9 @@ If `search_knowledge=True` is also set, the agent gets a `search_knowledge_base(
 
 | Try in chat | What happens |
 |-------------|--------------|
-| Pal: *"what do I know about RAG techniques?"* | Navigator searches the wiki, returns curated answer with citations. |
-| Pal: *"ingest https://example.com/article"* | Researcher fetches, saves to `raw/`, Compiler eventually folds into wiki. |
 | Dash: *"what's our MRR trend?"* | Analyst retrieves MRR definition + matching query, writes grounded SQL. |
 | Dash: *"why is churn so high?"* | Analyst retrieves churn definitions, finds matching query patterns, executes, interprets. |
+| Dash: *"show me revenue by plan"* | Analyst pulls table metadata for `subscriptions`, generates the aggregation. |
 
 ## When hybrid search isn't enough
 
@@ -90,9 +81,9 @@ For very large knowledge bases, add reranking. PgVector + a reranker (Cohere, BG
 from agno.vector_db.pgvector import PgVector
 from agno.rerank.cohere import CohereReranker
 
-pal_knowledge = Knowledge(
+dash_knowledge = Knowledge(
     vector_db=PgVector(
-        table_name="pal_knowledge",
+        table_name="dash_knowledge",
         db_url=DB_URL,
         search_type="hybrid",
         reranker=CohereReranker(model="rerank-3.5"),
@@ -102,7 +93,7 @@ pal_knowledge = Knowledge(
 
 Two-stage retrieval (hybrid then rerank) is the standard production setup. The hybrid stage casts a wide net (top-50), the reranker prunes to the best top-10.
 
-Source: [`agents/pal/`](https://github.com/agno-agi/demo-os/tree/main/agents/pal), [`agents/dash/`](https://github.com/agno-agi/demo-os/tree/main/agents/dash)
+Source: [`agents/dash/`](https://github.com/agno-agi/demo-os/tree/main/agents/dash)
 
 ## Next
 
