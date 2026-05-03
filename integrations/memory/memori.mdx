@@ -5,38 +5,39 @@ description: Memori is an open-source memory layer for AI. It automatically capt
 
 ## Prerequisites
 
-The following example requires the `memori` library.
+The following examples require the `memori` library.
 
 ```shell
-uv pip install -U memori sqlalchemy python-dotenv
+uv pip install -U memori python-dotenv
 ```
 
-## Example
+For Memori BYODB, also install:
 
-The following agent uses Memori to maintain persistent memory across conversations with SQLite:
+```shell
+uv pip install -U sqlalchemy
+```
+
+## Memori Cloud
+
+Memori Cloud is the zero-setup option. No database configuration required — just initialize `Memori()` with your API key and start capturing memory.
+
+### Sync
 
 ```python
 import os
 
 from agno.agent import Agent
-from agno.models.openai import OpenAIResponses
+from agno.models.openai import OpenAIChat
 from dotenv import load_dotenv
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 from memori import Memori
 
 load_dotenv()
 
-db_path = os.getenv("DATABASE_PATH", "memori_agno.db")
-engine = create_engine(f"sqlite:///{db_path}")
-Session = sessionmaker(bind=engine)
+model = OpenAIChat(id="gpt-4o-mini")
 
-model = OpenAIResponses(id="gpt-5.2")
-
-mem = Memori(conn=Session).agno.register(openai_chat=model)
+mem = Memori().llm.register(openai_chat=model)
 mem.attribution(entity_id="customer-456", process_id="support-agent")
-mem.config.storage.build()
 
 agent = Agent(
     model=model,
@@ -63,6 +64,261 @@ if __name__ == "__main__":
     print(f"Agent: {response3.content}")
 ```
 
+### Async
+
+```python
+import asyncio
+import os
+
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from dotenv import load_dotenv
+
+from memori import Memori
+
+load_dotenv()
+
+model = OpenAIChat(id="gpt-4o-mini")
+
+mem = Memori().llm.register(openai_chat=model)
+mem.attribution(entity_id="customer-456", process_id="support-agent")
+
+agent = Agent(
+    model=model,
+    instructions=[
+        "You are a helpful customer support agent.",
+        "Remember customer preferences and history from previous conversations.",
+    ],
+    markdown=True,
+)
+
+async def main():
+    response = await agent.arun("Hi, I'd like to order a large pepperoni pizza with extra cheese")
+    print(response.content)
+
+asyncio.run(main())
+```
+
+### Streaming
+
+```python
+import os
+
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from dotenv import load_dotenv
+
+from memori import Memori
+
+load_dotenv()
+
+model = OpenAIChat(id="gpt-4o-mini")
+
+mem = Memori().llm.register(openai_chat=model)
+mem.attribution(entity_id="customer-456", process_id="support-agent")
+
+agent = Agent(
+    model=model,
+    instructions=[
+        "You are a helpful customer support agent.",
+        "Remember customer preferences and history from previous conversations.",
+    ],
+    markdown=True,
+)
+
+stream = agent.run("Hi, I'd like to order a large pepperoni pizza with extra cheese", stream=True)
+for chunk in stream:
+    if hasattr(chunk, "content") and chunk.content:
+        print(chunk.content, end="")
+```
+
+## Memori BYODB
+
+Memori BYODB lets you bring your own database. Use SQLAlchemy to connect to PostgreSQL, MySQL, SQLite, and more.
+
+### Sync
+
+```python
+import os
+
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from dotenv import load_dotenv
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from memori import Memori
+
+load_dotenv()
+
+db_path = os.getenv("DATABASE_PATH", "memori_agno.db")
+engine = create_engine(f"sqlite:///{db_path}")
+SessionLocal = sessionmaker(bind=engine)
+
+model = OpenAIChat(id="gpt-4o-mini")
+
+mem = Memori(conn=SessionLocal).llm.register(openai_chat=model)
+mem.config.storage.build()
+mem.attribution(entity_id="customer-456", process_id="support-agent")
+
+agent = Agent(
+    model=model,
+    instructions=[
+        "You are a helpful customer support agent.",
+        "Remember customer preferences and history from previous conversations.",
+    ],
+    markdown=True,
+)
+
+if __name__ == "__main__":
+    print("Customer: Hi, I'd like to order a large pepperoni pizza with extra cheese")
+    response1 = agent.run(
+        "Hi, I'd like to order a large pepperoni pizza with extra cheese"
+    )
+    print(f"Agent: {response1.content}\n")
+
+    print("Customer: Actually, can you remind me what I just ordered?")
+    response2 = agent.run("Actually, can you remind me what I just ordered?")
+    print(f"Agent: {response2.content}\n")
+
+    print("Customer: Perfect! And what size was that again?")
+    response3 = agent.run("Perfect! And what size was that again?")
+    print(f"Agent: {response3.content}")
+```
+
+### Async
+
+```python
+import asyncio
+import os
+
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from dotenv import load_dotenv
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from memori import Memori
+
+load_dotenv()
+
+db_path = os.getenv("DATABASE_PATH", "memori_agno.db")
+engine = create_engine(f"sqlite:///{db_path}")
+SessionLocal = sessionmaker(bind=engine)
+
+model = OpenAIChat(id="gpt-4o-mini")
+
+mem = Memori(conn=SessionLocal).llm.register(openai_chat=model)
+mem.config.storage.build()
+mem.attribution(entity_id="customer-456", process_id="support-agent")
+
+agent = Agent(
+    model=model,
+    instructions=[
+        "You are a helpful customer support agent.",
+        "Remember customer preferences and history from previous conversations.",
+    ],
+    markdown=True,
+)
+
+async def main():
+    response = await agent.arun("Hi, I'd like to order a large pepperoni pizza with extra cheese")
+    print(response.content)
+
+asyncio.run(main())
+```
+
+### Streaming
+
+```python
+import os
+
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from dotenv import load_dotenv
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from memori import Memori
+
+load_dotenv()
+
+db_path = os.getenv("DATABASE_PATH", "memori_agno.db")
+engine = create_engine(f"sqlite:///{db_path}")
+SessionLocal = sessionmaker(bind=engine)
+
+model = OpenAIChat(id="gpt-4o-mini")
+
+mem = Memori(conn=SessionLocal).llm.register(openai_chat=model)
+mem.config.storage.build()
+mem.attribution(entity_id="customer-456", process_id="support-agent")
+
+agent = Agent(
+    model=model,
+    instructions=[
+        "You are a helpful customer support agent.",
+        "Remember customer preferences and history from previous conversations.",
+    ],
+    markdown=True,
+)
+
+stream = agent.run("Hi, I'd like to order a large pepperoni pizza with extra cheese", stream=True)
+for chunk in stream:
+    if hasattr(chunk, "content") and chunk.content:
+        print(chunk.content, end="")
+```
+
+## Different Providers
+
+Agno supports multiple model families. Use the matching registration keyword in Memori.
+
+| Package | Model Class | Registration Keyword |
+| --- | --- | --- |
+| `agno.models.openai` | `OpenAIChat` | `openai_chat=model` |
+| `agno.models.anthropic` | `Claude` | `claude=model` |
+| `agno.models.google` | `Gemini` | `gemini=model` |
+| `agno.models.xai` | `xAI` | `xai=model` |
+
+**OpenAI**
+```python
+from agno.models.openai import OpenAIChat
+
+model = OpenAIChat(id="gpt-4o-mini")
+mem = Memori().llm.register(openai_chat=model)
+```
+
+**Anthropic**
+```python
+from agno.models.anthropic import Claude
+
+model = Claude(id="claude-sonnet-4-20250514")
+mem = Memori().llm.register(claude=model)
+```
+
+**Google Gemini**
+```python
+from agno.models.google import Gemini
+
+model = Gemini(id="gemini-2.0-flash-exp")
+mem = Memori().llm.register(gemini=model)
+```
+
+**xAI**
+```python
+from agno.models.xai import xAI
+
+model = xAI(id="grok-3")
+mem = Memori().llm.register(xai=model)
+```
+
+## Supported Modes
+
+| Mode | Method |
+| --- | --- |
+| **Sync** | `agent.run()` |
+| **Async** | `await agent.arun()` |
+| **Streamed** | `agent.run(stream=True)` |
+
 ## Key Features
 
 - **LLM Agnostic**: OpenAI, Anthropic, Bedrock, Gemini, Grok (xAI) - all modes (streamed, unstreamed, sync, async)
@@ -72,13 +328,20 @@ if __name__ == "__main__":
 
 ## Setup
 
+**Memori Cloud**
+1. **Get an API key** from [app.memorilabs.ai](https://app.memorilabs.ai)
+2. **Initialize Memori**: `Memori()` — no database required
+3. **Register with Model**: Register Memori with your Agno agent using `.llm.register()`
+4. **Set Attribution**: Define entity and process IDs for memory tracking
+
+**Memori BYODB**
 1. **Create Database Engine**: Use SQLAlchemy to create a database connection
 2. **Initialize Memori**: Create a Memori instance with the database session
-3. **Register with Model**: Register Memori with your Agno agent using `.agno.register()`
-4. **Set Attribution**: Define entity and process IDs for memory tracking
-5. **Build Storage**: Initialize the database schema with `.config.storage.build()`
+3. **Register with Model**: Register Memori with your Agno agent using `.llm.register()`
+4. **Build Storage**: Initialize the database schema with `.config.storage.build()`
+5. **Set Attribution**: Define entity and process IDs for memory tracking
 
 ## Developer Resources
 
-- [Memori SDK Documentation](https://memorilabs.ai/docs/)
-- [Memori GitHub Repository](https://github.com/MemoriLabs/Memori)
+- [Memori Cloud Docs](https://memorilabs.ai/docs/memori-cloud/llm/agno)
+- [Memori BYODB Docs](https://memorilabs.ai/docs/memori-byodb/llm/agno)
