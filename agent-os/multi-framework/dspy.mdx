@@ -1,0 +1,73 @@
+---
+title: "DSPy"
+description: "Serve a DSPy program as an AgentOS agent."
+---
+
+`DSPyAgent` wraps any DSPy `Module` so it can be served through AgentOS or used standalone.
+
+```python
+import dspy
+from agno.agents.dspy import DSPyAgent
+from agno.db.sqlite import SqliteDb
+from agno.os import AgentOS
+
+dspy.configure(lm=dspy.LM("openai/gpt-5.4"))
+
+agent = DSPyAgent(
+    name="DSPy Assistant",
+    program=dspy.ChainOfThought("question -> answer"),
+)
+
+agent_os = AgentOS(
+    agents=[agent],
+    tracing=True,
+    db=SqliteDb(db_file="tmp/agentos.db"),
+)
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="dspy_agent:app", reload=True)
+```
+
+## Install
+
+```bash
+uv pip install dspy
+export OPENAI_API_KEY=sk-...
+```
+
+## Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `name` | `str` | `None` | Display name for the agent. |
+| `id` | `str` | `None` | Unique identifier. Auto-generated from `name` if unset. |
+| `program` | `dspy.Module` | `None` | A DSPy module (`Predict`, `ChainOfThought`, `ReAct`, or custom). |
+| `input_field` | `str` | `"question"` | Name of the input field in the DSPy signature. |
+| `output_field` | `str` | `"answer"` | Name of the output field on the `Prediction`. |
+| `lm` | `dspy.LM` | `None` | Optional LM to scope this agent. Falls back to the global `dspy.configure(lm=...)`. |
+| `program_kwargs` | `Dict[str, Any]` | `{}` | Extra kwargs passed to the program on every call. |
+| `db` | `BaseDb` | `None` | Database for session persistence. |
+
+
+## Examples
+
+<CardGroup cols={2}>
+  <Card title="AgentOS deployment" icon="server" href="https://github.com/agno-agi/agno/blob/main/cookbook/frameworks/00_quickstart/dspy_agent.py">
+    Serve a DSPy program through AgentOS.
+  </Card>
+  <Card title="Standalone usage" icon="play" href="https://github.com/agno-agi/agno/blob/main/cookbook/frameworks/dspy/dspy_basic.py">
+    Call the agent directly with `.run()` and `.print_response()`.
+  </Card>
+  <Card title="ReAct with tools" icon="wrench" href="https://github.com/agno-agi/agno/blob/main/cookbook/frameworks/dspy/dspy_tools.py">
+    Use `dspy.ReAct` to call tools from the program.
+  </Card>
+  <Card title="Sessions" icon="comments" href="https://github.com/agno-agi/agno/blob/main/cookbook/frameworks/dspy/dspy_session.py">
+    Resume conversations across runs with `session_id`.
+  </Card>
+</CardGroup>
+
+## Developer Resources
+
+- [Cookbook examples](https://github.com/agno-agi/agno/tree/main/cookbook/frameworks/dspy)
+- [DSPy documentation](https://dspy.ai/)

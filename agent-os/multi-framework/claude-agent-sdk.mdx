@@ -1,0 +1,79 @@
+---
+title: "Claude Agent SDK"
+description: "Run Claude Code as an AgentOS agent using ClaudeAgent."
+---
+
+`ClaudeAgent` wraps the [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-python) so Claude Code can be served through AgentOS. 
+Tool execution is handled by the SDK. You configure which built-in tools are allowed and which permission mode to use.
+
+```python
+from agno.agents.claude import ClaudeAgent
+from agno.db.sqlite import SqliteDb
+from agno.os import AgentOS
+
+agent = ClaudeAgent(
+    name="Claude Code Agent",
+    model="claude-sonnet-4-6",
+    allowed_tools=["Read", "Edit", "Bash"],
+    permission_mode="acceptEdits",
+    max_turns=10,
+)
+
+agent_os = AgentOS(
+    agents=[agent],
+    tracing=True,
+    db=SqliteDb(db_file="tmp/agentos.db"),
+)
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="claude_agent:app", reload=True)
+```
+
+## Install
+
+```bash
+uv pip install claude-agent-sdk
+export ANTHROPIC_API_KEY=sk-ant-...
+```
+
+## Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `name` | `str` | `None` | Display name for the agent. |
+| `id` | `str` | `None` | Unique identifier. Auto-generated from `name` if unset. |
+| `system_prompt` | `str` | `None` | Optional system prompt. |
+| `model` | `str` | `None` | Model id (e.g. `"claude-sonnet-4-6"`). Defaults to the SDK default. |
+| `allowed_tools` | `List[str]` | `None` | Built-in tools the agent can call (e.g. `["Read", "Bash", "WebSearch"]`). |
+| `disallowed_tools` | `List[str]` | `None` | Tools to block. |
+| `permission_mode` | `str` | `None` | One of `"default"`, `"acceptEdits"`, `"plan"`, `"bypassPermissions"`. |
+| `max_turns` | `int` | `None` | Maximum number of turns per run. |
+| `max_budget_usd` | `float` | `None` | Hard cost cap per run. |
+| `cwd` | `str` | `None` | Working directory the agent runs in. |
+| `mcp_servers` | `Dict[str, Any]` | `None` | MCP server configurations for custom tools. |
+| `options_kwargs` | `Dict[str, Any]` | `{}` | Extra kwargs forwarded to `ClaudeAgentOptions`. |
+| `db` | `BaseDb` | `None` | Database for session persistence. |
+
+
+## Examples
+
+<CardGroup cols={2}>
+  <Card title="AgentOS deployment" icon="server" href="https://github.com/agno-agi/agno/blob/main/cookbook/frameworks/00_quickstart/claude_agent.py">
+    Serve a Claude Code agent through AgentOS.
+  </Card>
+  <Card title="Standalone usage" icon="play" href="https://github.com/agno-agi/agno/blob/main/cookbook/frameworks/claude-agent-sdk/claude_basic.py">
+    Call the agent directly with `.run()` and `.print_response()`.
+  </Card>
+  <Card title="Custom MCP tools" icon="plug" href="https://github.com/agno-agi/agno/blob/main/cookbook/frameworks/claude-agent-sdk/claude_mcp_tools.py">
+    Extend Claude Code with your own MCP servers.
+  </Card>
+  <Card title="Sessions" icon="comments" href="https://github.com/agno-agi/agno/blob/main/cookbook/frameworks/claude-agent-sdk/claude_session.py">
+    Resume conversations across runs with `session_id`.
+  </Card>
+</CardGroup>
+
+## Developer Resources
+
+- [Cookbook examples](https://github.com/agno-agi/agno/tree/main/cookbook/frameworks/claude-agent-sdk)
+- [Claude Agent SDK on GitHub](https://github.com/anthropics/claude-agent-sdk-python)

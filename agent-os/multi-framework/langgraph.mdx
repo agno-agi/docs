@@ -1,0 +1,84 @@
+---
+title: "LangGraph"
+description: "Wrap a compiled LangGraph graph as an AgentOS agent."
+---
+
+`LangGraphAgent` wraps a compiled LangGraph graph so it can be served through AgentOS or used standalone.
+
+```python
+from agno.agents.langgraph import LangGraphAgent
+from agno.db.sqlite import SqliteDb
+from agno.os import AgentOS
+from langchain_openai import ChatOpenAI
+from langgraph.graph import MessagesState, StateGraph
+
+
+def chatbot(state: MessagesState):
+    return {"messages": [ChatOpenAI(model="gpt-5.4").invoke(state["messages"])]}
+
+
+graph = StateGraph(MessagesState)
+graph.add_node("chatbot", chatbot)
+graph.set_entry_point("chatbot")
+compiled = graph.compile()
+
+agent = LangGraphAgent(
+    name="LangGraph Chatbot",
+    graph=compiled,
+)
+
+agent_os = AgentOS(
+    agents=[agent],
+    tracing=True,
+    db=SqliteDb(db_file="tmp/agentos.db"),
+)
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="langgraph_agent:app", reload=True)
+```
+
+## Install
+
+```bash
+uv pip install langgraph langchain-openai
+export OPENAI_API_KEY=sk-...
+```
+
+## Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `name` | `str` | `None` | Display name for the agent. |
+| `id` | `str` | `None` | Unique identifier. Auto-generated from `name` if unset. |
+| `graph` | `CompiledGraph` | `None` | Compiled LangGraph graph (`graph.compile()`). |
+| `input_key` | `str` | `"messages"` | Key in the graph state used for input messages. |
+| `output_key` | `str` | `"messages"` | Key in the graph state used for output messages. |
+| `config` | `Dict[str, Any]` | `None` | Optional LangGraph config dict passed to `invoke` / `stream`. |
+| `db` | `BaseDb` | `None` | Database for session persistence. |
+
+
+## Examples
+
+<CardGroup cols={2}>
+  <Card title="AgentOS deployment" icon="server" href="https://github.com/agno-agi/agno/blob/main/cookbook/frameworks/00_quickstart/langgraph_agent.py">
+    Serve a compiled LangGraph through AgentOS.
+  </Card>
+  <Card title="Standalone usage" icon="play" href="https://github.com/agno-agi/agno/blob/main/cookbook/frameworks/langgraph/langgraph_basic.py">
+    Call the agent directly with `.run()` and `.print_response()`.
+  </Card>
+  <Card title="Graphs with tools" icon="wrench" href="https://github.com/agno-agi/agno/blob/main/cookbook/frameworks/langgraph/langgraph_tools.py">
+    Tool nodes that surface as Agno tool events.
+  </Card>
+  <Card title="Sessions" icon="comments" href="https://github.com/agno-agi/agno/blob/main/cookbook/frameworks/langgraph/langgraph_session.py">
+    Resume conversations across runs with `session_id`.
+  </Card>
+  <Card title="Time travel" icon="clock-rotate-left" href="https://github.com/agno-agi/agno/blob/main/cookbook/frameworks/langgraph/langgraph_time_travel.py">
+    Replay and fork runs from LangGraph checkpoints.
+  </Card>
+</CardGroup>
+
+## Developer Resources
+
+- [Cookbook examples](https://github.com/agno-agi/agno/tree/main/cookbook/frameworks/langgraph)
+- [LangGraph documentation](https://langchain-ai.github.io/langgraph/)
