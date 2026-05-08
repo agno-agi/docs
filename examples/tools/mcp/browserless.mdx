@@ -1,0 +1,94 @@
+---
+title: "MCP Browserless Agent"
+description: "Creates an agent that uses Anthropic to drive a real browser via the Browserless MCP server."
+---
+```python
+"""MCP Browserless Agent - Hosted browser automation
+
+This example shows how to create an agent that uses Anthropic to drive a real browser
+via the Browserless MCP server. The hosted endpoint at https://mcp.browserless.io/mcp
+exposes 10 tools, including a multi-turn `browserless_agent` that preserves browser
+state across calls — Agno's `MCPTools` keeps one MCP session alive for the lifetime
+of the `async with` block, so multi-step navigate → snapshot → click flows work
+without any session-management code.
+
+Get a Browserless API key from https://account.browserless.io
+
+Run: `uv pip install agno anthropic mcp` to install the dependencies
+"""
+
+import asyncio
+import logging
+from os import getenv
+
+from agno.agent import Agent
+from agno.models.anthropic import Claude
+from agno.tools.mcp import MCPTools, StreamableHTTPClientParams
+from agno.utils.pprint import apprint_run_response
+
+# Silence an MCP SDK pydantic validation warning on server progress notifications.
+# Harmless and unrelated to tool call results.
+logging.getLogger().addFilter(
+    lambda r: "Failed to validate notification" not in r.getMessage()
+)
+
+# ---------------------------------------------------------------------------
+# Create Agent
+# ---------------------------------------------------------------------------
+
+
+async def run_agent(message: str) -> None:
+    async with MCPTools(
+        url="https://mcp.browserless.io/mcp",
+        transport="streamable-http",
+        timeout_seconds=120,
+        server_params=StreamableHTTPClientParams(
+            url="https://mcp.browserless.io/mcp",
+            headers={
+                "Authorization": f"Bearer {getenv('BROWSERLESS_TOKEN')}",
+            },
+        ),
+    ) as mcp_tools:
+        agent = Agent(
+            model=Claude(id="claude-sonnet-4-6"),
+            tools=[mcp_tools],
+            instructions=(
+                "You drive a real browser via the browserless_agent tool. "
+                "Snapshot the page before extracting elements; use selector "
+                "references from the snapshot when calling text/click."
+            ),
+            markdown=True,
+        )
+
+        response_stream = await agent.arun(message)
+        await apprint_run_response(response_stream)
+
+
+# ---------------------------------------------------------------------------
+# Run Agent
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    asyncio.run(
+        run_agent(
+            "Use browserless_agent to navigate to https://news.ycombinator.com, "
+            "click the first story link, and report the title and first paragraph "
+            "of that page."
+        )
+    )
+```
+
+## Run the Example
+```bash
+# Install dependencies
+uv pip install agno anthropic mcp
+
+# Set environment variables
+export BROWSERLESS_TOKEN="***"
+export ANTHROPIC_API_KEY="***"
+
+# Save the script above as browserless.py and run it
+python browserless.py
+```
+
+Runnable cookbook with stateless and multi-turn examples: [browserless/browserless-agno](https://github.com/browserless/browserless-agno).
