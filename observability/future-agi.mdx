@@ -1,0 +1,75 @@
+---
+title: Future AGI
+description: Trace Agno agents with Future AGI using the traceai-agno OpenTelemetry integration.
+---
+
+## Integrating Agno with Future AGI
+
+[Future AGI](https://futureagi.com) is an observability and evaluation platform for AI agents. The [`traceai-agno`](https://pypi.org/project/traceai-agno/) package adds OpenTelemetry instrumentation for Agno, capturing agent runs, tool calls, teams, and workflows as structured spans and exporting them to your Future AGI project.
+
+## Prerequisites
+
+1. **Install Dependencies**
+
+   ```bash
+   pip install openai "traceai-agno[agno]"
+   ```
+
+   The `[agno]` extra pulls in `agno` and `openinference-instrumentation-agno`, which `traceai-agno` uses internally to instrument Agno.
+
+2. **Setup Future AGI Account**
+
+   Sign up at [app.futureagi.com](https://app.futureagi.com) to get your `FI_API_KEY` and `FI_SECRET_KEY`.
+
+3. **Set Environment Variables**
+
+   ```bash
+   export FI_API_KEY=<your-api-key>
+   export FI_SECRET_KEY=<your-secret-key>
+   export OPENAI_API_KEY=<your-openai-key>
+   ```
+
+## Sending Traces to Future AGI
+
+Call `configure_agno_tracing()` **before** importing any Agno modules. Every agent run, tool call, and model invocation is then captured as a structured OpenTelemetry span and sent to Future AGI.
+
+```python
+# Setup tracing BEFORE importing Agno
+from fi_instrumentation import register
+from fi_instrumentation.fi_types import ProjectType
+from traceai_agno import configure_agno_tracing
+
+trace_provider = register(
+    project_type=ProjectType.OBSERVE,
+    project_name="agno-agent",
+)
+configure_agno_tracing(tracer_provider=trace_provider)
+
+# Now import Agno modules
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+
+agent = Agent(
+    model=OpenAIChat(id="gpt-4"),
+    description="A helpful assistant",
+)
+
+response = agent.run("What is the capital of France?")
+print(response.content)
+```
+
+Open your project in the Future AGI dashboard to inspect the run.
+
+<Frame caption="Future AGI trace for an Agno agent run">
+  <img
+    src="/images/future-agi-traces.png"
+    style={{ borderRadius: '10px', width: '100%', maxWidth: '800px' }}
+    alt="future-agi-agno observability"
+  />
+</Frame>
+
+## Resources
+
+- [`traceai-agno` on PyPI](https://pypi.org/project/traceai-agno/)
+- [`traceAI` on GitHub](https://github.com/future-agi/traceAI/tree/main/python/frameworks/agno)
+- [Future AGI documentation](https://docs.futureagi.com)
