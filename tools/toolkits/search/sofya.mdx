@@ -1,0 +1,66 @@
+---
+title: Sofya
+---
+
+**SofyaTools** enable an Agent to search the web, extract page content, and run deep research using the [Sofya](https://sofya.co) API. Search returns extracted page content instead of snippets, extract fetches URLs as clean markdown (including PDF and DOCX), and research returns a cited multi-source report.
+
+## Prerequisites
+
+`SofyaTools` uses the `requests` library, which is included with Agno. You need an API key from [Sofya](https://sofya.co).
+
+```shell
+export SOFYA_API_KEY=***
+# optional: point at a custom Sofya-compatible API endpoint
+export SOFYA_BASE_URL=https://sofya.co
+```
+
+## Example
+
+The following agent will search the web with Sofya and print the response.
+
+```python cookbook/91_tools/sofya_tools.py
+from agno.agent import Agent
+from agno.tools.sofya import SofyaTools
+
+agent = Agent(tools=[SofyaTools()], markdown=True)
+agent.print_response("Search for recent developments in the Model Context Protocol")
+```
+
+Search is enabled by default. To also enable extraction and research, pass `all=True`, or turn on the individual tools with `enable_extract` and `enable_research`.
+
+```python
+from agno.agent import Agent
+from agno.tools.sofya import SofyaTools
+
+agent = Agent(tools=[SofyaTools(all=True)], markdown=True)
+agent.print_response("Write a short report on how AI agents use web search tools")
+```
+
+## Toolkit Params
+
+| Parameter         | Type                            | Default     | Description                                                                                          |
+| ----------------- | ------------------------------- | ----------- | --------------------------------------------------------------------------------------------------- |
+| `api_key`         | `Optional[str]`                 | `None`      | Sofya API key. If not provided, uses the `SOFYA_API_KEY` environment variable.                      |
+| `base_url`        | `Optional[str]`                 | `None`      | Sofya API base URL. If not provided, uses `SOFYA_BASE_URL` when set; otherwise defaults to `https://sofya.co`. |
+| `enable_search`   | `bool`                          | `True`      | Enable the `search_web` tool.                                                                       |
+| `enable_extract`  | `bool`                          | `False`     | Enable the `extract_url_content` tool.                                                              |
+| `enable_research` | `bool`                          | `False`     | Enable the `research` tool.                                                                         |
+| `all`             | `bool`                          | `False`     | Enable all available tools in the toolkit.                                                          |
+| `max_results`     | `int`                           | `5`         | Maximum number of search results to return (1-20).                                                 |
+| `search_depth`    | `Literal['snippets', 'basic']`  | `'basic'`   | Search depth - `snippets` (1 credit) or `basic` (3 credits, full page content).                    |
+| `include_answer`  | `bool`                          | `True`      | Include an AI-generated answer summary in search results.                                           |
+| `format`          | `Literal['json', 'markdown']`   | `'markdown'`| Output format for search and research results - `json` for raw data or `markdown` for formatted text. |
+| `timeout`         | `int`                           | `180`       | Request timeout in seconds.                                                                         |
+
+## Toolkit Functions
+
+| Function              | Description                                                                                                                                                                                 |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `search_web`          | Search the web for a `query` (str) and return extracted page content instead of snippets. Accepts an optional `max_results` (int). Returns results as markdown or a JSON string.           |
+| `extract_url_content` | Fetch one or more `urls` (str, single or comma-separated, up to 10) as clean markdown. Also handles PDF, DOCX, and more. Returns one section per URL.                                       |
+| `research`            | Run multi-source deep research for a `query` (str). Sofya decomposes the question into sub-queries, reads many sources, and synthesizes a single cited report. Returns markdown or a JSON string. |
+
+## Developer Resources
+
+- View [Tools](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/tools/sofya.py)
+- View [Cookbook](https://github.com/agno-agi/agno/blob/main/cookbook/91_tools/sofya_tools.py)
