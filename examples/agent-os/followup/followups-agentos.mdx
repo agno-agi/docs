@@ -1,0 +1,94 @@
+---
+title: "Followups AgentOS"
+description: "Enable built-in followup suggestions on an agent and team served through AgentOS."
+source: cookbook/05_agent_os/followup/followups_agentos.py
+---
+
+```python followups_agentos.py
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIResponses
+from agno.os import AgentOS
+from agno.team.team import Team
+
+db = PostgresDb(db_url="postgresql://ai:ai@localhost:5532/ai")
+
+# ---------------------------------------------------------------------------
+# Create the Agent — just set followups=True
+# ---------------------------------------------------------------------------
+agent = Agent(
+    name="Followups Agent",
+    id="followup-suggestions-agent",
+    model=OpenAIResponses(id="gpt-4o"),
+    instructions="You are a knowledgeable assistant. Answer questions thoroughly.",
+    # Enable built-in followups
+    followups=True,
+    num_followups=3,
+    # Optionally use a cheaper model for followups
+    # followup_model=OpenAIResponses(id="gpt-4o-mini"),
+    markdown=True,
+    db=db,
+)
+team = Team(
+    id="followups-team",
+    name="Followups Team",
+    model=OpenAIResponses(id="gpt-4o"),
+    members=[agent],
+    instructions="You are a knowledgeable assistant. Answer questions thoroughly.",
+    # Enable built-in followups
+    followups=True,
+    num_followups=3,
+    # Optionally use a cheaper model for followups
+    # followup_model=OpenAIResponses(id="gpt-4o-mini"),
+    markdown=True,
+    db=db,
+)
+
+agno_os = AgentOS(
+    id="followups-agentos",
+    name="Followups AgentOS",
+    agents=[agent],
+    teams=[team],
+    db=db,
+)
+app = agno_os.get_app()
+if __name__ == "__main__":
+    agno_os.serve(app="followups_agentos:app", reload=True)
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U "agno[os]" fastmcp openai psycopg-binary starlette
+    ```
+  </Step>
+
+  <Step title="Export your API keys">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export JWT_VERIFICATION_KEY="your_jwt_verification_key_here"
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:JWT_VERIFICATION_KEY="your_jwt_verification_key_here"
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Snippet file="run-pgvector-step.mdx" />
+
+  <Step title="Run the example">
+    Save the code above as `followups_agentos.py`, then run:
+    ```bash
+    python followups_agentos.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/05_agent_os/followup/followups_agentos.py](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/followup/followups_agentos.py)

@@ -1,0 +1,91 @@
+---
+title: "Additional Context"
+description: "Demonstrates adding custom `additional_context` and resolving placeholders at run time through Team context resolution."
+source: cookbook/03_teams/09_context_management/additional_context.py
+---
+
+```python additional_context.py
+"""
+Additional Context
+=================
+
+Demonstrates adding custom `additional_context` and resolving placeholders at
+run time through Team context resolution.
+"""
+
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.team import Team
+
+# ---------------------------------------------------------------------------
+# Create Members
+# ---------------------------------------------------------------------------
+ops_agent = Agent(
+    name="Ops Copilot",
+    model=OpenAIResponses(id="gpt-5-mini"),
+    instructions=[
+        "Follow operational policy and include ownership guidance.",
+    ],
+)
+
+
+# ---------------------------------------------------------------------------
+# Create Team
+# ---------------------------------------------------------------------------
+policy_team = Team(
+    name="Policy Team",
+    model=OpenAIResponses(id="gpt-5-mini"),
+    members=[ops_agent],
+    additional_context=(
+        "The requester is a {role} in the {region}. Use language suitable for an "
+        "internal process update and include owner + timeline whenever possible."
+    ),
+    resolve_in_context=True,
+    dependencies={"role": "support lead", "region": "EMEA"},
+    instructions=["Answer as a practical operational policy assistant."],
+    markdown=True,
+)
+
+
+# ---------------------------------------------------------------------------
+# Run Team
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    policy_team.print_response(
+        "A partner asked for a temporary extension on compliance docs.",
+        stream=True,
+    )
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `additional_context.py`, then run:
+    ```bash
+    python additional_context.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/03_teams/09_context_management/additional_context.py](https://github.com/agno-agi/agno/blob/main/cookbook/03_teams/09_context_management/additional_context.py)

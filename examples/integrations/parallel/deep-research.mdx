@@ -1,0 +1,105 @@
+---
+title: "Parallel Deep Research - Cited Reports With the Task API"
+description: "The Task API runs deep, multi-step research and returns an answer with a \"basis\": the citations and confidence behind the findings."
+source: cookbook/integrations/parallel/03_deep_research.py
+---
+
+The Task API runs deep, multi-step research and returns an answer with a "basis": the citations and confidence behind the findings. That is the difference between an answer and an answer you can verify.
+
+```python deep_research.py
+"""
+Parallel Deep Research - Cited Reports With the Task API
+========================================================
+
+The Task API runs deep, multi-step research and returns an answer with a
+"basis": the citations and confidence behind the findings. That is the
+difference between an answer and an answer you can verify.
+
+The agent calls create_task() to launch the research, then get_task_result()
+to retrieve the report plus its sources.
+
+Processors trade depth for time:
+- "base"  - fast, good for most questions (seconds to a few minutes)
+- "pro"   - deeper, and required for the "auto" output schema
+- "ultra" - maximum depth (can run many minutes)
+
+Prerequisites:
+- pip install parallel-web
+- export PARALLEL_API_KEY=<your-api-key>
+"""
+
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.tools.parallel import ParallelTools
+
+# ---------------------------------------------------------------------------
+# Tools - Task API (deep research)
+# ---------------------------------------------------------------------------
+# A "text" output schema returns a long-form markdown report with inline
+# citations. Start with the base processor for a fast first pass.
+research_tools = ParallelTools(
+    enable_search=False,
+    enable_extract=False,
+    enable_task=True,
+    default_processor="base",
+    default_output_schema={"type": "text"},
+)
+
+# ---------------------------------------------------------------------------
+# Create the Agent
+# ---------------------------------------------------------------------------
+research_agent = Agent(
+    model=OpenAIResponses(id="gpt-5.4"),
+    tools=[research_tools],
+    markdown=True,
+    instructions=[
+        "Use create_task() to launch deep research, then get_task_result().",
+        "Present the findings and list the sources behind each claim.",
+    ],
+)
+
+# ---------------------------------------------------------------------------
+# Run the Agent
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    research_agent.print_response(
+        "Research the current AI web-research API market: who the main "
+        "providers are, how they price, and how they differ. Cite sources.",
+        stream=True,
+    )
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai parallel-web
+    ```
+  </Step>
+
+  <Step title="Export your API keys">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    export PARALLEL_API_KEY="your_parallel_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    $Env:PARALLEL_API_KEY="your_parallel_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `deep_research.py`, then run:
+    ```bash
+    python deep_research.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/integrations/parallel/03_deep_research.py](https://github.com/agno-agi/agno/blob/main/cookbook/integrations/parallel/03_deep_research.py)

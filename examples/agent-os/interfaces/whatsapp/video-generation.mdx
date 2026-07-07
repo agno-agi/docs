@@ -1,0 +1,108 @@
+---
+title: "Video Generation Agent"
+description: "A WhatsApp agent that generates short videos from text descriptions using Fal AI's text-to-video models."
+source: cookbook/05_agent_os/interfaces/whatsapp/video_generation.py
+---
+
+A WhatsApp agent that generates short videos from text descriptions using Fal AI's text-to-video models. Demonstrates outbound video support through the WhatsApp Cloud API.
+
+```python video_generation.py
+"""
+Video Generation Agent
+=======================
+
+A WhatsApp agent that generates short videos from text descriptions
+using Fal AI's text-to-video models. Demonstrates outbound video
+support through the WhatsApp Cloud API.
+
+Requires:
+  WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID
+  FAL_KEY
+  pip install fal-client
+"""
+
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIChat
+from agno.os.app import AgentOS
+from agno.os.interfaces.whatsapp import Whatsapp
+from agno.tools.fal import FalTools
+
+# ---------------------------------------------------------------------------
+# Create Agent
+# ---------------------------------------------------------------------------
+
+agent_db = SqliteDb(db_file="tmp/video_agent.db")
+
+video_agent = Agent(
+    name="Video Generator",
+    model=OpenAIChat(id="gpt-5-mini"),
+    tools=[FalTools(model="fal-ai/hunyuan-video")],
+    instructions=[
+        "You are a video generation assistant on WhatsApp.",
+        "When the user describes a scene, use the generate_media tool to create a short video.",
+        "After generating, briefly describe what was created.",
+        "Keep messages short and conversational.",
+    ],
+    db=agent_db,
+    add_history_to_context=True,
+    num_history_runs=3,
+    send_media_to_model=False,
+)
+
+# ---------------------------------------------------------------------------
+# AgentOS setup
+# ---------------------------------------------------------------------------
+
+agent_os = AgentOS(
+    agents=[video_agent],
+    interfaces=[Whatsapp(agent=video_agent)],
+)
+app = agent_os.get_app()
+
+# ---------------------------------------------------------------------------
+# Run
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    agent_os.serve(app="video_generation:app", reload=True)
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U "agno[os,whatsapp]" fal-client fastmcp openai starlette
+    ```
+  </Step>
+
+  <Step title="Export your API keys">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export FAL_API_KEY="your_fal_api_key_here"
+    export JWT_VERIFICATION_KEY="your_jwt_verification_key_here"
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    export WHATSAPP_ENCRYPTION_KEY="your_whatsapp_encryption_key_here"
+    ```
+
+    ```bash Windows
+    $Env:FAL_API_KEY="your_fal_api_key_here"
+    $Env:JWT_VERIFICATION_KEY="your_jwt_verification_key_here"
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    $Env:WHATSAPP_ENCRYPTION_KEY="your_whatsapp_encryption_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `video_generation.py`, then run:
+    ```bash
+    python video_generation.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/05_agent_os/interfaces/whatsapp/video_generation.py](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/interfaces/whatsapp/video_generation.py)

@@ -1,19 +1,35 @@
 ---
-title: "Cloudflare Switching Models"
-description: "Cookbook example for `cloudflare/switch_model.py`."
+title: "Cloudflare AI Gateway: switching models (OpenRouter-style ids)"
+description: "Same idea as OpenRouter: you pick one slash-separated route per client via ``id``."
+source: cookbook/90_models/cloudflare/switch_model.py
 ---
-```python
+
+Same idea as OpenRouter: you pick one slash-separated route per client via ``id``. Changing model = new ``Cloudflare(id=...)`` or a new ``Agent(model="cloudflare:...")`` string.
+
+```python switch_model.py
 """
-Cloudflare AI Gateway - switching models (OpenRouter-style ids)
-===============================================================
+Cloudflare AI Gateway — switching models (OpenRouter-style ids)
+==============================================================
 
-Pick one slash-separated route per client via ``id``. Changing model = new
-``Cloudflare(id=...)`` or a new ``Agent(model="cloudflare:...")`` string.
+Same idea as OpenRouter: you pick one slash-separated route per client via ``id``.
+Changing model = new ``Cloudflare(id=...)`` or a new ``Agent(model="cloudflare:...")`` string.
 
-The Cloudflare compat API does not support ``models=[...]`` fallbacks in the
-request body. Use AI Gateway Dynamic Routes and ``id="dynamic/<route>"`` instead.
+OpenRouter also supports ``models=[...]`` for fallbacks in the request body. The Cloudflare
+compat API does not; use AI Gateway Dynamic Routes and ``id="dynamic/<route>"`` instead.
 
-Requires ``CLOUDFLARE_API_TOKEN`` and ``CLOUDFLARE_ACCOUNT_ID``.
+Requires ``CLOUDFLARE_API_TOKEN`` and ``CLOUDFLARE_ACCOUNT_ID`` (see README).
+
+How to pick another **Workers AI** model (see https://developers.cloudflare.com/workers-ai/models/):
+
+1. Open the catalog and choose a **Text generation** model.
+2. On that model's doc page, copy the binding id from the box (e.g. ``@cf/google/gemma-4-26b-a4b-it``).
+3. Paste it straight into Agno: ``Cloudflare(id="@cf/google/gemma-4-26b-a4b-it")`` or
+   ``Agent(model="cloudflare:@cf/google/gemma-4-26b-a4b-it")``. Agno prepends ``workers-ai/`` for the gateway.
+   You can still pass the full form ``workers-ai/@cf/...`` if you prefer.
+
+**Gemini** (Google's API product) is not the same as **Gemma** / Llama on Workers AI. Do not invent
+``@cf/.../gemini-...`` slugs — they are not in the catalog. For Gemini via the gateway use a
+``google/...`` route and BYOK (see README), not ``workers-ai/...``.
 """
 
 from agno.agent import Agent
@@ -26,7 +42,7 @@ if __name__ == "__main__":
     # Default Workers AI model (no explicit id).
     Agent(model=Cloudflare(), markdown=True).print_response("Say hello in five words.")
 
-    # Pass the gateway route string as ``id``.
+    # Same as OpenRouter: pass the gateway route string as ``id``.
     Agent(model=Cloudflare(id=DEFAULT_GATEWAY_MODEL), markdown=True).print_response(
         "Say hello in five words."
     )
@@ -47,14 +63,34 @@ if __name__ == "__main__":
 ```
 
 ## Run the Example
-```bash
-# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/90_models/cloudflare
 
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
 
-python switch_model.py
-```
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai
+    ```
+  </Step>
+
+  <Step title="Export your Cloudflare Workers AI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export CLOUDFLARE_API_TOKEN="your_cloudflare_api_token_here"
+    ```
+
+    ```bash Windows
+    $Env:CLOUDFLARE_API_TOKEN="your_cloudflare_api_token_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `switch_model.py`, then run:
+    ```bash
+    python switch_model.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/90_models/cloudflare/switch_model.py](https://github.com/agno-agi/agno/blob/main/cookbook/90_models/cloudflare/switch_model.py)

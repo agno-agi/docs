@@ -1,17 +1,18 @@
 ---
 title: "AgentOS Demo"
-description: "Prerequisites: uv pip install -U fastapi uvicorn sqlalchemy pgvector psycopg openai ddgs yfinance."
+description: "Run Slack, Telegram, WhatsApp, AG-UI, and A2A interfaces together in a single AgentOS."
+source: cookbook/05_agent_os/interfaces/all_interfaces.py
 ---
-Prerequisites: uv pip install -U fastapi uvicorn sqlalchemy pgvector psycopg openai ddgs yfinance
 
-```python
+```python all_interfaces.py
 """
 AgentOS Demo
 
 Prerequisites:
-uv pip install -U fastapi uvicorn sqlalchemy pgvector psycopg openai ddgs yfinance
+uv pip install -U fastapi uvicorn sqlalchemy pgvector psycopg openai ddgs
 """
 
+from agno import __version__ as agno_version
 from agno.agent import Agent
 from agno.db.postgres import PostgresDb
 from agno.knowledge.knowledge import Knowledge
@@ -20,8 +21,11 @@ from agno.os import AgentOS
 from agno.os.interfaces.a2a import A2A
 from agno.os.interfaces.agui import AGUI
 from agno.os.interfaces.slack import Slack
+from agno.os.interfaces.telegram import Telegram
 from agno.os.interfaces.whatsapp import Whatsapp
+from agno.registry import Registry
 from agno.team import Team
+from agno.tools.mcp import MCPTools
 from agno.vectordb.pgvector import PgVector
 from agno.workflow import Workflow
 from agno.workflow.step import Step
@@ -47,6 +51,15 @@ knowledge = Knowledge(
     vector_db=vector_db,
 )
 
+registry = Registry(
+    name="Agno Registry",
+    tools=[MCPTools(transport="streamable-http", url="https://docs.agno.com/mcp")],
+    models=[
+        OpenAIChat(id="gpt-5"),
+    ],
+    dbs=[db],
+)
+
 # Create an agent
 simple_agent = Agent(
     name="Simple Agent",
@@ -56,7 +69,6 @@ simple_agent = Agent(
     instructions=["You are a simple agent"],
     knowledge=knowledge,
 )
-
 
 # Create a team
 simple_team = Team(
@@ -83,6 +95,7 @@ simple_workflow = Workflow(
 
 # Create an interface
 slack_interface = Slack(agent=simple_team)
+telegram_interface = Telegram(agent=simple_agent)
 whatsapp_interface = Whatsapp(agent=simple_agent)
 agui_interface = AGUI(agent=simple_agent)
 a2a_interface = A2A(agents=[simple_agent])
@@ -91,10 +104,21 @@ a2a_interface = A2A(agents=[simple_agent])
 # Create the AgentOS
 agent_os = AgentOS(
     id="agentos-demo",
+    name="Agno API Reference",
+    version=agno_version,
+    description="The all-in-one, private, secure agent platform that runs in your cloud.",
     agents=[simple_agent],
     teams=[simple_team],
     workflows=[simple_workflow],
-    interfaces=[slack_interface, whatsapp_interface, agui_interface, a2a_interface],
+    interfaces=[
+        slack_interface,
+        telegram_interface,
+        whatsapp_interface,
+        agui_interface,
+        a2a_interface,
+    ],
+    registry=registry,
+    db=db,
 )
 app = agent_os.get_app()
 
@@ -108,17 +132,40 @@ if __name__ == "__main__":
 ```
 
 ## Run the Example
-```bash
-# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/05_agent_os/interfaces
 
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
 
-# Optiona: Run PgVector (needs docker)
-./cookbook/scripts/run_pgvector.sh
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U "agno[a2a,agui,mcp,os,slack,whatsapp]" openai pgvector psycopg-binary starlette
+    ```
+  </Step>
 
-python all_interfaces.py
-```
+  <Step title="Export your API keys">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export JWT_VERIFICATION_KEY="your_jwt_verification_key_here"
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    export WHATSAPP_ENCRYPTION_KEY="your_whatsapp_encryption_key_here"
+    ```
+
+    ```bash Windows
+    $Env:JWT_VERIFICATION_KEY="your_jwt_verification_key_here"
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    $Env:WHATSAPP_ENCRYPTION_KEY="your_whatsapp_encryption_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Snippet file="run-pgvector-step.mdx" />
+
+  <Step title="Run the example">
+    Save the code above as `all_interfaces.py`, then run:
+    ```bash
+    python all_interfaces.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/05_agent_os/interfaces/all_interfaces.py](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/interfaces/all_interfaces.py)

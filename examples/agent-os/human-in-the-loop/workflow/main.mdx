@@ -1,0 +1,830 @@
+---
+title: "AgentOS Workflow HITL Examples"
+description: "Serve every workflow human-in-the-loop example from this directory in a single AgentOS."
+source: cookbook/05_agent_os/human_in_the_loop/workflow/main.py
+---
+
+```python main.py
+"""
+AgentOS Workflow HITL Examples
+
+Run all workflow human-in-the-loop examples from this directory in one AgentOS.
+"""
+
+from agno.os import AgentOS
+from condition_user_decision import workflow as condition_user_decision_workflow
+from decision_tree import workflow as decision_tree_workflow
+from dual_level_hitl import travel_agent
+from dual_level_hitl import workflow as dual_level_hitl_workflow
+from loop_confirmation import workflow as loop_confirmation_workflow
+from output_review import workflow as output_review_workflow
+from router_user_selection import workflow as router_user_selection_workflow
+from step_confirmation import workflow as step_confirmation_workflow
+from step_user_input import workflow as step_user_input_workflow
+from step_user_input import workflow_with_executor as step_user_input_executor_workflow
+
+agent_os = AgentOS(
+    id="workflow-hitl-examples",
+    name="Workflow HITL Examples",
+    description="All AgentOS-compatible workflow human-in-the-loop examples.",
+    agents=[travel_agent],
+    workflows=[
+        step_confirmation_workflow,
+        output_review_workflow,
+        router_user_selection_workflow,
+        loop_confirmation_workflow,
+        condition_user_decision_workflow,
+        decision_tree_workflow,
+        step_user_input_workflow,
+        step_user_input_executor_workflow,
+        dual_level_hitl_workflow,
+    ],
+)
+app = agent_os.get_app()
+
+
+if __name__ == "__main__":
+    agent_os.serve(app="main:app", reload=True)
+```
+
+The example imports this helper modules from the same directory:
+
+```python condition_user_decision.py
+"""
+Condition User Decision HITL Example (AgentOS)
+
+This example demonstrates a human-controlled Condition. Confirming runs the
+primary branch; rejecting runs the else branch.
+"""
+
+from agno.os import AgentOS
+from agno.workflow import OnReject
+from agno.workflow.condition import Condition
+from agno.workflow.step import Step
+from agno.workflow.types import StepInput, StepOutput
+from agno.workflow.workflow import Workflow
+from workflow_db import db
+
+
+def analyze_data(step_input: StepInput) -> StepOutput:
+    topic = step_input.input or "Q4 sales data"
+    return StepOutput(
+        content=f"Initial analysis complete for '{topic}'.\n"
+        "- Detailed review is available\n"
+        "- Quick summary is also available"
+    )
+
+
+def detailed_analysis(step_input: StepInput) -> StepOutput:
+    return StepOutput(
+        content="Detailed analysis results:\n"
+        "- Full statistical review completed\n"
+        "- Edge cases examined\n"
+        "- Processing time estimate: 10 minutes"
+    )
+
+
+def quick_summary(step_input: StepInput) -> StepOutput:
+    return StepOutput(
+        content="Quick summary results:\n"
+        "- Key metrics computed\n"
+        "- Top highlights identified\n"
+        "- Processing time estimate: 1 minute"
+    )
+
+
+def generate_report(step_input: StepInput) -> StepOutput:
+    previous_content = step_input.previous_step_content or "No analysis output"
+    return StepOutput(content=f"Generated report:\n\n{previous_content}")
+
+
+workflow = Workflow(
+    name="condition_user_decision_workflow",
+    description="Use AgentOS confirmation to choose a Condition branch.",
+    db=db,
+    steps=[
+        Step(name="analyze_data", executor=analyze_data),
+        Condition(
+            name="analysis_depth_decision",
+            requires_confirmation=True,
+            confirmation_message="Run detailed analysis? Reject to use quick summary.",
+            on_reject=OnReject.else_branch,
+            steps=[Step(name="detailed_analysis", executor=detailed_analysis)],
+            else_steps=[Step(name="quick_summary", executor=quick_summary)],
+        ),
+        Step(name="generate_report", executor=generate_report),
+    ],
+)
+workflow.id = "workflow-hitl-condition-user-decision"
+
+agent_os = AgentOS(
+    name="Workflow Condition Decision HITL",
+    description="AgentOS workflow example for human-controlled conditions.",
+    workflows=[workflow],
+    db=db,
+)
+app = agent_os.get_app()
+
+
+if __name__ == "__main__":
+    agent_os.serve(app="condition_user_decision:app", reload=True)
+```
+
+```python decision_tree.py
+"""
+Decision Tree HITL Example (AgentOS)
+
+This example demonstrates multiple sequential human decisions in one workflow.
+Each Condition pauses in AgentOS and the selected branch shapes the final output.
+"""
+
+from agno.os import AgentOS
+from agno.workflow import OnReject
+from agno.workflow.condition import Condition
+from agno.workflow.step import Step
+from agno.workflow.types import StepInput, StepOutput
+from agno.workflow.workflow import Workflow
+from workflow_db import db
+
+
+def gather_requirements(step_input: StepInput) -> StepOutput:
+    topic = step_input.input or "Q4 sales performance"
+    return StepOutput(
+        content=f"Requirements gathered for '{topic}'.\n"
+        "Ready for analysis depth and output format decisions."
+    )
+
+
+def detailed_analysis(step_input: StepInput) -> StepOutput:
+    return StepOutput(
+        content="Detailed analysis complete:\n"
+        "- Full statistical review\n"
+        "- Edge cases examined\n"
+        "- Confidence level: 95%"
+    )
+
+
+def quick_summary(step_input: StepInput) -> StepOutput:
+    return StepOutput(
+        content="Quick summary complete:\n"
+        "- Key metrics computed\n"
+        "- Top highlights identified"
+    )
+
+
+def formal_report(step_input: StepInput) -> StepOutput:
+    previous_content = step_input.previous_step_content or "No analysis"
+    return StepOutput(
+        content=f"Formal stakeholder report:\n\n{previous_content}\n\n"
+        "Formatted for presentation."
+    )
+
+
+def internal_notes(step_input: StepInput) -> StepOutput:
+    previous_content = step_input.previous_step_content or "No analysis"
+    return StepOutput(
+        content=f"Internal team notes:\n\n{previous_content}\n\n"
+        "Saved as team reference material."
+    )
+
+
+workflow = Workflow(
+    name="decision_tree_workflow",
+    description="Guide a workflow through sequential human decisions in AgentOS.",
+    db=db,
+    steps=[
+        Step(name="gather_requirements", executor=gather_requirements),
+        Condition(
+            name="analysis_depth",
+            requires_confirmation=True,
+            confirmation_message="Perform detailed analysis? Reject for quick summary.",
+            on_reject=OnReject.else_branch,
+            steps=[Step(name="detailed_analysis", executor=detailed_analysis)],
+            else_steps=[Step(name="quick_summary", executor=quick_summary)],
+        ),
+        Condition(
+            name="output_format",
+            requires_confirmation=True,
+            confirmation_message="Generate a formal report? Reject for internal notes.",
+            on_reject=OnReject.else_branch,
+            steps=[Step(name="formal_report", executor=formal_report)],
+            else_steps=[Step(name="internal_notes", executor=internal_notes)],
+        ),
+    ],
+)
+workflow.id = "workflow-hitl-decision-tree"
+
+agent_os = AgentOS(
+    name="Workflow Decision Tree HITL",
+    description="AgentOS workflow example for sequential human decisions.",
+    workflows=[workflow],
+    db=db,
+)
+app = agent_os.get_app()
+
+
+if __name__ == "__main__":
+    agent_os.serve(app="decision_tree:app", reload=True)
+```
+
+```python dual_level_hitl.py
+"""
+Dual HITL: Step User Input + Executor Tool Confirmation (Streaming)
+====================================================================
+
+Two different HITL types in one step:
+  Pause 1 (step-level): Step has requires_user_input=True -> collects city name from user
+  Pause 2 (executor-level): Agent's tool has requires_confirmation=True -> user confirms tool call
+
+The user input is injected into step_input.additional_data["user_input"] and the agent
+receives it as context.
+
+Usage:
+    .venvs/demo/bin/python cookbook/04_workflows/08_human_in_the_loop/dual_level_hitl/02_step_user_input_and_tool_confirmation.py
+"""
+
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.os import AgentOS
+from agno.tools import tool
+from agno.workflow.step import Step
+from agno.workflow.workflow import Workflow
+from rich.console import Console
+from workflow_db import db
+
+console = Console()
+
+
+@tool(requires_confirmation=True)
+def book_flight(origin: str, destination: str) -> str:
+    """Book a flight between two cities.
+
+    Args:
+        origin: Departure city.
+        destination: Arrival city.
+    """
+    return f"Flight booked: {origin} -> {destination}"
+
+
+travel_agent = Agent(
+    name="TravelAgent",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    tools=[book_flight],
+    instructions=(
+        "You are a travel agent. Use the book_flight tool to book flights. "
+        "Check the user_input in the context for the destination city."
+    ),
+    telemetry=False,
+)
+
+
+workflow = Workflow(
+    name="UserInputAndToolConfirm",
+    db=db,
+    steps=[
+        Step(
+            name="book_travel",
+            agent=travel_agent,
+            requires_user_input=True,
+            user_input_message="Which city do you want to fly to?",
+            user_input_schema=[
+                {
+                    "name": "destination",
+                    "field_type": "text",
+                    "description": "Destination city",
+                    "required": True,
+                },
+            ],
+        ),
+    ],
+    telemetry=False,
+)
+
+agent_os = AgentOS(
+    id="dual-level-hitl-demo",
+    description="Demo: dual-level HITL workflow",
+    name="Dual Level HITL Workflow",
+    agents=[travel_agent],
+    teams=[],
+    workflows=[workflow],
+)
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="dual_level_hitl:app", reload=True)
+```
+
+```python loop_confirmation.py
+"""
+Loop Confirmation HITL Example (AgentOS)
+
+This example demonstrates pausing before a Loop starts so a human can decide
+whether to run the iterative work.
+"""
+
+from agno.os import AgentOS
+from agno.workflow.loop import Loop
+from agno.workflow.step import Step
+from agno.workflow.types import StepInput, StepOutput
+from agno.workflow.workflow import Workflow
+from workflow_db import db
+
+
+def prepare_data(step_input: StepInput) -> StepOutput:
+    topic = step_input.input or "quarterly performance"
+    return StepOutput(
+        content=f"Prepared data for '{topic}'.\n"
+        "- Baseline metrics loaded\n"
+        "- Candidate refinements identified"
+    )
+
+
+def refine_analysis(step_input: StepInput) -> StepOutput:
+    previous_content = step_input.previous_step_content or "No previous analysis"
+    return StepOutput(
+        content=f"Refinement pass complete.\n\nInput considered:\n{previous_content}\n\n"
+        "- Quality score improved\n"
+        "- Narrative tightened"
+    )
+
+
+def finalize_results(step_input: StepInput) -> StepOutput:
+    previous_content = step_input.previous_step_content or "No refinement output"
+    return StepOutput(content=f"Final results:\n\n{previous_content}")
+
+
+workflow = Workflow(
+    name="loop_confirmation_workflow",
+    description="Ask for human confirmation before an iterative refinement loop.",
+    db=db,
+    steps=[
+        Step(name="prepare_data", executor=prepare_data),
+        Loop(
+            name="refinement_loop",
+            steps=[Step(name="refine_analysis", executor=refine_analysis)],
+            max_iterations=3,
+            requires_confirmation=True,
+            confirmation_message="Start the refinement loop?",
+        ),
+        Step(name="finalize_results", executor=finalize_results),
+    ],
+)
+workflow.id = "workflow-hitl-loop-confirmation"
+
+agent_os = AgentOS(
+    name="Workflow Loop Confirmation HITL",
+    description="AgentOS workflow example for loop start confirmation.",
+    workflows=[workflow],
+    db=db,
+)
+app = agent_os.get_app()
+
+
+if __name__ == "__main__":
+    agent_os.serve(app="loop_confirmation:app", reload=True)
+```
+
+```python output_review.py
+"""
+Output Review HITL Example (AgentOS)
+
+This example demonstrates pausing after a step runs so a human can review the
+step output before the workflow continues in AgentOS.
+"""
+
+from agno.os import AgentOS
+from agno.workflow import HumanReview, OnReject
+from agno.workflow.step import Step
+from agno.workflow.types import StepInput, StepOutput
+from agno.workflow.workflow import Workflow
+from workflow_db import db
+
+
+def draft_email(step_input: StepInput) -> StepOutput:
+    topic = step_input.input or "the schedule change"
+    return StepOutput(
+        content=f"Subject: Update: {topic}\n\n"
+        "Hi team,\n\n"
+        f"Please note that {topic}. Let me know if this creates any conflicts.\n\n"
+        "Thanks"
+    )
+
+
+def send_email(step_input: StepInput) -> StepOutput:
+    approved_draft = step_input.previous_step_content or "No approved draft"
+    return StepOutput(content=f"Email queued for sending:\n\n{approved_draft}")
+
+
+workflow = Workflow(
+    name="output_review_workflow",
+    description="Review a drafted email before it moves to the send step.",
+    db=db,
+    steps=[
+        Step(
+            name="draft_email",
+            executor=draft_email,
+            human_review=HumanReview(
+                requires_output_review=True,
+                output_review_message="Review this email draft before sending.",
+                on_reject=OnReject.cancel,
+            ),
+        ),
+        Step(name="send_email", executor=send_email),
+    ],
+)
+workflow.id = "workflow-hitl-output-review"
+
+agent_os = AgentOS(
+    name="Workflow Output Review HITL",
+    description="AgentOS workflow example for post-step output review.",
+    workflows=[workflow],
+    db=db,
+)
+app = agent_os.get_app()
+
+
+if __name__ == "__main__":
+    agent_os.serve(app="output_review:app", reload=True)
+```
+
+```python router_user_selection.py
+"""
+Router User Selection HITL Example (AgentOS)
+
+This example demonstrates a Router that pauses for a human to choose which
+analysis path should run.
+"""
+
+from agno.os import AgentOS
+from agno.workflow.router import Router
+from agno.workflow.step import Step
+from agno.workflow.types import StepInput, StepOutput
+from agno.workflow.workflow import Workflow
+from workflow_db import db
+
+
+def analyze_data(step_input: StepInput) -> StepOutput:
+    topic = step_input.input or "Q4 sales data"
+    return StepOutput(
+        content=f"Analysis prepared for '{topic}'.\n"
+        "- 1000 records scanned\n"
+        "- Data quality: good\n"
+        "- Ready for a human-selected analysis path"
+    )
+
+
+def quick_analysis(step_input: StepInput) -> StepOutput:
+    return StepOutput(
+        content="Quick analysis complete:\n"
+        "- Summary statistics computed\n"
+        "- Top trends identified\n"
+        "- Confidence: 85%"
+    )
+
+
+def deep_analysis(step_input: StepInput) -> StepOutput:
+    return StepOutput(
+        content="Deep analysis complete:\n"
+        "- Correlation matrix generated\n"
+        "- Anomalies reviewed\n"
+        "- Scenario model produced\n"
+        "- Confidence: 97%"
+    )
+
+
+def risk_analysis(step_input: StepInput) -> StepOutput:
+    return StepOutput(
+        content="Risk analysis complete:\n"
+        "- Three risk clusters identified\n"
+        "- Mitigations ranked by impact\n"
+        "- Follow-up owners suggested"
+    )
+
+
+def generate_report(step_input: StepInput) -> StepOutput:
+    analysis_results = step_input.previous_step_content or "No analysis selected"
+    return StepOutput(content=f"Final report:\n\n{analysis_results}")
+
+
+workflow = Workflow(
+    name="router_user_selection_workflow",
+    description="Let a human select the workflow route from AgentOS.",
+    db=db,
+    steps=[
+        Step(name="analyze_data", executor=analyze_data),
+        Router(
+            name="analysis_type_router",
+            choices=[
+                Step(
+                    name="quick_analysis",
+                    description="Fast summary with basic insights",
+                    executor=quick_analysis,
+                ),
+                Step(
+                    name="deep_analysis",
+                    description="Comprehensive statistical analysis",
+                    executor=deep_analysis,
+                ),
+                Step(
+                    name="risk_analysis",
+                    description="Risk-focused analysis with mitigations",
+                    executor=risk_analysis,
+                ),
+            ],
+            requires_user_input=True,
+            user_input_message="Select the analysis path to run.",
+            allow_multiple_selections=False,
+        ),
+        Step(name="generate_report", executor=generate_report),
+    ],
+)
+workflow.id = "workflow-hitl-router-user-selection"
+
+agent_os = AgentOS(
+    name="Workflow Router Selection HITL",
+    description="AgentOS workflow example for human-selected router paths.",
+    workflows=[workflow],
+    db=db,
+)
+app = agent_os.get_app()
+
+
+if __name__ == "__main__":
+    agent_os.serve(app="router_user_selection:app", reload=True)
+```
+
+```python step_confirmation.py
+"""
+Step Confirmation HITL Example (AgentOS)
+
+This example demonstrates pausing a workflow before a step executes so the
+human can approve or reject that step from AgentOS.
+"""
+
+from agno.os import AgentOS
+from agno.workflow import OnReject
+from agno.workflow.step import Step
+from agno.workflow.types import StepInput, StepOutput
+from agno.workflow.workflow import Workflow
+from workflow_db import db
+
+
+def fetch_data(step_input: StepInput) -> StepOutput:
+    topic = step_input.input or "user data"
+    return StepOutput(
+        content=f"Fetched records for '{topic}'.\n"
+        "- 250 records found\n"
+        "- Sensitive fields detected\n"
+        "- Ready for processing"
+    )
+
+
+def process_sensitive_data(step_input: StepInput) -> StepOutput:
+    previous_content = step_input.previous_step_content or "No fetched data"
+    return StepOutput(
+        content=f"Processed sensitive data:\n\n{previous_content}\n\n"
+        "- PII fields masked\n"
+        "- Aggregations calculated\n"
+        "- Processing audit created"
+    )
+
+
+def save_results(step_input: StepInput) -> StepOutput:
+    previous_content = step_input.previous_step_content or "No processed data"
+    return StepOutput(
+        content=f"Saved workflow results.\n\nFinal payload:\n{previous_content}"
+    )
+
+
+workflow = Workflow(
+    name="step_confirmation_workflow",
+    description="Pause before processing sensitive data and continue through AgentOS.",
+    db=db,
+    steps=[
+        Step(name="fetch_data", executor=fetch_data),
+        Step(
+            name="process_sensitive_data",
+            executor=process_sensitive_data,
+            requires_confirmation=True,
+            confirmation_message="Process sensitive data now?",
+            on_reject=OnReject.skip,
+        ),
+        Step(name="save_results", executor=save_results),
+    ],
+)
+workflow.id = "workflow-hitl-step-confirmation"
+
+agent_os = AgentOS(
+    name="Workflow Step Confirmation HITL",
+    description="AgentOS workflow example for step-level confirmation.",
+    workflows=[workflow],
+    db=db,
+)
+app = agent_os.get_app()
+
+
+if __name__ == "__main__":
+    agent_os.serve(app="step_confirmation:app", reload=True)
+```
+
+```python step_user_input.py
+"""
+Step-Level User Input HITL Example (AgentOS)
+
+This example demonstrates how to pause a workflow to collect user input
+using Step parameters directly (without the @pause decorator).
+
+This approach is useful when:
+- Using agent-based steps that need user parameters
+- You want to configure HITL at the Step level rather than on a function
+- You need to override or add HITL to existing functions/agents
+
+Use case: Collecting user preferences before an agent generates content.
+"""
+
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.os import AgentOS
+from agno.workflow.step import Step
+from agno.workflow.types import StepInput, StepOutput, UserInputField
+from agno.workflow.workflow import Workflow
+from workflow_db import db
+
+
+# Step 1: Gather context (no HITL)
+def gather_context(step_input: StepInput) -> StepOutput:
+    """Gather initial context from the input."""
+    topic = step_input.input or "general topic"
+    return StepOutput(
+        content=f"Context gathered for: '{topic}'\n"
+        "Ready to generate content based on user preferences."
+    )
+
+
+# Step 2: Content generator agent (HITL configured on Step, not function)
+# Note: User input from HITL is automatically appended to the message as "User preferences:"
+content_agent = Agent(
+    name="Content Generator",
+    model=OpenAIResponses(id="gpt-5.4"),
+    instructions=[
+        "You are a content generator.",
+        "Generate content based on the topic and user preferences provided.",
+        "The user preferences will be provided in the message - use them to guide your output.",
+        "Respect the tone, length, and format specified by the user.",
+        "Keep the output focused and professional.",
+    ],
+)
+
+
+# Step 3: Format output (no HITL)
+def format_output(step_input: StepInput) -> StepOutput:
+    """Format the final output."""
+    content = step_input.previous_step_content or "No content generated"
+    return StepOutput(content=f"=== GENERATED CONTENT ===\n\n{content}\n\n=== END ===")
+
+
+# Define workflow with Step-level HITL configuration
+workflow = Workflow(
+    name="content_generation_workflow",
+    db=db,
+    steps=[
+        Step(name="gather_context", executor=gather_context),
+        # HITL configured directly on the Step using agent
+        Step(
+            name="generate_content",
+            step_id="generate_content123",
+            agent=content_agent,
+            requires_user_input=True,
+            user_input_message="Please provide your content preferences:",
+            user_input_schema=[
+                UserInputField(
+                    name="tone",
+                    field_type="str",
+                    description="Tone of the content: 'formal', 'casual', or 'technical'",
+                    required=True,
+                ),
+                UserInputField(
+                    name="length",
+                    field_type="str",
+                    description="Content length: 'short' (1 para), 'medium' (3 para), or 'long' (5+ para)",
+                    required=True,
+                ),
+                UserInputField(
+                    name="include_examples",
+                    field_type="bool",
+                    description="Include practical examples?",
+                    required=False,
+                ),
+            ],
+        ),
+        Step(name="format_output", executor=format_output),
+    ],
+)
+workflow.id = "user-input-02-step-user-input"
+
+
+# Alternative: Using executor function with Step-level HITL
+def process_data(step_input: StepInput) -> StepOutput:
+    """Process data with user-specified options."""
+    user_input = (
+        step_input.additional_data.get("user_input", {})
+        if step_input.additional_data
+        else {}
+    )
+
+    format_type = user_input.get("format", "json")
+    include_metadata = user_input.get("include_metadata", False)
+
+    return StepOutput(
+        content=f"Data processed with format: {format_type}, metadata: {include_metadata}"
+    )
+
+
+workflow_with_executor = Workflow(
+    name="data_processing_workflow",
+    db=db,
+    steps=[
+        Step(name="gather_context", executor=gather_context),
+        # HITL on Step with a plain executor function
+        Step(
+            name="process_data",
+            step_id="process_data123",
+            executor=process_data,
+            requires_user_input=True,
+            user_input_message="Configure data processing:",
+            user_input_schema=[
+                UserInputField(
+                    name="format",
+                    field_type="str",
+                    description="Output format: 'json', 'csv', or 'xml'",
+                    required=True,
+                ),
+                UserInputField(
+                    name="include_metadata",
+                    field_type="bool",
+                    description="Include metadata in output?",
+                    required=False,
+                ),
+            ],
+        ),
+        Step(name="format_output", executor=format_output),
+    ],
+)
+workflow_with_executor.id = "user-input-02-step-user-input-executor"
+
+
+agent_os = AgentOS(
+    description="Step-level user input HITL workflows",
+    workflows=[workflow, workflow_with_executor],
+    db=db,
+)
+app = agent_os.get_app()
+
+
+if __name__ == "__main__":
+    agent_os.serve(app="step_user_input:app", reload=True)
+```
+
+```python workflow_db.py
+from agno.db.postgres import PostgresDb
+
+db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
+db = PostgresDb(db_url=db_url)
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U "agno[os]" cel-python fastmcp openai psycopg-binary starlette
+    ```
+  </Step>
+
+  <Step title="Export your API keys">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export JWT_VERIFICATION_KEY="your_jwt_verification_key_here"
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:JWT_VERIFICATION_KEY="your_jwt_verification_key_here"
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Snippet file="run-pgvector-step.mdx" />
+
+  <Step title="Run the example">
+    Save the code blocks above as `main.py`, `condition_user_decision.py`, `decision_tree.py`, `dual_level_hitl.py`, `loop_confirmation.py`, `output_review.py`, `router_user_selection.py`, `step_confirmation.py`, `step_user_input.py`, `workflow_db.py` in the same directory, then run:
+    ```bash
+    python main.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/05_agent_os/human_in_the_loop/workflow/main.py](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/human_in_the_loop/workflow/main.py)

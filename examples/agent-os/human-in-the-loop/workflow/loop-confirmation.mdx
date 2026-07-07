@@ -1,0 +1,119 @@
+---
+title: "Loop Confirmation HITL Example (AgentOS)"
+description: "This example demonstrates pausing before a Loop starts so a human can decide whether to run the iterative work."
+source: cookbook/05_agent_os/human_in_the_loop/workflow/loop_confirmation.py
+---
+
+```python loop_confirmation.py
+"""
+Loop Confirmation HITL Example (AgentOS)
+
+This example demonstrates pausing before a Loop starts so a human can decide
+whether to run the iterative work.
+"""
+
+from agno.os import AgentOS
+from agno.workflow.loop import Loop
+from agno.workflow.step import Step
+from agno.workflow.types import StepInput, StepOutput
+from agno.workflow.workflow import Workflow
+from workflow_db import db
+
+
+def prepare_data(step_input: StepInput) -> StepOutput:
+    topic = step_input.input or "quarterly performance"
+    return StepOutput(
+        content=f"Prepared data for '{topic}'.\n"
+        "- Baseline metrics loaded\n"
+        "- Candidate refinements identified"
+    )
+
+
+def refine_analysis(step_input: StepInput) -> StepOutput:
+    previous_content = step_input.previous_step_content or "No previous analysis"
+    return StepOutput(
+        content=f"Refinement pass complete.\n\nInput considered:\n{previous_content}\n\n"
+        "- Quality score improved\n"
+        "- Narrative tightened"
+    )
+
+
+def finalize_results(step_input: StepInput) -> StepOutput:
+    previous_content = step_input.previous_step_content or "No refinement output"
+    return StepOutput(content=f"Final results:\n\n{previous_content}")
+
+
+workflow = Workflow(
+    name="loop_confirmation_workflow",
+    description="Ask for human confirmation before an iterative refinement loop.",
+    db=db,
+    steps=[
+        Step(name="prepare_data", executor=prepare_data),
+        Loop(
+            name="refinement_loop",
+            steps=[Step(name="refine_analysis", executor=refine_analysis)],
+            max_iterations=3,
+            requires_confirmation=True,
+            confirmation_message="Start the refinement loop?",
+        ),
+        Step(name="finalize_results", executor=finalize_results),
+    ],
+)
+workflow.id = "workflow-hitl-loop-confirmation"
+
+agent_os = AgentOS(
+    name="Workflow Loop Confirmation HITL",
+    description="AgentOS workflow example for loop start confirmation.",
+    workflows=[workflow],
+    db=db,
+)
+app = agent_os.get_app()
+
+
+if __name__ == "__main__":
+    agent_os.serve(app="loop_confirmation:app", reload=True)
+```
+
+The example imports this helper module from the same directory:
+
+```python workflow_db.py
+from agno.db.postgres import PostgresDb
+
+db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
+db = PostgresDb(db_url=db_url)
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U "agno[os]" cel-python fastmcp psycopg-binary starlette
+    ```
+  </Step>
+
+  <Step title="Export your API keys">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export JWT_VERIFICATION_KEY="your_jwt_verification_key_here"
+    ```
+
+    ```bash Windows
+    $Env:JWT_VERIFICATION_KEY="your_jwt_verification_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Snippet file="run-pgvector-step.mdx" />
+
+  <Step title="Run the example">
+    Save the code blocks above as `loop_confirmation.py` and `workflow_db.py` in the same directory, then run:
+    ```bash
+    python loop_confirmation.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/05_agent_os/human_in_the_loop/workflow/loop_confirmation.py](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/human_in_the_loop/workflow/loop_confirmation.py)

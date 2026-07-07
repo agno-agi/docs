@@ -1,0 +1,120 @@
+---
+title: "Cancel Run Persistence"
+description: "Cancel a team run mid-stream and verify that partial content and messages are preserved in the database."
+source: cookbook/03_teams/14_run_control/cancel_run_persistence.py
+---
+
+```python cancel_run_persistence.py
+"""
+Cancel Run Persistence
+======================
+Cancel a team run mid-stream and verify that partial content
+and messages are preserved in the database.
+
+Requires: PostgreSQL running on localhost:5532 (see cookbook/scripts/run_pgvector.sh)
+"""
+
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIResponses
+from agno.run.team import TeamRunEvent
+from agno.team import Team
+
+# ---------------------------------------------------------------------------
+# Create Members
+# ---------------------------------------------------------------------------
+researcher = Agent(
+    name="Researcher",
+    model=OpenAIResponses(id="gpt-5.4"),
+    instructions="You are a researcher. Write detailed responses.",
+)
+
+# ---------------------------------------------------------------------------
+# Create Team
+# ---------------------------------------------------------------------------
+team = Team(
+    name="ResearchTeam",
+    members=[researcher],
+    model=OpenAIResponses(id="gpt-5.4"),
+    db=PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai"),
+    store_tool_messages=True,
+    store_history_messages=True,
+)
+
+
+# ---------------------------------------------------------------------------
+# Run Team
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    run_id = None
+    cancelled = False
+    content_chunks: list = []
+
+    for event in team.run(
+        input=(
+            "Write a very long essay about the history of artificial intelligence"
+            " with at least 10 major milestones."
+        ),
+        stream=True,
+        stream_events=True,
+    ):
+        if run_id is None and hasattr(event, "run_id") and event.run_id:
+            run_id = event.run_id
+
+        if hasattr(event, "content") and event.content:
+            content_chunks.append(event.content)
+            print(event.content, end="", flush=True)
+
+        # Cancel after collecting some content
+        if len(content_chunks) >= 20 and run_id and not cancelled:
+            team.cancel_run(run_id)
+            cancelled = True
+
+        if hasattr(event, "event") and event.event == TeamRunEvent.run_cancelled:
+            print("\nRun was cancelled")
+            break
+
+    # Verify persistence
+    print("\n--- Verification ---")
+    session = team.get_session(session_id=team.session_id)
+    if session and session.runs:
+        last_run = session.runs[-1]
+        print(f"Status: {last_run.status}")
+        print(f"Content length: {len(last_run.content or '')}")
+        print(f"Messages: {len(last_run.messages or [])}")
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai psycopg-binary sqlalchemy
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Snippet file="run-pgvector-step.mdx" />
+
+  <Step title="Run the example">
+    Save the code above as `cancel_run_persistence.py`, then run:
+    ```bash
+    python cancel_run_persistence.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/03_teams/14_run_control/cancel_run_persistence.py](https://github.com/agno-agi/agno/blob/main/cookbook/03_teams/14_run_control/cancel_run_persistence.py)

@@ -1,0 +1,108 @@
+---
+title: "Google Drive Office Document Reading"
+description: "Demonstrates reading Microsoft Office files (.docx, .xlsx, .pptx) from Google Drive with automatic text extraction."
+source: cookbook/12_context/21_gdrive_office.py
+---
+
+Without these packages, Office files return a clear error with install instructions. Binary files (PDFs, images, etc.) are detected and rejected with a helpful message rather than returning garbage UTF-8.
+
+```python gdrive_office.py
+"""
+Google Drive Office Document Reading
+=====================================
+
+Demonstrates reading Microsoft Office files (.docx, .xlsx, .pptx) from
+Google Drive with automatic text extraction. The GDrive provider uses
+optional dependencies to extract text content:
+
+- python-docx for Word documents
+- openpyxl for Excel spreadsheets
+- python-pptx for PowerPoint presentations
+
+Without these packages, Office files return a clear error with install
+instructions. Binary files (PDFs, images, etc.) are detected and rejected
+with a helpful message rather than returning garbage UTF-8.
+
+Setup:
+    1. Create a service account in Google Cloud Console and download
+       its JSON key.
+    2. Share the Drive folders containing Office files with the SA email.
+    3. Point the env at the key file:
+           export GOOGLE_SERVICE_ACCOUNT_FILE=/path/to/sa.json
+    4. Install optional dependencies for Office support:
+           pip install python-docx openpyxl python-pptx
+
+Requires:
+    OPENAI_API_KEY
+    GOOGLE_SERVICE_ACCOUNT_FILE
+"""
+
+from __future__ import annotations
+
+import asyncio
+
+from agno.agent import Agent
+from agno.context.gdrive import GDriveContextProvider
+from agno.models.openai import OpenAIResponses
+
+# ---------------------------------------------------------------------------
+# Create the provider (service-account path from env)
+# ---------------------------------------------------------------------------
+gdrive = GDriveContextProvider(model=OpenAIResponses(id="gpt-5.4-mini"))
+
+# ---------------------------------------------------------------------------
+# Create the Agent
+# ---------------------------------------------------------------------------
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.4"),
+    tools=gdrive.get_tools(),
+    instructions=gdrive.instructions(),
+    markdown=True,
+)
+
+
+# ---------------------------------------------------------------------------
+# Run the Agent
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    print(f"\ngdrive.status() = {gdrive.status()}\n")
+    prompt = (
+        "Search for any .docx, .xlsx, or .pptx files in my Drive. "
+        "Pick one, read its contents, and summarize what it contains."
+    )
+    print(f"> {prompt}\n")
+    asyncio.run(agent.aprint_response(prompt))
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `gdrive_office.py`, then run:
+    ```bash
+    python gdrive_office.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/12_context/21_gdrive_office.py](https://github.com/agno-agi/agno/blob/main/cookbook/12_context/21_gdrive_office.py)

@@ -1,10 +1,10 @@
 ---
 title: "SurrealDB + AgentOS demo"
-description: "Run AgentOS with SurrealDB as the storage backend."
+description: "Serve the SurrealDB-backed agent, team, and workflow together in one AgentOS."
+source: cookbook/05_agent_os/dbs/surreal_db/run.py
 ---
-Steps: 1. Run SurrealDB in a container: `./cookbook/scripts/run_surrealdb.sh` 2. Run the demo: `python cookbook/agent_os/dbs/surreal_db/run.py`
 
-```python
+```python run.py
 """SurrealDB + AgentOS demo
 
 Steps:
@@ -42,15 +42,412 @@ if __name__ == "__main__":
 # *******************************
 ```
 
-## Run the Example
-```bash
-# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/05_agent_os/dbs/surreal_db
+The example imports this helper modules from the same directory:
 
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
+````python agents.py
+"""
+Agents
+======
 
-python run.py
+Demonstrates agents.
+"""
+
+from textwrap import dedent
+
+from agno.agent import Agent
+from agno.models.anthropic import Claude
+from agno.tools.mcp import MCPTools
+from db import db
+
+# ---------------------------------------------------------------------------
+# Create Example
+# ---------------------------------------------------------------------------
+
+# ************* Create Agno Assist *************
+agno_assist = Agent(
+    name="Agno Assist",
+    model=Claude(id="claude-sonnet-4-5"),
+    db=db,
+    # Enable agentic memory
+    enable_agentic_memory=True,
+    # Add the previous session history to the context
+    add_history_to_context=True,
+    # Add the current date and time to the context
+    add_datetime_to_context=True,
+    # Enable markdown formatting
+    markdown=True,
+    # Add the Agno MCP server to the Agent
+    tools=[MCPTools(transport="streamable-http", url="https://docs.agno.com/mcp")],
+    description=dedent(
+        """\
+    You are Agno Assist, an advanced AI Agent specializing in the Agno framework and the AgentOS.
+
+    Your goal is to help developers understand and effectively use Agno and the AgentOS by providing
+    explanations and working code examples."""
+    ),
+    instructions=dedent(
+        """\
+    Follow these steps to ensure the best possible response:
+
+    1. **Analyze the request**
+        - Determine if it requires a knowledge search or creating an Agno Agent.
+        - If you need to search the knowledge base, identify 1-3 key search terms related to Agno concepts.
+        - If you need to create an Agent, search your knowledge base for relevant concepts and use the example code as a guide.
+        - When the user asks for an Agent, they mean an Agno Agent.
+        - All concepts are related to Agno, so you can search your knowledge base for relevant information
+
+    After the analysis, determine if you need to create an Agno Agent.
+
+    2. **Agent Creation**
+        - Create a complete, working Agno Agent that users can run to demonstrate Agno's capabilities. For example:
+        ```python
+        from agno.agent import Agent
+        from agno.tools.websearch import WebSearchTools
+
+        agent = Agent(tools=[WebSearchTools()])
+
+        # Perform a web search and capture the response
+        response = agent.run("What's happening in France?")
+        ```
+        - Remember to:
+            * Use agent.run() and NOT agent.print_response()
+            * Build the complete Agno Agent implementation
+            * Include all necessary imports and setup
+            * Add comprehensive comments explaining the implementation
+            * Ensure all dependencies are listed
+            * Include error handling and best practices
+            * Add type hints and documentation
+
+    Key topics to cover:
+    - Agno Agents and their capabilities
+    - The AgentOS and its features
+    - Tool integration
+    - Model support and configuration
+    - Best practices and common patterns
+    - How to use the Agno MCP server
+    - How to use the AgentOS UI"""
+    ),
+)
+# *******************************
+
+# ---------------------------------------------------------------------------
+# Run Example
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    raise SystemExit("This module is intended to be imported.")
+````
+
+```python db.py
+"""
+Db
+==
+
+Demonstrates db.
+"""
+
+from agno.db.surrealdb import SurrealDb
+
+# ---------------------------------------------------------------------------
+# Create Example
+# ---------------------------------------------------------------------------
+
+# ************* SurrealDB Config *************
+SURREALDB_URL = "ws://localhost:8000"
+SURREALDB_USER = "root"
+SURREALDB_PASSWORD = "root"
+SURREALDB_NAMESPACE = "agno"
+SURREALDB_DATABASE = "agent_os_demo"
+# *******************************
+
+# ************* Create the SurrealDB instance *************
+creds = {"username": SURREALDB_USER, "password": SURREALDB_PASSWORD}
+db = SurrealDb(None, SURREALDB_URL, creds, SURREALDB_NAMESPACE, SURREALDB_DATABASE)
+# *******************************
+
+# ---------------------------------------------------------------------------
+# Run Example
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    raise SystemExit("This module is intended to be imported.")
 ```
+
+```python teams.py
+"""
+Teams
+=====
+
+Demonstrates teams.
+"""
+
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.team.team import Team
+from agno.tools.reasoning import ReasoningTools
+from agno.tools.websearch import WebSearchTools
+from agno.tools.yfinance import YFinanceTools
+from db import db
+
+# ---------------------------------------------------------------------------
+# Create Example
+# ---------------------------------------------------------------------------
+
+# ************* Core Agents *************
+web_agent = Agent(
+    name="Web Search Agent",
+    role="Handle web search requests and general research",
+    id="web_agent",
+    model=OpenAIChat(id="gpt-4.1"),
+    tools=[WebSearchTools()],
+    db=db,
+    update_memory_on_run=True,
+    instructions=[
+        "Search for current and relevant information on financial topics",
+        "Always include sources and publication dates",
+        "Focus on reputable financial news sources",
+        "Provide context and background information",
+    ],
+    add_datetime_to_context=True,
+)
+
+finance_agent = Agent(
+    name="Finance Agent",
+    role="Handle financial data requests and market analysis",
+    id="finance_agent",
+    model=OpenAIChat(id="gpt-4.1"),
+    tools=[YFinanceTools()],
+    db=db,
+    update_memory_on_run=True,
+    instructions=[
+        "You are a financial data specialist and your goal is to generate comprehensive and accurate financial reports.",
+        "Use tables to display stock prices, fundamentals (P/E, Market Cap, Revenue), and recommendations.",
+        "Clearly state the company name and ticker symbol.",
+        "Include key financial ratios and metrics in your analysis.",
+        "Focus on delivering actionable financial insights.",
+        "Delegate tasks and run tools in parallel if needed.",
+    ],
+    add_datetime_to_context=True,
+)
+# *******************************
+
+
+reasoning_finance_team = Team(
+    name="Reasoning Finance Team",
+    id="reasoning_finance_team",
+    model=OpenAIChat(id="gpt-4.1"),
+    members=[
+        web_agent,
+        finance_agent,
+    ],
+    tools=[ReasoningTools(add_instructions=True)],
+    instructions=[
+        "Collaborate to provide comprehensive financial and investment insights",
+        "Consider both fundamental analysis and market sentiment",
+        "Provide actionable investment recommendations with clear rationale",
+        "Use tables and charts to display data clearly and professionally",
+        "Ensure all claims are supported by data and sources",
+        "Present findings in a structured, easy-to-follow format",
+        "Only output the final consolidated analysis, not individual agent responses",
+        "Dont use emojis",
+    ],
+    db=db,
+    update_memory_on_run=True,
+    markdown=True,
+    show_members_responses=True,
+    add_datetime_to_context=True,
+)
+
+
+# ************* Demo Scenarios *************
+"""
+DEMO SCENARIOS - Use these as example queries to showcase the multi-agent system:
+
+1. COMPREHENSIVE INVESTMENT RESEARCH:
+Analyze Apple (AAPL) as a potential investment:
+1. Get current stock price and fundamentals
+2. Research recent news and market sentiment
+3. Calculate key financial ratios and risk metrics
+4. Provide a comprehensive investment recommendation
+
+2. SECTOR COMPARISON ANALYSIS:
+Compare the tech sector giants (AAPL, GOOGL, MSFT) performance:
+1. Get financial data for all three companies
+2. Analyze recent news affecting the tech sector
+3. Calculate comparative metrics and correlations
+4. Recommend portfolio allocation weights
+
+3. RISK ASSESSMENT SCENARIO:
+Evaluate the risk profile of Tesla (TSLA):
+1. Calculate volatility metrics and beta
+2. Analyze recent news for risk factors
+3. Compare risk vs return to market benchmarks
+4. Provide risk-adjusted investment recommendation
+
+4. MARKET SENTIMENT ANALYSIS:
+Analyze current market sentiment around AI stocks:
+1. Search for recent AI industry news and developments
+2. Get financial data for key AI companies (NVDA, GOOGL, MSFT, AMD)
+3. Provide outlook for AI sector investing
+
+5. EARNINGS SEASON ANALYSIS:
+Prepare for upcoming earnings season - analyze Microsoft (MSFT):
+1. Get current financial metrics and analyst expectations
+2. Research recent news and market sentiment
+3. Calculate historical earnings impact on stock price
+4. Provide trading strategy recommendation
+"""
+# *******************************
+
+# ---------------------------------------------------------------------------
+# Run Example
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    raise SystemExit("This module is intended to be imported.")
+```
+
+```python workflows.py
+"""
+Workflows
+=========
+
+Demonstrates workflows.
+"""
+
+from typing import List
+
+from agno.agent.agent import Agent
+from agno.models.anthropic import Claude
+from agno.team.team import Team
+from agno.tools.firecrawl import FirecrawlTools
+from agno.tools.wikipedia import WikipediaTools
+from agno.workflow.step import Step
+from agno.workflow.workflow import Workflow
+from db import db
+from pydantic import BaseModel, Field
+
+# ---------------------------------------------------------------------------
+# Create Example
+# ---------------------------------------------------------------------------
+
+
+# ************* Input Schema *************
+class ResearchTopic(BaseModel):
+    """Structured research topic with specific requirements"""
+
+    topic: str
+    focus_areas: List[str] = Field(description="Specific areas to focus on")
+
+
+# *******************************
+
+
+# ************* Agents *************
+wikipedia_agent = Agent(
+    name="Wikipedia Agent",
+    model=Claude(id="claude-sonnet-4-5"),
+    role="Extract key insights and content from Wikipedia articles",
+    tools=[WikipediaTools()],
+)
+search_agent = Agent(
+    name="Search Agent",
+    model=Claude(id="claude-sonnet-4-5"),
+    role="Search the web for the latest news and trends using Firecrawl",
+    tools=[FirecrawlTools()],
+)
+writer_agent = Agent(
+    name="Writer Agent",
+    model=Claude(id="claude-sonnet-4-5"),
+    instructions=[
+        "Write a detailed report on the provided topic and research content",
+    ],
+)
+# *******************************
+
+
+# ************* Team *************
+research_team = Team(
+    name="Research Team",
+    model=Claude(id="claude-sonnet-4-5"),
+    members=[wikipedia_agent, search_agent],
+    instructions="Research tech topics from Wikipedia and the web",
+)
+# *******************************
+
+
+# ************* Workflow Steps *************
+research_step = Step(
+    name="Research Step",
+    team=research_team,
+)
+
+writer_step = Step(
+    name="Writer Step",
+    agent=writer_agent,
+)
+# *******************************
+
+
+# ************* Workflow *************
+research_workflow = Workflow(
+    name="Research Workflow",
+    description="Automated research on a topic",
+    db=db,
+    steps=[research_step, writer_step],
+    input_schema=ResearchTopic,
+)
+# *******************************
+
+# ---------------------------------------------------------------------------
+# Run Example
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    raise SystemExit("This module is intended to be imported.")
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U "agno[mcp,os]" anthropic ddgs firecrawl firecrawl-py openai starlette surrealdb wikipedia yfinance
+    ```
+  </Step>
+
+  <Step title="Export your API keys">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export ANTHROPIC_API_KEY="your_anthropic_api_key_here"
+    export FIRECRAWL_API_KEY="your_firecrawl_api_key_here"
+    export JWT_VERIFICATION_KEY="your_jwt_verification_key_here"
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:ANTHROPIC_API_KEY="your_anthropic_api_key_here"
+    $Env:FIRECRAWL_API_KEY="your_firecrawl_api_key_here"
+    $Env:JWT_VERIFICATION_KEY="your_jwt_verification_key_here"
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run SurrealDB">
+    ```bash
+    docker run --rm --pull always -p 8000:8000 surrealdb/surrealdb:latest start --user root --pass root
+    ```
+  </Step>
+
+  <Step title="Run the example">
+    Save the code blocks above as `run.py`, `agents.py`, `db.py`, `teams.py`, `workflows.py` in the same directory, then run:
+    ```bash
+    python run.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/05_agent_os/dbs/surreal_db/run.py](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/dbs/surreal_db/run.py)

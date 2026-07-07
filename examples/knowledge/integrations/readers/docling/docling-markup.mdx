@@ -1,0 +1,192 @@
+---
+title: "Docling Reader: Markup and Structured Documents"
+description: "Examples of using Docling to process markup and structured document formats."
+source: cookbook/07_knowledge/05_integrations/readers/docling/docling_markup.py
+---
+
+```python docling_markup.py
+"""
+Docling Reader: Markup and Structured Documents
+================================================
+Examples of using Docling to process markup and structured document formats.
+
+Supported formats:
+- XML: Extensible Markup Language (including USPTO patent format)
+- HTML: HyperText Markup Language
+- LaTeX: LaTeX document format
+
+These formats contain structured data and formatting that Docling preserves during conversion.
+
+Run `uv pip install docling openai-whisper` to install dependencies.
+"""
+
+import asyncio
+
+from agno.knowledge.reader.docling_reader import DoclingReader
+from utils import get_agent, get_knowledge
+
+# ---------------------------------------------------------------------------
+# Setup
+# ---------------------------------------------------------------------------
+
+knowledge = get_knowledge(table_name="docling_markup")
+agent = get_agent(knowledge)
+
+# ---------------------------------------------------------------------------
+# Run Demo
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+
+    async def main():
+        # --- XML USPTO file - Patent document with markdown output ---
+        print("\n" + "=" * 60)
+        print("XML USPTO file - Patent Document (markdown output)")
+        print("=" * 60 + "\n")
+
+        await knowledge.ainsert(
+            name="Patent_USPTO",
+            path="cookbook/07_knowledge/testing_resources/patent_sample.xml",
+            reader=DoclingReader(output_format="markdown"),
+        )
+        agent.print_response(
+            "What is the patent about and who is the inventor?",
+            stream=True,
+        )
+
+        # --- LaTeX file - Research paper with text output ---
+        print("\n" + "=" * 60)
+        print("LaTeX file - Research Paper (text output)")
+        print("=" * 60 + "\n")
+
+        await knowledge.ainsert(
+            name="Research_Paper_LaTeX",
+            path="cookbook/07_knowledge/testing_resources/research_paper.tex",
+            reader=DoclingReader(output_format="text"),
+        )
+        agent.print_response(
+            "What is the main topic of the research paper and what are the key findings?",
+            stream=True,
+        )
+
+        # --- HTML file - Company information with JSON output ---
+        print("\n" + "=" * 60)
+        print("HTML file - Company Information (JSON output)")
+        print("=" * 60 + "\n")
+
+        await knowledge.ainsert(
+            name="Company_Info_HTML",
+            path="cookbook/07_knowledge/testing_resources/company_info.html",
+            reader=DoclingReader(output_format="json"),
+        )
+        agent.print_response(
+            "Who are the members of the leadership team and what is their revenue growth?",
+            stream=True,
+        )
+
+    asyncio.run(main())
+```
+
+The example imports this helper module from the same directory:
+
+```python utils.py
+"""
+Docling Reader: Shared Utilities
+=================================
+Common setup and utilities for Docling reader examples.
+
+Docling uses IBM's advanced document conversion library to extract content from multiple document formats.
+
+Supported formats examples::
+- PDF: PDFs with advanced layout understanding and text extraction
+- DOCX: Microsoft Word documents with structure preservation
+- PPTX: PowerPoint presentations
+- Markdown: Markdown files
+- CSV: CSV spreadsheets
+- XLSX: Excel spreadsheets
+
+Output formats examples:
+- markdown: Preserves structure and formatting
+- text: Plain text output
+- json: Lossless serialization with full document structure
+- html: HTML with image embedding/referencing support
+- doctags: Markup format with full content and layout characteristics
+
+Key features:
+- Advanced document structure understanding
+- Better handling of complex layouts (tables, columns, etc.)
+- Multiple output formats for different use cases
+- Ideal for complex documents with rich formatting
+
+Run `uv pip install docling openai-whisper` to install python dependencies.
+System requirement ffmpeg (https://www.ffmpeg.org/download.html) for audio formats.
+
+See also: 01_documents.py for PDF/DOCX, 02_data.py for CSV/JSON and 03_web.py for web sources.
+"""
+
+import warnings
+
+from agno.agent import Agent
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.knowledge.knowledge import Knowledge
+from agno.models.openai import OpenAIResponses
+from agno.vectordb.lancedb import LanceDb, SearchType
+
+# Suppress Whisper FP16 warnings when running on CPU
+warnings.filterwarnings("ignore", message="FP16 is not supported on CPU")
+
+
+def get_knowledge(table_name: str = "docling_reader") -> Knowledge:
+    return Knowledge(
+        vector_db=LanceDb(
+            uri="tmp/lancedb",
+            table_name=table_name,
+            search_type=SearchType.hybrid,
+            embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+        ),
+    )
+
+
+def get_agent(knowledge: Knowledge) -> Agent:
+    return Agent(
+        model=OpenAIResponses(id="gpt-5.2"),
+        knowledge=knowledge,
+        search_knowledge=True,
+        markdown=True,
+    )
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno docling lancedb openai pyarrow
+    ```
+  </Step>
+
+  <Step title="Export your API keys">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export LANCEDB_API_KEY="your_lancedb_api_key_here"
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:LANCEDB_API_KEY="your_lancedb_api_key_here"
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code blocks above as `docling_markup.py` and `utils.py` in the same directory, then run:
+    ```bash
+    python docling_markup.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/07_knowledge/05_integrations/readers/docling/docling_markup.py](https://github.com/agno-agi/agno/blob/main/cookbook/07_knowledge/05_integrations/readers/docling/docling_markup.py)

@@ -1,0 +1,89 @@
+---
+title: "Antigravity on AgentOS"
+description: "Serves an Antigravity-backed agent through AgentOS, with sessions persisted to a local SQLite database."
+source: cookbook/05_agent_os/antigravity/basic.py
+---
+
+```python basic.py
+"""
+Antigravity on AgentOS
+======================
+
+Serves an Antigravity-backed agent through AgentOS, with sessions persisted
+to a local SQLite database.
+"""
+
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.google import GeminiInteractions
+from agno.os import AgentOS
+
+# ---------------------------------------------------------------------------
+# Setup
+# ---------------------------------------------------------------------------
+db = SqliteDb(
+    db_file="tmp/antigravity_agentos.db",
+)
+
+# ---------------------------------------------------------------------------
+# Create Antigravity Agent and AgentOS
+# ---------------------------------------------------------------------------
+antigravity_agent = Agent(
+    db=db,
+    id="antigravity-agent",
+    model=GeminiInteractions(agent="antigravity-preview-05-2026", environment="remote"),
+    add_history_to_context=True,
+    num_history_runs=3,
+)
+
+agent_os = AgentOS(
+    description="Example OS setup",
+    agents=[antigravity_agent],
+)
+
+# ---------------------------------------------------------------------------
+# Create AgentOS App
+# ---------------------------------------------------------------------------
+app = agent_os.get_app()
+
+# ---------------------------------------------------------------------------
+# Run
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    agent_os.serve(app="basic:app", reload=True)
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U "agno[os]" fastmcp google-genai starlette
+    ```
+  </Step>
+
+  <Step title="Export your API keys">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export GOOGLE_API_KEY="your_google_api_key_here"
+    export JWT_VERIFICATION_KEY="your_jwt_verification_key_here"
+    ```
+
+    ```bash Windows
+    $Env:GOOGLE_API_KEY="your_google_api_key_here"
+    $Env:JWT_VERIFICATION_KEY="your_jwt_verification_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `basic.py`, then run:
+    ```bash
+    python basic.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/05_agent_os/antigravity/basic.py](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/antigravity/basic.py)

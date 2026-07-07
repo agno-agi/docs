@@ -1,0 +1,159 @@
+---
+title: "Learning Demo: AgentOS Server"
+description: "Serves the ops assistant on an AgentOS instance, which exposes the /learnings CRUD endpoints and powers the Learning pages at os.agno.com."
+source: cookbook/08_learning/10_demo/run.py
+---
+
+```python run.py
+"""
+Learning Demo: AgentOS Server
+=============================
+Serves the ops assistant on an AgentOS instance, which exposes the
+/learnings CRUD endpoints and powers the Learning pages at os.agno.com.
+
+Requires the pgvector container:
+    ./cookbook/scripts/run_pgvector.sh
+
+Run seed.py first so the Learning pages have data:
+    .venvs/demo/bin/python cookbook/08_learning/10_demo/seed.py
+
+Then start the server:
+    .venvs/demo/bin/python cookbook/08_learning/10_demo/run.py
+
+Then open https://os.agno.com, connect to http://localhost:7777, and
+browse the Learning section: User Profiles, User Memories, Entity
+Memories, Session Context, and Decision Logs.
+
+Interactive API docs are at http://localhost:7777/docs.
+"""
+
+from agents import ops_assistant
+from agno.os import AgentOS
+
+agent_os = AgentOS(
+    description="Learning demo: one agent with every learning store enabled",
+    agents=[ops_assistant],
+)
+app = agent_os.get_app()
+
+
+if __name__ == "__main__":
+    agent_os.serve(app="run:app", reload=True)
+```
+
+The example imports this helper module from the same directory:
+
+```python agents.py
+"""
+Learning Demo: Shared Agent
+===========================
+A single ops assistant with every learning store enabled:
+
+- User Profile: structured fields (name, role, preferences)
+- User Memory: unstructured observations about the user
+- Session Context: a running summary of each session
+- Entity Memory: facts, events, and relationships about external things
+- Learned Knowledge: insights that transfer across users (pgvector)
+- Decision Log: significant decisions with reasoning
+
+Requires the pgvector container:
+    ./cookbook/scripts/run_pgvector.sh
+"""
+
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.knowledge import Knowledge
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.learn import (
+    LearningMachine,
+)
+from agno.models.openai import OpenAIResponses
+from agno.vectordb.pgvector import PgVector, SearchType
+
+# ---------------------------------------------------------------------------
+# Database
+# ---------------------------------------------------------------------------
+db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
+db = PostgresDb(id="learning-demo-db", db_url=db_url)
+
+# Learned Knowledge needs a vector store for semantic search.
+knowledge = Knowledge(
+    vector_db=PgVector(
+        db_url=db_url,
+        table_name="learning_demo_knowledge",
+        search_type=SearchType.hybrid,
+        embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+    ),
+)
+
+# ---------------------------------------------------------------------------
+# Learning Machine: all six stores enabled
+# ---------------------------------------------------------------------------
+learning = LearningMachine(
+    db=db,
+    model=OpenAIResponses(id="gpt-5.5"),
+    knowledge=knowledge,
+    user_profile=True,
+    user_memory=True,
+    session_context=True,
+    entity_memory=True,
+    learned_knowledge=True,
+    decision_log=True,
+)
+
+# ---------------------------------------------------------------------------
+# Agent
+# ---------------------------------------------------------------------------
+ops_assistant = Agent(
+    id="ops-assistant",
+    name="Ops Assistant",
+    model=OpenAIResponses(id="gpt-5.5"),
+    db=db,
+    learning=learning,
+    instructions=[
+        "You are an engineering operations assistant.",
+        "Keep answers short and practical.",
+        "Search your learnings before answering substantive questions.",
+        "When the user shares a team-wide insight or asks you to remember one, save it with the save_learning tool.",
+        "When you make a significant recommendation, record it with the log_decision tool, including your reasoning and the alternatives you considered.",
+    ],
+    markdown=True,
+)
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U "agno[os]" fastmcp openai pgvector psycopg-binary starlette
+    ```
+  </Step>
+
+  <Step title="Export your API keys">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export JWT_VERIFICATION_KEY="your_jwt_verification_key_here"
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:JWT_VERIFICATION_KEY="your_jwt_verification_key_here"
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Snippet file="run-pgvector-step.mdx" />
+
+  <Step title="Run the example">
+    Save the code blocks above as `run.py` and `agents.py` in the same directory, then run:
+    ```bash
+    python run.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/08_learning/10_demo/run.py](https://github.com/agno-agi/agno/blob/main/cookbook/08_learning/10_demo/run.py)

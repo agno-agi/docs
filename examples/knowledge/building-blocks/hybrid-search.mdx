@@ -1,0 +1,124 @@
+---
+title: "Search Types: Vector, Keyword, and Hybrid"
+description: "Knowledge supports three search types."
+source: cookbook/07_knowledge/02_building_blocks/02_hybrid_search.py
+---
+
+See also: 03_reranking.py for improving search results with reranking.
+
+```python hybrid_search.py
+"""
+Search Types: Vector, Keyword, and Hybrid
+===========================================
+Knowledge supports three search types. Each has different strengths:
+
+- Vector: Semantic similarity search. Finds conceptually related content
+  even when exact words don't match.
+- Keyword: Full-text search. Fast and precise for exact term matching.
+- Hybrid: Combines vector + keyword. Best of both worlds. Recommended default.
+
+See also: 03_reranking.py for improving search results with reranking.
+"""
+
+import asyncio
+
+from agno.agent import Agent
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.knowledge.knowledge import Knowledge
+from agno.models.openai import OpenAIResponses
+from agno.vectordb.qdrant import Qdrant
+from agno.vectordb.search import SearchType
+
+# ---------------------------------------------------------------------------
+# Setup
+# ---------------------------------------------------------------------------
+
+qdrant_url = "http://localhost:6333"
+pdf_url = "https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf"
+
+
+def create_knowledge(search_type: SearchType) -> Knowledge:
+    return Knowledge(
+        vector_db=Qdrant(
+            collection="search_types_%s" % search_type.value,
+            url=qdrant_url,
+            search_type=search_type,
+            embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Run Demo
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+
+    async def main():
+        search_types = [
+            (SearchType.vector, "Vector (semantic similarity)"),
+            (SearchType.keyword, "Keyword (full-text search)"),
+            (SearchType.hybrid, "Hybrid (vector + keyword)"),
+        ]
+
+        for search_type, description in search_types:
+            print("\n" + "=" * 60)
+            print("SEARCH TYPE: %s" % description)
+            print("=" * 60 + "\n")
+
+            knowledge = create_knowledge(search_type)
+            # skip_if_exists=True avoids re-processing if run multiple times
+            await knowledge.ainsert(url=pdf_url, skip_if_exists=True)
+
+            agent = Agent(
+                model=OpenAIResponses(id="gpt-5.2"),
+                knowledge=knowledge,
+                search_knowledge=True,
+                markdown=True,
+            )
+            agent.print_response(
+                "How do I make pad thai?",
+                stream=True,
+            )
+
+    asyncio.run(main())
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno fastembed openai qdrant-client
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run Qdrant">
+    ```bash
+    docker run -d --name qdrant -p 6333:6333 qdrant/qdrant:latest
+    ```
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `hybrid_search.py`, then run:
+    ```bash
+    python hybrid_search.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/07_knowledge/02_building_blocks/02_hybrid_search.py](https://github.com/agno-agi/agno/blob/main/cookbook/07_knowledge/02_building_blocks/02_hybrid_search.py)

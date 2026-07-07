@@ -1,8 +1,12 @@
 ---
 title: "Per-Agent Permissions Example with AgentOS"
-description: "This example demonstrates how to define per-agent permission scopes to control which users can run which specific agents."
+description: "Define per-agent permission scopes to control which users can run which specific agents."
+source: cookbook/05_agent_os/rbac/symmetric/agent_permissions.py
 ---
-```python
+
+This example demonstrates how to define per-agent permission scopes to control which users can run which specific agents.
+
+```python agent_permissions.py
 """
 Per-Agent Permissions Example with AgentOS
 
@@ -20,7 +24,7 @@ from datetime import UTC, datetime, timedelta
 import jwt
 from agno.agent import Agent
 from agno.db.postgres import PostgresDb
-from agno.models.openai import OpenAIChat
+from agno.models.openai import OpenAIResponses
 from agno.os import AgentOS
 from agno.os.config import AuthorizationConfig
 from agno.tools.mcp import MCPTools
@@ -40,7 +44,7 @@ db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
 web_search_agent = Agent(
     id="web-search-agent",
     name="Web Search Agent",
-    model=OpenAIChat(id="gpt-4o"),
+    model=OpenAIResponses(id="gpt-5.5"),
     db=db,
     tools=[WebSearchTools()],
     add_history_to_context=True,
@@ -50,7 +54,7 @@ web_search_agent = Agent(
 agno_agent = Agent(
     id="agno-agent",
     name="Agno Agent",
-    model=OpenAIChat(id="gpt-4.1"),
+    model=OpenAIResponses(id="gpt-5.5"),
     tools=[MCPTools(transport="streamable-http", url="https://docs.agno.com/mcp")],
     db=db,
     add_history_to_context=True,
@@ -90,7 +94,7 @@ if __name__ == "__main__":
     - GET /agents/{agent_id}: requires "agents:read"
     - POST /agents/{agent_id}/runs: requires "agents:run"
     - GET /sessions: requires "sessions:read"
-    - GET /memory: requires "memory:read"
+    - GET /memories: requires "memories:read"
     - etc.
     
     Per-agent scope format:
@@ -146,17 +150,38 @@ if __name__ == "__main__":
 ```
 
 ## Run the Example
-```bash
-# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/05_agent_os/rbac/symmetric
 
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
 
-# Export relevant API keys
-export JWT_VERIFICATION_KEY="***"
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U "agno[mcp,os]" ddgs openai psycopg-binary starlette
+    ```
+  </Step>
 
-python agent_permissions.py
-```
+  <Step title="Export your API keys">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export JWT_VERIFICATION_KEY="your_jwt_verification_key_here"
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:JWT_VERIFICATION_KEY="your_jwt_verification_key_here"
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Snippet file="run-pgvector-step.mdx" />
+
+  <Step title="Run the example">
+    Save the code above as `agent_permissions.py`, then run:
+    ```bash
+    python agent_permissions.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/05_agent_os/rbac/symmetric/agent_permissions.py](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/rbac/symmetric/agent_permissions.py)

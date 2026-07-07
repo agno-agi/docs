@@ -1,10 +1,27 @@
 ---
-title: "Nested Workflow"
-description: "Basic nested workflow: inner research pipeline feeds into an outer writing step."
+title: "Nested Workflow Example"
+description: "Use a workflow as a step within another workflow."
+source: cookbook/04_workflows/06_advanced_concepts/workflow_as_a_step/nested_workflow.py
 ---
-```python
+
+This example demonstrates how to use a workflow as a step within another workflow. This is useful for composing complex workflows from simpler, reusable sub-workflows.
+
+```python nested_workflow.py
+"""
+Nested Workflow Example
+
+This example demonstrates how to use a workflow as a step within another workflow.
+This is useful for composing complex workflows from simpler, reusable sub-workflows.
+
+In this example:
+- We create an "inner" workflow that performs a simple research task
+- We create an "outer" workflow that uses the inner workflow as one of its steps
+- The outer workflow orchestrates multiple steps including the nested workflow
+"""
+
 from agno.agent import Agent
-from agno.models.openai import OpenAIChat
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIResponses
 from agno.workflow.step import Step
 from agno.workflow.types import StepInput, StepOutput
 from agno.workflow.workflow import Workflow
@@ -24,7 +41,7 @@ def create_summary(step_input: StepInput) -> StepOutput:
 # Create a simple inner workflow that does research
 research_agent = Agent(
     name="Research Agent",
-    model=OpenAIChat(id="gpt-4o-mini"),
+    model=OpenAIResponses(id="gpt-5.4"),
     instructions="You are a research assistant. Provide concise, factual information.",
 )
 
@@ -40,7 +57,7 @@ inner_workflow = Workflow(
 # Create the outer workflow that uses the inner workflow as a step
 writer_agent = Agent(
     name="Writer Agent",
-    model=OpenAIChat(id="gpt-4o-mini"),
+    model=OpenAIResponses(id="gpt-5.4"),
     instructions="You are a professional writer. Take the research provided and write a polished article.",
 )
 
@@ -48,13 +65,20 @@ outer_workflow = Workflow(
     name="Research and Write Workflow",
     description="A workflow that researches a topic and then writes about it",
     steps=[
+        # Use the inner workflow as a step
         Step(name="research_phase", workflow=inner_workflow),
+        # Then write based on the research
         Step(name="writing_phase", agent=writer_agent),
     ],
+    db=PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai"),
 )
 
 
 if __name__ == "__main__":
+    # Run the outer workflow
+    print("Running nested workflow example...")
+    print("=" * 50)
+
     result = outer_workflow.print_response(
         input="Tell me about the history of artificial intelligence",
         stream=True,
@@ -63,11 +87,36 @@ if __name__ == "__main__":
 ```
 
 ## Run the Example
-```bash
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/04_workflows/06_advanced_concepts/workflow_as_a_step
 
-pip install agno openai
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
 
-python nested_workflow.py
-```
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno fastapi openai psycopg-binary sqlalchemy
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Snippet file="run-pgvector-step.mdx" />
+
+  <Step title="Run the example">
+    Save the code above as `nested_workflow.py`, then run:
+    ```bash
+    python nested_workflow.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/04_workflows/06_advanced_concepts/workflow_as_a_step/nested_workflow.py](https://github.com/agno-agi/agno/blob/main/cookbook/04_workflows/06_advanced_concepts/workflow_as_a_step/nested_workflow.py)

@@ -1,0 +1,122 @@
+---
+title: "Approval User Input"
+description: "Approval + user input HITL: @approval + @tool(requires_user_input=True)."
+source: cookbook/05_agent_os/approvals/agent/approval_user_input.py
+---
+
+```python approval_user_input.py
+"""
+Approval User Input
+=============================
+
+Approval + user input HITL: @approval + @tool(requires_user_input=True).
+"""
+
+import os
+
+from agno.agent import Agent
+from agno.approval import approval
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIResponses
+from agno.os import AgentOS
+from agno.tools import tool
+
+DB_FILE = "tmp/approvals_test.db"
+
+
+@approval(type="required")
+@tool(requires_user_input=True, user_input_fields=["recipient", "note"])
+def send_money(amount: float, recipient: str, note: str) -> str:
+    """Send money to a recipient.
+
+    Args:
+        amount (float): The amount of money to send.
+        recipient (str): The recipient to send money to (provided by user).
+        note (str): A note to include with the transfer.
+
+    Returns:
+        str: Confirmation of the transfer.
+    """
+    return f"Sent ${amount} to {recipient}: {note}"
+
+
+# ---------------------------------------------------------------------------
+# Create Agent
+# ---------------------------------------------------------------------------
+db = SqliteDb(
+    db_file=DB_FILE, session_table="agent_sessions", approvals_table="approvals"
+)
+agent = Agent(
+    name="Approval User Input Agent",
+    model=OpenAIResponses(id="gpt-5-mini"),
+    tools=[send_money],
+    markdown=True,
+    db=db,
+)
+
+# ---------------------------------------------------------------------------
+# Run Agent
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    # Clean up from previous runs
+    if os.path.exists(DB_FILE):
+        os.remove(DB_FILE)
+    os.makedirs("tmp", exist_ok=True)
+
+    # Re-create after cleanup
+    db = SqliteDb(
+        db_file=DB_FILE, session_table="agent_sessions", approvals_table="approvals"
+    )
+    agent = Agent(
+        model=OpenAIResponses(id="gpt-5-mini"),
+        tools=[send_money],
+        markdown=True,
+        db=db,
+    )
+agent_os = AgentOS(
+    description="Example app for approvals with user input",
+    agents=[
+        agent,
+    ],
+    db=db,
+)
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="approval_user_input:app", reload=True)
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U "agno[os]" fastmcp openai starlette
+    ```
+  </Step>
+
+  <Step title="Export your API keys">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export JWT_VERIFICATION_KEY="your_jwt_verification_key_here"
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:JWT_VERIFICATION_KEY="your_jwt_verification_key_here"
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `approval_user_input.py`, then run:
+    ```bash
+    python approval_user_input.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/05_agent_os/approvals/agent/approval_user_input.py](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/approvals/agent/approval_user_input.py)
