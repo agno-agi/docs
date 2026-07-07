@@ -7,18 +7,24 @@ sidebarTitle: WorkflowRunOutput & Events
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
+| `input` | `Optional[Union[str, Dict[str, Any], List[Any], BaseModel]]` | `None` | Input passed to the workflow run |
 | `content` | `Optional[Union[str, Dict[str, Any], List[Any], BaseModel, Any]]` | `None` | Main content/output from the workflow execution |
 | `content_type` | `str` | `"str"` | Type of the content (e.g., "str", "json", etc.) |
 | `workflow_id` | `Optional[str]` | `None` | Unique identifier of the executed workflow |
 | `workflow_name` | `Optional[str]` | `None` | Name of the executed workflow |
 | `run_id` | `Optional[str]` | `None` | Unique identifier for this specific run |
 | `session_id` | `Optional[str]` | `None` | Session UUID associated with this run |
+| `user_id` | `Optional[str]` | `None` | User ID associated with the run |
+| `parent_run_id` | `Optional[str]` | `None` | Parent workflow run ID, set for nested workflows |
+| `workflow_step_id` | `Optional[str]` | `None` | ID of the parent workflow step, set for nested workflows |
 | `images` | `Optional[List[Image]]` | `None` | List of image artifacts generated |
 | `videos` | `Optional[List[Video]]` | `None` | List of video artifacts generated |
 | `audio` | `Optional[List[Audio]]` | `None` | List of audio artifacts generated |
+| `files` | `Optional[List[File]]` | `None` | List of file artifacts generated |
 | `response_audio` | `Optional[Audio]` | `None` | Audio response from the workflow |
 | `step_results` | `List[Union[StepOutput, List[StepOutput]]]` | `[]` | Actual step execution results as StepOutput objects |
-| `step_executor_runs` | `Optional[List[Union[RunOutput, TeamRunOutput]]]` | `None` | Store agent/team responses separately with parent_run_id references |
+| `step_executor_runs` | `Optional[List[Union[RunOutput, TeamRunOutput, WorkflowRunOutput]]]` | `None` | Store agent/team/nested workflow responses separately with parent_run_id references |
+| `workflow_agent_run` | `Optional[RunOutput]` | `None` | Full `RunOutput` of the workflow agent, when one is used. Its `parent_run_id` points to this run |
 | `events` | `Optional[List[WorkflowRunOutputEvent]]` | `None` | Events captured during workflow execution |
 | `metrics` | `Optional[WorkflowMetrics]` | `None` | Workflow metrics including duration and step-level data |
 | `metadata` | `Optional[Dict[str, Any]]` | `None` | Additional metadata stored with the response |
@@ -60,6 +66,7 @@ Read-only properties that filter `step_requirements` for common cases:
 | `run_id` | `Optional[str]` | `None` | Unique identifier for the workflow run |
 | `step_id` | `Optional[str]` | `None` | Unique identifier for the current step |
 | `parent_step_id` | `Optional[str]` | `None` | Unique identifier for the parent step (for nested steps) |
+| `nested_depth` | `int` | `0` | Nesting depth of the workflow. `0` for top-level, incremented for each nested workflow |
 
 ### WorkflowStartedEvent Attributes
 
@@ -72,6 +79,24 @@ Read-only properties that filter `step_requirements` for common cases:
 
 <Snippet file="workflow-completed-event.mdx" />
 
+### WorkflowPausedEvent Attributes
+
+Emitted after the inner step-level pause event (StepPaused, StepExecutorPaused, or RouterPaused). Carries the full paused workflow state so clients can issue a continue without merging multiple events.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `event` | `str` | `WorkflowRunEvent.workflow_paused.value` | Event type identifier |
+| `status` | `Optional[str]` | `None` | Status of the paused run |
+| `paused_step_index` | `Optional[int]` | `None` | Index of the paused step |
+| `paused_step_name` | `Optional[str]` | `None` | Name of the paused step |
+| `pause_kind` | `Optional[Union[PauseKind, str]]` | `None` | Active pause kind: `"step"` or `"executor"` |
+| `step_requirements` | `Optional[List[StepRequirement]]` | `None` | HITL requirements to resolve before continuing |
+| `step_results` | `Optional[List[Union[StepOutput, List[StepOutput]]]]` | `None` | Step results so far. Nested lists support parallel and loop iterations |
+| `step_executor_runs` | `Optional[List[Union[RunOutput, TeamRunOutput, WorkflowRunOutput]]]` | `None` | Underlying agent, team, and nested workflow runs |
+| `content` | `Optional[Any]` | `None` | Convenience content field |
+| `metadata` | `Optional[Dict[str, Any]]` | `None` | Additional metadata |
+| *Inherits all fields from `BaseWorkflowRunOutputEvent`* |
+
 ### WorkflowCancelledEvent Attributes
 
 | Parameter | Type | Default | Description |
@@ -79,6 +104,36 @@ Read-only properties that filter `step_requirements` for common cases:
 | `event` | `str` | `WorkflowRunEvent.workflow_cancelled.value` | Event type identifier |
 | `reason` | `Optional[str]` | `None` | Reason for workflow cancellation |
 | `is_cancelled` | `bool` | `True` | Property indicating the workflow was cancelled |
+| *Inherits all fields from `BaseWorkflowRunOutputEvent`* |
+
+### WorkflowErrorEvent Attributes
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `event` | `str` | `WorkflowRunEvent.workflow_error.value` | Event type identifier |
+| `error` | `Optional[str]` | `None` | Error message |
+| `error_type` | `Optional[str]` | `None` | Type of the exception that caused the error |
+| `error_id` | `Optional[str]` | `None` | ID of the error, from the exception |
+| `additional_data` | `Optional[Dict[str, Any]]` | `None` | Extra data attached to the exception |
+| *Inherits all fields from `BaseWorkflowRunOutputEvent`* |
+
+### WorkflowAgentStartedEvent Attributes
+
+Emitted when the workflow agent starts, before it decides to run the workflow or answer directly.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `event` | `str` | `WorkflowRunEvent.workflow_agent_started.value` | Event type identifier |
+| *Inherits all fields from `BaseWorkflowRunOutputEvent`* |
+
+### WorkflowAgentCompletedEvent Attributes
+
+Emitted when the workflow agent completes, after running the workflow or answering directly.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `event` | `str` | `WorkflowRunEvent.workflow_agent_completed.value` | Event type identifier |
+| `content` | `Optional[Any]` | `None` | Content produced by the workflow agent |
 | *Inherits all fields from `BaseWorkflowRunOutputEvent`* |
 
 ### StepStartedEvent Attributes
@@ -211,6 +266,7 @@ Emitted when a step requires post-execution output review. See [Output Review](/
 | `step_index` | `Optional[Union[int, tuple]]` | `None` | Index or position of the condition |
 | `condition_result` | `Optional[bool]` | `None` | Result of the condition evaluation |
 | `executed_steps` | `Optional[int]` | `None` | Number of steps executed based on condition |
+| `branch` | `Optional[str]` | `None` | Branch that was executed: `"if"`, `"else"`, or `None` when the condition was false with no else steps |
 | `step_results` | `List[StepOutput]` | `[]` | Results from executed steps |
 | *Inherits all fields from `BaseWorkflowRunOutputEvent`* |
 
@@ -362,6 +418,7 @@ Emitted when a router pauses for the user to select route(s). See [Router HITL](
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `steps` | `Dict[str, StepMetrics]` | - | Step-level metrics mapped by step name |
+| `timer` | `Optional[Timer]` | `None` | Internal timer that computes `duration`. Excluded from `to_dict()` |
 | `duration` | `Optional[float]` | `None` | Total workflow execution time in seconds |
 
 ### StepMetrics

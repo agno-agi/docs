@@ -1,21 +1,23 @@
 ---
-title: JWTMiddleware
-sidebarTitle: JWTMiddleware
+title: AuthMiddleware
+sidebarTitle: AuthMiddleware
 ---
 
-JWT Authentication Middleware with optional RBAC (Role-Based Access Control) for AgentOS.
+The AgentOS authentication middleware. Handles JWTs, service account tokens (`agno_pat_...`), the internal service token, and the OS security key, with optional RBAC (Role-Based Access Control) for JWTs. `JWTMiddleware` is a kept alias for the manual `app.add_middleware(JWTMiddleware, ...)` setup path.
 
 ## Import
 
 ```python
-from agno.os.middleware import JWTMiddleware
+from agno.os.middleware.jwt import AuthMiddleware
+from agno.os.middleware import JWTMiddleware  # alias of AuthMiddleware
 from agno.os.middleware.jwt import TokenSource
 ```
 
-## JWTMiddleware Parameters
+## AuthMiddleware Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
+| `app` | - | Required | The FastAPI app instance. Supplied automatically by `app.add_middleware` |
 | `verification_keys` | `Optional[List[str]]` | `JWT_VERIFICATION_KEY` env var | List of keys for JWT verification. For RS256, use public keys. For HS256, use shared secrets. Each key is tried in order until one succeeds - useful for accepting tokens from multiple issuers. |
 | `jwks_file` | `Optional[str]` | `JWT_JWKS_FILE` env var | Path to a static JWKS (JSON Web Key Set) file. Keys are looked up by `kid` (key ID) from the JWT header. |
 | `secret_key` | `Optional[str]` | `None` | **(Deprecated)** Use `verification_keys` instead. |
@@ -35,8 +37,10 @@ from agno.os.middleware.jwt import TokenSource
 | `session_state_claims` | `Optional[List[str]]` | `None` | Claims to extract for `session_state` parameter |
 | `scope_mappings` | `Optional[Dict[str, List[str]]]` | `None` | Custom route-to-scope mappings (additive to defaults) |
 | `excluded_route_paths` | `Optional[List[str]]` | See below | Routes to skip JWT/RBAC checks. |
-| `admin_scope` | `Optional[str]` | `"agent_os:admin"` | Scope that grants full admin access |
+| `admin_scope` | `Optional[str]` | `None` | Scope that grants full admin access. Defaults to `"agent_os:admin"` when unset |
 | `user_isolation` | `bool` | `False` | Opt-in per-user data isolation. When `True`, non-admin callers can only read and write rows associated with their JWT `sub` claim. Cancel/resume/continue routes verify run ownership. |
+| `service_account_verifier` | `Optional[ServiceAccountVerifier]` | `None` | Verifier for service account tokens (`agno_pat_...`). When set, bearer tokens with the `agno_pat_` prefix authenticate as service accounts: `user_id` is the account principal (`sa:<name>`) and scopes are the account's stored scopes, enforced against scope mappings even when `authorization` is disabled. |
+| `security_key` | `Optional[str]` | `None` | Static OS security key. When no JWT source is configured, bearer tokens are compared against this key and matching requests are authenticated. |
 
 ## TokenSource Enum
 

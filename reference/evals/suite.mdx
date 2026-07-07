@@ -1,0 +1,141 @@
+---
+title: Eval Suite
+sidebarTitle: Eval Suite
+description: "Case, CaseResult, JudgeMode, SuiteResult, the run_cases runners, and the cli exit code contract."
+---
+
+The eval suite runner executes declared `Case`s sequentially and returns a `SuiteResult`. Each case runs one input against one agent or team, then applies an optional judge check (`AgentAsJudgeEval` via `criteria`) and an optional reliability check (`ReliabilityEval` via `expected_tool_calls`).
+
+```python
+from agno.eval import Case, CaseResult, JudgeMode, SuiteResult, run_cases, arun_cases, cli, acli
+```
+
+## Case
+
+One eval case. `Case` is a frozen dataclass; construction raises `ValueError` unless exactly one of `agent` or `team` is set and at least one check (`criteria` or `expected_tool_calls`) is configured.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `name` | `str` | Required | Case name. Used by the `--name` selector and in results. |
+| `input` | `str` | Required | Input sent to the agent or team. |
+| `agent` | `Optional[Agent]` | `None` | Agent under test. Provide exactly one of `agent` or `team`. |
+| `team` | `Optional[Team]` | `None` | Team under test. Provide exactly one of `agent` or `team`. |
+| `tags` | `Tuple[str, ...]` | `()` | Tags used by the `--tag` selector. |
+| `timeout_seconds` | `Optional[int]` | `None` | Per-case timeout in seconds. Falls back to the runner's `default_timeout`. |
+| `criteria` | `Optional[str]` | `None` | Judge criteria. Setting this enables an `AgentAsJudgeEval` check on the response. |
+| `judge_model` | `Optional[Model]` | `None` | Per-case judge model. Falls back to the runner's `judge_model`, then the `AgentAsJudgeEval` default. |
+| `judge_mode` | `JudgeMode` | `JudgeMode.BINARY` | Judge scoring mode. `BINARY` is a pass/fail verdict; `NUMERIC` grades 1-10 and passes when the score meets `judge_threshold`. |
+| `judge_threshold` | `int` | `7` | Pass bar for numeric scoring, from 1 to 10. Read only when `judge_mode` is `NUMERIC`. |
+| `expected_tool_calls` | `Optional[Tuple[str, ...]]` | `None` | Tool names that must fire during the run. Setting this enables a `ReliabilityEval` check. |
+| `allow_additional_tool_calls` | `bool` | `True` | Allow tool calls outside `expected_tool_calls` (subset matching). |
+| `setup` | `Optional[Callable[[], Any]]` | `None` | Runs before the case, outside the timeout. Its return value is passed to `teardown` as context. Sync callables run in a thread; async callables are awaited. |
+| `teardown` | `Optional[Callable[[Any, CaseResult], Any]]` | `None` | Runs after the case whenever `setup` completed, including on failure, error, and timeout. Receives `(context, result)`. |
+
+## JudgeMode
+
+A string enum whose values match `AgentAsJudgeEval.scoring_strategy`. The equal strings (`"binary"`, `"numeric"`) are accepted anywhere a `JudgeMode` is.
+
+| Member | Value | Description |
+|--------|-------|-------------|
+| `JudgeMode.BINARY` | `"binary"` | The judge returns a pass/fail verdict. |
+| `JudgeMode.NUMERIC` | `"numeric"` | The judge returns a 1-10 score. The case passes when the score meets `judge_threshold`. |
+
+## run_cases and arun_cases
+
+```python
+def run_cases(
+    cases: Sequence[Case],
+    *,
+    tag: Optional[str] = None,
+    name: Optional[str] = None,
+    default_timeout: int = 120,
+    judge_model: Optional[Model] = None,
+    db: Optional[Union[BaseDb, AsyncBaseDb]] = None,
+    on_case_start: Optional[Callable[[Case], None]] = None,
+    on_case_end: Optional[Callable[[Case, CaseResult], None]] = None,
+    on_run_event: Optional[Callable[[Case, RunOutputEvent], None]] = None,
+) -> SuiteResult
+```
+
+`arun_cases` takes the same arguments and is awaited. `run_cases` is a sync wrapper that runs the whole suite on a single event loop via `asyncio.run`.
+
+| Argument | Type | Default | Description |
+|----------|------|---------|-------------|
+| `cases` | `Sequence[Case]` | Required | Cases to select from. |
+| `tag` | `Optional[str]` | `None` | Keep only cases with this tag. |
+| `name` | `Optional[str]` | `None` | Keep only the case with this name. |
+| `default_timeout` | `int` | `120` | Per-case timeout in seconds when `Case.timeout_seconds` is `None`. |
+| `judge_model` | `Optional[Model]` | `None` | Suite-wide default judge model. `Case.judge_model` overrides it. |
+| `db` | `Optional[Union[BaseDb, AsyncBaseDb]]` | `None` | Passed to the judge and reliability evals so results log to storage. |
+| `on_case_start` | `Optional[Callable[[Case], None]]` | `None` | Presentation hook called before each case runs. |
+| `on_case_end` | `Optional[Callable[[Case, CaseResult], None]]` | `None` | Presentation hook called with each case and its `CaseResult`, including skipped cases after an abort. |
+| `on_run_event` | `Optional[Callable[[Case, RunOutputEvent], None]]` | `None` | Presentation hook called with every streamed run event. |
+
+The runner performs no console I/O; all presentation flows through the hooks. Hooks must be sync callables invoked on the event loop. A hook that raises, or an async hook, is recorded as a `hook:` error on the case without aborting the suite. A cancelled run aborts the suite; the unrun cases are appended as failed with `skipped=True` so the payload accounts for every selected case.
+
+## CaseResult
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | `str` | Case name. |
+| `tags` | `Tuple[str, ...]` | Case tags. |
+| `agent_id` | `Optional[str]` | Agent ID for an agent case. `None` for a team case. |
+| `team_id` | `Optional[str]` | Team ID for a team case. `None` for an agent case. |
+| `session_id` | `str` | Generated eval session ID linking the case to its stored session and trace. Empty for skipped cases. |
+| `duration_seconds` | `float` | Wall-clock duration of the case, including setup and teardown. |
+| `judge_passed` | `Optional[bool]` | Judge verdict. `None` when no `criteria` was configured. |
+| `judge_reason` | `Optional[str]` | The judge's stated reason, when available. |
+| `judge_score` | `Optional[int]` | Numeric-mode score from 1 to 10. `None` in binary mode. |
+| `reliability_passed` | `Optional[bool]` | Reliability verdict. `None` when no `expected_tool_calls` was configured. |
+| `output` | `Optional[str]` | Response text the judge graded. |
+| `tools_called` | `Tuple[str, ...]` | Tool names fired during the run, in order, including team member tools. |
+| `timed_out` | `bool` | Whether the case exceeded its timeout. |
+| `skipped` | `bool` | `True` for cases the suite never ran after a cancelled-run abort. |
+| `error` | `Optional[str]` | Run, judge, reliability, hook, and teardown errors, joined with `"; "`. |
+| `response` | `Optional[Union[RunOutput, TeamRunOutput]]` | Raw run output for programmatic access. Excluded from `to_dict()`. |
+| `passed` | `bool` (property) | `True` when there is no error and every configured check passed. `False` when no check ran. |
+
+## SuiteResult
+
+| Member | Type | Description |
+|--------|------|-------------|
+| `results` | `List[CaseResult]` | One entry per selected case, including skipped cases. |
+| `total` | `int` (property) | Number of case results. |
+| `passed` | `int` (property) | Number of passing cases. |
+| `failed` | `int` (property) | Number of failing cases. |
+| `status` | `str` (property) | `"PASS"` when all cases passed. An empty suite is `"FAIL"`, so a typo'd selector cannot green-light CI. |
+| `to_dict()` | `Dict[str, Any]` | Machine-readable payload with a `summary` block and per-case entries. This shape is a stable contract for CI consumers. |
+
+## cli and acli
+
+```python
+def cli(
+    cases: Sequence[Case],
+    *,
+    db: Optional[Union[BaseDb, AsyncBaseDb]] = None,
+    judge_model: Optional[Model] = None,
+    default_timeout: int = 120,
+    argv: Optional[Sequence[str]] = None,
+) -> int
+```
+
+`cli` runs an argparse CLI over the given cases and returns the exit code. Call it from a script's `__main__` block with `sys.exit(cli(CASES))`. `acli` takes the same arguments and is the awaitable variant for callers already inside an event loop. When `argv` is `None`, arguments are read from `sys.argv`.
+
+### Flags
+
+| Flag | Description |
+|------|-------------|
+| `--name NAME` | Run only the case with this name. |
+| `--tag TAG` | Run only cases with this tag. |
+| `--timeout SECONDS` | Default per-case timeout in seconds. Defaults to the `default_timeout` argument. |
+| `--json-output PATH` | Write the machine-readable JSON results to this path. |
+| `--list` | List the selected cases without running them. With `--json-output`, writes the case list instead of results. |
+| `-v`, `--verbose` | Render the full run panels (Message, Tool Calls, Response) after each case. |
+
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | All selected cases passed. |
+| `1` | Any case failed, or the `--json-output` write failed. |
+| `2` | No cases matched the selector, or an argparse usage error. |

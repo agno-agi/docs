@@ -34,10 +34,18 @@ sidebarTitle: Run Output & Events
 | `citations`        | `Optional[Citations]`        | `None`                        | Any citations used in the response                                                                |
 | `model_provider_data` | `Optional[Any]` | `None` | Model provider specific metadata|
 | `references`       | `Optional[List[MessageReferences]]` | `None`                        | References used in the response                                                                    |
+| `followups`        | `Optional[List[str]]`        | `None`                        | Suggested followup prompts generated after the run, when followups are enabled                     |
 | `metadata`         | `Optional[Dict[str, Any]]`   | `None`                        | Metadata associated with the run                                                                  |
+| `session_state`    | `Optional[Dict[str, Any]]`   | `None`                        | Session state after the run                                                                        |
 | `created_at`       | `int`                        | Current timestamp             | Unix timestamp of the response creation                                                           |
 | `events`           | `Optional[List[RunOutputEvent]]` | `None`                        | List of events that occurred during the run                                                       |
 | `status`           | `RunStatus`                  | `RunStatus.running`           | Status of the run (running, completed, paused, cancelled, error)                                  |
+| `requirements`     | `Optional[List[RunRequirement]]` | `None`                        | Human-in-the-loop requirements to continue a paused run, in order of arrival                       |
+| `last_checkpoint_at_message_index` | `Optional[int]` | `None`                        | Index into `messages` at the most recent checkpoint write. Set when `checkpoint="tool-batch"` persists mid-run state |
+| `forked_from_run_id` | `Optional[str]`            | `None`                        | Run ID this run was forked from                                                                    |
+| `forked_from_message_index` | `Optional[int]`     | `None`                        | Message index in the source run where the fork was created                                         |
+| `forked_from_session_id` | `Optional[str]`        | `None`                        | Session ID this run was originally created in. Set when a session is forked and preserved across nested forks |
+| `regenerated_from` | `Optional[str]`              | `None`                        | Run ID of the immediate predecessor this run was regenerated from                                  |
 | `workflow_step_id` | `Optional[str]`              | `None`                        | Workflow step ID (foreign key relationship)                                                       |
 
 ## RunOutputEvent Types and Attributes
@@ -53,12 +61,14 @@ All events inherit from `BaseAgentRunEvent` which provides these common attribut
 | `agent_id` | `str` | `""` | ID of the agent generating the event |
 | `agent_name` | `str` | `""` | Name of the agent generating the event |
 | `run_id` | `Optional[str]` | `None` | ID of the current run |
+| `parent_run_id` | `Optional[str]` | `None` | ID of the parent run, set for team member and workflow step runs |
 | `session_id` | `Optional[str]` | `None` | ID of the current session |
 | `workflow_id` | `Optional[str]` | `None` | ID of the workflow if part of workflow execution |
 | `workflow_run_id` | `Optional[str]` | `None` | ID of the workflow run |
 | `step_id` | `Optional[str]` | `None` | ID of the workflow step |
 | `step_name` | `Optional[str]` | `None` | Name of the workflow step |
 | `step_index` | `Optional[int]` | `None` | Index of the workflow step |
+| `nested_depth` | `int` | `0` | Nesting depth of the execution. `0` for top-level, incremented for each level of nesting |
 | `tools` | `Optional[List[ToolExecution]]` | `None` | Tools associated with this event |
 | `content` | `Optional[Any]` | `None` | For backwards compatibility |
 
@@ -76,6 +86,7 @@ All events inherit from `BaseAgentRunEvent` which provides these common attribut
 |-----------|------|---------|-------------|
 | `event` | `str` | `"RunContent"` | Event type |
 | `content` | `Optional[Any]` | `None` | The content of the response |
+| `workflow_agent` | `bool` | `False` | Set to `True` on content emitted by a workflow agent |
 | `content_type` | `str` | `"str"` | Type of the content |
 | `reasoning_content` | `Optional[str]` | `None` | Reasoning content produced |
 | `citations` | `Optional[Citations]` | `None` | Citations used in the response |
@@ -114,6 +125,7 @@ All events inherit from `BaseAgentRunEvent` which provides these common attribut
 | `images` | `Optional[List[Image]]` | `None` | Images attached to the response |
 | `videos` | `Optional[List[Video]]` | `None` | Videos attached to the response |
 | `audio` | `Optional[List[Audio]]` | `None` | Audio snippets attached to the response |
+| `files` | `Optional[List[File]]` | `None` | Files attached to the response |
 | `response_audio` | `Optional[Audio]` | `None` | Model's audio response |
 | `references` | `Optional[List[MessageReferences]]` | `None` | References used in the response |
 | `additional_input` | `Optional[List[Message]]` | `None` | Additional input messages |
@@ -121,6 +133,7 @@ All events inherit from `BaseAgentRunEvent` which provides these common attribut
 | `reasoning_messages` | `Optional[List[Message]]` | `None` | Reasoning messages |
 | `metadata` | `Optional[Dict[str, Any]]` | `None` | Additional metadata |
 | `metrics` | `Optional[RunMetrics]` | `None` | Usage metrics |
+| `session_state` | `Optional[Dict[str, Any]]` | `None` | Session state after the run |
 
 ### RunPausedEvent
 
@@ -128,6 +141,7 @@ All events inherit from `BaseAgentRunEvent` which provides these common attribut
 |-----------|------|---------|-------------|
 | `event` | `str` | `"RunPaused"` | Event type |
 | `tools` | `Optional[List[ToolExecution]]` | `None` | Tools that require confirmation |
+| `requirements` | `Optional[List[RunRequirement]]` | `None` | Human-in-the-loop requirements to continue the run, in order of arrival |
 
 ### RunContinuedEvent
 
@@ -143,6 +157,9 @@ All events inherit from `BaseAgentRunEvent` which provides these common attribut
 |-----------|------|---------|-------------|
 | `event` | `str` | `"RunError"` | Event type |
 | `content` | `Optional[str]` | `None` | Error message |
+| `error_type` | `Optional[str]` | `None` | Type of the exception that caused the error |
+| `error_id` | `Optional[str]` | `None` | ID of the error, from the exception |
+| `additional_data` | `Optional[Dict[str, Any]]` | `None` | Extra data attached to the exception |
 
 ### RunCancelledEvent
 
@@ -197,6 +214,13 @@ All events inherit from `BaseAgentRunEvent` which provides these common attribut
 | `content_type` | `str` | `"str"` | Type of the content |
 | `reasoning_content` | `str` | `""` | Detailed reasoning content |
 
+### ReasoningContentDeltaEvent
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `event` | `str` | `"ReasoningContentDelta"` | Event type |
+| `reasoning_content` | `str` | `""` | Chunk of reasoning content streamed as it arrives |
+
 ### ReasoningCompletedEvent
 
 | Attribute | Type | Default | Description |
@@ -222,6 +246,15 @@ All events inherit from `BaseAgentRunEvent` which provides these common attribut
 | `images` | `Optional[List[Image]]` | `None` | Images produced by the tool |
 | `videos` | `Optional[List[Video]]` | `None` | Videos produced by the tool |
 | `audio` | `Optional[List[Audio]]` | `None` | Audio produced by the tool |
+| `files` | `Optional[List[File]]` | `None` | Files produced by the tool |
+
+### ToolCallErrorEvent
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `event` | `str` | `"ToolCallError"` | Event type |
+| `tool` | `Optional[ToolExecution]` | `None` | The tool that failed |
+| `error` | `Optional[str]` | `None` | Error message from the tool call |
 
 ### MemoryUpdateStartedEvent
 
@@ -235,6 +268,7 @@ All events inherit from `BaseAgentRunEvent` which provides these common attribut
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `event` | `str` | `"MemoryUpdateCompleted"` | Event type |
+| `memories` | `Optional[List[Any]]` | `None` | Memories created or updated during the run |
 
 ### SessionSummaryStartedEvent
 
@@ -273,8 +307,60 @@ All events inherit from `BaseAgentRunEvent` which provides these common attribut
 |-----------|------|---------|-------------|
 | `event` | `str` | `"OutputModelResponseCompleted"` | Event type |
 
+### ModelRequestStartedEvent
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `event` | `str` | `"ModelRequestStarted"` | Event type |
+| `model` | `Optional[str]` | `None` | The model being requested |
+| `model_provider` | `Optional[str]` | `None` | The provider of the model |
+
+### ModelRequestCompletedEvent
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `event` | `str` | `"ModelRequestCompleted"` | Event type |
+| `model` | `Optional[str]` | `None` | The model that was requested |
+| `model_provider` | `Optional[str]` | `None` | The provider of the model |
+| `input_tokens` | `Optional[int]` | `None` | Tokens in the request input |
+| `output_tokens` | `Optional[int]` | `None` | Tokens generated by the model |
+| `total_tokens` | `Optional[int]` | `None` | Total tokens for the request |
+| `time_to_first_token` | `Optional[float]` | `None` | Time to first token (seconds) |
+| `reasoning_tokens` | `Optional[int]` | `None` | Tokens used for reasoning |
+| `cache_read_tokens` | `Optional[int]` | `None` | Tokens served from cache |
+| `cache_write_tokens` | `Optional[int]` | `None` | Tokens written to cache |
+
+### CompressionStartedEvent
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `event` | `str` | `"CompressionStarted"` | Event type |
+
+### CompressionCompletedEvent
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `event` | `str` | `"CompressionCompleted"` | Event type |
+| `tool_results_compressed` | `Optional[int]` | `None` | Number of tool results compressed |
+| `original_size` | `Optional[int]` | `None` | Size before compression |
+| `compressed_size` | `Optional[int]` | `None` | Size after compression |
+
+### FollowupsStartedEvent
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `event` | `str` | `"FollowupsStarted"` | Event type |
+
+### FollowupsCompletedEvent
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `event` | `str` | `"FollowupsCompleted"` | Event type |
+| `followups` | `Optional[List[str]]` | `None` | Suggested followup prompts generated for the run |
+
 ### CustomEvent
 
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `event` | `str` | `"CustomEvent"` | Event type |
+| `tool_call_id` | `Optional[str]` | `None` | ID of the tool call that emitted the event |

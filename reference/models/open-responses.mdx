@@ -5,7 +5,7 @@ sidebarTitle: Open Responses
 
 Base class for interacting with providers that implement the [Open Responses API specification](https://openresponses.org). This provides a foundation for multi-provider, interoperable LLM interfaces based on the OpenAI Responses API.
 
-Providers that implement this spec include Ollama (v0.13.3+) and OpenRouter.
+Providers that implement this spec include Ollama (v0.13.3+) and OpenRouter. Provider reference pages document only their own defaults and additions. Every parameter below is available on all of them.
 
 ## Key Differences from OpenAI Responses
 
@@ -20,8 +20,77 @@ Providers that implement this spec include Ollama (v0.13.3+) and OpenRouter.
 | `id`         | `str`              | `"not-provided"`   | The ID of the model to use                         |
 | `name`       | `str`              | `"OpenResponses"`  | The name of the model                              |
 | `provider`   | `str`              | `"OpenResponses"`  | The provider of the model                          |
-| `api_key`    | `Optional[str]`    | `"not-provided"`   | The API key for authentication                     |
-| `store`      | `Optional[bool]`   | `False`            | Whether to store responses (disabled by default for compatible providers) |
+| `model_type` | `ModelType`        | `ModelType.MODEL`  | Functional role of the model (e.g. `MODEL`, `OUTPUT_MODEL`, `PARSER_MODEL`, `MEMORY_MODEL`). Set by the agent during initialization |
+| `supports_native_structured_outputs` | `bool` | `True`   | Whether the model supports native structured outputs |
+| `supports_json_schema_outputs` | `bool` | `False`         | Whether the model requires a JSON schema for structured outputs |
+| `system_prompt` | `Optional[str]` | `None`              | System prompt from the model, added to the Agent   |
+| `instructions` | `Optional[List[str]]` | `None`         | Instructions from the model, added to the Agent    |
+| `tool_message_role` | `str`         | `"tool"`           | Role assigned to tool messages                     |
+| `assistant_message_role` | `str`    | `"assistant"`      | Role assigned to assistant messages                |
+| `role_map`   | `Dict[str, str]`   | `{"system": "developer", "user": "user", "assistant": "assistant", "tool": "tool"}` | Mapping of message roles to provider roles |
+| `vector_store_name` | `str`       | `"knowledge_base"` | Name of the vector store used by the file search built-in tool |
+
+### Request parameters
+
+| Parameter                  | Type                                                    | Default | Description                                                                     |
+| -------------------------- | ------------------------------------------------------- | ------- | -------------------------------------------------------------------------------- |
+| `include`                  | `Optional[List[str]]`                                    | `None`  | Additional output data to include in the response (e.g. `"reasoning.encrypted_content"`) |
+| `max_output_tokens`        | `Optional[int]`                                          | `None`  | Maximum number of output tokens to generate, including reasoning tokens          |
+| `max_tool_calls`           | `Optional[int]`                                          | `None`  | Maximum number of built-in tool calls during the response                        |
+| `metadata`                 | `Optional[Dict[str, Any]]`                               | `None`  | Developer-defined metadata to associate with the response                        |
+| `parallel_tool_calls`      | `Optional[bool]`                                         | `None`  | Whether the model can run tool calls in parallel                                 |
+| `reasoning`                | `Optional[Dict[str, Any]]`                               | `None`  | Reasoning configuration (e.g. `{"enabled": True}`)                               |
+| `verbosity`                | `Optional[Literal["low", "medium", "high"]]`             | `None`  | Verbosity level of the model response                                            |
+| `reasoning_effort`         | `Optional[Literal["minimal", "low", "medium", "high"]]`  | `None`  | Reasoning effort for reasoning models                                            |
+| `reasoning_summary`        | `Optional[Literal["auto", "concise", "detailed"]]`       | `None`  | Level of detail for reasoning summaries                                          |
+| `store`                    | `Optional[bool]`                                         | `False` | Whether to store the response on the provider side. Disabled by default for compatible providers |
+| `temperature`              | `Optional[float]`                                        | `None`  | Controls randomness in the model's output                                        |
+| `top_p`                    | `Optional[float]`                                        | `None`  | Controls diversity via nucleus sampling                                          |
+| `truncation`               | `Optional[Literal["auto", "disabled"]]`                  | `None`  | Truncation strategy when the context window is exceeded                          |
+| `user`                     | `Optional[str]`                                          | `None`  | A unique identifier representing your end-user                                   |
+| `service_tier`             | `Optional[Literal["auto", "default", "flex", "priority"]]` | `None` | Processing tier for the request                                                 |
+| `strict_output`            | `bool`                                                   | `True`  | Guarantees schema adherence for structured outputs. When `False`, the schema is followed as a guide and output may deviate |
+| `background`               | `Optional[bool]`                                         | `None`  | Enables background mode for long-running tasks. The API returns immediately and the response is polled until completion. Not supported for streaming |
+| `background_poll_interval` | `float`                                                  | `2.0`   | Interval in seconds between polling attempts in background mode                  |
+| `background_max_wait`      | `float`                                                  | `600.0` | Maximum time in seconds to wait for a background response before cancelling it and raising an error |
+| `extra_headers`            | `Optional[Any]`                                          | `None`  | Additional headers to include in requests                                        |
+| `extra_query`              | `Optional[Any]`                                          | `None`  | Additional query parameters to include in requests                               |
+| `extra_body`               | `Optional[Any]`                                          | `None`  | Additional body parameters to include in requests                                |
+| `request_params`           | `Optional[Dict[str, Any]]`                               | `None`  | Additional parameters merged into the request                                    |
+
+### Client parameters
+
+| Parameter         | Type                                               | Default          | Description                                                |
+| ----------------- | -------------------------------------------------- | ---------------- | ------------------------------------------------------------ |
+| `api_key`         | `Optional[str]`                                    | `"not-provided"` | The API key for authentication                               |
+| `organization`    | `Optional[str]`                                    | `None`           | The organization ID to use for requests                      |
+| `base_url`        | `Optional[Union[str, httpx.URL]]`                  | `None`           | The base URL of the Responses API endpoint                   |
+| `timeout`         | `Optional[float]`                                  | `None`           | Request timeout in seconds                                   |
+| `max_retries`     | `Optional[int]`                                    | `None`           | Maximum number of client-level retries for failed requests   |
+| `default_headers` | `Optional[Dict[str, str]]`                         | `None`           | Default headers to include in all requests                   |
+| `default_query`   | `Optional[Dict[str, str]]`                         | `None`           | Default query parameters to include in all requests          |
+| `http_client`     | `Optional[Union[httpx.Client, httpx.AsyncClient]]` | `None`           | HTTP client instance for making requests                     |
+| `client_params`   | `Optional[Dict[str, Any]]`                         | `None`           | Additional parameters for client configuration               |
+| `client`          | `Optional[OpenAI]`                                 | `None`           | Pre-configured sync OpenAI client, reused across requests    |
+| `async_client`    | `Optional[AsyncOpenAI]`                            | `None`           | Pre-configured async OpenAI client, reused across requests   |
+
+### Caching parameters
+
+| Parameter        | Type            | Default | Description                                                                       |
+| ---------------- | --------------- | ------- | ---------------------------------------------------------------------------------- |
+| `cache_response` | `bool`          | `False` | Cache model responses to avoid redundant API calls during development             |
+| `cache_ttl`      | `Optional[int]` | `None`  | Time-to-live for cached responses, in seconds. `None` keeps cached entries forever |
+| `cache_dir`      | `Optional[str]` | `None`  | Directory for cached responses. Defaults to `~/.agno/cache/model_responses`       |
+
+### Retry parameters
+
+| Parameter                   | Type   | Default | Description                                                          |
+| --------------------------- | ------ | ------- | --------------------------------------------------------------------- |
+| `retries`                   | `int`  | `0`     | Number of retries to attempt before raising a ModelProviderError      |
+| `delay_between_retries`     | `int`  | `1`     | Delay between retries, in seconds                                     |
+| `exponential_backoff`       | `bool` | `False` | If True, the delay between retries is doubled each time               |
+| `retry_with_guidance`       | `bool` | `True`  | Retry a failed invocation with a guidance message appended, for known errors avoidable with extra instructions |
+| `retry_with_guidance_limit` | `int`  | `1`     | Maximum number of retries with guidance                               |
 
 ## Usage
 

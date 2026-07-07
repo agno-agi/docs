@@ -1,0 +1,77 @@
+---
+title: AgentAsJudgeEval
+sidebarTitle: AgentAsJudgeEval
+description: "AgentAsJudgeEval parameters, binary and numeric scoring, and AgentAsJudgeResult fields."
+---
+
+`AgentAsJudgeEval` grades an input/output pair against custom criteria with an LLM judge. Score recorded outputs directly with `run()`, or attach the eval as a `post_hook` to grade live runs.
+
+```python
+from agno.eval import AgentAsJudgeEval, AgentAsJudgeResult
+```
+
+## Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `criteria` | `str` | `""` | Criteria the judge grades the output against. |
+| `scoring_strategy` | `Literal["numeric", "binary"]` | `"binary"` | How the judge grades. `"binary"` returns a pass/fail verdict. `"numeric"` returns a 1-10 score that passes when it meets `threshold`. |
+| `threshold` | `int` | `7` | Minimum passing score from 1 to 10. Read only when `scoring_strategy` is `"numeric"`. |
+| `on_fail` | `Optional[Callable[[AgentAsJudgeEvaluation], None]]` | `None` | Callback invoked with the evaluation when it fails. Async callbacks require `arun()`. |
+| `additional_guidelines` | `Optional[Union[str, List[str]]]` | `None` | Guidelines appended to the default judge's instructions. |
+| `name` | `Optional[str]` | `None` | Evaluation name. |
+| `model` | `Optional[Model]` | `None` | Model for the default judge agent. Falls back to OpenAI `gpt-5-mini` when unset. |
+| `evaluator_agent` | `Optional[Agent]` | `None` | Custom judge agent. Its `output_schema` is replaced with the response schema matching `scoring_strategy`. |
+| `print_summary` | `bool` | `False` | Print the summary table with pass rate and score statistics after the run. |
+| `print_results` | `bool` | `False` | Print the per-evaluation results after the run. |
+| `show_spinner` | `bool` | `True` | Render the progress spinner. Set to `False` when the eval runs inside code that must not write to the console. |
+| `file_path_to_save_results` | `Optional[str]` | `None` | File path where the result is saved. |
+| `debug_mode` | `bool` | `False` | Enable debug logs. Defaults to `True` when the `AGNO_DEBUG` environment variable is `"true"`. |
+| `db` | `Optional[Union[BaseDb, AsyncBaseDb]]` | `None` | Database where the eval run is stored. |
+| `telemetry` | `bool` | `True` | Log minimal telemetry for the eval run. |
+| `run_in_background` | `bool` | `False` | Run the eval in the background when attached as a `post_hook`, without blocking the agent's response. Takes effect only when the run is served through AgentOS, which supplies the background task queue; direct `run()` and `arun()` calls on the agent execute the eval inline. |
+
+## Methods
+
+### `run()` and `arun()`
+
+Both accept the same keyword arguments and return `Optional[AgentAsJudgeResult]`. Provide either `input` and `output` for a single evaluation, or `cases` for batch evaluation. `run()` raises with an async database; use `arun()` instead.
+
+| Argument | Type | Default | Description |
+|----------|------|---------|-------------|
+| `input` | `Optional[str]` | `None` | Input text for a single evaluation. |
+| `output` | `Optional[str]` | `None` | Output text for a single evaluation. |
+| `cases` | `Optional[List[Dict[str, str]]]` | `None` | Batch of dicts with `input` and `output` keys, evaluated in order. |
+| `print_summary` | `bool` | `False` | Print the summary table after the run. |
+| `print_results` | `bool` | `False` | Print the per-evaluation results after the run. |
+
+### Hook methods
+
+`AgentAsJudgeEval` extends `BaseEval`, so an instance can be passed directly to an Agent's or Team's `post_hooks`. The `post_check()` and `async_post_check()` methods grade the run's input and output and log the result to `db` with the agent or team ID attached. Pre-hooks are not supported and raise `ValueError`.
+
+## AgentAsJudgeResult
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `run_id` | `str` | Unique ID for this evaluation run. |
+| `results` | `List[AgentAsJudgeEvaluation]` | One entry per evaluated input/output pair. |
+| `avg_score` | `Optional[float]` | Average score. `None` in binary mode. |
+| `min_score` | `Optional[float]` | Lowest score. `None` in binary mode. |
+| `max_score` | `Optional[float]` | Highest score. `None` in binary mode. |
+| `std_dev_score` | `Optional[float]` | Standard deviation of scores. `None` in binary mode. |
+| `pass_rate` | `float` | Percentage of evaluations that passed, from 0 to 100. |
+
+`AgentAsJudgeResult` also exposes `print_summary(console=None)` and `print_results(console=None)`.
+
+## AgentAsJudgeEvaluation
+
+Each entry in `AgentAsJudgeResult.results` is an `AgentAsJudgeEvaluation`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `input` | `str` | Input text that was evaluated. |
+| `output` | `str` | Output text that was evaluated. |
+| `criteria` | `str` | Criteria the output was graded against. |
+| `score` | `Optional[int]` | Score from 1 to 10 in numeric mode. `None` in binary mode. |
+| `reason` | `str` | The judge's reasoning for the verdict. |
+| `passed` | `bool` | Whether the evaluation passed. In numeric mode, `True` when `score >= threshold`. |
