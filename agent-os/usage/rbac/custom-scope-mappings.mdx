@@ -4,6 +4,10 @@ title: Custom Scope Mappings
 
 This example demonstrates how to define custom scope mappings for your AgentOS endpoints, allowing you to create your own permission structure.
 
+<Note>
+Custom mappings merge with the defaults: routes you list use your scopes, and unlisted routes keep their default requirements. On agent, team, and workflow paths that include a resource ID (like `POST /agents/{id}/runs`), the middleware rewrites each required scope into the native namespace, keeping only the action. Mapping `app:run` there means the token needs `agents:run` for that agent; the custom namespace is ignored. The route handlers check the same native scopes. Custom scopes apply as written on all other paths, such as sessions, memories, and config. Tokens holding the configured `admin_scope` bypass every check.
+</Note>
+
 <Steps>
 
   <Step title="Create a Python file">
@@ -35,14 +39,16 @@ This example demonstrates how to define custom scope mappings for your AgentOS e
     # Define custom scope mappings
     # Format: "METHOD /path": ["scope1", "scope2"]
     custom_scopes = {
-        # Override default agent scopes with custom ones
+        # On paths with an agent ID, the middleware rewrites each scope
+        # into the agents namespace: "app:read" requires agents:read
+        # and "app:run" requires agents:run.
         "GET /agents": ["app:read"],
         "GET /agents/*": ["app:read"],
-        "POST /agents/*/runs": ["app:run", "app:execute"],  # Require BOTH scopes
+        "POST /agents/*/runs": ["app:run"],
         
-        # Session endpoints - only admins can view
+        # Session endpoints - only admins can list
         "GET /sessions": ["app:admin"],
-        "GET /sessions/*": ["app:read", "sessions:read"],
+        "GET /sessions/*": ["app:read", "sessions:read"],  # Multiple scopes: the token needs both
         
         # Memory endpoints with custom scopes
         "GET /memories": ["memory:admin"],
@@ -73,21 +79,23 @@ This example demonstrates how to define custom scope mappings for your AgentOS e
 
     if __name__ == "__main__":
         # Basic user - can only read
+        # agents:read is required on agent ID paths
         basic_user_token = jwt.encode(
             {
                 "sub": "user_123",
-                "scopes": ["app:read"],
+                "scopes": ["app:read", "agents:read"],
                 "exp": datetime.now(UTC) + timedelta(hours=24),
             },
             JWT_SECRET,
             algorithm="HS256",
         )
 
-        # Power user - can read and execute
+        # Power user - can read and run agents
+        # agents:read and agents:run are required on agent ID paths
         power_user_token = jwt.encode(
             {
                 "sub": "user_456",
-                "scopes": ["app:read", "app:run", "app:execute"],
+                "scopes": ["app:read", "app:run", "agents:read", "agents:run"],
                 "exp": datetime.now(UTC) + timedelta(hours=24),
             },
             JWT_SECRET,
@@ -98,7 +106,7 @@ This example demonstrates how to define custom scope mappings for your AgentOS e
         admin_token = jwt.encode(
             {
                 "sub": "admin_789",
-                "scopes": ["app:admin", "app:read", "app:run", "app:execute"],
+                "scopes": ["app:admin", "app:read", "app:run", "agents:read", "agents:run"],
                 "exp": datetime.now(UTC) + timedelta(hours=24),
             },
             JWT_SECRET,
@@ -116,9 +124,9 @@ This example demonstrates how to define custom scope mappings for your AgentOS e
             algorithm="HS256",
         )
 
-        print("Basic User (app:read only):")
+        print("Basic User (app:read + agents:read):")
         print(basic_user_token)
-        print("\nPower User (app:read, app:run, app:execute):")
+        print("\nPower User (custom scopes + agents:read, agents:run):")
         print(power_user_token)
         print("\nAdmin (app:admin + all permissions):")
         print(admin_token)
@@ -173,7 +181,7 @@ This example demonstrates how to define custom scope mappings for your AgentOS e
     export BASIC_TOKEN="<basic_user_token>"
     curl -H "Authorization: Bearer $BASIC_TOKEN" http://localhost:7777/agents
     
-    # Basic user cannot run agents (missing app:run and app:execute)
+    # Basic user cannot run agents (missing agents:run)
     curl -X POST -H "Authorization: Bearer $BASIC_TOKEN" \
       -F "message=test" http://localhost:7777/agents/research-agent/runs
     

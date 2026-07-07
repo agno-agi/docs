@@ -7,7 +7,7 @@ description: "Hybrid search with embeddings, chunking, and metadata in the Dash 
 
 ```python
 from agno.knowledge import Knowledge
-from agno.vector_db.pgvector import PgVector
+from agno.vectordb.pgvector import PgVector
 
 dash_knowledge = Knowledge(
     vector_db=PgVector(
@@ -53,16 +53,26 @@ Re-run with `--recreate` to rebuild from scratch. Without it, content is upserte
 
 ## Chunking and embedding
 
-By default, `Knowledge` chunks long content into ~500-token segments and embeds each chunk with `text-embedding-3-small`. Override with:
+By default, `Knowledge` chunks long content and embeds each chunk with `text-embedding-3-small`. The embedder is set on the vector database. The chunking strategy is set on the reader that ingests the content:
 
 ```python
-from agno.embedder.openai import OpenAIEmbedder
-from agno.knowledge.chunking.text import TextChunkingStrategy
+from agno.knowledge.chunking.fixed import FixedSizeChunking
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.knowledge.reader.markdown_reader import MarkdownReader
 
 dash_knowledge = Knowledge(
-    vector_db=PgVector(...),
-    embedder=OpenAIEmbedder(id="text-embedding-3-large"),
-    chunking_strategy=TextChunkingStrategy(chunk_size=1000, overlap=100),
+    vector_db=PgVector(
+        table_name="dash_knowledge",
+        db_url=DB_URL,
+        embedder=OpenAIEmbedder(id="text-embedding-3-large"),
+    ),
+)
+
+dash_knowledge.add_content(
+    path="knowledge/tables/",
+    reader=MarkdownReader(
+        chunking_strategy=FixedSizeChunking(chunk_size=1000, overlap=100),
+    ),
 )
 ```
 
@@ -120,11 +130,15 @@ Both flags are common to set together. Auto-search hits first, the tool catches 
 For larger knowledge bases, add a reranker:
 
 ```python
-from agno.rerank.cohere import CohereReranker
+from agno.knowledge.reranker.cohere import CohereReranker
 
 dash_knowledge = Knowledge(
-    vector_db=PgVector(...),
-    reranker=CohereReranker(model="rerank-3.5"),
+    vector_db=PgVector(
+        table_name="dash_knowledge",
+        db_url=DB_URL,
+        search_type="hybrid",
+        reranker=CohereReranker(model="rerank-3.5"),
+    ),
 )
 ```
 
