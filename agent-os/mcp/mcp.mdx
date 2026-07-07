@@ -34,7 +34,7 @@ if __name__ == "__main__":
     agent_os.serve(app="mcp_server:app")
 ```
 
-The MCP server requires `fastmcp`. Without it, building the app raises an `ImportError`. Install the extra:
+The MCP server needs `fastmcp`, and without it building the app raises an `ImportError`, so install the extra:
 
 ```bash
 pip install "agno[mcp]"
@@ -122,7 +122,7 @@ agent_os = AgentOS(
 | `allowed_origins` | `None` | Extra exact origins to allow when they are served from hosts outside `allowed_hosts`. |
 | `middleware` | `None` | `starlette.middleware.Middleware` instances added to the MCP app. |
 
-A config with `enable_builtin_tools=False` and no `tools` raises at construction. It would mount a server with zero tools.
+A config with `enable_builtin_tools=False` and no `tools` raises at construction, because it would mount a server with zero tools.
 
 ### Result Modes
 
@@ -164,13 +164,13 @@ Authentication is enforced on `/mcp` in every mode. One auth layer covers the RE
 
 With `authorization=True`, each tool call is checked against the scopes of its equivalent REST route: `run_agent` requires the same scopes as `POST /agents/{id}/runs`, `get_sessions` the same as `GET /sessions`. See [Security & Auth](/agent-os/security/overview).
 
-The `authorize` gate on `MCPServerConfig` layers on top of authentication: it receives the verified `user_id` and can reject callers per request. Without `authorization=True` no JWT layer resolves the caller, so the gate is called with `user_id=None`. Handle `None` in your gate; return `False` to reject unauthenticated callers.
+The `authorize` gate on `MCPServerConfig` layers on top of authentication: it receives the verified `user_id` and can reject callers per request. Without `authorization=True` no JWT layer resolves the caller, so the gate is called with `user_id=None`. Make sure your gate handles `None`, and return `False` if you want to reject unauthenticated callers.
 
 ## Transport Security
 
-fastmcp's built-in Host/Origin guard is disabled on `/mcp`. `MCPServerConfig.allowed_hosts` is the transport guard:
+fastmcp's built-in Host/Origin guard is disabled on `/mcp`, so `MCPServerConfig.allowed_hosts` acts as the transport guard instead:
 
-- Left unset (default), no host validation runs.
+- Left unset, the default depends on your auth mode. A server with authentication (a security key or JWT) skips host validation, because every request already has to prove itself. An open server gets localhost-only validation, since that is exactly the setup DNS rebinding attacks target.
 - When set, the request `Host` (and `Origin`, when present) must match your list or the localhost defaults (`localhost`, `127.0.0.1`, `[::1]`). Anything else is rejected with 400 before it reaches the MCP machinery. `*.example.com` wildcard patterns are supported.
 
 This is DNS-rebinding protection: it stops a malicious web page from driving an always-on local MCP server through a rebound DNS name. List only your deploy or tunnel host; localhost works out of the box.
