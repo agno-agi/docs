@@ -1,113 +1,173 @@
 ---
 title: Setup
 sidebarTitle: Setup
-description: Configure Meta Developer account, WhatsApp Business API, and webhooks for WhatsApp bots.
+description: Configure a Meta app, credentials, and webhooks for WhatsApp bots.
 keywords: [whatsapp, setup, meta, webhook, configuration, access token]
 ---
 
-<Note>
-Install the WhatsApp dependencies: `uv pip install 'agno[whatsapp]'`
-</Note>
+Connect any Agno agent, team, or workflow to WhatsApp. The `httpx` dependency the interface needs ships with Agno, so no extra install is required.
 
 <Steps>
 
 <Step title="Prerequisites">
-Ensure you have the following:
 - A [Meta Developer Account](https://developers.facebook.com/)
-- A Meta Business Account (created at [Meta Business Manager](https://business.facebook.com/))
-- A valid Facebook account
-- ngrok (for development)
+- A [Meta Business Portfolio](https://business.facebook.com/) (Business Account)
+- ngrok or cloudflared (to expose your local server)
 - Python 3.9+
 </Step>
 
+<Step title="Create a Meta Business Account">
+1. Go to [Meta Business Manager](https://business.facebook.com/) and create a Business Portfolio.
+2. Complete business verification to unlock production messaging limits and API access.
+
+Unverified accounts can still message test numbers but are capped at 250 business-initiated conversations per 24 hours.
+</Step>
+
 <Step title="Create a Meta App">
-1. Go to [Meta for Developers](https://developers.facebook.com/) and verify your account.
-2. Create a new app at the [Apps Dashboard](https://developers.facebook.com/apps/).
-3. Under "Use Case", select **Other**.
-4. Choose **Business** as the app type.
-5. Provide:
-    - App name
-    - Contact email
-6. Click "Create App".
-7. In the app dashboard, find **WhatsApp** in the product list and click **Set up** to add it.
+1. Open the [Apps Dashboard](https://developers.facebook.com/apps/) and click **Create app**.
+2. Under **App details**, give it a name and continue.
+3. Under **Use cases**, select **Connect with customers through WhatsApp**, then click **Next**.
+4. Under **Business**, link the app to the Business Portfolio from the previous step, then finish the **Requirements** and **Overview** steps to create the app.
+5. On the app dashboard, click **Customize the Connect with customers through WhatsApp use case** (or open **Use cases** in the sidebar) to set up WhatsApp. This creates your WhatsApp Business Account (WABA).
 </Step>
 
-<Step title="Set Up a Meta Business Account">
-1. Navigate to [Meta Business Manager](https://business.facebook.com/).
-2. Create a new business account or use an existing one.
-3. Verify your business email.
-4. In your Meta App, go to **App Settings > Basic** and click "Start Verification" under Business Verification. Complete this for production access.
-5. Associate the app with your business account.
+<Step title="Get Your Token and Phone Number ID">
+In the **Connect with customers through WhatsApp** use case, go to **Basic setup > Step 1. Try it out**. Copy each value and set it as an environment variable:
+
+1. Meta claims a **WhatsApp test number** under **Test number**. Copy the **Phone Number ID** shown next to it:
+   ```bash
+   export WHATSAPP_PHONE_NUMBER_ID="123456789"
+   ```
+2. Under **Access token**, click **Generate token** and copy it. This temporary token expires after ~24 hours and is for development only:
+   ```bash
+   export WHATSAPP_ACCESS_TOKEN="EAAW..."
+   ```
+
+<Note>
+The test number can message any recipient you register on the **Step 1. Try it out** page. Adding and verifying your own business number with a permanent token is only required for production. See [Add a Phone Number](https://developers.facebook.com/docs/whatsapp/cloud-api/get-started/add-a-phone-number).
+</Note>
 </Step>
 
-<Step title="Configure WhatsApp Business API">
-1. In your app dashboard, go to **WhatsApp > API Setup**.
-2. Generate a **Temporary Access Token**. This token expires in ~24 hours and is suitable for development only.
-3. Copy your **Phone Number ID**, shown below the test phone number.
-4. Add a test recipient under the **To** field (your personal number for testing).
-
-For production, create a permanent token:
-1. Go to [Meta Business Manager](https://business.facebook.com/) > **Business Settings > System Users**.
-2. Click **Add** and create a new admin-level system user.
-3. Click on the system user, then **Assign Assets**.
-4. Assign your app with **Full control**.
-5. Assign your WhatsApp Business Account with **Full control**.
-6. Click **Generate Token** and select `whatsapp_business_messaging` and `whatsapp_business_management` permissions.
-7. Copy and store the token securely. This token does not expire unless revoked.
+<Step title="Get Your App Secret">
+1. In the side menu, open **App settings > Basic**.
+2. Copy the **App Secret**. It is used for webhook signature verification:
+   ```bash
+   export WHATSAPP_APP_SECRET="..."
+   ```
 </Step>
 
-<Step title="Set Up Environment Variables">
-Create a `.env` file or export these variables:
+<Step title="Set the Remaining Environment Variables">
 ```bash
-export WHATSAPP_ACCESS_TOKEN="your_access_token"
-export WHATSAPP_PHONE_NUMBER_ID="your_phone_number_id"
-export WHATSAPP_VERIFY_TOKEN="your_chosen_verify_token"  # Any string you create
+export WHATSAPP_VERIFY_TOKEN="my-verify-token"   # Any string you choose (must match webhook config)
+export OPENAI_API_KEY="sk-..."                   # Or whichever model provider you use
 ```
-
-Find these values in your Meta App:
-- **Access Token**: WhatsApp > API Setup (temporary) or System User token (permanent)
-- **Phone Number ID**: WhatsApp > API Setup, below the test phone number
-- **Verify Token**: A string you choose. Must match in both your app and Meta's webhook config.
 </Step>
 
-<Step title="Set Up Webhook with ngrok">
-1. Run ngrok to expose your local server, ensuring the port matches your app (7777):
+<Step title="Start the Server and Tunnel It">
+Webhook verification requires your AgentOS server to be running and publicly reachable. Start it **before** configuring the webhook in Meta.
+
+1. With the env vars set, run any WhatsApp example:
+   ```bash
+   python whatsapp_bot.py
+   ```
+2. Expose it publicly with ngrok or any tunnel of your choice:
    ```bash
    ngrok http 7777
+   # or: cloudflared tunnel --url http://localhost:7777
    ```
-2. Copy the `https://` URL provided by ngrok.
-3. In your Meta App, go to **WhatsApp > Configuration** and click "Edit" on the Webhook section.
-4. Configure the webhook:
-    - **Callback URL**: `https://<your-ngrok-url>/whatsapp/webhook`
-    - **Verify Token**: The same value as your `WHATSAPP_VERIFY_TOKEN`
-5. Click "Verify and save". Your Agno app must be running locally for verification to succeed.
-6. After verification, click "Manage" next to Webhook fields. Subscribe to the **messages** field under `whatsapp_business_account`.
+
+Your webhook callback URL is `{your-public-domain}/whatsapp/webhook`.
 </Step>
 
-<Step title="Configure Signature Validation">
-For **development**, skip signature validation:
-```bash
-export WHATSAPP_SKIP_SIGNATURE_VALIDATION="true"
-```
+<Step title="Configure the Webhook">
+1. In the use case, go to **Basic setup > Step 2. Production setup > Configure Webhooks**.
+2. Set **Callback URL** to your public domain plus `/whatsapp/webhook`:
+   ```
+   https://your-public-domain/whatsapp/webhook
+   ```
+3. Set **Verify Token** to the same string as your `WHATSAPP_VERIFY_TOKEN`.
+4. Click **Verify and save**. Meta sends a GET challenge to your running server, which Agno verifies automatically.
 
-For **production**, set your App Secret to enable webhook signature validation:
-```bash
-export WHATSAPP_APP_SECRET="your_meta_app_secret"
-```
-Find the App Secret at **App Settings > Basic** in your Meta App dashboard.
+See [Set Up Webhooks](https://developers.facebook.com/docs/whatsapp/cloud-api/guides/set-up-webhooks) for the verification handshake and payload format.
 </Step>
 
-<Step title="Test Your Bot">
-1. Start your app: `python whatsapp_bot.py`
-2. Ensure ngrok is running and the webhook is verified.
-3. Open WhatsApp and send a message to the test phone number.
-4. The bot should respond in the same chat.
-5. Send `/new` to start a fresh session (requires `db` on the agent).
-6. Send an image or document to test media handling.
+<Step title="Subscribe to Webhook Fields">
+After verification, Meta usually opens the **Webhook fields** list and auto-subscribes the standard fields. Confirm the **messages** field shows **Subscribed**, or your server never receives incoming messages even though verification succeeded.
+
+To subscribe manually:
+1. Open **Use cases > Connect with customers through WhatsApp > Customize**.
+2. Go to **Basic setup > Step 2. Production setup** and scroll to **Webhook fields**.
+3. Toggle the fields to **Subscribed**. **messages** is required; **message_template_status_update** and **history** are commonly enabled too.
+</Step>
+
+<Step title="Test It (and Register the Number if Needed)">
+Send a message to the test number from a recipient on your **Step 1. Try it out** allow-list. If your server receives the webhook and the agent replies, setup is complete.
+
+If no webhook requests arrive at your tunnel, the test number must be programmatically activated even though the dashboard shows it as "Active". Meta returns `200 OK` with a `message_id` but silently drops messages during routing until the number is registered. Run both calls with your access token:
+
+1. **Register the number** (provisions your `phone_number_id` on WhatsApp servers):
+   ```bash
+   curl -X POST "https://graph.facebook.com/v25.0/$WHATSAPP_PHONE_NUMBER_ID/register" \
+     -H "Authorization: Bearer $WHATSAPP_ACCESS_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"messaging_product": "whatsapp", "pin": "123456"}'
+   ```
+2. **Subscribe the app to your WABA** (links your app to the Business Account):
+   ```bash
+   curl -X POST "https://graph.facebook.com/v25.0/<WABA_ID>/subscribed_apps" \
+     -H "Authorization: Bearer $WHATSAPP_ACCESS_TOKEN"
+   ```
+   Replace `<WABA_ID>` with your WhatsApp Business Account ID (shown under **Step 1. Try it out**). This call sends no body.
+
+After running both, message the test number again. Webhooks should now arrive.
 </Step>
 
 </Steps>
 
+## Signature Validation
+
+The webhook validates incoming requests with HMAC-SHA256 over the `X-Hub-Signature-256` header. If `WHATSAPP_APP_SECRET` is not set, the server returns `500` to fail securely.
+
+For **development**, skip validation:
+```bash
+export WHATSAPP_SKIP_SIGNATURE_VALIDATION="true"
+```
+
+For **production**, keep validation on and set the App Secret from **App settings > Basic**. Never enable the skip flag in production.
+
+## Production Access
+
+Once it works, keep developing with the temporary token and test number, or move toward production by adding your own business number and generating a permanent token. Both are done from **Basic setup > Step 2. Production setup** (not **Step 1. Try it out**, which only provides the temporary token and test number).
+
+1. **Add your number.** Under **Register your WhatsApp phone number**, click **Add new number** and verify it. You can add up to 2 numbers before business verification, and up to 20 after. Manage numbers anytime in [WhatsApp Manager](https://business.facebook.com/wa/manage/).
+2. **Generate a permanent token.** Still on **Step 2. Production setup**, scroll to **Test your registered number** and use **Step 1: Generate permanent token** to generate the token for your WhatsApp Business Account, then copy it. Unlike the temporary token, it does not expire.
+
 <Warning>
-ngrok is for local development only. For production, see the [deployment templates](/deploy/templates).
+Do not confuse this **Step 1: Generate permanent token** task (inside **Step 2. Production setup > Test your registered number**) with the **Step 1. Try it out** entry in the sidebar. The sidebar's **Step 1. Try it out** only provides the temporary token and test number.
+</Warning>
+
+3. Set the permanent token as your `WHATSAPP_ACCESS_TOKEN`, and update `WHATSAPP_PHONE_NUMBER_ID` to your registered number's ID.
+4. To send business-initiated messages (marketing, utility, authentication), complete **Add payment** in the same step. Replies to user-initiated messages are free for the first 1,000 conversations per month.
+
+<Note>
+The older **Business Settings > System Users** token flow now shows "No permissions available" for the WhatsApp use case. Use **Step 2. Production setup** instead.
+</Note>
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| Bot doesn't respond | Webhook not configured or server not running | Confirm the webhook shows "Verified" in Meta and your server is running |
+| 401 Unauthorized | Token expired | Regenerate the temporary token or use a System User token |
+| Webhook verification fails | Verify token mismatch | `WHATSAPP_VERIFY_TOKEN` must match the Meta config exactly |
+| 500 on every webhook | `WHATSAPP_APP_SECRET` not set | Set the App Secret or enable the skip flag for development |
+| Signature validation fails | Wrong app secret | Confirm `WHATSAPP_APP_SECRET` matches App settings > Basic |
+| Messages not arriving | Not subscribed to events | Subscribe to the **messages** field in the webhook config (step 9) |
+| Outbound returns 200 but nothing delivered / no webhooks | Test number not registered | Run the `/register` and `/subscribed_apps` calls (step 10) |
+| SSL certificate errors (macOS) | Missing cert bundle | `export SSL_CERT_FILE=$(python3 -c "import certifi; print(certifi.where())")` |
+| Non-PDF documents fail | API limitation | Only PDF documents are supported for input |
+| Can only message test numbers | Not in production mode | Complete business verification and request production access |
+
+<Warning>
+ngrok and cloudflared are for local development only. For production, see the [deployment templates](/deploy/templates).
 </Warning>
