@@ -1,9 +1,59 @@
 ---
 title: "Deploying"
-description: "Ship AgentOS as a normal Python service. Container, Postgres, public hostname."
+description: "Pick a Starter wired for your platform, or ship AgentOS as a normal Python service."
 ---
 
-AgentOS is a FastAPI app. Deploy it like any normal Python service: a container, a Postgres database, a public hostname, and a few env vars.
+AgentOS deploys like any Python service: a container, a Postgres database, a public hostname, and a few env vars. The fastest path is a **Starter**: a clean AgentOS repo wired for one deploy target, with the provisioning scripts already written.
+
+## Pick a Starter
+
+Nine Starters cover the major platforms. Every Starter shares the same core and swaps only the deploy layer. Switch platforms later by swapping the deploy scripts.
+
+| Starter | Target | Status |
+|---------|--------|--------|
+| [agentos-railway](https://github.com/agno-agi/agentos-railway) | Railway | Reference |
+| [agentos-docker](https://github.com/agno-agi/agentos-docker) | Self-hosted Docker | Verified end-to-end |
+| [agentos-fly](https://github.com/agno-agi/agentos-fly) | Fly.io | Verified end-to-end |
+| [agentos-gcp](https://github.com/agno-agi/agentos-gcp) | Google Cloud Run | Verified end-to-end |
+| [agentos-aws](https://github.com/agno-agi/agentos-aws) | AWS ECS Express | Verified end-to-end |
+| [agentos-helm](https://github.com/agno-agi/agentos-helm) | Kubernetes (Helm) | Verified on kind; cloud verification pending |
+| [agentos-azure](https://github.com/agno-agi/agentos-azure) | Azure Container Apps | Cloud verification pending |
+| [agentos-render](https://github.com/agno-agi/agentos-render) | Render | Cloud verification pending |
+| [agentos-modal](https://github.com/agno-agi/agentos-modal) | Modal + Neon Postgres | Cloud verification pending |
+
+Starters handle deployment. Apps (Dash, Coda, Scout, Context) are complete, forkable agent products. Both live in [Templates](/deploy/templates).
+
+## The reference flow
+
+Every Starter follows the same shape as [agentos-railway](https://github.com/agno-agi/agentos-railway): run locally with Docker Compose, then deploy with the platform scripts.
+
+```bash
+git clone https://github.com/agno-agi/agentos-railway.git agentos
+cd agentos
+cp example.env .env    # set OPENAI_API_KEY
+docker compose up -d --build
+curl http://localhost:8000/health
+```
+
+Compose runs two services: the app and `agnohq/pgvector:18`, Postgres 18 with the pgvector extension preinstalled for knowledge embeddings.
+
+Deploy from the same repo:
+
+```bash
+railway login
+./scripts/railway/up.sh        # provision Postgres + app, assign a public domain
+./scripts/railway/env-sync.sh  # sync .env.production to the service
+./scripts/railway/redeploy.sh  # push code updates
+./scripts/railway/down.sh      # tear everything down
+```
+
+`up.sh` provisions Postgres and the app service on a private network, assigns the public domain, writes it to `AGENTOS_URL`, and pauses for a `JWT_VERIFICATION_KEY` so production auth doesn't block the first deploy. The other Starters swap in their platform's deploy layer: `scripts/fly/`, `scripts/gcp/`, `scripts/aws/`, `charts/` for Helm, `compose.prod.yaml` for self-hosted Docker.
+
+Walkthrough: [Railway deploy](/deploy/templates/railway/deploy).
+
+## Bring your own infra
+
+Not using a Starter? AgentOS is a FastAPI app. Any container platform works.
 
 ```python
 from agno.os import AgentOS
@@ -15,8 +65,6 @@ if __name__ == "__main__":
     agent_os.serve(app="my_app:app", reload=False)
 ```
 
-## What you need to ship
-
 | Resource | Why |
 |----------|-----|
 | **Container host** | Runs the FastAPI process |
@@ -25,69 +73,9 @@ if __name__ == "__main__":
 | **HTTPS** | Required for every webhook interface; terminate at your load balancer or reverse proxy |
 | **Env vars** | At minimum `OPENAI_API_KEY` and `JWT_VERIFICATION_KEY` (in prod) |
 
-AgentOS handles queues, worker pools, the scheduler, and JWT auth in-process. No separate worker fleet, no separate auth server, no separate cron container.
+AgentOS handles queues, worker pools, the scheduler, and JWT auth in-process. No separate worker fleet, no separate auth server, no separate cron container. Point health checks at `/health`; AgentOS responds with `"status": "ok"` when the app is ready.
 
-## Local with Docker Compose
-
-```yaml
-services:
-  agentos:
-    build: .
-    ports:
-      - "8000:8000"
-    env_file: .env
-    depends_on:
-      - db
-
-  db:
-    image: agnohq/pgvector:18
-    environment:
-      POSTGRES_USER: ai
-      POSTGRES_PASSWORD: ai
-      POSTGRES_DB: ai
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-
-volumes:
-  pgdata:
-```
-
-`agnohq/pgvector` is Postgres 18 with the pgvector extension preinstalled — needed for knowledge embeddings.
-
-```bash
-docker compose up -d --build
-curl http://localhost:8000/health
-```
-
-The [Scout](/tutorials/scout/setup), [Dash](/tutorials/dash/setup), and [Coda](/tutorials/coda/setup) tutorials all start here.
-
-## Railway
-
-Each tutorial template ships with Railway scripts for one-command deploys:
-
-```bash
-railway login
-./scripts/railway_up.sh        # provision Postgres + app, get a domain
-./scripts/railway_env.sh       # sync .env.production to the service
-./scripts/railway_redeploy.sh  # push code updates
-```
-
-`up.sh` provisions the project, adds `pgvector` with a persistent volume, creates the app service with env vars, and assigns a public domain.
-
-Walkthroughs: [Scout deploy](/tutorials/scout/deploy-to-railway), [Dash deploy](/tutorials/dash/deploy-to-railway), [Coda deploy](/tutorials/coda/deploy-to-railway).
-
-## AWS, GCP, and Azure
-
-Any container platform works. The shape:
-
-| Component | Service options | What runs in it |
-|-----------|-----------------|-----------------|
-| **App service** | ECS Fargate, Cloud Run, App Service | The AgentOS container, port 8000 |
-| **Postgres** | RDS, Cloud SQL, Postgres Flexible Server | Sessions, memory, knowledge, traces |
-| **Load balancer / ingress** | ALB, Cloud Load Balancing, Application Gateway | Public HTTPS termination |
-| **Secret manager** | Secrets Manager, Secret Manager, Key Vault | `OPENAI_API_KEY`, `JWT_VERIFICATION_KEY` |
-
-Health check the `/health` endpoint. AgentOS responds `{"status":"ok"}` when the app is ready.
+See [Run Your AgentOS](/agent-os/run-your-os) for the minimal setup and [Bring Your Own FastAPI App](/agent-os/custom-fastapi/overview) for mounting AgentOS into an existing app.
 
 ## Scaling
 
@@ -97,7 +85,7 @@ AgentOS is stateless. State lives in `db`. Scale horizontally:
 |---------|----------|
 | Throughput | Add app replicas behind a load balancer |
 | LLM rate limits | Use a queue or rate limiter in front of the model client |
-| Long-running runs | Use `background=true` on the run endpoint, then poll for completion (see [Serve as an API](/features/api)) |
+| Long-running runs | Use `background=true` on the run endpoint, then poll for completion (see [Agent API](/features/api)) |
 | Side effects without blocking the response | Background hooks with `run_in_background=True` |
 | Schedule fan-out | The scheduler runs on a single replica's lifespan; for HA, use leader election or pin scheduling to one replica |
 | Trace volume | Use a separate `trace_db` to keep the primary lean (see [Observability](/features/observability)) |
@@ -124,4 +112,17 @@ For the leader-election pattern with multiple replicas, see [Scheduler HA](/agen
 
 ## Updating your deployment
 
-Code changes: `git push` if CI auto-deploys, or `./scripts/railway_redeploy.sh`. Env changes: `./scripts/railway_env.sh` (Railway auto-redeploys when env values change). Database changes: AgentOS handles its own tables — schema changes are additive and forward-compatible, so no migration tool is required for stock AgentOS tables. Application tables you migrate however you like (Alembic, raw SQL, dbt, your call).
+| Change | How to deploy |
+|--------|---------------|
+| Code | `git push` if CI auto-deploys, or your Starter's redeploy script (`./scripts/railway/redeploy.sh`) |
+| Env vars | The env sync script (`./scripts/railway/env-sync.sh`); Railway auto-redeploys when env values change |
+| Database schema | Stock AgentOS tables need no migration tool: AgentOS manages them, and schema changes are additive and forward-compatible. Migrate your own application tables with Alembic, raw SQL, or dbt |
+
+## Next Steps
+
+| Task | Guide |
+|------|-------|
+| Deploy to Railway end-to-end | [Railway deploy](/deploy/templates/railway/deploy) |
+| Browse Starters and Apps | [Templates](/deploy/templates) |
+| Configure the AgentOS app | [Run Your AgentOS](/agent-os/run-your-os) |
+| Set up production auth | [Security & Auth](/features/security-and-auth) |
