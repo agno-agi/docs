@@ -1,0 +1,58 @@
+---
+title: "Manage Tokens"
+sidebarTitle: "agno tokens"
+description: "Mint, list, and revoke AgentOS service-account tokens from the terminal."
+---
+
+```bash
+agno tokens create ci-runner
+agno tokens list
+agno tokens revoke ci-runner
+```
+
+`agno tokens` manages [service accounts](/agent-os/security/authorization/service-accounts) on a running AgentOS: long-lived tokens for CI jobs, scripts, and other non-human callers. On an AgentOS with authorization enabled, the commands need an admin credential from `AGNO_ADMIN_TOKEN` or `OS_SECURITY_KEY` (or an interactive prompt).
+
+## Create
+
+```bash
+agno tokens create ci-runner --scopes agents:run --scopes sessions:read --expires 30
+```
+
+The plaintext token is shown exactly once. Save it; it cannot be retrieved again.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--scopes`, `-s` | `agents:run`, `teams:run`, `workflows:run`, `sessions:read`, `config:read` | Scope to grant (repeatable) |
+| `--expires` | `90d` | Days until expiry (`90d`, `30`) or `never` |
+| `--privileged` | off | Required to grant write, delete, admin, or service_accounts scopes |
+| `--url` | autodiscover | AgentOS base URL |
+| `--allow-http` | off | Permit credentials over plaintext HTTP to a non-loopback host |
+| `--json` | off | Emit a single JSON document, including the token |
+
+Names are lowercase slugs: letters, digits, `-`, and `_`, starting with a letter or digit. Creating a name that already exists fails; revoke it first or pick another name.
+
+## List
+
+```bash
+agno tokens list
+```
+
+Shows each account's name, token prefix, scopes, expiry, last use, and status. Full tokens are never stored or displayed.
+
+## Revoke
+
+```bash
+agno tokens revoke ci-runner --yes
+```
+
+Revocation is irreversible and takes effect on the account's next request. Interactive runs confirm first; `--yes`, `--json`, and non-TTY runs proceed without prompting.
+
+<Warning>
+A client with a live connection keeps using its revoked token until it reconnects. Restart long-running clients after revoking.
+</Warning>
+
+## Developer Resources
+
+- [Service accounts](/agent-os/security/authorization/service-accounts)
+- [Scopes](/agent-os/security/authorization/scopes)
+- [agnoctl reference](/reference/cli/agnoctl)

@@ -4,7 +4,7 @@ sidebarTitle: "Scopes"
 description: "Scope format and the full permission reference for every AgentOS endpoint."
 ---
 
-Scopes are permission strings in the JWT `scopes` claim. Each AgentOS endpoint requires one or more scopes; requests with insufficient scopes return `403 Forbidden`.
+Scopes are permission strings carried by the caller's credential: the JWT `scopes` claim, or the stored scopes of a [service account](/agent-os/security/authorization/service-accounts) token. Each AgentOS endpoint requires one or more scopes; requests with insufficient scopes return `403 Forbidden`.
 
 ## Scope Format
 
@@ -57,6 +57,8 @@ The `agent_os:admin` scope grants full access to every AgentOS endpoint below.
     | `config:read` | `GET /models` | List available models |
     | `config:write` | `POST /databases/all/migrate` | Run migrations on all databases |
     | `config:write` | `POST /databases/*/migrate` | Run migrations on a specific database |
+
+    Legacy `system:read` and `system:write` scopes are accepted as aliases for `config:read` and `config:write`, so tokens issued before the rename keep working. Use `config:*` in new tokens.
   </Tab>
 
   <Tab title="Registry">
@@ -147,6 +149,16 @@ The `agent_os:admin` scope grants full access to every AgentOS endpoint below.
     | `memories:delete` | `DELETE /memories/*` | Delete a memory |
   </Tab>
 
+  <Tab title="Learnings">
+    | Scope | Endpoint | Description |
+    |-------|----------|-------------|
+    | `learnings:read` | `GET /learnings` | List learnings |
+    | `learnings:read` | `GET /learnings/*` | View a learning |
+    | `learnings:write` | `POST /learnings` | Create a learning |
+    | `learnings:write` | `PATCH /learnings/*` | Update a learning |
+    | `learnings:delete` | `DELETE /learnings/*` | Delete a learning |
+  </Tab>
+
   <Tab title="Knowledge">
     | Scope | Endpoint | Description |
     |-------|----------|-------------|
@@ -189,6 +201,16 @@ The `agent_os:admin` scope grants full access to every AgentOS endpoint below.
     | `traces:read` | `POST /traces/search` | Search traces |
   </Tab>
 
+  <Tab title="Service Accounts">
+    | Scope | Endpoint | Description |
+    |-------|----------|-------------|
+    | `service_accounts:read` | `GET /service-accounts` | List service accounts |
+    | `service_accounts:write` | `POST /service-accounts` | Mint a service account token |
+    | `service_accounts:delete` | `DELETE /service-accounts/*` | Revoke a service account |
+
+    All `service_accounts` scopes are [privileged](/agent-os/security/authorization/service-accounts#privileged-scopes) when granted to a token: they let a token mint or revoke tokens.
+  </Tab>
+
   <Tab title="Schedules">
     | Scope | Endpoint | Description |
     |-------|----------|-------------|
@@ -213,6 +235,30 @@ The `agent_os:admin` scope grants full access to every AgentOS endpoint below.
     | `approvals:read` | `GET /approvals/*/status` | View approval status |
     | `approvals:write` | `POST /approvals/*/resolve` | Resolve an approval request |
     | `approvals:delete` | `DELETE /approvals/*` | Delete an approval request |
+  </Tab>
+
+  <Tab title="Interfaces (A2A)">
+    A2A routes reuse the `agents`, `teams`, and `workflows` scopes. Per-resource scopes like `agents:my-agent:run` authorize A2A paths the same way they do REST paths. Routes below assume the default `/a2a` prefix; a custom `A2A(prefix=...)` is gated identically under its own prefix.
+
+    | Scope | Endpoint | Description |
+    |-------|----------|-------------|
+    | `agents:read` | `GET /a2a/agents/*/.well-known/agent-card.json` | Fetch an agent card |
+    | `agents:run` | `POST /a2a/agents/*/v1/message:send` | Send a message to an agent |
+    | `agents:run` | `POST /a2a/agents/*/v1/message:stream` | Stream a message to an agent |
+    | `agents:read` | `POST /a2a/agents/*/v1/tasks:get` | Get an agent task |
+    | `agents:run` | `POST /a2a/agents/*/v1/tasks:cancel` | Cancel an agent task |
+    | `teams:read` | `GET /a2a/teams/*/.well-known/agent-card.json` | Fetch a team card |
+    | `teams:run` | `POST /a2a/teams/*/v1/message:send` | Send a message to a team |
+    | `teams:run` | `POST /a2a/teams/*/v1/message:stream` | Stream a message to a team |
+    | `teams:read` | `POST /a2a/teams/*/v1/tasks:get` | Get a team task |
+    | `teams:run` | `POST /a2a/teams/*/v1/tasks:cancel` | Cancel a team task |
+    | `workflows:read` | `GET /a2a/workflows/*/.well-known/agent-card.json` | Fetch a workflow card |
+    | `workflows:run` | `POST /a2a/workflows/*/v1/message:send` | Send a message to a workflow |
+    | `workflows:run` | `POST /a2a/workflows/*/v1/message:stream` | Stream a message to a workflow |
+    | `agents:run` | `POST /a2a/message/send` | Dynamic dispatch (deprecated) |
+    | `agents:run` | `POST /a2a/message/stream` | Dynamic dispatch, streaming (deprecated) |
+
+    The deprecated dynamic-dispatch endpoints resolve their target at runtime. They carry a coarse `agents:run` route gate, and the handler re-checks the run scope for the resolved target's type (`agents:run`, `teams:run`, or `workflows:run`).
   </Tab>
 </Tabs>
 
@@ -265,4 +311,5 @@ Custom scope mappings are additive to the defaults. To override a default, speci
 | Task | Guide |
 |------|-------|
 | Bundle scopes into roles | [Roles](/agent-os/security/authorization/roles) |
+| Mint machine tokens with scopes | [Service Accounts](/agent-os/security/authorization/service-accounts) |
 | Configure JWT middleware in depth | [JWT Middleware](/agent-os/middleware/jwt) |

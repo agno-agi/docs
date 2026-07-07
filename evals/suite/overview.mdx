@@ -1,0 +1,241 @@
+---
+title: Eval Suites
+description: Declare eval Cases and run them as one suite with tag selection, per-case timeouts, a JSON report, and CI exit codes.
+sidebarTitle: Overview
+keywords: [eval suite, eval cases, run_cases, eval cli, ci evals, agent evals, team evals]
+---
+
+An eval suite runs multiple `Case`s against your Agents and Teams in one pass. Each case sends one input to one agent or team, then applies a judge check (`criteria`), a reliability check (`expected_tool_calls`), or both. The built-in CLI adds case selection, a summary table, a machine-readable JSON report, and exit codes for CI.
+
+```python evals.py
+import sys
+
+from agno.agent import Agent
+from agno.eval import Case, cli
+from agno.models.openai import OpenAIResponses
+from agno.tools.calculator import CalculatorTools
+
+agent = Agent(
+    id="math-tutor",
+    model=OpenAIResponses(id="gpt-5.2"),
+    tools=[CalculatorTools()],
+    instructions="Use the calculator tools for any arithmetic.",
+)
+
+CASES = (
+    Case(
+        name="factorial_uses_calculator",
+        agent=agent,
+        input="What is 10! (ten factorial)?",
+        tags=("smoke",),
+        criteria="States that 10! equals 3628800.",
+        expected_tool_calls=("factorial",),
+    ),
+    Case(
+        name="explains_compound_interest",
+        agent=agent,
+        input="Explain compound interest in one short paragraph.",
+        criteria="Explains that interest is earned on both the principal and previously earned interest.",
+    ),
+)
+
+if __name__ == "__main__":
+    sys.exit(cli(CASES))
+```
+
+```bash
+python evals.py                 # run all cases
+python evals.py --list          # list cases without running
+python evals.py --tag smoke     # run a tagged subset
+python evals.py --json-output tmp/evals.json
+```
+
+Setting `criteria` runs an [Agent as Judge eval](/evals/agent-as-judge/overview) on the response. Setting `expected_tool_calls` runs a [Reliability eval](/evals/reliability/overview) on the tool calls. A case passes when every configured check passes and no error occurred.
+
+## Case
+
+`Case` is a frozen dataclass. Construction raises `ValueError` unless exactly one of `agent` or `team` is set and at least one check (`criteria` or `expected_tool_calls`) is configured.
+
+| Field | Type | Default | Description |
+| ----- | ---- | ------- | ----------- |
+| `name` | `str` | Required | Case name. Used by the `--name` selector and in results. |
+| `input` | `str` | Required | Input sent to the agent or team. |
+| `agent` | `Optional[Agent]` | `None` | Agent under test. Set exactly one of `agent` or `team`. |
+| `team` | `Optional[Team]` | `None` | Team under test. |
+| `tags` | `Tuple[str, ...]` | `()` | Labels for `--tag` / `tag=` selection. |
+| `timeout_seconds` | `Optional[int]` | `None` | Per-case timeout. Falls back to the runner's `default_timeout` (120s). |
+| `criteria` | `Optional[str]` | `None` | Enables the judge check (`AgentAsJudgeEval`). |
+| `judge_model` | `Optional[Model]` | `None` | Per-case judge model. Falls back to the runner's `judge_model`, then the eval default (`gpt-5-mini`). |
+| `judge_mode` | `JudgeMode` | `JudgeMode.BINARY` | How the judge grades the answer. See the table below. |
+| `judge_threshold` | `int` | `7` | Pass bar (1-10). Read only when `judge_mode` is `NUMERIC`. |
+| `expected_tool_calls` | `Optional[Tuple[str, ...]]` | `None` | Enables the reliability check (`ReliabilityEval`). |
+| `allow_additional_tool_calls` | `bool` | `True` | Whether tool calls beyond the expected ones are allowed. |
+| `setup` | `Optional[Callable]` | `None` | Runs before the case, outside the timeout. Its return value is passed to `teardown`. |
+| `teardown` | `Optional[Callable]` | `None` | Runs once `setup` has completed, on pass, fail, error, or timeout. Receives `(context, result)`. |
+
+`setup` and `teardown` may be sync or async callables. A teardown failure is recorded on the case result instead of being swallowed.
+
+### Judge modes
+
+| Mode | Verdict | When to use |
+| ---- | ------- | ----------- |
+| `JudgeMode.BINARY` (default) | Pass/fail | Clear-cut criteria: "states that 10! equals 3628800" |
+| `JudgeMode.NUMERIC` | 1-10 score, passes when the score meets `judge_threshold` | Graded qualities like tone or clarity. The score is reported as `judge_score` so you can track quality over time. |
+
+## Running Programmatically
+
+`cli()` wraps `run_cases()`. To run a suite from code, call `run_cases()` (or `await arun_cases()` inside an event loop) and read the `SuiteResult`.
+
+```python
+from agno.eval import run_cases
+
+suite = run_cases(CASES, tag="smoke")
+print(suite.status)  # "PASS" or "FAIL"
+payload = suite.to_dict()
+```
+
+| Parameter | Type | Default | Description |
+| --------- | ---- | ------- | ----------- |
+| `cases` | `Sequence[Case]` | Required | The cases to select from. |
+| `tag` | `Optional[str]` | `None` | Keep only cases with this tag. |
+| `name` | `Optional[str]` | `None` | Keep only the case with this name. |
+| `default_timeout` | `int` | `120` | Per-case timeout in seconds, when `Case.timeout_seconds` is `None`. |
+| `judge_model` | `Optional[Model]` | `None` | Suite-wide judge model. `Case.judge_model` overrides it. |
+| `db` | `Optional[Union[BaseDb, AsyncBaseDb]]` | `None` | Logs judge and reliability results to storage. |
+| `on_case_start` | `Optional[Callable[[Case], None]]` | `None` | Presentation hook, called before each case runs. |
+| `on_case_end` | `Optional[Callable[[Case, CaseResult], None]]` | `None` | Presentation hook, called with each case and its result. |
+| `on_run_event` | `Optional[Callable[[Case, RunOutputEvent], None]]` | `None` | Presentation hook, called with every streamed run event. |
+
+Cases run sequentially on a single event loop. The runner performs no console I/O; all presentation flows through the hooks, which must be sync callables. A hook that raises is recorded on the case as a `hook:` error without aborting the suite.
+
+An empty selection (for example a mistyped tag) yields `status == "FAIL"`, so a CI gate never passes a run that executed zero cases. A cancelled run aborts the suite; the unrun cases are recorded as failed with `skipped=True` so the payload accounts for every selected case.
+
+<Note>
+With `db=` set, results log to storage through the same path as standalone evals. A failed write logs a warning without failing the case, and a hung write cannot stall a case past its timeout. Each case runs in a dedicated eval session (the payload's `session_id`), so eval traffic stays out of the agent or team's history.
+</Note>
+
+## CLI
+
+`cli(CASES)` parses `sys.argv`, runs the selected cases with a progress display, prints a summary table, and returns an exit code. Wire it into `__main__` with `sys.exit(cli(CASES))`. Inside an already-running event loop (a server or notebook), use `await acli(CASES)` instead.
+
+Both accept `db=`, `judge_model=`, and `default_timeout=` keyword arguments, which set the runner defaults behind the flags.
+
+| Flag | Description |
+| ---- | ----------- |
+| `--name NAME` | Run only the case with this name. |
+| `--tag TAG` | Run only cases with this tag. |
+| `--timeout SECONDS` | Default per-case timeout. Defaults to the `default_timeout` passed to `cli()` (120s). |
+| `--json-output PATH` | Write the machine-readable JSON results to this path. |
+| `--list` | List the selected cases without running them. |
+| `-v`, `--verbose` | Render the full run panels (Message, Tool Calls, Response) after each case. |
+
+### Exit codes
+
+| Code | Meaning |
+| ---- | ------- |
+| `0` | All selected cases passed. |
+| `1` | Any case failed, or the `--json-output` write failed. |
+| `2` | No cases matched the selector. |
+
+### JSON report
+
+`--json-output` writes `SuiteResult.to_dict()`. The shape is a stable contract for CI consumers.
+
+```json evals.json
+{
+  "summary": { "total": 2, "passed": 2, "failed": 0, "status": "PASS" },
+  "cases": [
+    {
+      "name": "factorial_uses_calculator",
+      "agent_id": "math-tutor",
+      "team_id": null,
+      "tags": ["smoke"],
+      "session_id": "eval-factorial_uses_calculator-1a2b3c4d",
+      "duration_seconds": 6.412,
+      "judge_passed": true,
+      "judge_reason": "The response states that 10! equals 3628800.",
+      "judge_score": null,
+      "reliability_passed": true,
+      "output": "10! = 3,628,800...",
+      "tools_called": ["factorial"],
+      "timed_out": false,
+      "skipped": false,
+      "passed": true,
+      "error": null
+    }
+  ]
+}
+```
+
+`judge_passed` and `reliability_passed` are `null` when the check is not configured. `judge_score` carries the 1-10 score in numeric mode. `error` joins every error recorded for the case: run, judge, reliability, setup/teardown, and hooks.
+
+### CI usage
+
+The exit code gates the job; the JSON report is the artifact.
+
+```yaml
+- name: Run evals
+  run: python evals.py --tag smoke --json-output tmp/evals.json
+```
+
+## Teams
+
+Pass `team=` instead of `agent=`. Reliability sees the members' tool calls, so `expected_tool_calls` can name the tool a member fires rather than only the leader's delegation.
+
+```python team_evals.py
+import sys
+
+from agno.agent import Agent
+from agno.eval import Case, JudgeMode, cli
+from agno.models.openai import OpenAIResponses
+from agno.team import Team
+from agno.tools.calculator import CalculatorTools
+
+calculator = Agent(
+    id="calculator",
+    model=OpenAIResponses(id="gpt-5.2"),
+    tools=[CalculatorTools()],
+    instructions="Use the calculator tools for every arithmetic operation.",
+)
+writer = Agent(
+    id="writer",
+    model=OpenAIResponses(id="gpt-5.2"),
+    instructions="Answer in one clear paragraph.",
+)
+assistant_team = Team(
+    id="assistant-team",
+    model=OpenAIResponses(id="gpt-5.2"),
+    members=[calculator, writer],
+    instructions="Delegate arithmetic to the calculator member and writing to the writer member.",
+)
+
+CASES = (
+    Case(
+        name="team_uses_calculator",
+        team=assistant_team,
+        input="What is 4891 multiplied by 7238?",
+        tags=("smoke",),
+        criteria="States that the product is 35,401,058.",
+        judge_mode=JudgeMode.NUMERIC,
+        judge_threshold=7,
+        expected_tool_calls=("multiply",),
+    ),
+    Case(
+        name="team_explains_clearly",
+        team=assistant_team,
+        input="Explain compound interest in one paragraph.",
+        criteria="Explains that interest is earned on both the principal and previously earned interest.",
+        judge_mode=JudgeMode.NUMERIC,
+        judge_threshold=7,
+    ),
+)
+
+if __name__ == "__main__":
+    sys.exit(cli(CASES))
+```
+
+## Developer Resources
+
+- [Eval suite reference](/reference/evals/suite)
+- [Agent as Judge evals](/evals/agent-as-judge/overview)
+- [Reliability evals](/evals/reliability/overview)

@@ -1,28 +1,31 @@
 ---
-title: JWT Middleware
+title: Auth Middleware
 sidebarTitle: JWT
-description: Secure your AgentOS application with JWT token validation and RBAC
-keywords: [jwt middleware, jwt authentication, token validation, parameter injection, authorization, bearer token, jwt claims, http only cookies, token verification, jwt secret, user authentication, session management, jwt tokens, pyjwt, token security, rbac, scopes, role-based access control]
+description: Configure AuthMiddleware for JWT validation, claim injection, and RBAC across REST, MCP, and WebSocket connections.
+keywords: [jwt middleware, auth middleware, jwt authentication, token validation, parameter injection, authorization, bearer token, jwt claims, http only cookies, token verification, jwt secret, user authentication, session management, jwt tokens, pyjwt, token security, rbac, scopes, role-based access control, service accounts]
 ---
 
 <Badge icon="code-branch" color="orange">
     <Tooltip tip="Introduced in v2.1.0" cta="View release notes" href="https://github.com/agno-agi/agno/releases/tag/v2.1.0">v2.1.0</Tooltip>
 </Badge>
 
-Authenticate and authorize requests to your AgentOS application using JWT tokens. The middleware extracts tokens from Authorization headers or cookies, validates them, and automatically injects user_id, session_id, and custom claims into your endpoints.
+`AuthMiddleware` is the AgentOS authentication layer. It validates JWTs, service-account tokens (`agno_pat_...`), and the OS security key. For JWTs it extracts tokens from Authorization headers or cookies, validates them, and injects `user_id`, `session_id`, and custom claims into your endpoints. This page covers the JWT configuration. For the other two credential types, see [Service Accounts](/agent-os/security/authorization/service-accounts) and the [security key](/agent-os/security/overview#security-key).
 
-The JWT middleware provides three main features:
+<Note>
+The class was renamed from `JWTMiddleware` in v2.7. `JWTMiddleware` remains as an alias, so existing `app.add_middleware(JWTMiddleware, ...)` setups keep working.
+</Note>
+
+The middleware provides three main features:
 1. **Token Validation**: Validates JWT tokens and handles authentication
 2. **Parameter Injection**: Automatically injects user_id, session_id, and custom claims into endpoint parameters
 3. **RBAC Authorization**: Validates scopes against required permissions for each endpoint
 
 
-```python jwt_middleware_setup.py
-from agno.os.middleware import JWTMiddleware
-from agno.os.middleware.jwt import TokenSource
+```python auth_middleware_setup.py
+from agno.os.middleware.jwt import AuthMiddleware
 
 app.add_middleware(
-    JWTMiddleware,
+    AuthMiddleware,
     verification_keys=["your-jwt-verification-key"],  # or use JWT_VERIFICATION_KEY environment variable
     algorithm="RS256",  # RS256 for asymmetric keys, HS256 for symmetric
     user_id_claim="sub",  # Extract user_id from 'sub' claim
@@ -34,6 +37,25 @@ app.add_middleware(
 )
 ```
 
+## Coverage Across Surfaces
+
+AgentOS installs a single `AuthMiddleware` instance on the parent app in every authenticated deployment mode. A token accepted on one surface is accepted with identical constraints on the others.
+
+| Surface | How it is covered |
+|---------|-------------------|
+| REST routes | Requests pass through the middleware directly |
+| Mounted `/mcp` app | Parent-app middleware runs before the mount dispatches, so the MCP server carries no auth code of its own |
+| WebSockets | The middleware publishes its validator, audience, admin scope, and user-isolation settings to `app.state`; WebSocket handshakes validate against the same configuration |
+
+### Credential Dispatch
+
+The middleware resolves each bearer credential in order:
+
+1. Tokens with the `agno_pat_` prefix authenticate as service accounts against the AgentOS database. This happens before JWT validation. Service-account scopes are enforced even when `authorization=False`, since they are ACL data owned by your AgentOS instance.
+2. The internal service token, used by the [scheduler](/agent-os/scheduler/overview) executor to run scheduled jobs.
+3. The OS security key, when no JWT source is configured.
+4. Anything else is validated as a JWT.
+
 
 ## Token Sources
 
@@ -44,10 +66,10 @@ The middleware supports three token sources:
     Extract JWT from `Authorization: Bearer <token>` header.
     
     ```python
-    from agno.os.middleware.jwt import TokenSource
+    from agno.os.middleware.jwt import AuthMiddleware, TokenSource
     
     app.add_middleware(
-        JWTMiddleware,
+        AuthMiddleware,
         verification_keys=["your-key"],
         token_source=TokenSource.HEADER,  # Default
     )
@@ -59,7 +81,7 @@ The middleware supports three token sources:
     
     ```python
     app.add_middleware(
-        JWTMiddleware,
+        AuthMiddleware,
         verification_keys=["your-key"],
         token_source=TokenSource.COOKIE,
         cookie_name="access_token",  # Default
@@ -72,7 +94,7 @@ The middleware supports three token sources:
     
     ```python
     app.add_middleware(
-        JWTMiddleware,
+        AuthMiddleware,
         verification_keys=["your-key"],
         token_source=TokenSource.BOTH,
         cookie_name="access_token",  # Default
@@ -88,7 +110,7 @@ For environments using RSA keys managed via JWKS (JSON Web Key Set), you can poi
 
 ```python jwks_file_setup.py
 app.add_middleware(
-    JWTMiddleware,
+    AuthMiddleware,
     jwks_file="/path/to/jwks.json",
     algorithm="RS256",
     authorization=True,
@@ -147,7 +169,7 @@ This is useful for:
 - Automatically filtering sessions retrieved from `/sessions` endpoints by `user_id` (where applicable)
 - Automatically injecting `dependencies` from claims in your JWT token into the agent run, which then is available on tools called by your agent
 
-View the [full example](/agent-os/usage/middleware/jwt-middleware) for more details.
+See the [full example](/agent-os/usage/middleware/jwt-middleware).
 
 ## Security Features
 
@@ -182,10 +204,10 @@ Do not use `validate=False` in production. The middleware decodes claims without
 Skip signature verification in local development, or when an upstream API gateway already validates JWTs.
 
 ```python
-from agno.os.middleware.jwt import JWTMiddleware
+from agno.os.middleware.jwt import AuthMiddleware
 
 app.add_middleware(
-    JWTMiddleware,
+    AuthMiddleware,
     validate=False,
 )
 ```
@@ -198,7 +220,7 @@ Enable Role-Based Access Control (RBAC) to validate JWT scopes against required 
 
 ```python jwt_with_rbac.py
 app.add_middleware(
-    JWTMiddleware,
+    AuthMiddleware,
     verification_keys=["your-jwt-key"],
     algorithm="RS256",
     authorization=True,  # Enable RBAC
@@ -226,7 +248,7 @@ Override or extend default scope mappings:
 
 ```python custom_scope_mappings.py
 app.add_middleware(
-    JWTMiddleware,
+    AuthMiddleware,
     verification_keys=["your-key"],
     authorization=True,
     scope_mappings={
@@ -250,14 +272,14 @@ RBAC controls which endpoints a caller can hit. User isolation controls which ro
 
 ```python jwt_with_user_isolation.py
 app.add_middleware(
-    JWTMiddleware,
+    AuthMiddleware,
     verification_keys=["your-jwt-key"],
     authorization=True,
     user_isolation=True,
 )
 ```
 
-When `user_isolation=True`, non-admin callers are scoped to their own `user_id` (from the JWT `sub` claim) for sessions, memory, traces and approvals. Callers holding `admin_scope` bypass isolation. See [Per-User Data Isolation](/agent-os/security/rbac#per-user-data-isolation) for the full behavior.
+When `user_isolation=True`, non-admin callers are scoped to their own `user_id` (from the JWT `sub` claim) for sessions, memory, traces and approvals. Callers holding `admin_scope` bypass isolation. See [Per-User Data Isolation](/agent-os/security/authorization/user-isolation) for the full behavior.
 
 ## Excluded Routes
 
@@ -271,7 +293,7 @@ Override them with `excluded_route_paths`:
 
 ```python jwt_excluded_routes.py
 app.add_middleware(
-    JWTMiddleware,
+    AuthMiddleware,
     verification_keys=["your-key"],
     excluded_route_paths=[
         "/health",
@@ -283,12 +305,12 @@ app.add_middleware(
 ```
 
 <Warning>
-`excluded_route_paths` replaces the defaults, it is not additive. Re-include any default routes you want to keep.
+`excluded_route_paths` replaces the defaults. Re-include any default routes you want to keep.
 </Warning>
 
 ## Configuration Options
 
-See the [JWTMiddleware Reference](/reference/agent-os/jwt-middleware) for the complete list of configuration options.
+See the [AuthMiddleware reference](/reference/agent-os/jwt-middleware) for the complete list of configuration options.
 
 ### Authentication Options
 
@@ -299,6 +321,12 @@ See the [JWTMiddleware Reference](/reference/agent-os/jwt-middleware) for the co
 | `secret_key` | **(Deprecated)** Use `verification_keys` instead. | - |
 | `algorithm` | JWT algorithm (RS256, HS256, ES256, etc.) | `"RS256"` |
 | `validate` | Enable token validation | `True` |
+| `security_key` | Static OS security key credential. Only consulted when no JWT source is configured. | `None` |
+| `service_account_verifier` | Verifier for `agno_pat_` service-account tokens. Falls back to `app.state.service_account_verifier`, which AgentOS sets whenever a database is configured. | `None` |
+
+<Note>
+Construction requires at least one credential source: a JWT key source (`verification_keys`, `jwks_file`, or their environment variables), `validate=False`, a `security_key`, or a `service_account_verifier`. `authorization=True` additionally requires a JWT source (verification keys, a JWKS file, or `validate=False` for unverified dev mode).
+</Note>
 
 ### Token Source Options
 
@@ -364,11 +392,11 @@ See the [JWTMiddleware Reference](/reference/agent-os/jwt-middleware) for the co
     Scopes, roles, and access control configuration.
   </Card>
   <Card
-    title="JWTMiddleware Reference"
+    title="AuthMiddleware Reference"
     icon="code"
     href="/reference/agent-os/jwt-middleware"
   >
-    Complete JWT middleware class reference.
+    Complete auth middleware class reference.
   </Card>
 </CardGroup>
 

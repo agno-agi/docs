@@ -37,9 +37,20 @@ A caller holding `admin_scope` (default `agent_os:admin`) bypasses isolation and
 Isolation is off by default. JWT and scope checks still apply when `user_isolation=False`, but routes operate on the unscoped database and add no per-user ownership gates on top of authorization. Per-user isolation requires a database that records `user_id` (PostgreSQL recommended for production).
 </Note>
 
+## Service Accounts
+
+[Service account](/agent-os/security/authorization/service-accounts) principals (`sa:<name>`) self-scope regardless of the `user_isolation` flag. The scoping decision runs in this order:
+
+1. A caller holding the admin scope is never scoped. This is checked first, so an admin service account reads across users.
+2. A service account is scoped to its own `sa:<name>` principal, even when `user_isolation=False`.
+3. JWT callers are scoped to their `sub` only when `user_isolation=True`.
+
+A machine token stamps its sessions and memories with its own principal, so an unscoped default would read every user's history. For a cross-user token, mint one with the admin scope.
+
 ## Next Steps
 
 | Task | Guide |
 |------|-------|
 | Issue tokens with the `sub` claim | [Tokens](/agent-os/security/authorization/tokens) |
+| Mint machine tokens | [Service Accounts](/agent-os/security/authorization/service-accounts) |
 | See the user isolation cookbook example | [user_isolation.py](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/rbac/symmetric/user_isolation.py) |

@@ -1,145 +1,182 @@
 ---
 title: "AgentOS as MCP Server"
-description: "Learn how and why to expose your AgentOS as an MCP server"
-keywords: [agentos, mcp, mcp server, expose as mcp]
+description: "Serve AgentOS as an MCP server at /mcp: eight built-in tools, custom tools, and per-call authorization via MCPServerConfig."
+keywords: [agentos, mcp, mcp server, expose as mcp, MCPServerConfig]
 ---
 
-Your AgentOS will by default be exposed as an API. But you can also expose it as an **MCP server**.
+Set `mcp_server=True` to serve an MCP server at `/mcp` alongside the REST API. MCP clients such as Claude, Claude Code, and Cursor can then discover your agents, teams, and workflows, run them, and browse past conversations.
 
-This is done by setting `mcp_server=True` when creating your AgentOS instance:
-
-```python
-agent_os = AgentOS(mcp_server=True)
-```
-
-## Why use MCP?
-
-The [MCP protocol](https://modelcontextprotocol.io) has become the industry standard to handle connecting AI applications with external tools and data sources.
-
-By exposing your AgentOS as an MCP server, external clients that can handle MCP-compatible applications will be able to connect to your AgentOS and interact with it.
-
-
-## Example
-
-```python enable_mcp_example.py
+```python mcp_server.py
 from agno.agent import Agent
-from agno.db.postgres import PostgresDb
+from agno.db.sqlite import SqliteDb
 from agno.models.anthropic import Claude
 from agno.os import AgentOS
-from agno.tools.hackernews import HackerNewsTools
 
-# Setup the database
-db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+db = SqliteDb(db_file="tmp/agentos.db")
 
-# Create your agents
-web_research_agent = Agent(
-    name="Web Research Agent",
-    model=Claude(id="claude-sonnet-4-0"),
+assistant = Agent(
+    id="assistant",
+    name="Assistant",
+    model=Claude(id="claude-sonnet-4-5"),
     db=db,
-    tools=[HackerNewsTools()],
     markdown=True,
 )
 
-# Setup AgentOS with MCP enabled
 agent_os = AgentOS(
-    description="Example app with MCP enabled",
-    agents=[web_research_agent],
-    mcp_server=True,  # This enables a LLM-friendly MCP server at /mcp
+    agents=[assistant],
+    mcp_server=True,
 )
 
 app = agent_os.get_app()
 
 if __name__ == "__main__":
-    # Your MCP server will be available at http://localhost:7777/mcp
-    agent_os.serve(app="enable_mcp_example:app", reload=True)
-
+    # MCP server available at http://localhost:7777/mcp
+    agent_os.serve(app="mcp_server:app")
 ```
 
-Once enabled, your AgentOS will expose an MCP server via the `/mcp` endpoint.
+The MCP server requires `fastmcp`. Without it, building the app raises an `ImportError`. Install the extra:
 
-You can see a complete example [here](/agent-os/usage/mcp/enable-mcp-example).
+```bash
+pip install "agno[mcp]"
+```
 
-## Available MCP Tools
+## Connect a Client
 
-When you expose your AgentOS as an MCP server, the following MCP tools will be available:
+The server uses the Streamable HTTP transport. On a secured instance, clients pass their credential in the `Authorization` header (see [Authentication](#authentication)).
 
-### `get_agentos_config`
-Get the configuration of the AgentOS
+<CodeGroup>
 
-### `run_agent`
-Run the desired Agent
+```bash Claude Code
+claude mcp add --transport http agentos http://localhost:7777/mcp \
+  --header "Authorization: Bearer $OS_SECURITY_KEY"
+```
 
-- `agent_id` (str): The ID of the agent to run
-- `message` (str): The message to send to the agent
+```json mcp.json (Cursor and similar)
+{
+  "mcpServers": {
+    "agentos": {
+      "url": "http://localhost:7777/mcp",
+      "headers": {
+        "Authorization": "Bearer your-security-key"
+      }
+    }
+  }
+}
+```
 
-### `run_team`
-Run the desired Team
+</CodeGroup>
 
-- `team_id` (str): The ID of the team to run
-- `message` (str): The message to send to the team
+An Agno agent can operate the server through `MCPTools`. See [Enable AgentOS MCP](/agent-os/usage/mcp/enable-mcp-example) for a complete server and client pair.
 
-### `run_workflow`
-Run the desired Workflow
+## Built-in Tools
 
-- `workflow_id` (str): The ID of the workflow to run
-- `message` (str): The message to send to the workflow
+The 8 built-in tools are scoped to what an LLM client needs to operate the instance. Session writes and memory CRUD stay on the REST API; register anything else as a [custom tool](#custom-tools).
 
-### `get_sessions_for_agent`
-Get the list of sessions for the desired Agent
+| Tool | Purpose | Key parameters |
+|------|---------|----------------|
+| `get_agentos_config` | Discover the agents, teams, and workflows available to run, plus database IDs. Call first. | None |
+| `run_agent` | Run an agent and return its response. | `agent_id`, `message`, optional `session_id` and `user_id` |
+| `run_team` | Run a team. Same session and pause semantics as `run_agent`. | `team_id`, `message`, optional `session_id` and `user_id` |
+| `run_workflow` | Run a workflow, reporting progress per step. | `workflow_id`, `message`, optional `session_id` and `user_id` |
+| `continue_run` | Resume a `PAUSED` run after resolving its requirements (human-in-the-loop). | `run_id`, `session_id`, exactly one of `agent_id` / `team_id` / `workflow_id`, `requirements` |
+| `cancel_run` | Request cancellation of a run. | `run_id`, `session_id`, exactly one of `agent_id` / `team_id` / `workflow_id` |
+| `get_sessions` | List past sessions, newest first. Read-only. | `session_type`, `component_id`, `user_id`, `session_name`, `limit`, `page`, `db_id` |
+| `get_session_runs` | Read a session's history: each run's input and answer. Pass `run_id` for that one run in full detail (complete transcript, events, and metrics). | `session_id`, optional `run_id`, `session_type`, `db_id` |
 
-- `agent_id` (str): The ID of the agent to get the sessions for
-- `db_id` (str): The ID of the database to use
-- `user_id` (Optional[str]): The ID of the user to get the sessions for
-- `sort_by` (Optional[str]): The field to sort the sessions by. Defaults to `created_at`
-- `sort_order` (Optional[str]): The order to sort the sessions by. Defaults to `desc`
+Behavior shared by the run tools:
+
+- Omit `session_id` to start a fresh session; the new ID comes back in `structuredContent`. Pass a `session_id` from `get_sessions` to continue that conversation.
+- Long runs send MCP progress notifications: tool calls for agents and teams, step counts for workflows.
+- A result with `status=PAUSED` carries its unresolved requirements. Resolve them and pass them to `continue_run`.
+- `db_id` on the session tools is only needed when `get_agentos_config` lists multiple databases.
+
+## MCPServerConfig
+
+Pass `mcp_server=MCPServerConfig(...)` to register custom tools, scope the built-ins, gate the server, and add transport protection:
+
+```python
+from agno.os import AgentOS
+from agno.os.config import MCPServerConfig
+
+OWNER_IDS = {"owner@example.com"}
+
+agent_os = AgentOS(
+    agents=[assistant],
+    mcp_server=MCPServerConfig(
+        tools=[ask_workspace],                           # register custom tools
+        exclude_tags={"session"},                        # drop the read-only session tools
+        authorize=lambda user_id: user_id in OWNER_IDS,  # 401 non-owners before any tool runs
+        allowed_hosts=["my-app.example.com"],            # DNS-rebinding protection
+    ),
+)
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `tools` | `None` | Custom tools: plain callables or Agno tools/`Function`s. They share the `/mcp` mount, lifespan, and auth with the built-ins. |
+| `enable_builtin_tools` | `True` | Master switch for the 8 built-in tools. Set `False` to ship only your own tools (requires `tools`). |
+| `include_tags` / `exclude_tags` | `None` | Scope the built-ins by tag: `"core"` covers `get_agentos_config`, the run tools, `continue_run`, and `cancel_run`; `"session"` covers the read-only session tools. |
+| `result_mode` | `"trimmed"` | How the run tools serialize results. See [Result modes](#result-modes). |
+| `authorize` | `None` | Per-call gate `fn(user_id) -> bool`. Runs after token verification; returning `False` rejects the request with 401 before any tool or model runs. |
+| `allowed_hosts` | `None` | Host allowlist for DNS-rebinding protection. See [Transport Security](#transport-security). |
+| `allowed_origins` | `None` | Extra exact origins to allow when they are served from hosts outside `allowed_hosts`. |
+| `middleware` | `None` | `starlette.middleware.Middleware` instances added to the MCP app. |
+
+A config with `enable_builtin_tools=False` and no `tools` raises at construction. It would mount a server with zero tools.
+
+### Result Modes
+
+MCP tool results land in the consuming model's context window, so the default keeps them small.
+
+| Mode | Result | Use when |
+|------|--------|----------|
+| `"trimmed"` (default) | Answer text plus generated media as MCP content blocks. `structuredContent` carries only `run_id`, `session_id`, `status`, and the unresolved requirements when paused. | The client is an LLM frontend. |
+| `"full"` | `structuredContent` is the run's complete `to_dict()`, with media base64-encoded. | Programmatic clients that need the whole run object. |
+
+### Custom Tools
+
+```python
+from agno.tools import tool
 
 
-### `get_sessions_for_team`
-Get the list of sessions for the desired Team
+@tool(
+    name="ask_workspace",
+    description="Ask the workspace agent a question and get an answer",
+)
+async def ask_workspace(question: str, user_id: str) -> str:
+    response = await workspace_agent.arun(question, user_id=user_id)
+    return response.content or ""
+```
 
-- `team_id` (str): The ID of the team to get the sessions for
-- `db_id` (str): The ID of the database to use
-- `user_id` (Optional[str]): The ID of the user to get the sessions for
-- `sort_by` (Optional[str]): The field to sort the sessions by. Defaults to `created_at`
-- `sort_order` (Optional[str]): The order to sort the sessions by. Defaults to `desc`
+Declare a `user_id` parameter and AgentOS fills it with the authenticated caller's ID (the JWT subject). The parameter is hidden from the client-facing tool schema, so callers cannot spoof it. Tools that need the full request can declare a FastMCP `Context` parameter, which FastMCP injects natively.
 
-### `get_sessions_for_workflow`
-Get the list of sessions for the desired Workflow
+Combine `tools=[...]` with `enable_builtin_tools=False` to expose a single purpose-built tool instead of the built-ins.
 
-- `workflow_id` (str): The ID of the workflow to get the sessions for
-- `db_id` (str): The ID of the database to use
-- `user_id` (Optional[str]): The ID of the user to get the sessions for
-- `sort_by` (Optional[str]): The field to sort the sessions by. Defaults to `created_at`
-- `sort_order` (Optional[str]): The order to sort the sessions by. Defaults to `desc`
+## Authentication
 
-### `create_memory`
-Create a new user memory
+Authentication is enforced on `/mcp` in every mode. One auth layer covers the REST routes and the MCP server: any credential that works against the API works against `/mcp`, passed as a Bearer token.
 
-- `db_id` (str): The ID of the database to use
-- `memory` (str): The memory content to store
-- `user_id` (str): The user this memory is about
-- `topics` (Optional[list[str]]): The topics of the memory
+| Mode | Server setup | Client credential |
+|------|--------------|-------------------|
+| Security key | `export OS_SECURITY_KEY="your-key"` | `Authorization: Bearer <security key>` |
+| Service account token | Issue via `POST /service-accounts` (requires a database) | `Authorization: Bearer agno_pat_...` |
+| JWT | `AgentOS(authorization=True, ...)` | `Authorization: Bearer <JWT>` |
 
-### `get_memories_for_user`
-Get the list of memories for the given user
+With `authorization=True`, each tool call is checked against the scopes of its equivalent REST route: `run_agent` requires the same scopes as `POST /agents/{id}/runs`, `get_sessions` the same as `GET /sessions`. See [Security & Auth](/agent-os/security/overview).
 
-- `user_id` (str): The ID of the user to get the memories for
-- `db_id` (Optional[str]): The ID of the database to use
-- `sort_by` (Optional[str]): The field to sort the memories by. Defaults to `created_at`
-- `sort_order` (Optional[str]): The order to sort the memories by. Defaults to `desc`
+The `authorize` gate on `MCPServerConfig` layers on top of authentication: it receives the verified `user_id` and can reject callers per request. Without `authorization=True` no JWT layer resolves the caller, so the gate is called with `user_id=None`. Handle `None` in your gate; return `False` to reject unauthenticated callers.
 
-### `update_memory`
-Update the desired memory
+## Transport Security
 
-- `db_id` (str): The ID of the database to use
-- `memory_id` (str): The ID of the memory to update
-- `memory` (str): The memory content to store
-- `user_id` (str): The ID of the user to update the memory for
+fastmcp's built-in Host/Origin guard is disabled on `/mcp`. `MCPServerConfig.allowed_hosts` is the transport guard:
 
-### `delete_memory`
-Delete the desired memory
+- Left unset (default), no host validation runs.
+- When set, the request `Host` (and `Origin`, when present) must match your list or the localhost defaults (`localhost`, `127.0.0.1`, `[::1]`). Anything else is rejected with 400 before it reaches the MCP machinery. `*.example.com` wildcard patterns are supported.
 
-- `db_id` (str): The ID of the database to use
-- `memory_id` (str): The ID of the memory to delete
+This is DNS-rebinding protection: it stops a malicious web page from driving an always-on local MCP server through a rebound DNS name. List only your deploy or tunnel host; localhost works out of the box.
 
-See a full example [here](/agent-os/usage/mcp/enable-mcp-example).
+## Developer Resources
+
+- [Enable AgentOS MCP example](/agent-os/usage/mcp/enable-mcp-example)
+- [MCPTools within AgentOS](/agent-os/mcp/tools)
+- [Security & Auth](/agent-os/security/overview)

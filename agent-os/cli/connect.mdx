@@ -1,0 +1,112 @@
+---
+title: "Connect Your Clients"
+sidebarTitle: "agno connect"
+description: "Connect Claude Code, Claude Desktop, Codex, and Cursor to a running AgentOS over MCP with one command."
+---
+
+```bash
+agno connect
+```
+
+`agno connect` finds your running AgentOS, mints one service-account token per coding agent, writes each client's MCP configuration, and verifies every entry with a real MCP handshake. Your coding agents can then run your agents, teams, and workflows through the [AgentOS MCP server](/agent-os/mcp/mcp).
+
+The AgentOS must have its MCP server enabled:
+
+```python
+agent_os = AgentOS(
+    agents=[...],
+    enable_mcp_server=True,
+)
+```
+
+## The Execution Flow
+
+1. **Discover.** Resolve the AgentOS from `--url`, `AGENTOS_URL`, or a localhost probe, then read its version, MCP path, and auth mode from `GET /info`.
+2. **Authenticate.** When authorization is enabled, resolve an admin credential from `AGNO_ADMIN_TOKEN` or `OS_SECURITY_KEY`, or prompt for it.
+3. **Mint.** Create one service account per client (named `claude-code`, `cursor`, and so on) with the server's default run and read scopes and a 90-day expiry.
+4. **Write.** Add an MCP server entry named `agno` to each client's own config file.
+5. **Verify.** Read the entry back the way the client would resolve it, then complete an MCP `initialize` and `tools/list` call against the AgentOS with the configured token.
+6. **Report.** Print per-client results: `connected`, `already ok`, `skipped`, `action needed`, or `failed`.
+
+Re-runs are safe. Entries that still verify are left alone, broken or stale ones are rotated, and `--skip-existing` never touches anything that exists.
+
+## Supported Clients
+
+By default `agno connect` configures every client it detects on the machine. Scope the run with `--clients`:
+
+```bash
+agno connect --clients claude-code,cursor
+```
+
+| Client | `--clients` value | Config written |
+|--------|-------------------|----------------|
+| Claude Code | `claude-code` (or `claude`) | `~/.claude.json`, or `.mcp.json` with `--project` |
+| Claude Desktop | `claude-desktop` | `claude_desktop_config.json`, launching the `mcp-remote` bridge via `npx` |
+| OpenAI Codex | `codex` | `~/.codex/config.toml` |
+| Cursor | `cursor` | `~/.cursor/mcp.json`, or `.cursor/mcp.json` with `--project` |
+| claude.ai / Claude apps | `claude-ai` | None. Prints manual Connector setup steps. |
+| ChatGPT | `chatgpt` | None. Prints manual Connector setup steps. |
+
+<Note>
+Claude Desktop speaks MCP over stdio only, so its entry launches the `mcp-remote` proxy with `npx`. Node.js must be installed for that entry to start.
+</Note>
+
+## claude.ai and ChatGPT
+
+The hosted chat apps add MCP servers from their own cloud, so `agno connect` cannot write or verify anything for them. It prints the setup steps instead:
+
+```bash
+agno connect --clients claude-ai,chatgpt
+```
+
+Requirements:
+
+- The AgentOS must be on a public HTTPS URL. A local AgentOS is unreachable from the apps' clouds; deploy it or expose it through a tunnel first.
+- Both apps' Connectors UIs authenticate with OAuth, not bearer tokens, so the AgentOS must be public or OAuth-enabled. A token-protected AgentOS cannot be added from the UI yet.
+- In the app: Settings -> Connectors -> Add custom connector, then paste the printed MCP URL. Custom connectors need a paid plan.
+
+When discovery lands on a public HTTPS AgentOS with authorization disabled, `connect` prints these steps automatically, without `--clients`.
+
+## Options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--url` | autodiscover | AgentOS base URL |
+| `--clients` | detected | Comma-separated client list |
+| `--name` | one account per client | Use one shared service account with this name |
+| `--scopes`, `-s` | server's run + read scopes | Scope to grant (repeatable) |
+| `--expires` | `90d` | Token lifetime in days, or `never` |
+| `--privileged` | off | Required when `--scopes` grants write, delete, admin, or service_accounts scopes |
+| `--server-name` | `agno` | MCP server entry name written to client configs |
+| `--project` | off | Write project-scoped configs (`.mcp.json` / `.cursor/mcp.json`) |
+| `--rotate` | off | Revoke and re-mint existing accounts without asking |
+| `--skip-existing` | off | Never touch existing accounts or config entries |
+| `--allow-http` | off | Permit credentials over plaintext HTTP to a non-loopback host |
+| `--json` | off | Emit a single JSON document |
+
+## Security
+
+Each client gets its own [service account](/agent-os/security/authorization/service-accounts), so a leaked or retired client is revoked without touching the others:
+
+```bash
+agno tokens revoke claude-code
+```
+
+| Behavior | Detail |
+|----------|--------|
+| Default scopes | `agents:run`, `teams:run`, `workflows:run`, `sessions:read`, `config:read` |
+| Expiry | 90 days. Override with `--expires 30` or `--expires never`. |
+| Token storage | Written only to the client's config file (mode `0600`). The CLI stores nothing. |
+| Transport | The CLI refuses to send credentials over plaintext HTTP to a non-loopback host unless you pass `--allow-http`. |
+| Rotation | After `--rotate`, restart the affected client. A running client keeps its old in-process connection until it restarts. |
+
+## Scripting
+
+`--json` prints one JSON document with the discovered OS, per-client results, and the exit code. Exit codes: `0` all connected, `1` nothing connected, `2` usage error, `3` partial success. In `--json` mode the CLI never prompts; set `AGNO_ADMIN_TOKEN` before the run.
+
+## Developer Resources
+
+- [agnoctl reference](/reference/cli/agnoctl)
+- [AgentOS as MCP server](/agent-os/mcp/mcp)
+- [Service accounts](/agent-os/security/authorization/service-accounts)
+- [Manage tokens with the CLI](/agent-os/cli/tokens)

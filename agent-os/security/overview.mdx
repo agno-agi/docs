@@ -1,17 +1,20 @@
 ---
 title: "Security & Auth"
 sidebarTitle: "Security & Auth"
-description: "Secure your AgentOS with authentication and authorization."
+description: "Authentication modes, service account tokens, and the single auth layer covering every AgentOS surface."
 ---
 
-AgentOS supports two security modes:
+AgentOS installs one auth layer that covers the REST API, the MCP server at `/mcp`, interfaces (A2A, AG-UI), and WebSockets. The layer runs in one of three authentication modes:
 
-| Mode | When to use |
-|------|-------------|
-| **Authorization** (Recommended) | Production. JWTs prove identity and scopes control permissions. |
-| **Basic Authentication** | Development. A shared key proves identity. |
+| Mode | Active when | Behavior |
+|------|-------------|----------|
+| `jwt` | `authorization=True`, JWT env vars (`JWT_VERIFICATION_KEY` / `JWT_JWKS_FILE`), or a manually installed `JWTMiddleware` | JWTs prove identity and scopes control permissions per endpoint. Recommended for production. |
+| `security_key` | `OS_SECURITY_KEY` is set and no JWT source is configured | A shared key proves identity. No per-endpoint permissions. |
+| `none` | Neither is configured | All requests pass. Development only. |
 
-## Authorization
+JWT configuration takes precedence over the security key. Service account tokens authenticate in all three modes.
+
+## Authorization (JWT)
 
 AgentOS validates JWT tokens and checks scopes against required permissions for each endpoint. Enable it with `authorization=True`:
 
@@ -29,7 +32,21 @@ Tokens can be issued by the AgentOS control plane, your own backend, or a third-
 
 See [Authorization](/agent-os/security/authorization/overview) for the full setup.
 
-## Basic Authentication
+## Service Accounts (Machine Tokens)
+
+Machine callers such as coding agents, chat apps, and CI pipelines authenticate with opaque `agno_pat_...` tokens instead of JWTs. Tokens are minted through the API or `agno tokens create`, carry their own scopes, and attribute every run to an `sa:<name>` principal:
+
+```bash
+curl -X POST http://localhost:7777/agents/my-agent/runs \
+  -H "Authorization: Bearer agno_pat_..." \
+  -d "message=hello" -d "stream=false"
+```
+
+Service account scopes are ACL data stored in your database, so they are enforced in every authentication mode, including `security_key` and `none`.
+
+See [Service Accounts](/agent-os/security/authorization/service-accounts) for minting, scoping, and revocation.
+
+## Security Key
 
 Set a shared secret in the `OS_SECURITY_KEY` environment variable:
 
@@ -37,9 +54,9 @@ Set a shared secret in the `OS_SECURITY_KEY` environment variable:
 export OS_SECURITY_KEY="your-secret-key"
 ```
 
-Requests without a valid `Authorization: Bearer <key>` header return `401 Unauthorized`. This is the simplest path to a protected AgentOS, suitable for local development or single-team prototypes.
+Requests without a valid `Authorization: Bearer <key>` header return `401 Unauthorized`. This is the simplest path to a protected AgentOS, suitable for local development or single-team prototypes. A valid key is a trusted root: it passes every endpoint and can mint service account tokens.
 
-For production deployments, use [Authorization](#authorization) instead.
+For production deployments, use [Authorization](#authorization-jwt) instead.
 
 ## Next Steps
 
@@ -52,10 +69,24 @@ For production deployments, use [Authorization](#authorization) instead.
     JWT validation, scopes, roles, and per-user data isolation.
   </Card>
   <Card
+    title="Service Accounts"
+    icon="robot"
+    href="/agent-os/security/authorization/service-accounts"
+  >
+    Opaque machine tokens: mint, scope, and revoke.
+  </Card>
+  <Card
     title="JWT Middleware"
     icon="key"
     href="/agent-os/middleware/jwt"
   >
     Token sources, claim extraction, and parameter injection.
+  </Card>
+  <Card
+    title="Scopes"
+    icon="shield"
+    href="/agent-os/security/authorization/scopes"
+  >
+    The full permission reference for every AgentOS endpoint.
   </Card>
 </CardGroup>

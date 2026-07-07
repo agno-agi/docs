@@ -1,17 +1,18 @@
 ---
 title: "Enable AgentOS MCP"
-description: "Complete AgentOS setup with MCP support enabled"
+description: "AgentOS with the MCP server enabled, plus an agent client that authenticates and operates it."
 ---
 
 ## Code
 
-```python cookbook/05_agent_os/mcp/enable_mcp_example.py
+Secure the instance with `OS_SECURITY_KEY`. Every request to the API and to `/mcp` must then carry `Authorization: Bearer <key>`.
 
+```python cookbook/05_agent_os/mcp_demo/mcp_server_example.py
 from agno.agent import Agent
 from agno.db.sqlite import SqliteDb
 from agno.models.anthropic import Claude
 from agno.os import AgentOS
-from agno.tools.hackernews import HackerNewsTools
+from agno.tools.websearch import WebSearchTools
 
 # Setup the database
 db = SqliteDb(db_file="tmp/agentos.db")
@@ -20,9 +21,9 @@ db = SqliteDb(db_file="tmp/agentos.db")
 web_research_agent = Agent(
     id="web-research-agent",
     name="Web Research Agent",
-    model=Claude(id="claude-sonnet-4-0"),
+    model=Claude(id="claude-sonnet-4-5"),
     db=db,
-    tools=[HackerNewsTools()],
+    tools=[WebSearchTools()],
     add_history_to_context=True,
     num_history_runs=3,
     add_datetime_to_context=True,
@@ -30,7 +31,7 @@ web_research_agent = Agent(
     markdown=True,
 )
 
-# Setup our AgentOS with MCP enabled
+# Setup AgentOS with MCP enabled
 agent_os = AgentOS(
     description="Example app with MCP enabled",
     agents=[web_research_agent],
@@ -40,41 +41,59 @@ agent_os = AgentOS(
 app = agent_os.get_app()
 
 if __name__ == "__main__":
-    """Run your AgentOS.
-
-    You can see view your LLM-friendly MCP server at:
-    http://localhost:7777/mcp
-
-    """
-    agent_os.serve(app="enable_mcp_example:app")
+    # MCP server available at http://localhost:7777/mcp
+    agent_os.serve(app="mcp_server_example:app")
 ```
 
-## Define a local test client
+## Define a Local Test Client
+
+The client connects to `/mcp` with the security key in the `Authorization` header and drives the [built-in tools](/agent-os/mcp/mcp#built-in-tools).
 
 ```python test_client.py
 import asyncio
+from os import getenv
+from uuid import uuid4
 
 from agno.agent import Agent
-from agno.models.anthropic import Claude
-from agno.tools.mcp import MCPTools
+from agno.db.in_memory import InMemoryDb
+from agno.models.openai import OpenAIResponses
+from agno.tools.mcp import MCPTools, StreamableHTTPClientParams
 
-# This is the URL of the MCP server we want to use.
-server_url = "http://localhost:7777/mcp"
+# Authenticate against the secured AgentOS with the security key
+server_params = StreamableHTTPClientParams(
+    url="http://localhost:7777/mcp",
+    headers={"Authorization": f"Bearer {getenv('OS_SECURITY_KEY')}"},
+)
+
+session_id = f"session_{uuid4()}"
 
 
-async def run_agent(message: str) -> None:
-    async with MCPTools(transport="streamable-http", url=server_url) as mcp_tools:
+async def run_agent() -> None:
+    async with MCPTools(
+        transport="streamable-http", server_params=server_params, timeout_seconds=60
+    ) as mcp_tools:
         agent = Agent(
-            model=Claude(id="claude-sonnet-4-0"),
+            model=OpenAIResponses(id="gpt-5.5"),
             tools=[mcp_tools],
+            instructions=[
+                "You operate an AgentOS through its MCP tools.",
+                "Call get_agentos_config first to discover the agents, teams, and workflows you can run.",
+                "Use the run tools to delegate work, and the session tools to review past conversations.",
+            ],
+            user_id="john@example.com",
+            session_id=session_id,
+            db=InMemoryDb(),
+            add_history_to_context=True,
             markdown=True,
         )
-        await agent.aprint_response(input=message, stream=True, markdown=True)
+
+        await agent.aprint_response(
+            input="Which agents do I have in my AgentOS?", stream=True, markdown=True
+        )
 
 
-# Example usage
 if __name__ == "__main__":
-    asyncio.run(run_agent("Which agents do I have in my AgentOS?"))
+    asyncio.run(run_agent())
 ```
 
 ## Usage
@@ -85,48 +104,26 @@ if __name__ == "__main__":
   <Step title="Set Environment Variables">
     ```bash
     export ANTHROPIC_API_KEY=your_anthropic_api_key
+    export OPENAI_API_KEY=your_openai_api_key
+    export OS_SECURITY_KEY=your_security_key
     ```
   </Step>
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U "agno[mcp]" anthropic fastapi uvicorn sqlalchemy pgvector psycopg
-    ```
-  </Step>
-
-  <Step title="Setup PostgreSQL Database">
-    ```bash
-    # Using Docker
-    docker run -d \
-      --name agno-postgres \
-      -e POSTGRES_DB=ai \
-      -e POSTGRES_USER=ai \
-      -e POSTGRES_PASSWORD=ai \
-      -p 5532:5432 \
-      pgvector/pgvector:pg17
+    uv pip install -U "agno[os,mcp]" anthropic openai ddgs
     ```
   </Step>
 
   <Step title="Run Server">
-    <CodeGroup>
-    ```bash Mac
-    python cookbook/05_agent_os/mcp/enable_mcp_example.py
+    ```bash
+    python cookbook/05_agent_os/mcp_demo/mcp_server_example.py
     ```
-
-    ```bash Windows
-    python cookbook/05_agent_os/mcp/enable_mcp_example.py
-    ```
-    </CodeGroup>
   </Step>
-  <Step title="Run Test Client">
-    <CodeGroup>
-    ```bash Mac
-    python cookbook/05_agent_os/mcp/test_client.py
-    ```
 
-    ```bash Windows
-    python cookbook/05_agent_os/mcp/test_client.py
+  <Step title="Run Test Client">
+    ```bash
+    python test_client.py
     ```
-    </CodeGroup>
   </Step>
 </Steps>

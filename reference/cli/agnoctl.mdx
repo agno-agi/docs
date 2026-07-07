@@ -1,0 +1,269 @@
+---
+title: "Agno CLI"
+sidebarTitle: "agno (agnoctl)"
+description: "Flags, environment variables, exit codes, and JSON output contracts for every agno CLI command."
+---
+
+The `agno` CLI is published as the `agnoctl` package and ships as a dependency of `agno` 2.7+. Installing either package puts the CLI on your PATH:
+
+| Entry point | Package | Notes |
+|-------------|---------|-------|
+| `agno` | `agno` >= 2.7, `agnoctl` | Primary command |
+| `agnoctl` | `agnoctl` | Same app. Enables `uvx agnoctl <command>` without installing the SDK. |
+
+`agnoctl` requires Python >= 3.9 and depends on `typer`, `rich`, and `httpx` only. It never imports `agno`.
+
+Running bare `agno` prints the command catalog. `agno --version` prints the CLI version.
+
+## Environment Variables
+
+| Variable | Read by | Purpose |
+|----------|---------|---------|
+| `AGENTOS_URL` | `connect`, `status`, `tokens` | AgentOS base URL when `--url` is not passed. Skips the localhost probe. |
+| `AGNO_ADMIN_TOKEN` | `connect`, `tokens` | Admin credential for the service-accounts API. Checked first. |
+| `OS_SECURITY_KEY` | `connect`, `tokens` | Admin credential fallback when `AGNO_ADMIN_TOKEN` is unset. |
+
+When neither credential variable is set and the AgentOS enforces authorization, the CLI prompts interactively. In `--json` mode or with a non-TTY stdin it exits with an error instead of prompting.
+
+## Discovery
+
+Commands that talk to an AgentOS resolve its URL in this order: `--url` flag, `AGENTOS_URL`, then a probe of `http://localhost:7777`, `:7778`, `:7779`, and `:8000`.
+
+Each candidate is checked with `GET /health`, then `GET /info`. Servers that report structured discovery fields (`mcp: {enabled, path}` and `auth_mode`) are read directly; older servers are probed with a `POST /mcp` (MCP mounted or not) and an unauthenticated `GET /config` (auth mode by status code). Detected auth modes: `none`, `security_key`, `jwt`, `unknown`.
+
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success. For `connect`: every selected client connected, was already connected, or received manual steps. |
+| `1` | Error. For `connect`: no client connected. |
+| `2` | Usage error (unknown command, flag, or argument). |
+| `3` | Partial success (`connect` only): some clients connected, others failed. |
+
+## Machine Mode (`--json`)
+
+Every command accepts `--json`:
+
+- stdout carries exactly one JSON document and nothing else.
+- Interactive prompts are disabled. Runs that would need one fail with an error.
+- Errors emit `{"error": "<message>", "hint": "<optional hint>"}` and exit non-zero.
+
+The document shapes per command are listed below. Two shared objects appear throughout:
+
+```json
+// OS object
+{
+  "url": "http://localhost:7777",
+  "version": "2.7.0",
+  "mcp": {"enabled": true, "path": "/mcp"},
+  "auth_mode": "jwt",
+  "discovered_via": "info",
+  "url_source": "default"
+}
+```
+
+```json
+// Service-account object (the plaintext token is excluded)
+{
+  "id": "…",
+  "name": "claude-code",
+  "principal": "sa:claude-code",
+  "token_prefix": "agno_pat_…",
+  "scopes": ["agents:run", "teams:run", "workflows:run", "sessions:read", "config:read"],
+  "created_at": 1767139200,
+  "expires_at": 1774915200,
+  "last_used_at": null,
+  "revoked_at": null
+}
+```
+
+`url_source` is `flag`, `env`, or `default`. `discovered_via` is `info` or `probe`. Timestamps are Unix epoch seconds.
+
+## agno create
+
+```bash
+agno create <name> [--template <starter>] [--url <repo>] [--json]
+```
+
+Scaffolds a project by shallow-cloning a template repository (`git clone --depth 1`, 300s timeout) into `./<name>` and removing its `.git` directory. Requires `git`. Fails if the directory exists. `<name>` must be a single path segment of letters, digits, `-`, and `_`.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--template`, `-t` | `agentos-docker` | Starter template: `agentos-aws`, `agentos-docker`, `agentos-fly`, `agentos-gcp`, `agentos-railway` |
+| `--url`, `-u` | none | Clone from a custom template repository URL instead |
+| `--json` | off | Emit a single JSON document |
+
+JSON output:
+
+```json
+{"path": "/abs/path/my-os", "template": "agentos-docker"}
+```
+
+## agno connect
+
+```bash
+agno connect [OPTIONS]
+```
+
+Connects coding agents to a running AgentOS over MCP: discover, mint one service account per client, write each client's MCP config, read the entry back, and verify it with a real MCP `initialize` + `tools/list` handshake. Requires the AgentOS to have `enable_mcp_server=True`.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--url` | autodiscover | AgentOS base URL |
+| `--clients` | detected | Comma-separated clients: `claude-code`, `claude-desktop`, `codex`, `cursor`; `claude-ai` and `chatgpt` print manual setup steps. Aliases: `claude` (Claude Code), `claude-app` (Claude Desktop), `gpt`/`openai` (ChatGPT). |
+| `--name` | one account per client | Use one shared service account with this name |
+| `--scopes`, `-s` | server's run + read scopes | Scope to grant (repeatable) |
+| `--expires` | `90d` | Token lifetime in days (`90d`, `30`) or `never` |
+| `--privileged` | off | Required when `--scopes` grants write, delete, admin, or service_accounts scopes |
+| `--server-name` | `agno` | MCP server entry name written to client configs. Letters, digits, `-`, `_` only. |
+| `--project` | off | Write project-scoped configs (`.mcp.json` / `.cursor/mcp.json`) instead of user-level |
+| `--rotate` | off | Revoke and re-mint existing accounts without asking |
+| `--skip-existing` | off | Never touch existing accounts or config entries |
+| `--allow-http` | off | Permit sending credentials over plaintext HTTP to a non-loopback host |
+| `--json` | off | Emit a single JSON document |
+
+Config locations per client:
+
+| Client | User scope | Project scope (`--project`) |
+|--------|-----------|------------------------------|
+| `claude-code` | `~/.claude.json` | `<cwd>/.mcp.json` |
+| `claude-desktop` | `claude_desktop_config.json` (macOS: `~/Library/Application Support/Claude/`, Windows: `%APPDATA%\Claude\`, Linux: `~/.config/Claude/`) | n/a |
+| `codex` | `~/.codex/config.toml` | n/a |
+| `cursor` | `~/.cursor/mcp.json` | `<cwd>/.cursor/mcp.json` |
+
+Token-bearing config files are written with mode `0600`. The Claude Desktop entry launches the `mcp-remote` stdio bridge via `npx` and passes the token through an `AGNO_AUTH_HEADER` env entry in the config, keeping it out of argv.
+
+Exit codes: `0` all connected, `1` nothing connected, `2` usage error, `3` partial. JSON output:
+
+```json
+{
+  "os": { "…": "OS object" },
+  "server_name": "agno",
+  "results": [
+    {
+      "client": "claude-code",
+      "status": "connected",
+      "error": null,
+      "location": "/Users/you/.claude.json (user scope)",
+      "account": { "…": "service-account object" },
+      "verify": {"ok": true, "tools": 12, "status_code": 200, "error": null}
+    }
+  ],
+  "warning": null,
+  "exit_code": 0
+}
+```
+
+Result `status` values: `connected`, `already-connected`, `skipped`, `failed`, and `manual` (chat apps; carries `url` and an `instructions` array instead of `location`). Optional result fields: `note`, `rotated` (a different token was replaced; restart the client), `replaced_url` (the entry previously pointed at another AgentOS). `warning` is set when the AgentOS accepts unauthenticated MCP requests despite enforcing auth elsewhere (a pre-enforcement agno version).
+
+## agno status
+
+```bash
+agno status [--url <url>] [--server-name <name>] [--json]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--url` | autodiscover | AgentOS base URL |
+| `--server-name` | `agno` | MCP server entry name to look for in client configs |
+| `--json` | off | Emit a single JSON document |
+
+JSON output:
+
+```json
+{
+  "os": { "…": "OS object" },
+  "clients": [
+    {"client": "claude-code", "detected": true, "configured": true, "location": "/Users/you/.claude.json (user scope)"},
+    {"client": "codex", "detected": false, "configured": false, "location": null}
+  ]
+}
+```
+
+## agno up / down / restart
+
+```bash
+agno up [--file <compose>] [--pull] [--dry-run] [--json]
+agno down [--file <compose>] [--volumes] [--dry-run] [--json]
+agno restart [--file <compose>] [--pull] [--dry-run] [--json]
+```
+
+Run `docker compose` against the project's compose file (600s timeout). Without `--file`, the first of `docker-compose.yml`, `docker-compose.yaml`, `compose.yml`, `compose.yaml` found in `./` then `./infra` is used. `up` runs `docker compose up -d --build`; `down` runs `docker compose down`; `restart` runs `down`, waits 2 seconds, then `up`.
+
+| Flag | Commands | Description |
+|------|----------|-------------|
+| `--file`, `-f` | all | Compose file to use |
+| `--pull`, `-p` | `up`, `restart` | Add `--pull always` to the compose command |
+| `--volumes`, `-v` | `down` | Add `--volumes` (removes named volumes, destroys data) |
+| `--dry-run`, `-dr` | all | Print the compose command without running it |
+| `--json` | all | Emit a single JSON document |
+
+JSON output for `up` and `down`:
+
+```json
+{"command": ["docker", "compose", "-f", "…", "up", "-d", "--build"], "compose_file": "…", "dry_run": false}
+```
+
+`restart` nests both phases:
+
+```json
+{"down": {"…": "…"}, "up": {"…": "…"}, "compose_file": "…", "dry_run": false}
+```
+
+## agno tokens
+
+Admin operations against the AgentOS service-accounts API. All three subcommands accept `--url`, `--json`, and `--allow-http`, and resolve the admin credential from `AGNO_ADMIN_TOKEN` / `OS_SECURITY_KEY` (or a prompt) when the AgentOS enforces authorization. The CLI refuses to send credentials over plaintext HTTP to a non-loopback host without `--allow-http`.
+
+### agno tokens create
+
+```bash
+agno tokens create <name> [-s <scope>]... [--expires 90d] [--privileged] [--json]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--scopes`, `-s` | `agents:run`, `teams:run`, `workflows:run`, `sessions:read`, `config:read` | Scope to grant (repeatable) |
+| `--expires` | `90d` | Days until expiry (`90d`, `30`) or `never` |
+| `--privileged` | off | Required to grant write, delete, admin, or service_accounts scopes |
+
+`<name>` is a lowercase slug (max 63 chars): `a-z`, `0-9`, `-`, `_`, starting with a letter or digit. A name that already exists is a conflict; revoke it or pick another. The plaintext token appears once in the output and is never retrievable again.
+
+JSON output is the service-account object plus a `token` field:
+
+```json
+{"id": "…", "name": "ci-runner", "principal": "sa:ci-runner", "scopes": ["…"], "expires_at": 1774915200, "…": "…", "token": "agno_pat_…"}
+```
+
+### agno tokens list
+
+```bash
+agno tokens list [--json]
+```
+
+Lists all service accounts, including revoked ones. Only metadata and the token display prefix are returned, never tokens.
+
+```json
+{"service_accounts": [{"…": "service-account object"}]}
+```
+
+### agno tokens revoke
+
+```bash
+agno tokens revoke <name> [--yes] [--json]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--yes`, `-y` | off | Skip the interactive confirmation prompt |
+
+Irreversible; the account's tokens stop working on their next request. Interactive runs confirm first. `--yes`, `--json`, and non-TTY runs skip the prompt.
+
+```json
+{"revoked": {"…": "service-account object with revoked_at set"}}
+```
+
+## Developer Resources
+
+- [Agno CLI guides](/agent-os/cli/overview)
+- [Service accounts](/agent-os/security/authorization/service-accounts)
+- [Scopes](/agent-os/security/authorization/scopes)

@@ -6,6 +6,36 @@ description: "Call the AgentOS API to run agents, teams, and workflows."
 
 AgentOS exposes endpoints for running agents and managing sessions, memories, knowledge, and evals. The same API powers the [control plane](/agent-os/control-plane) and can be used to build your AI products.
 
+## Instance Discovery
+
+`GET /info` is unauthenticated and returns what a client needs to bootstrap against an instance: which authentication mode it enforces and whether an MCP server is mounted.
+
+```bash
+curl http://localhost:7777/info
+```
+
+```json
+{
+  "agno_version": "2.7.0",
+  "agent_count": 1,
+  "team_count": 0,
+  "workflow_count": 0,
+  "mcp": {
+    "enabled": true,
+    "path": "/mcp"
+  },
+  "auth_mode": "none"
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `auth_mode` | Authentication enforced by the instance: `none`, `security_key`, or `jwt` |
+| `mcp.enabled` | Whether the MCP server is mounted |
+| `mcp.path` | Mount path of the MCP server, `null` when disabled |
+| `agent_count`, `team_count`, `workflow_count` | Registered components |
+| `agno_version` | Agno version running on the instance |
+
 ## Endpoints
 
 | Resource | Operations |
@@ -37,15 +67,22 @@ Teams and workflows follow the same pattern:
 
 ## Authentication
 
-If authentication is enabled, include a JWT token:
+The `auth_mode` field from `GET /info` tells you which credential to send:
+
+| `auth_mode` | Credential |
+|-------------|------------|
+| `none` | No header required |
+| `security_key` | `Authorization: Bearer <OS_SECURITY_KEY>` |
+| `jwt` | `Authorization: Bearer <jwt-token>` |
+
 ```bash
 curl http://localhost:7777/agents/my-agent/runs \
-  -H "Authorization: Bearer <your-jwt-token>" \
+  -H "Authorization: Bearer <your-token>" \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "message=Your query here"
 ```
 
-See [Security & Authorization](/agent-os/security/overview) to configure authentication.
+Service-account tokens (`agno_pat_...`) are accepted as bearer credentials in every mode on instances with a database. See [Security & Authorization](/agent-os/security/overview) to configure authentication.
 
 ## Passing Dependencies
 

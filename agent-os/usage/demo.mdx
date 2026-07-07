@@ -1,9 +1,9 @@
 ---
 title: "AgentOS Demo"
-description: "AgentOS demo with agents and teams"
+description: "AgentOS with a knowledge-backed agent, a web research team, and Postgres storage."
 ---
 
-Here is a full example of an AgentOS with multiple agents and teams. It also shows how to instantiate agents with a database, knowledge base, and tools.
+A full AgentOS with multiple agents and a team. The Agno Agent combines a Postgres-backed knowledge base with MCP tools for the Agno docs; the Research Team pairs a web search agent with a simple agent. Set `OS_SECURITY_KEY` to require authentication.
 
 ## Code
 
@@ -11,18 +11,20 @@ Here is a full example of an AgentOS with multiple agents and teams. It also sho
 """
 AgentOS Demo
 
+Set OS_SECURITY_KEY to enable authentication.
+
 Prerequisites:
-uv pip install -U fastapi uvicorn sqlalchemy pgvector psycopg openai "agno[mcp]"
+uv pip install -U fastapi uvicorn sqlalchemy pgvector psycopg openai ddgs "agno[mcp]"
 """
 
 from agno.agent import Agent
 from agno.db.postgres import PostgresDb
 from agno.knowledge.knowledge import Knowledge
-from agno.models.openai import OpenAIResponses
+from agno.models.openai import OpenAIChat
 from agno.os import AgentOS
 from agno.team import Team
-from agno.tools.hackernews import HackerNewsTools
 from agno.tools.mcp import MCPTools
+from agno.tools.websearch import WebSearchTools
 from agno.vectordb.pgvector import PgVector
 
 # Database connection
@@ -45,7 +47,7 @@ knowledge = Knowledge(
 # Create your agents
 agno_agent = Agent(
     name="Agno Agent",
-    model=OpenAIResponses(id="gpt-5.2"),
+    model=OpenAIChat(id="gpt-4.1"),
     tools=[MCPTools(transport="streamable-http", url="https://docs.agno.com/mcp")],
     db=db,
     update_memory_on_run=True,
@@ -57,7 +59,7 @@ simple_agent = Agent(
     name="Simple Agent",
     role="Simple agent",
     id="simple_agent",
-    model=OpenAIResponses(id="gpt-5.2"),
+    model=OpenAIChat(id="gpt-5.2"),
     instructions=["You are a simple agent"],
     db=db,
     update_memory_on_run=True,
@@ -67,9 +69,9 @@ research_agent = Agent(
     name="Research Agent",
     role="Research agent",
     id="research_agent",
-    model=OpenAIResponses(id="gpt-5.2"),
+    model=OpenAIChat(id="gpt-5.2"),
     instructions=["You are a research agent"],
-    tools=[HackerNewsTools()],
+    tools=[WebSearchTools()],
     db=db,
     update_memory_on_run=True,
 )
@@ -79,10 +81,10 @@ research_team = Team(
     name="Research Team",
     description="A team of agents that research the web",
     members=[research_agent, simple_agent],
-    model=OpenAIResponses(id="gpt-5.2"),
+    model=OpenAIChat(id="gpt-4.1"),
     id="research_team",
     instructions=[
-        "You are the lead researcher of a research team! 🔍",
+        "You are the lead researcher of a research team.",
     ],
     db=db,
     update_memory_on_run=True,
@@ -100,6 +102,7 @@ app = agent_os.get_app()
 
 
 if __name__ == "__main__":
+    # Don't use reload=True here; it can break the MCP connection during the FastAPI lifespan
     agent_os.serve(app="demo:app", port=7777)
 ```
 
@@ -111,13 +114,13 @@ if __name__ == "__main__":
   <Step title="Set Environment Variables">
     ```bash
     export OPENAI_API_KEY=your_openai_api_key
-    export OS_SECURITY_KEY=your_security_key  # Optional for authentication
+    export OS_SECURITY_KEY=your_security_key  # Optional, enables authentication
     ```
   </Step>
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U fastapi uvicorn sqlalchemy pgvector psycopg openai "agno[mcp]"
+    uv pip install -U fastapi uvicorn sqlalchemy pgvector psycopg openai ddgs "agno[mcp]"
     ```
   </Step>
 
