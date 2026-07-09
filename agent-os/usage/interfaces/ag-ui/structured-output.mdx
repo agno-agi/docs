@@ -1,0 +1,81 @@
+---
+title: Structured Output
+description: Return typed Pydantic output from an Agno agent over AG-UI.
+---
+
+## Code
+
+```python cookbook/05_agent_os/interfaces/agui/structured_output.py
+from typing import List
+
+from agno.agent.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.os import AgentOS
+from agno.os.interfaces.agui import AGUI
+from pydantic import BaseModel, Field
+
+
+class MovieScript(BaseModel):
+    setting: str = Field(..., description="Setting for the movie.")
+    ending: str = Field(..., description="How the movie ends.")
+    genre: str = Field(..., description="Genre, e.g. action or thriller.")
+    name: str = Field(..., description="Name of the movie.")
+    characters: List[str] = Field(..., description="Main characters.")
+    storyline: str = Field(..., description="A 3-sentence storyline.")
+
+
+chat_agent = Agent(
+    name="Output Schema Agent",
+    model=OpenAIResponses(id="gpt-5.4"),
+    description="You write movie scripts.",
+    markdown=True,
+    output_schema=MovieScript,
+)
+
+agent_os = AgentOS(
+    agents=[chat_agent],
+    interfaces=[AGUI(agent=chat_agent)],
+)
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="structured_output:app", port=9001, reload=True)
+```
+
+## Usage
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Set Environment Variables">
+    ```bash
+    export OPENAI_API_KEY=your_openai_api_key
+    ```
+  </Step>
+
+  <Step title="Install Dependencies">
+    ```bash
+    uv pip install 'agno[agui]'
+    ```
+  </Step>
+
+  <Step title="Run Example">
+    ```bash
+    python cookbook/05_agent_os/interfaces/agui/structured_output.py
+    ```
+  </Step>
+</Steps>
+
+## Key Features
+
+- **Structured Output**: `output_schema=MovieScript` returns a typed Pydantic object instead of free text
+- **Pydantic Schema**: Fields with descriptions guide what the agent fills in
+- **Streamed to Frontend**: The structured result streams as content over AG-UI
+
+## Setup Frontend
+
+1. Clone the AG-UI repository: `git clone https://github.com/ag-ui-protocol/ag-ui.git`
+2. Install the TypeScript SDK: `cd ag-ui/typescript-sdk && pnpm install`
+3. Build the Agno integration: `cd integrations/agno && pnpm run build`
+4. Start Dojo: `cd ../../apps/dojo && pnpm run dev`
+5. Open `http://localhost:3000` and select the Agno integration

@@ -1,151 +1,237 @@
 ---
 title: AG-UI
-description: Expose Agno agents via the AG-UI protocol
+sidebarTitle: Overview
+description: Expose Agno agents and teams over the AG-UI protocol for streaming frontends.
+keywords: [ag-ui, agui, interface, protocol, streaming, copilotkit, dojo, frontend, tools, events]
 ---
 
-AG-UI, the [Agent-User Interaction Protocol](https://github.com/ag-ui-protocol/ag-ui), standardizes how AI agents connect to frontend applications.
+The AG-UI interface exposes an Agno agent or team over the [Agent-User Interaction Protocol](https://docs.ag-ui.com/), a streaming event protocol that frontends like CopilotKit and Dojo consume.
 
 <Note>
-**Migration from Apps**: For migration from `AGUIApp`, see the [v2 migration guide](/other/v2-migration#7-apps-interfaces) for complete steps.
+Migrating from `AGUIApp`? See the [v2 migration guide](/other/v2-migration#7-apps-interfaces).
 </Note>
 
-## Example usage
+## Setup
 
-<Steps>
-  <Step title="Install backend dependencies">
+Follow the [AG-UI setup guide](/agent-os/interfaces/ag-ui/setup) to run the backend and connect a frontend.
 
-```bash
-uv pip install ag-ui-protocol
-```
+<Note>
+Install the AG-UI dependencies: `uv pip install 'agno[agui]'`
+</Note>
 
-  </Step>
-  <Step title="Run the backend">
-  Expose an Agno agent through the AG-UI interface using `AgentOS` and `AGUI`.
+Required configuration:
 
+- `OPENAI_API_KEY`, or a key for whichever model provider you use.
+- A frontend pointed at the `{prefix}/agui` endpoint. Use [Dojo](https://github.com/ag-ui-protocol/ag-ui) for local development.
+
+AG-UI uses no tokens, OAuth, or signing secrets. The protocol endpoint is open by default.
+
+## Example Usage
+
+<Tabs>
+  <Tab title="Agent">
 ```python basic.py
-from agno.agent.agent import Agent
+from agno.agent import Agent
 from agno.models.openai import OpenAIResponses
 from agno.os import AgentOS
 from agno.os.interfaces.agui import AGUI
 
-chat_agent = Agent(model=OpenAIResponses(id="gpt-5.5"))
+chat_agent = Agent(
+    name="Assistant",
+    model=OpenAIResponses(id="gpt-5.4"),
+    instructions="You are a helpful AI assistant.",
+    add_datetime_to_context=True,
+    markdown=True,
+)
 
-agent_os = AgentOS(agents=[chat_agent], interfaces=[AGUI(agent=chat_agent)])
+agent_os = AgentOS(
+    agents=[chat_agent],
+    interfaces=[AGUI(agent=chat_agent)],
+)
 app = agent_os.get_app()
 
 if __name__ == "__main__":
-    agent_os.serve(app="basic:app", reload=True)
+    agent_os.serve(app="basic:app", reload=True, port=9001)
+```
+  </Tab>
+  <Tab title="Team">
+```python research_team.py
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.os import AgentOS
+from agno.os.interfaces.agui import AGUI
+from agno.team import Team
+from agno.tools.websearch import WebSearchTools
+
+researcher = Agent(
+    name="researcher",
+    role="Research Assistant",
+    model=OpenAIResponses(id="gpt-5.4"),
+    tools=[WebSearchTools()],
+)
+
+writer = Agent(
+    name="writer",
+    role="Content Writer",
+    model=OpenAIResponses(id="gpt-5.4"),
+)
+
+research_team = Team(
+    name="research_team",
+    members=[researcher, writer],
+    instructions="Use the researcher to gather information, then the writer to create content.",
+)
+
+agent_os = AgentOS(
+    teams=[research_team],
+    interfaces=[AGUI(team=research_team)],
+)
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="research_team:app", reload=True, port=9001)
+```
+  </Tab>
+</Tabs>
+
+<Info>
+See [more examples](/agent-os/usage/interfaces/ag-ui/basic) including [agents with tools](/agent-os/usage/interfaces/ag-ui/agent-with-tools), [reasoning](/agent-os/usage/interfaces/ag-ui/reasoning-agent), and [teams](/agent-os/usage/interfaces/ag-ui/team).
+</Info>
+
+The examples serve on port `9001`, which Dojo expects. See the [setup guide](/agent-os/interfaces/ag-ui/setup) to run a frontend.
+
+## Sessions & State
+
+AG-UI frontends send a `thread_id`, optional `state`, and the full message history with every request. The interface maps these to Agno and uses only the latest user message, letting the agent manage history through its session database.
+
+| AG-UI field | Maps to | Purpose |
+| --- | --- | --- |
+| `thread_id` | `session_id` | Each thread is a separate conversation. |
+| `state` | `session_state` | Shared state available to the agent during the run. |
+| `forwarded_props.user_id` | `user_id` | Per-user memory and history. |
+
+Configure a database on the agent or team to persist history across restarts.
+
+## Reasoning
+
+Reasoning streams to the frontend as AG-UI reasoning events. Native reasoning models and the `ReasoningTools` toolkit are both supported.
+
+See the [reasoning agent example](/agent-os/usage/interfaces/ag-ui/reasoning-agent).
+
+## Structured Output
+
+Set `output_schema` to a Pydantic model to return typed output. The structured result streams to the frontend as content.
+
+See the [structured output example](/agent-os/usage/interfaces/ag-ui/structured-output).
+
+## Frontend Tools
+
+Tools marked `external_execution=True` run on the frontend instead of the backend. The interface streams the tool call to the client, the client executes it, and the result returns on the next request.
+
+```python
+from agno.tools import tool
+
+@tool(external_execution=True)
+def generate_haiku(topic: str) -> str:
+    """Generate a haiku and display it in the frontend."""
+    return "Haiku generated and displayed in frontend"
 ```
 
-  </Step>
-  <Step title="Run the frontend">
+Add `external_execution_silent=True` to suppress the assistant's "I have tools to execute" message for cleaner UX.
 
-Use Dojo (`ag-ui`'s frontend) as an advanced, customizable interface for AG-UI agents.
-
-1. Clone: `git clone https://github.com/ag-ui-protocol/ag-ui.git`
-2. Install dependencies in `/ag-ui/typescript-sdk`: `pnpm install`
-3. Build the Agno package in `/ag-ui/integrations/agno`: `pnpm run build`
-4. Start Dojo following the instructions in the repository.
-
-  </Step>
-  <Step title="Chat with the Agno Agent">
-
-With Dojo running, open `http://localhost:3000` and select the Agno agent.
-
-  </Step>
-</Steps>
-
-Additional examples are available in the [cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/05_agent_os/interfaces/agui/).
+See the [agent with tools example](/agent-os/usage/interfaces/ag-ui/agent-with-tools).
 
 ## Custom Events
 
-Custom events created in tools are automatically delivered to AG-UI in the AG-UI custom event format.
-
-**Creating custom events:**
+Tools can yield custom events, which the interface delivers to the frontend in the AG-UI custom event format.
 
 ```python
 from dataclasses import dataclass
 from agno.run.agent import CustomEvent
+from agno.tools import tool
 
 @dataclass
 class CustomerProfileEvent(CustomEvent):
     customer_name: str
     customer_email: str
-```
-
-**Yielding from tools:**
-
-```python
-from agno.tools import tool
 
 @tool()
 async def get_customer_profile(customer_id: str):
     customer = fetch_customer(customer_id)
-    
     yield CustomerProfileEvent(
         customer_name=customer["name"],
         customer_email=customer["email"],
     )
-    
     return f"Profile retrieved for {customer['name']}"
 ```
 
-Custom events are streamed in real-time to the AG-UI frontend.
+See [Custom Events](/agents/running-agents#custom-events) for details.
 
-See [Custom Events documentation](/agents/running-agents#custom-events) for more details.
+## Multiple Instances
 
-## Core Components
+Run multiple agents or teams on one server by giving each `AGUI` interface a different `prefix`:
 
-- `AGUI` (interface): Wraps an Agno `Agent` or `Team` into an AG-UI compatible FastAPI router.
-- `AgentOS.serve`: Serves the FastAPI app (including the AGUI router) with Uvicorn.
+```python
+agent_os = AgentOS(
+    agents=[chat_agent, research_agent],
+    interfaces=[
+        AGUI(agent=chat_agent, prefix="/chat"),
+        AGUI(agent=research_agent, prefix="/web-research"),
+    ],
+)
+```
 
-`AGUI` mounts protocol-compliant routes on the app.
+Each instance mounts its own `{prefix}/agui` and `{prefix}/status` endpoints.
 
-## `AGUI` interface
+## Security
 
-Main entry point for AG-UI exposure.
+The AG-UI endpoint is open by default and sets permissive CORS headers (`Access-Control-Allow-Origin: *`). It performs no signature verification or authentication.
 
-### Initialization Parameters
+<Warning>
+Add authentication and restrict CORS before exposing the endpoint in production. The defaults suit local development with Dojo.
+</Warning>
 
-| Parameter | Type                                  | Default     | Description                                    |
-| --------- | ------------------------------------- | ----------- | ---------------------------------------------- |
-| `agent`   | `Optional[Union[Agent, RemoteAgent]]` | `None`      | Agno `Agent` or `RemoteAgent` instance.        |
-| `team`    | `Optional[Union[Team, RemoteTeam]]`   | `None`      | Agno `Team` or `RemoteTeam` instance.          |
-| `prefix`  | `str`                 | `""`        | Route prefix (e.g., `/chat`, `/web-research`). |
-| `tags`    | `Optional[List[str]]` | `["AGUI"]`  | OpenAPI tags for the router.                   |
+## Troubleshooting
 
-Provide `agent` or `team`.
+<AccordionGroup>
+  <Accordion title="ImportError: ag_ui not installed">
+    **Cause:** The AG-UI protocol package is missing.
 
-### Key Method
+    **Fix:** Install it with `uv pip install 'agno[agui]'`.
+  </Accordion>
 
-| Method       | Parameters | Return Type | Description                                              |
-| ------------ | ---------- | ----------- | -------------------------------------------------------- |
-| `get_router` | None       | `APIRouter` | Returns the AG-UI FastAPI router and attaches endpoints. |
+  <Accordion title="Frontend cannot reach the backend">
+    **Cause:** Port mismatch. Dojo runs on `http://localhost:3000` and expects the backend on port `9001`.
 
-## Endpoints
+    **Fix:** Serve the backend with `agent_os.serve(app=..., port=9001)` and confirm the frontend points at `http://localhost:9001`.
+  </Accordion>
 
-Mounted at the interface's route prefix (root by default):
+  <Accordion title="No streaming output in the frontend">
+    **Cause:** The frontend is not reading the event stream, or a proxy is buffering it.
 
-- `POST /agui`: Main entrypoint. Accepts `RunAgentInput` from `ag-ui-protocol`. Streams AG-UI events.
-- `GET /status`: Health/status endpoint for the interface.
+    **Fix:** Confirm the request hits `POST {prefix}/agui` and that any proxy passes `text/event-stream` through without buffering.
+  </Accordion>
 
-Refer to `ag-ui-protocol` docs for payload details.
+  <Accordion title="CORS errors in the browser console">
+    **Cause:** A proxy or gateway is stripping the interface's CORS headers.
 
-## Serving AgentOS
+    **Fix:** The interface sets `Access-Control-Allow-Origin: *` by default. Confirm your deployment layer preserves these headers.
+  </Accordion>
+</AccordionGroup>
 
-Use `AgentOS.serve` to run the app with Uvicorn.
+## Developer Resources
 
-### Parameters
-
-| Parameter         | Type                  | Default       | Description                                          |
-| ----------------- | --------------------- | ------------- | ---------------------------------------------------- |
-| `app`             | `Union[str, FastAPI]` | required      | FastAPI app instance or import string.               |
-| `host`            | `str`                 | `"localhost"` | Host to bind. Override with `AGENT_OS_HOST` env var. |
-| `port`            | `int`                 | `7777`        | Port to bind. Override with `AGENT_OS_PORT` env var. |
-| `reload`          | `bool`                | `False`       | Enable auto-reload for development.                  |
-| `reload_includes` | `Optional[List[str]]` | `None`        | File patterns to watch. Auto-adds `*.yaml`, `*.yml`. |
-| `reload_excludes` | `Optional[List[str]]` | `None`        | File patterns to exclude from reload.                |
-| `workers`         | `Optional[int]`       | `None`        | Number of Uvicorn worker processes.                  |
-| `access_log`      | `bool`                | `False`       | Enable Uvicorn access logging.                       |
-
-See [cookbook examples](https://github.com/agno-agi/agno/tree/main/cookbook/05_agent_os/interfaces/agui/) for updated interface patterns.
+<CardGroup cols={2}>
+  <Card title="Setup Guide" icon="rocket" href="/agent-os/interfaces/ag-ui/setup">
+    Run the backend and connect a Dojo frontend step by step.
+  </Card>
+  <Card title="Interface Reference" icon="book" href="/agent-os/interfaces/ag-ui/reference">
+    Parameters, endpoints, and the Agno to AG-UI event map.
+  </Card>
+  <Card title="Deploy Guide" icon="server" href="/deploy/interfaces/ag-ui/overview">
+    Serve the protocol endpoint for frontend integration.
+  </Card>
+  <Card title="Usage Examples" icon="code" href="/agent-os/usage/interfaces/ag-ui/basic">
+    Tools, reasoning, structured output, teams, and multiple instances.
+  </Card>
+</CardGroup>

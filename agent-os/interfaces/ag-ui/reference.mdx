@@ -1,0 +1,83 @@
+---
+title: AG-UI Reference
+sidebarTitle: Reference
+description: Interface parameters, endpoints, and the Agno to AG-UI event map.
+keywords: [ag-ui, agui, reference, parameters, endpoints, events, protocol, api]
+---
+
+## Interface Parameters
+
+Pass one of `agent` or `team` to the `AGUI` constructor.
+
+```python
+from agno.os.interfaces.agui import AGUI
+
+AGUI(agent=my_agent, prefix="/chat")
+```
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `agent` | `Optional[Union[Agent, RemoteAgent]]` | `None` | Agno `Agent` to expose over AG-UI. |
+| `team` | `Optional[Union[Team, RemoteTeam]]` | `None` | Agno `Team` to expose over AG-UI. |
+| `prefix` | `str` | `""` | URL prefix for the AG-UI endpoints (e.g., `/chat` serves `/chat/agui`). |
+| `tags` | `Optional[List[str]]` | `["AGUI"]` | FastAPI route tags for API documentation. |
+
+Provide `agent` or `team`. The constructor raises `ValueError` if neither is set.
+
+## Endpoints
+
+Available at the interface prefix (root by default, customizable with `prefix`).
+
+### `POST {prefix}/agui`
+
+Accepts a `RunAgentInput` payload and returns a Server-Sent Events stream (`text/event-stream`) of AG-UI protocol events.
+
+| Status | Description |
+| --- | --- |
+| **200** | Event stream opened. Agent errors surface as a `RUN_ERROR` event inside the stream, not as an HTTP error. |
+| **422** | Request body failed `RunAgentInput` validation. |
+
+The endpoint sets permissive CORS headers (`Access-Control-Allow-Origin: *`) for local frontend development.
+
+### `GET {prefix}/status`
+
+Health check. Returns `{"status": "available"}`.
+
+## Event Mapping
+
+The interface translates the Agno run stream into AG-UI protocol events.
+
+| Agno event | AG-UI event(s) |
+| --- | --- |
+| Run start | `RUN_STARTED` |
+| Text content | `TEXT_MESSAGE_START`, `TEXT_MESSAGE_CONTENT`, `TEXT_MESSAGE_END` |
+| Tool call started | `TOOL_CALL_START`, `TOOL_CALL_ARGS` |
+| Tool call completed | `TOOL_CALL_END`, `TOOL_CALL_RESULT` |
+| Reasoning started | `REASONING_START`, `REASONING_MESSAGE_START` |
+| Reasoning content | `REASONING_MESSAGE_CONTENT` |
+| Reasoning completed | `REASONING_MESSAGE_END`, `REASONING_END` |
+| Custom event | `CUSTOM` |
+| Paused for external execution | `TOOL_CALL_START`, `TOOL_CALL_ARGS`, `TOOL_CALL_END` (executed on the frontend) |
+| Run completed | `RUN_FINISHED` |
+| Run error | `RUN_ERROR` |
+
+<Note>
+Reasoning works with both native reasoning models and the `ReasoningTools` toolkit. Frontend tools (`external_execution=True`) stream as tool calls the client executes and returns on the next request.
+</Note>
+
+## Developer Resources
+
+<CardGroup cols={2}>
+  <Card title="AG-UI Guide" icon="book" href="/agent-os/interfaces/ag-ui/introduction">
+    Sessions, reasoning, structured output, and troubleshooting.
+  </Card>
+  <Card title="Setup Guide" icon="rocket" href="/agent-os/interfaces/ag-ui/setup">
+    Run the backend and connect a Dojo frontend.
+  </Card>
+  <Card title="Deploy Guide" icon="server" href="/deploy/interfaces/ag-ui/overview">
+    Serve the protocol endpoint for frontend integration.
+  </Card>
+  <Card title="AG-UI Protocol" icon="file-code" href="https://docs.ag-ui.com/">
+    Official protocol specification and SDKs.
+  </Card>
+</CardGroup>

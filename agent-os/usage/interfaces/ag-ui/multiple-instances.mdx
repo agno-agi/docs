@@ -1,0 +1,86 @@
+---
+title: Multiple Instances
+description: Serve multiple Agno agents over AG-UI from one AgentOS with different prefixes.
+---
+
+## Code
+
+```python cookbook/05_agent_os/interfaces/agui/multiple_instances.py
+from agno.agent.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIResponses
+from agno.os import AgentOS
+from agno.os.interfaces.agui import AGUI
+from agno.tools.websearch import WebSearchTools
+
+db = SqliteDb(db_file="tmp/agentos.db")
+
+chat_agent = Agent(
+    name="Assistant",
+    model=OpenAIResponses(id="gpt-5.4"),
+    db=db,
+    instructions="You are a helpful AI assistant.",
+    add_datetime_to_context=True,
+    markdown=True,
+)
+
+web_research_agent = Agent(
+    name="Web Research Agent",
+    model=OpenAIResponses(id="gpt-5.4"),
+    db=db,
+    tools=[WebSearchTools()],
+    instructions="You are a helpful AI assistant that can search the web.",
+    markdown=True,
+)
+
+agent_os = AgentOS(
+    agents=[chat_agent, web_research_agent],
+    interfaces=[
+        AGUI(agent=chat_agent, prefix="/chat"),
+        AGUI(agent=web_research_agent, prefix="/web-research"),
+    ],
+)
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="multiple_instances:app", reload=True, port=9001)
+```
+
+## Usage
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Set Environment Variables">
+    ```bash
+    export OPENAI_API_KEY=your_openai_api_key
+    ```
+  </Step>
+
+  <Step title="Install Dependencies">
+    ```bash
+    uv pip install 'agno[agui]' ddgs
+    ```
+  </Step>
+
+  <Step title="Run Example">
+    ```bash
+    python cookbook/05_agent_os/interfaces/agui/multiple_instances.py
+    ```
+  </Step>
+</Steps>
+
+## Key Features
+
+- **Multiple Endpoints**: Each `AGUI(prefix=...)` mounts its own `{prefix}/agui` endpoint
+- **Shared AgentOS**: Two agents served from a single app
+- **Per-Agent Tools**: The web research agent has `WebSearchTools`; the chat agent does not
+- **Shared Database**: Both agents use the same `SqliteDb`
+
+## Setup Frontend
+
+1. Clone the AG-UI repository: `git clone https://github.com/ag-ui-protocol/ag-ui.git`
+2. Install the TypeScript SDK: `cd ag-ui/typescript-sdk && pnpm install`
+3. Build the Agno integration: `cd integrations/agno && pnpm run build`
+4. Start Dojo: `cd ../../apps/dojo && pnpm run dev`
+5. Open `http://localhost:3000` and select the Agno integration
