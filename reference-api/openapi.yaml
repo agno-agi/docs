@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Agno API Reference
   description: The all-in-one, private, secure agent platform that runs in your cloud.
-  version: 2.7.0a7
+  version: 2.7.2
 paths:
   /:
     get:
@@ -2481,6 +2481,20 @@ paths:
 
         See the [setup guide](/agent-os/interfaces/slack/setup) for creating a Slack App or use the [manifest](/agent-os/interfaces/slack/setup#2-create-the-slack-app) for quick setup.
       operationId: slack_events_simple_agent
+      responses:
+        '200':
+          description: Event processed successfully
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/SlackChallengeResponse'
+                  - $ref: '#/components/schemas/SlackEventResponse'
+                title: Response Slack Events Simple Agent
+        '400':
+          description: Missing Slack headers
+        '403':
+          description: Invalid Slack signature
       parameters:
         - name: X-Slack-Request-Timestamp
           in: header
@@ -2500,20 +2514,6 @@ paths:
           schema:
             type: string
           description: Retry attempt number (present on retried events)
-      responses:
-        '200':
-          description: Event processed successfully
-          content:
-            application/json:
-              schema:
-                anyOf:
-                  - $ref: '#/components/schemas/SlackChallengeResponse'
-                  - $ref: '#/components/schemas/SlackEventResponse'
-                title: Response Slack Events Simple Agent
-        '400':
-          description: Missing required Slack headers (X-Slack-Request-Timestamp or X-Slack-Signature)
-        '403':
-          description: Invalid Slack signature - signing secret mismatch
   /slack/interactions:
     post:
       tags:
@@ -2531,18 +2531,17 @@ paths:
 
         See the [setup guide](/agent-os/interfaces/slack/setup) for step-by-step instructions or the [HITL guide](/agent-os/interfaces/slack/hitl) for approval workflows.
       operationId: slack_interactions_simple_agent
-      requestBody:
-        required: true
-        content:
-          application/x-www-form-urlencoded:
-            schema:
-              type: object
-              required:
-                - payload
-              properties:
-                payload:
-                  type: string
-                  description: URL-encoded JSON interaction payload (Slack sends interactive component data as a single form field)
+      responses:
+        '200':
+          description: Interaction accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SlackEventResponse'
+        '400':
+          description: Malformed interaction payload
+        '403':
+          description: Invalid Slack signature
       parameters:
         - name: X-Slack-Request-Timestamp
           in: header
@@ -2556,17 +2555,18 @@ paths:
           schema:
             type: string
           description: HMAC signature for request verification (v0=hash)
-      responses:
-        '200':
-          description: Interaction accepted
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SlackEventResponse'
-        '400':
-          description: Malformed interaction payload or missing payload field
-        '403':
-          description: Invalid Slack signature - signing secret mismatch
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - payload
+              properties:
+                payload:
+                  type: string
+                  description: URL-encoded JSON interaction payload (Slack sends interactive component data as a single form field)
   /whatsapp/status:
     get:
       tags:
@@ -12910,6 +12910,16 @@ components:
       description: An image input content fragment.
     InfoResponse:
       properties:
+        os_id:
+          type: string
+          title: Os Id
+          description: Unique identifier for the OS instance
+        name:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Name
+          description: Name of the OS instance
         agno_version:
           type: string
           title: Agno Version
@@ -12939,10 +12949,11 @@ components:
             - security_key
             - jwt
           title: Auth Mode
-          description: Authentication mode effectively enforced by this OS instance
+          description: Authentication mode enforced on the REST/WS plane of this OS instance. MCP OAuth, when enabled, is described separately under `mcp.oauth`.
           default: none
       type: object
       required:
+        - os_id
         - agno_version
       title: InfoResponse
       description: Response schema for the /info endpoint returning lightweight OS metadata.
@@ -13373,9 +13384,33 @@ components:
             - type: 'null'
           title: Path
           description: Path where the MCP server is mounted, null when disabled
+        oauth:
+          anyOf:
+            - $ref: '#/components/schemas/McpOAuthInfo'
+            - type: 'null'
+          description: OAuth discovery details when the MCP endpoint is OAuth-protected, null otherwise
       type: object
       title: McpInfo
       description: MCP server availability for the /info endpoint.
+    McpOAuthInfo:
+      properties:
+        authorization_servers:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: 'null'
+          title: Authorization Servers
+          description: Issuer URL(s) of the authorization server(s) protecting the MCP endpoint
+        resource:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Resource
+          description: RFC 9728 resource URL advertised for the MCP endpoint
+      type: object
+      title: McpOAuthInfo
+      description: OAuth discovery details for an MCP endpoint protected by ``AgentOS(mcp_auth=...)``.
     MemoryConfig:
       properties:
         display_name:
