@@ -49,10 +49,11 @@ for chunk in stream:
 
 ## Callable Factories
 
-Pass a function instead of a static list for `tools` or `knowledge`. The function is called at the start of each run, so the toolset or knowledge base can vary per user or session.
+Pass a function for `tools` or `knowledge` when they should be resolved at run start.
 
-```python callable_tools.py
+```python callable_factories.py
 from agno.agent import Agent
+from agno.knowledge.text import TextKnowledgeBase
 from agno.models.openai import OpenAIResponses
 from agno.run import RunContext
 from agno.tools.duckduckgo import DuckDuckGoTools
@@ -66,16 +67,21 @@ def get_tools(run_context: RunContext):
     return [DuckDuckGoTools()]
 
 
+def get_knowledge(run_context: RunContext):
+    tenant = (run_context.session_state or {}).get("tenant", "default")
+    return TextKnowledgeBase(path=f"./data/{tenant}.txt")
+
+
 agent = Agent(
     model=OpenAIResponses(id="gpt-5-mini"),
     tools=get_tools,
+    knowledge=get_knowledge,
 )
-
-agent.print_response("AAPL stock price?", session_state={"role": "finance"}, stream=True)
-agent.print_response("Latest AI news?", session_state={"role": "general"}, stream=True)
 ```
 
-### Callable Caching Settings
+Factories can declare `run_context`, `session_state`, or `agent`. Agno injects matching arguments by name.
+
+### Callable caching
 
 <Snippet file="concept-callable-factories-caching.mdx" />
 
