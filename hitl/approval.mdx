@@ -6,7 +6,7 @@ keywords: [approval, HITL, human-in-the-loop, admin approval, requires_confirmat
 
 Approval enables a "User Triggers, Admin Authorizes" workflow. When an agent (or team member) hits a protected tool during a run, the run pauses and persists a pending record to your database. Execution only resumes once an admin approves or rejects the request.
 
-Approvals are built on HITL primitives (requires_confirmation, requires_user_input, or external_execution). Your tool must implement at least one.
+Approvals are built on HITL primitives (requires_confirmation, requires_user_input, or external_execution). Your tool must implement at least one. Bare `@approval` sets `requires_confirmation=True` automatically if none is set.
 
 <Note>
 Approvals work at both the agent and team level. When a member agent in a team calls an `@approval` tool, the team run pauses with the same flow shown below. See the [Team approval example](/examples/agents/approvals/approval-team).
@@ -36,7 +36,7 @@ When the user asks for something that uses this tool, the run pauses and a **pen
 
 | Type | Behavior | Use Case |
 | --- | --- | --- |
-| `@approval(type="required") or `@approval`` | **Blocking:** Run pauses until an admin reviews and resolves the database record. | Critical actions such as deletion, payments, bulk emails. |
+| `@approval(type="required")` or `@approval` | **Blocking:** Run pauses until an admin reviews and resolves the database record. | Critical actions such as deletion, payments, bulk emails. |
 | `@approval(type="audit")` | **Non-blocking:** Run continues immediately after the HITL interaction is resolved and an audit log is created. | Compliance and activity auditing purposes. |
 
 ### Blocking
@@ -47,7 +47,7 @@ By default, `@approval` needs HITL approval and `requires_confirmation=True` is 
 
 To enable an audit-style (non-blocking) Human-in-the-Loop flow for persistent audit trails, use `@approval(type="audit")`. This will create an audit log after the HITL interaction is resolved.
 
-You can use the @tool decorator with `log_approval=True` to explicitly signal that this tool's execution should be logged in the HITL audit system.
+`@approval(type="audit")` requires at least one HITL flag (`requires_confirmation=True`, `requires_user_input=True`, or `external_execution=True`) on the `@tool()` decorator.
 
 See [User Confirmation](/hitl/user-confirmation) for details.
 
@@ -69,10 +69,10 @@ There are three distinct phases in the approval flow:
       # (e.g. values for user input, result for external execution); SDK applies it on continue_run.
   )
   ```
-* **Resuming the Run:** Continue the run using the `run_id`. The SDK verifies the resolution before proceeding. If the record is missing or still pending, continue_run raises a RuntimeError.
+* **Resuming the Run:** Continue the run using the `run_id` and `session_id`. When called without `requirements`, the SDK verifies the resolution and applies it before proceeding. If the record is missing or still pending, continue_run raises a ValueError.
 
   ```python
-  run = agent.continue_run(run_id=run.run_id, requirements=run.requirements)
+  run = agent.continue_run(run_id=run.run_id, session_id=run.session_id)
   ```
 
 ## Examples
@@ -100,7 +100,7 @@ There are three distinct phases in the approval flow:
 
 ## Developer Resources
 
-* Example code: [Approvals cookbook](https://github.com/agno-agi/agno/blob/main/cookbook/02_agents/11_approvals).
+* Example code: [Approvals cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/02_agents/11_approvals).
 * [Approval reference](/reference-api/schema/approvals/list-approvals)
 * [Tool decorator](/reference/tools/decorator)
 

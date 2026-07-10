@@ -7,7 +7,7 @@ Agno supports using MongoDB asynchronously as a storage backend for Teams, with 
 
 ## Usage
 
-You need to provide either `db_url` or `client`. The following example uses `db_url`.
+You need to provide either `db_url` or `db_client`. The following example uses `db_url`.
 
 ### Run MongoDB
 Install [docker desktop](https://docs.docker.com/desktop/install/mac-install/) and run **MongoDB** on port **27017** using:
@@ -22,8 +22,9 @@ docker run -d \
 
 ```python async_mongodb_for_team.py
 """
-Run: `uv pip install openai pymongo motor` to install dependencies
+Run `uv pip install agno openai ddgs pymongo` to install dependencies.
 """
+import asyncio
 from typing import List
 
 from agno.agent import Agent
@@ -31,11 +32,11 @@ from agno.db.mongo import AsyncMongoDb
 from agno.models.openai import OpenAIResponses
 from agno.team import Team
 from agno.tools.hackernews import HackerNewsTools
-from agno.tools.hackernews import HackerNewsTools
+from agno.tools.websearch import WebSearchTools
 from pydantic import BaseModel
 
 # MongoDB connection settings
-db_url = "mongodb://localhost:27017"
+db_url = "mongodb://mongoadmin:secret@localhost:27017"
 db = AsyncMongoDb(db_url=db_url)
 
 class Article(BaseModel):
@@ -54,7 +55,7 @@ web_searcher = Agent(
     name="Web Searcher",
     model=OpenAIResponses(id="gpt-5.2"),
     role="Searches the web for information on a topic",
-    tools=[HackerNewsTools()],
+    tools=[WebSearchTools()],
     add_datetime_to_context=True,
 )
 
@@ -70,12 +71,13 @@ hn_team = Team(
     ],
     output_schema=Article,
     markdown=True,
-    debug_mode=True,
     show_members_responses=True,
 )
 
-hn_team.print_response("Write an article about the top 2 stories on hackernews")
-
+if __name__ == "__main__":
+    asyncio.run(
+        hn_team.aprint_response("Write an article about the top 2 stories on hackernews")
+    )
 ```
 
 ## Params

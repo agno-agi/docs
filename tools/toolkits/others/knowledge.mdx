@@ -9,31 +9,37 @@ The following agent can search and analyze knowledge bases:
 
 ```python
 from agno.agent import Agent
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.knowledge.knowledge import Knowledge
+from agno.models.openai import OpenAIChat
 from agno.tools.knowledge import KnowledgeTools
-from agno.knowledge import Knowledge
+from agno.vectordb.qdrant import Qdrant
+from agno.vectordb.search import SearchType
 
-# Initialize knowledge base
-knowledge = Knowledge()
-knowledge.load_documents("./docs/")
+knowledge = Knowledge(
+    vector_db=Qdrant(
+        collection="knowledge_tools_demo",
+        url="http://localhost:6333",
+        search_type=SearchType.hybrid,
+        embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+    ),
+)
+knowledge.insert(url="https://docs.agno.com/llms-full.txt")
 
 agent = Agent(
-    instructions=[
-        "You are a knowledge assistant that helps find and analyze information",
-        "Search through the knowledge base to answer questions",
-        "Provide detailed analysis and reasoning about the information found",
-        "Always cite your sources and explain your reasoning",
-    ],
+    model=OpenAIChat(id="gpt-4o"),
     tools=[KnowledgeTools(knowledge=knowledge)],
+    markdown=True,
 )
 
-agent.print_response("What are the best practices for API design?", stream=True)
+agent.print_response("How do I build a team of agents in Agno?", stream=True)
 ```
 
 ## Toolkit Params
 
 | Parameter           | Type                | Default | Description                                                    |
 | ------------------- | ------------------- | ------- | -------------------------------------------------------------- |
-| `knowledge`         | `Knowledge`         | `None`  | Knowledge base instance (required).                           |
+| `knowledge`         | `Knowledge`         | -       | Knowledge base instance (required).                           |
 | `enable_think`      | `bool`              | `True`  | Enable reasoning capabilities.                                |
 | `enable_search`     | `bool`              | `True`  | Enable knowledge search functionality.                       |
 | `enable_analyze`    | `bool`              | `True`  | Enable knowledge analysis capabilities.                      |
@@ -41,17 +47,18 @@ agent.print_response("What are the best practices for API design?", stream=True)
 | `add_instructions`  | `bool`              | `True`  | Whether to add instructions to the agent.                   |
 | `add_few_shot`      | `bool`              | `False` | Whether to include few-shot examples.                       |
 | `few_shot_examples` | `Optional[str]`     | `None`  | Custom few-shot examples.                                    |
+| `all`               | `bool`              | `False` | Enable all functionality.                                    |
 
 ## Toolkit Functions
 
 | Function   | Description                                                      |
 | ---------- | ---------------------------------------------------------------- |
-| `think`    | Apply reasoning to knowledge-based problems and questions.       |
+| `think`    | Scratchpad for reasoning about the question and planning searches. |
 | `search_knowledge` | Search the knowledge base for relevant information.      |
-| `analyze`  | Perform detailed analysis of knowledge base content.            |
+| `analyze`  | Evaluate whether the retrieved documents are correct and sufficient. |
 
 ## Developer Resources
 
 - View [Tools Source](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/tools/knowledge.py)
-- [Agno Knowledge Framework](https://docs.agno.com/knowledge)
-- [Vector Database Integration](https://docs.agno.com/vector-db)
+- [Knowledge overview](/knowledge/overview)
+- [Vector stores](/knowledge/vector-stores/index)
