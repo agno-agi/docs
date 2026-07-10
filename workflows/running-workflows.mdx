@@ -4,7 +4,7 @@ sidebarTitle: Running Workflows
 description: Execute workflows with Workflow.run() and process their output.
 ---
 
-The `Workflow.run()` function runs the agent and generates a response, either as a `WorkflowRunOutput` object or a stream of `WorkflowRunOutput` objects.
+The `Workflow.run()` function runs the workflow and generates a response, either as a `WorkflowRunOutput` object or a stream of `WorkflowRunOutputEvent` objects.
 
 Many of our examples use `workflow.print_response()` which is a helper utility to print the response in the terminal. This uses `workflow.run()` under the hood.
 
@@ -64,7 +64,6 @@ content_creation_workflow = Workflow(
 if __name__ == "__main__":
     response: WorkflowRunOutput = content_creation_workflow.run(
         input="AI trends in 2024",
-        markdown=True,
     )
 
     pprint_run_response(response, markdown=True)
@@ -88,6 +87,7 @@ import asyncio
 
 from agno.agent import Agent
 from agno.tools.hackernews import HackerNewsTools
+from agno.utils.pprint import pprint_run_response
 from agno.workflow import Condition, Step, Workflow, StepInput
 from agno.run.workflow import WorkflowRunOutput, WorkflowRunOutputEvent, WorkflowRunEvent
 
@@ -215,7 +215,6 @@ content_creation_workflow = Workflow(
 if __name__ == "__main__":
     response: Iterator[WorkflowRunOutputEvent] = content_creation_workflow.run(
         input="AI trends in 2024",
-        markdown=True,
         stream=True,
     )
 
@@ -425,7 +424,7 @@ So for example, if you want to stream the response, you can do the following:
 async def main():
     try:
         response: AsyncIterator[WorkflowRunOutputEvent] = basic_workflow.arun(
-            message="Recent breakthroughs in quantum computing",
+            input="Recent breakthroughs in quantum computing",
             stream=True,
             stream_events=True,
         )
@@ -504,8 +503,8 @@ The following events are yielded by the `Workflow.run()` and `Workflow.arun()` f
 | Event Type                    | Description                                       |
 | ----------------------------- | ------------------------------------------------- |
 | `LoopExecutionStarted`        | Indicates the start of a loop                     |
-| `LoopIterationStartedEvent`   | Indicates the start of a loop iteration           |
-| `LoopIterationCompletedEvent` | Signals successful completion of a loop iteration |
+| `LoopIterationStarted`   | Indicates the start of a loop iteration           |
+| `LoopIterationCompleted` | Signals successful completion of a loop iteration |
 | `LoopExecutionCompleted`      | Signals successful completion of a loop           |
 
 #### Router Execution Events
@@ -528,12 +527,10 @@ See detailed documentation in the [WorkflowRunOutputEvent](/reference/workflows/
 
 Workflows can automatically store all execution events for analysis, debugging, and audit purposes. Filter specific event types to reduce noise and storage overhead while maintaining essential execution records.
 
-Access stored events via `workflow.run_response.events` and in the `runs` column of your workflow's session database (SQLite, PostgreSQL, etc.).
+Access stored events via `workflow.get_last_run_output().events` and in the `runs` column of your workflow's session database (SQLite, PostgreSQL, etc.).
 
 - `store_events=True`: Automatically stores all workflow events in the database
 - `events_to_skip=[]`: Filter out specific event types to reduce storage and noise
-
-Access all stored events via `workflow.run_response.events`
 
 **Available Events to Skip:**
 ```python
@@ -599,7 +596,7 @@ See this [example](/workflows/usage/store-events-and-events-to-skip-in-a-workflo
 
 ## Agno Telemetry
 
-Agno logs which model an workflow used so we can prioritize updates to the most popular providers. You can disable this by setting `AGNO_TELEMETRY=false` in your environment or by setting `telemetry=False` on the workflow.
+Agno logs which model a workflow used so we can prioritize updates to the most popular providers. You can disable this by setting `AGNO_TELEMETRY=false` in your environment or by setting `telemetry=False` on the workflow.
 
 ```bash
 export AGNO_TELEMETRY=false
@@ -615,4 +612,4 @@ See the [Workflow class reference](/reference/workflows/workflow) for more detai
 
 - [Workflow reference](/reference/workflows/workflow)
 - [WorkflowRunOutput schema](/reference/workflows/run-output)
-- [Cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/05_workflows/README.md)
+- [Cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/04_workflows)

@@ -7,7 +7,7 @@ Agno supports using MongoDB as a storage backend for Teams using the `MongoDb` c
 
 ## Usage
 
-You need to provide either `db_url` or `client`. The following example uses `db_url`.
+You need to provide either `db_url` or `db_client`. The following example uses `db_url`.
 
 ### Run MongoDB
 Install [docker desktop](https://docs.docker.com/desktop/install/mac-install/) and run **MongoDB** on port **27017** using:
@@ -22,20 +22,20 @@ docker run -d \
 
 ```python mongodb_for_team.py
 """
-Run: `uv pip install openai newspaper4k lxml_html_clean agno` to install the dependencies
+Run: `uv pip install openai ddgs pymongo newspaper4k lxml_html_clean agno` to install the dependencies
 """
 from typing import List
 
 from agno.agent import Agent
 from agno.db.mongo import MongoDb
-from agno.models.openai import OpenAIResponses
+from agno.models.openai import OpenAIChat
 from agno.team import Team
 from agno.tools.hackernews import HackerNewsTools
-from agno.tools.hackernews import HackerNewsTools
+from agno.tools.websearch import WebSearchTools
 from pydantic import BaseModel
 
 # MongoDB connection settings
-db_url = "mongodb://localhost:27017"
+db_url = "mongodb://mongoadmin:secret@localhost:27017"
 db = MongoDb(db_url=db_url)
 
 class Article(BaseModel):
@@ -45,22 +45,22 @@ class Article(BaseModel):
 
 hn_researcher = Agent(
     name="HackerNews Researcher",
-    model=OpenAIResponses(id="gpt-5.2"),
+    model=OpenAIChat("gpt-4o"),
     role="Gets top stories from hackernews.",
     tools=[HackerNewsTools()],
 )
 
 web_searcher = Agent(
     name="Web Searcher",
-    model=OpenAIResponses(id="gpt-5.2"),
+    model=OpenAIChat("gpt-4o"),
     role="Searches the web for information on a topic",
-    tools=[HackerNewsTools()],
+    tools=[WebSearchTools()],
     add_datetime_to_context=True,
 )
 
 hn_team = Team(
     name="HackerNews Team",
-    model=OpenAIResponses(id="gpt-5.2"),
+    model=OpenAIChat("gpt-4o"),
     members=[hn_researcher, web_searcher],
     db=db,
     instructions=[
@@ -70,12 +70,11 @@ hn_team = Team(
     ],
     output_schema=Article,
     markdown=True,
-    debug_mode=True,
     show_members_responses=True,
+    add_member_tools_to_context=False,
 )
 
 hn_team.print_response("Write an article about the top 2 stories on hackernews")
-
 ```
 
 ## Params

@@ -2,7 +2,7 @@
 title: Output Validation Post-Hook
 ---
 
-This example demonstrates how to use a post-hook to validate the output of an Team, before it is returned to the user.
+This example demonstrates how to use a post-hook to validate the output of a Team, before it is returned to the user.
 
 This example shows how to:
 1. Validate team responses for quality and safety
@@ -14,176 +14,252 @@ This example shows how to:
 ```python
 import asyncio
 
-from agno.team import Team
+from agno.agent import Agent
 from agno.exceptions import CheckTrigger, OutputCheckError
 from agno.models.openai import OpenAIResponses
-from agno.run.team import RunOutput
+from agno.run.team import TeamRunOutput
+from agno.team import Team
 from pydantic import BaseModel
 
 
-class OutputValidationResult(BaseModel):
-    is_complete: bool
+class TeamOutputValidationResult(BaseModel):
+    is_comprehensive: bool
+    shows_collaboration: bool
+    is_consistent: bool
     is_professional: bool
     is_safe: bool
     concerns: list[str]
     confidence_score: float
 
 
-def validate_response_quality(run_output: RunOutput) -> None:
-    """
-    Post-hook: Validate the team's response for quality and safety.
+def validate_team_response_quality(run_output: TeamRunOutput, team: Team) -> None:
+    """Validate team output quality and collaboration consistency."""
 
-    This hook checks:
-    - Response completeness (not too short or vague)
-    - Professional tone and language
-    - Safety and appropriateness of content
-
-    Raises OutputCheckError if validation fails.
-    """
-
-    # Skip validation for empty responses
-    if not run_output.content or len(run_output.content.strip()) < 10:
+    if not run_output.content or len(run_output.content.strip()) < 20:
         raise OutputCheckError(
-            "Response is too short or empty",
+            "Team response is too short or empty",
             check_trigger=CheckTrigger.OUTPUT_NOT_ALLOWED,
         )
 
-    # Create a validation team
-    validator_team = Team(
-        name="Output Validator",
-        model=OpenAIResponses(id="gpt-5.2"),
-        instructions=[
-            "You are an output quality validator. Analyze responses for:",
-            "1. COMPLETENESS: Response addresses the question thoroughly",
-            "2. PROFESSIONALISM: Language is professional and appropriate",
-            "3. SAFETY: Content is safe and doesn't contain harmful advice",
-            "",
-            "Provide a confidence score (0.0-1.0) for overall quality.",
-            "List any specific concerns found.",
-            "",
-            "Be reasonable - don't reject good responses for minor issues.",
-        ],
-        output_schema=OutputValidationResult,
+    team_context = f"Team '{team.name}' with {len(team.members)} members: "
+    team_context += ", ".join(
+        [
+            f"{member.name} ({getattr(member, 'description', 'No description')})"
+            for member in team.members
+        ]
     )
 
-    validation_result = validator_team.run(
-        input=f"Validate this response: '{run_output.content}'"
+    validator_agent = Agent(
+        name="Team Output Validator",
+        model=OpenAIResponses(id="gpt-5.2"),
+        instructions=[
+            "You are a team output quality validator. Analyze team responses for:",
+            "1. COMPREHENSIVENESS: Response covers multiple areas of expertise relevant to the question",
+            "2. COLLABORATION: Response integrates multiple perspectives into a coherent answer.",
+            "   A well-synthesized unified response DOES count as collaboration - it does NOT need explicit member attribution or handoffs.",
+            "   If the response covers topics from different domains (e.g. legal, tax, risk), that shows collaboration.",
+            "3. CONSISTENCY: Different perspectives are coherent and don't contradict each other",
+            "4. PROFESSIONALISM: Language is professional and appropriate",
+            "5. SAFETY: Content is safe and doesn't contain harmful advice",
+            "",
+            "Provide a confidence score (0.0-1.0) for overall quality.",
+            "List any specific concerns.",
+            "",
+            "Be lenient - a comprehensive, multi-perspective response should pass even if it reads as a unified document.",
+        ],
+        output_schema=TeamOutputValidationResult,
+    )
+
+    validation_result = validator_agent.run(
+        input=f"""
+        {team_context}
+
+        Validate this team response: '{run_output.content}'
+
+        Consider:
+        - Does it show multiple perspectives working together?
+        - Is it more valuable than a single agent response would be?
+        - Are the different viewpoints consistent and complementary?
+        """
     )
 
     result = validation_result.content
 
-    # Check validation results and raise errors for failures
-    if not result.is_complete:
+    if not result.is_comprehensive:
         raise OutputCheckError(
-            f"Response is incomplete. Concerns: {', '.join(result.concerns)}",
+            f"Team response lacks comprehensiveness. Concerns: {', '.join(result.concerns)}",
+            check_trigger=CheckTrigger.OUTPUT_NOT_ALLOWED,
+        )
+
+    if not result.shows_collaboration:
+        raise OutputCheckError(
+            f"Response doesn't show effective team collaboration. Concerns: {', '.join(result.concerns)}",
+            check_trigger=CheckTrigger.OUTPUT_NOT_ALLOWED,
+        )
+
+    if not result.is_consistent:
+        raise OutputCheckError(
+            f"Team response contains inconsistencies between member perspectives. Concerns: {', '.join(result.concerns)}",
             check_trigger=CheckTrigger.OUTPUT_NOT_ALLOWED,
         )
 
     if not result.is_professional:
         raise OutputCheckError(
-            f"Response lacks professional tone. Concerns: {', '.join(result.concerns)}",
+            f"Team response lacks professional tone. Concerns: {', '.join(result.concerns)}",
             check_trigger=CheckTrigger.OUTPUT_NOT_ALLOWED,
         )
 
     if not result.is_safe:
         raise OutputCheckError(
-            f"Response contains potentially unsafe content. Concerns: {', '.join(result.concerns)}",
+            f"Team response contains potentially unsafe content. Concerns: {', '.join(result.concerns)}",
             check_trigger=CheckTrigger.OUTPUT_NOT_ALLOWED,
         )
 
-    if result.confidence_score < 0.6:
+    if result.confidence_score < 0.7:
         raise OutputCheckError(
-            f"Response quality score too low ({result.confidence_score:.2f}). Concerns: {', '.join(result.concerns)}",
+            f"Team response quality score too low ({result.confidence_score:.2f}). Concerns: {', '.join(result.concerns)}",
             check_trigger=CheckTrigger.OUTPUT_NOT_ALLOWED,
         )
 
 
-def simple_length_validation(run_output: RunOutput) -> None:
-    """
-    Simple post-hook: Basic validation for response length.
+def simple_team_coordination_check(run_output: TeamRunOutput, team: Team) -> None:
+    """Apply lightweight checks for evidence of team collaboration."""
+    content = run_output.content.strip() if run_output.content else ""
 
-    Ensures responses are neither too short nor excessively long.
-    """
-    content = run_output.content.strip()
+    team_indicators = [
+        "we recommend",
+        "our analysis",
+        "team",
+        "collectively",
+        "different perspectives",
+        "combined",
+        "consensus",
+        "coordinate",
+    ]
 
-    if len(content) < 20:
+    member_mentions = sum(
+        1 for member in team.members if member.name.lower() in content.lower()
+    )
+    has_team_language = any(
+        indicator in content.lower() for indicator in team_indicators
+    )
+
+    if not has_team_language and member_mentions < 2:
         raise OutputCheckError(
-            "Response is too brief to be helpful",
+            "Response doesn't show evidence of team collaboration or multiple perspectives",
             check_trigger=CheckTrigger.OUTPUT_NOT_ALLOWED,
         )
 
-    if len(content) > 5000:
+    if len(content) < 100:
         raise OutputCheckError(
-            "Response is too lengthy and may overwhelm the user",
+            "Team response is too brief to demonstrate collaborative value",
             check_trigger=CheckTrigger.OUTPUT_NOT_ALLOWED,
         )
 
 
-async def main():
+team_with_validation = Team(
+    name="Legal Advisory Team",
+    members=[
+        Agent(
+            name="Corporate Lawyer",
+            model=OpenAIResponses(id="gpt-5.2"),
+            description="Expert in corporate law, contracts, and compliance",
+        ),
+        Agent(
+            name="Tax Attorney",
+            model=OpenAIResponses(id="gpt-5.2"),
+            description="Specialist in tax law, regulations, and planning",
+        ),
+        Agent(
+            name="Risk Analyst",
+            model=OpenAIResponses(id="gpt-5.2"),
+            description="Expert in legal risk assessment and mitigation",
+        ),
+    ],
+    post_hooks=[validate_team_response_quality],
+    instructions=[
+        "Collaborate to provide comprehensive legal guidance:",
+        "Corporate Lawyer: Address legal structure, compliance, and contracts",
+        "Tax Attorney: Cover tax implications and optimization strategies",
+        "Risk Analyst: Identify and assess legal risks and mitigation approaches",
+        "",
+        "Work together to provide coordinated legal advice that leverages all expertise areas.",
+    ],
+)
+
+team_simple = Team(
+    name="Content Creation Team",
+    members=[
+        Agent(name="Writer", model=OpenAIResponses(id="gpt-5.2")),
+        Agent(name="Editor", model=OpenAIResponses(id="gpt-5.2")),
+    ],
+    post_hooks=[simple_team_coordination_check],
+    instructions=[
+        "Collaborate to create high-quality content with proper writing and editing coordination."
+    ],
+)
+
+
+async def main() -> None:
     """Demonstrate output validation post-hooks."""
-    print("🔍 Output Validation Post-Hook Example")
+    print("Team Output Validation Post-Hook Examples")
     print("=" * 60)
 
-    # Team with comprehensive output validation
-    team_with_validation = Team(
-        name="Customer Support Team",
-        model=OpenAIResponses(id="gpt-5.2"),
-        post_hooks=[validate_response_quality],
-        instructions=[
-            "You are a helpful customer support team.",
-            "Provide clear, professional responses to customer inquiries.",
-            "Be concise but thorough in your explanations.",
-        ],
-    )
-
-    # Team with simple validation only
-    team_simple = Team(
-        name="Simple Team",
-        model=OpenAIResponses(id="gpt-5.2"),
-        post_hooks=[simple_length_validation],
-        instructions=[
-            "You are a helpful assistant. Keep responses focused and appropriate length."
-        ],
-    )
-
-    # Test 1: Good response (should pass validation)
-    print("\n✅ Test 1: Well-formed response")
+    print("\n[TEST 1] Well-coordinated legal team response")
     print("-" * 40)
     try:
         await team_with_validation.aprint_response(
-            input="How do I reset my password on my Microsoft account?"
+            input="""
+            We're starting a tech startup and need to understand the legal structure options.
+            We're considering LLC vs C-Corp, have tax implications to consider, and want to
+            minimize legal risks while allowing for future investment rounds.
+
+            Please provide comprehensive guidance covering corporate structure, tax considerations, and risk management.
+            """
         )
-        print("✅ Response passed validation")
+        print("[OK] Team response passed validation")
     except OutputCheckError as e:
-        print(f"❌ Validation failed: {e}")
+        print(f"[ERROR] Validation failed: {e}")
         print(f"   Trigger: {e.check_trigger}")
 
-    # Test 2: Force a short response (should fail simple validation)
-    print("\n❌ Test 2: Too brief response")
+    print("\n[TEST 2] Poorly coordinated team response")
     print("-" * 40)
+
+    poor_coordination_team = Team(
+        name="Unfocused Team",
+        members=[
+            Agent(
+                name="Agent1",
+                model=OpenAIResponses(id="gpt-5.2"),
+                instructions=[
+                    "Give brief, individual responses without considering teammates."
+                ],
+            ),
+            Agent(
+                name="Agent2",
+                model=OpenAIResponses(id="gpt-5.2"),
+                instructions=["Provide minimal responses without team coordination."],
+            ),
+        ],
+        post_hooks=[validate_team_response_quality],
+        instructions=["Just answer the question quickly without much coordination."],
+    )
+
     try:
-        # Use a more constrained instruction to get a brief response
-        brief_team = Team(
-            name="Brief Team",
-            model=OpenAIResponses(id="gpt-5.2"),
-            post_hooks=[simple_length_validation],
-            instructions=["Answer in 1-2 words only."],
-        )
-        await brief_team.aprint_response(input="What is the capital of France?")
+        await poor_coordination_team.aprint_response(input="What's 2+2?")
     except OutputCheckError as e:
-        print(f"❌ Validation failed: {e}")
+        print(f"[ERROR] Team validation failed as expected: {e}")
         print(f"   Trigger: {e.check_trigger}")
 
-    # Test 3: Normal response with simple validation
-    print("\n✅ Test 3: Normal response with simple validation")
+    print("\n[TEST 3] Normal response with simple team validation")
     print("-" * 40)
     try:
         await team_simple.aprint_response(
-            input="Explain what a database is in simple terms."
+            input="Create a blog post about the benefits of remote work, ensuring it's well-written and properly edited."
         )
-        print("✅ Response passed simple validation")
+        print("[OK] Response passed simple team validation")
     except OutputCheckError as e:
-        print(f"❌ Validation failed: {e}")
+        print(f"[ERROR] Validation failed: {e}")
         print(f"   Trigger: {e.check_trigger}")
 
 

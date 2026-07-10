@@ -57,7 +57,7 @@ agent = Agent(
 run_response = agent.run("What files do I have in my current directory?")
 
 for requirement in run_response.active_requirements:
-    if requirement.is_external_tool_execution:
+    if requirement.needs_external_execution:
         if requirement.tool_execution.tool_name == execute_shell_command.name:
             print(f"Executing {requirement.tool_execution.tool_name} with args {requirement.tool_execution.tool_args} externally")
 
@@ -65,7 +65,7 @@ for requirement in run_response.active_requirements:
             result = execute_shell_command.entrypoint(**requirement.tool_execution.tool_args)
 
             # Set the result on the tool execution object so that the agent can continue
-            requirement.external_execution_result = result
+            requirement.set_external_execution_result(result)
 
 run_response = agent.continue_run(run_id=run_response.run_id, requirements=run_response.requirements)
 pprint.pprint_run_response(run_response)
@@ -90,7 +90,7 @@ You can iterate through these requirements, execute the tools however you want, 
 
 ```python
 for requirement in run_response.active_requirements:
-    if requirement.is_external_tool_execution:
+    if requirement.needs_external_execution:
         print(f"Tool: {requirement.tool_execution.tool_name}")
         print(f"Args: {requirement.tool_execution.tool_args}")
 
@@ -98,7 +98,7 @@ for requirement in run_response.active_requirements:
         result = my_custom_execution(requirement.tool_execution.tool_args)
 
         # Set the result so the agent can continue
-        requirement.external_execution_result = result
+        requirement.set_external_execution_result(result)
 
 # After resolving the requirement, you can continue the run:
 response = agent.continue_run(run_id=run_response.run_id, requirements=run_response.requirements)
@@ -106,7 +106,7 @@ response = agent.continue_run(run_id=run_response.run_id, requirements=run_respo
 
 <Note>
 **Important**: You *must* resolve all external tool execution requirements before calling `continue_run()`.
-An external tool execution requirement is considered resolved when you set `requirement.external_execution_result`.
+An external tool execution requirement is considered resolved when you set its result with `requirement.set_external_execution_result()`.
 
 Else Agno will raise a `ValueError`, letting you know that not all requirements have been resolved.
 </Note>
@@ -146,11 +146,11 @@ agent = Agent(
 run_response = agent.run("What files are in my current directory and what's my PATH?")
 
 for requirement in run_response.active_requirements:
-    if requirement.is_external_tool_execution:
+    if requirement.needs_external_execution:
         # Only list_dir will be here, get_env runs normally
         if requirement.tool_execution.tool_name == "list_dir":
             result = ShellTools().list_dir(**requirement.tool_execution.tool_args)
-            requirement.external_execution_result = result
+            requirement.set_external_execution_result(result)
 
 # After resolving the requirement, you can continue the run:
 response = agent.continue_run(run_id=run_response.run_id, requirements=run_response.requirements)
@@ -187,11 +187,11 @@ response = agent.run("Calculate 5 + 10 and query the users table")
 # but safe_calculation executes normally
 
 for requirement in response.active_requirements:
-    if requirement.is_external_tool_execution:
+    if requirement.needs_external_execution:
         if requirement.tool_execution.tool_name == "sensitive_database_query":
             # Execute with your own DB connection and security checks
             result = execute_safe_db_query(requirement.tool_execution.tool_args["query"])
-            requirement.external_execution_result = result
+            requirement.set_external_execution_result(result)
 
 # After resolving the requirement, you can continue the run:
 response = agent.continue_run(run_id=response.run_id, requirements=response.requirements)
@@ -219,10 +219,10 @@ async def main():
     run_response = await agent.arun("Process some data")
 
     for requirement in run_response.active_requirements:
-        if requirement.is_external_tool_execution:
+        if requirement.needs_external_execution:
             # Execute your async external logic
             result = await my_async_external_service(requirement.tool_execution.tool_args)
-            requirement.external_execution_result = result
+            requirement.set_external_execution_result(result)
 
     response = await agent.acontinue_run(run_id=run_response.run_id, requirements=run_response.requirements)
     print(response.content)
@@ -238,10 +238,10 @@ You can also use external execution with streaming responses:
 for run_event in agent.run("What files are in my directory?", stream=True):
     if run_event.is_paused:
         for requirement in run_event.active_requirements:
-            if requirement.is_external_tool_execution:
+            if requirement.needs_external_execution:
                 # Execute externally
                 result = execute_tool_externally(requirement.tool_execution.tool_args)
-                requirement.external_execution_result = result
+                requirement.set_external_execution_result(result)
 
         # Continue streaming
         for response in agent.continue_run(
@@ -256,7 +256,7 @@ for run_event in agent.run("What files are in my directory?", stream=True):
 
 ## Best Practices
 
-1. **Always set results**: Make sure you set `requirement.external_execution_result` for all requirements before continuing
+1. **Always set results**: Call `requirement.set_external_execution_result()` for all requirements before continuing
 2. **Error handling**: Wrap your external execution in try-catch blocks and provide meaningful error messages as results
 3. **Security validation**: Use external execution to add extra security checks before running sensitive operations
 4. **Logging**: Log all external executions for audit trails
