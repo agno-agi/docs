@@ -1,7 +1,59 @@
 ---
 title: LangChain Vector Database
 sidebarTitle: Overview
-description: Use LangChain as a vector database for your Knowledge Base.
+description: Search an existing LangChain vectorstore or retriever from your Knowledge Base.
 ---
 
-TBD
+## Setup
+
+```shell
+uv pip install langchain langchain-community langchain-openai langchain-chroma
+```
+
+## Example
+
+```python agent_with_knowledge.py
+import pathlib
+
+from agno.agent import Agent
+from agno.knowledge.knowledge import Knowledge
+from agno.vectordb.langchaindb import LangChainVectorDb
+from langchain.text_splitter import CharacterTextSplitter
+from langchain_chroma import Chroma
+from langchain_community.document_loaders import TextLoader
+from langchain_openai import OpenAIEmbeddings
+
+chroma_db_dir = pathlib.Path("./chroma_db")
+
+# Load, split, and embed the documents with LangChain
+raw_documents = TextLoader("data/state_of_the_union.txt", encoding="utf-8").load()
+text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
+documents = text_splitter.split_documents(raw_documents)
+Chroma.from_documents(
+    documents, OpenAIEmbeddings(), persist_directory=str(chroma_db_dir)
+)
+
+# Point Agno at the existing vectorstore
+db = Chroma(
+    embedding_function=OpenAIEmbeddings(), persist_directory=str(chroma_db_dir)
+)
+knowledge = Knowledge(
+    vector_db=LangChainVectorDb(knowledge_retriever=db.as_retriever())
+)
+
+agent = Agent(knowledge=knowledge)
+agent.print_response(
+    "What did the president say about broadcasting and the State of the Union?",
+    markdown=True,
+)
+```
+
+`LangChainVectorDb` wraps a vectorstore you already manage with LangChain. Pass a retriever with `knowledge_retriever`, or pass the vectorstore itself with `vectorstore` and Agno creates a retriever on the first search.
+
+<Note>
+`LangChainVectorDb` is search-only. `insert()` and `upsert()` raise `NotImplementedError`. Load documents through LangChain, then wire the retriever to Agno. Pass metadata filters as a dictionary; filter expressions are not supported.
+</Note>
+
+## LangChainVectorDb Params
+
+<Snippet file="vectordb_langchaindb_params.mdx" />
