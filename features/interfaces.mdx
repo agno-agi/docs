@@ -5,7 +5,7 @@ description: "Slack, Telegram, WhatsApp, Discord, plus protocol interfaces for a
 
 An interface is an adapter between AgentOS and a surface where users already are. It receives events from Slack, Telegram, WhatsApp, or other channels, maps them onto AgentOS's run and session model, and routes responses back to the right thread, channel, or user.
 
-The agent doesn't change. The same `Agent` instance answers a Slack DM, a Telegram message, and an AG-UI browser stream. Memory carries across all of them, scoped per `(user_id, session_id)`.
+The agent doesn't change. The same `Agent` instance answers a Slack DM, a Telegram message, and an AG-UI browser stream. Memory carries across all of them, scoped per `user_id`.
 
 ## Available interfaces
 
@@ -57,9 +57,9 @@ Per-interface setup pages have the full OAuth flows, scope lists, and webhook co
 | Slack | Bot token (`xoxb-...`), signing secret, OAuth scopes for the events you handle |
 | Telegram | Bot token from @BotFather |
 | WhatsApp | Business API token, verify token, phone number ID |
-| Discord | Bot token, application ID |
-| A2A | Inbound JWTs validated by AgentOS auth |
-| AG-UI | AgentOS JWT in the SSE request |
+| Discord | Bot token (`DISCORD_BOT_TOKEN`) |
+| A2A | None by default; behind AgentOS JWT auth when `authorization=True` |
+| AG-UI | None by default; behind AgentOS JWT auth when `authorization=True` |
 
 ## Sessions per surface
 
@@ -70,9 +70,9 @@ Every interface maps surface state to AgentOS sessions, so a conversation in Sla
 | Slack | Thread timestamp | Slack user ID |
 | Telegram | Chat ID | Telegram user ID |
 | WhatsApp | Phone number | Phone number |
-| Discord | Channel + thread | Discord user ID |
+| Discord | Thread ID | Discord user ID |
 | A2A | Caller-supplied | Caller-supplied |
-| AG-UI | Browser session | JWT subject |
+| AG-UI | Client thread ID | JWT subject, or client-supplied when anonymous |
 
 ### Resolving Slack user IDs to names
 
@@ -123,7 +123,7 @@ The [Scout](/deploy/templates/scout/overview), [Dash](/deploy/templates/dash/ove
 
 ## Custom interfaces and one-off webhooks
 
-The interface API is small. Subclass `BaseInterface`, register routes on the FastAPI app via `setup`, dispatch incoming messages to the agent. See [BaseInterface](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/os/interfaces/base.py) for the full surface.
+The interface API is small. Subclass `BaseInterface`, return your routes from `get_router`, dispatch incoming messages to the agent. See [BaseInterface](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/os/interfaces/base.py) for the full surface.
 
 For one-off webhooks (a CRM event, a GitHub action, a custom dashboard), don't write an interface. Add a route directly to the FastAPI app:
 
