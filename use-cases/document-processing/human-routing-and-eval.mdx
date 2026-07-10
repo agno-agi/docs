@@ -139,43 +139,45 @@ agent = Agent(
     output_schema=Invoice,
 )
 
+run = agent.run(
+    "Extract this invoice.",
+    files=[File(url="https://example.com/golden/invoice-001.pdf")],
+)
+
 evaluation = AccuracyEval(
     name="invoice-extraction-golden",
     model=OpenAIResponses(id="gpt-5.5"),
-    agent=agent,
-    input=lambda: agent.run(
-        "Extract this invoice.",
-        files=[File(url="https://example.com/golden/invoice-001.pdf")],
-    ),
+    input="Extract this invoice.",
     expected_output=(
         "Invoice number 1042, vendor Acme Corp, dated 2026-04-12, "
         "total 1296.00 USD."
     ),
-    num_iterations=3,
 )
 
-result = evaluation.run(print_results=True)
-# AccuracyResult(name='invoice-extraction-golden', avg_score=9.0, ...)
+result = evaluation.run_with_output(
+    output=run.content.model_dump_json(), print_results=True
+)
+# AccuracyResult(avg_score=9.0, ...)
 assert result is not None and result.avg_score >= 8
 ```
 
-`AccuracyEval` runs the agent `num_iterations` times against the same input, asks a grader model to score each run against the expected output, and reports the average. Loop the call over your golden set to get a per-document score.
+`AccuracyEval.run()` executes the agent itself but cannot pass files, so document extraction uses `run_with_output`: run the agent with the file, then hand the extracted output to the grader model, which scores it against `expected_output`. Loop the call over your golden set to get a per-document score.
 
 ```python
 results = []
 for doc in golden_set:
+    run = agent.run("Extract this invoice.", files=[File(filepath=doc.path)])
     eval_ = AccuracyEval(
         name=f"invoice-{doc.id}",
         model=OpenAIResponses(id="gpt-5.5"),
-        agent=agent,
-        input=lambda doc=doc: agent.run(
-            "Extract this invoice.",
-            files=[File(filepath=doc.path)],
-        ),
+        input="Extract this invoice.",
         expected_output=doc.expected_description,
-        num_iterations=1,
     )
-    results.append(eval_.run(print_results=False))
+    results.append(
+        eval_.run_with_output(
+            output=run.content.model_dump_json(), print_results=False, print_summary=False
+        )
+    )
 ```
 
 Persist the per-document score to the same `db` you use for runs, and you have a regression signal. A drop in average score after a model swap or prompt change tells you the new configuration is worse before it reaches production. See the [evals cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/09_evals/accuracy) for `db_logging` and the team variant.
