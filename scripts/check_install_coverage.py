@@ -450,7 +450,24 @@ PYTHON_LANGS = {"python", "py"}
 FENCE_LINE_RE = re.compile(r"^\s*(`{3,}|~{3,})(.*)$")
 ENVVAR_RE = re.compile(r"\b[A-Z][A-Z0-9_]{3,}\b")
 AGNO_EXTRA_RE = re.compile(r"\bagno\[([a-zA-Z0-9_,\- ]+)\]")
-OS_PATTERN_RE = re.compile(r"\bAgentOS\s*\(|\.serve\s*\(")
+# .serve( alone is ambiguous: DiscordClient.serve() runs on the Gateway API with no
+# fastapi/uvicorn. Require an AgentOS construction or an agno.os import in the same fence.
+OS_PATTERN_RE = re.compile(r"\bAgentOS\s*\(|\bagent_os\.serve\s*\(|from agno\.os\b")
+
+
+ALLOWLIST_PATH = Path(__file__).resolve().parent / "install-coverage-allowlist.txt"
+
+
+def load_allowlist() -> set:
+    """Nav slugs exempted by editorial policy (illustrative fragment pages)."""
+    if not ALLOWLIST_PATH.exists():
+        return set()
+    out = set()
+    for line in ALLOWLIST_PATH.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            out.add(line)
+    return out
 INSTALL_LINE_RE = re.compile(r"\b(pip install|uv add|poetry add|conda install)\b")
 
 
@@ -799,6 +816,8 @@ def covered_dists(corpus: str, install_lines: list[str], raw_text: str,
 
 def build_report(ctx: _lib.Context, extras: dict[str, frozenset[str]]) -> dict:
     offenders: dict[str, dict[str, list[str]]] = {}
+    allowlisted: dict[str, dict[str, list[str]]] = {}
+    allowlist = load_allowlist()
     review: dict[str, list[str]] = {}
     skipped_generated = 0
     pages_no_python = 0
@@ -855,7 +874,10 @@ def build_report(ctx: _lib.Context, extras: dict[str, frozenset[str]]) -> dict:
                                 required)
         missing = {d: sorted(reqs[d]) for d in sorted(required - covered)}
         if missing:
-            offenders[slug] = missing
+            if slug in allowlist:
+                allowlisted[slug] = missing
+            else:
+                offenders[slug] = missing
         if page_review:
             review[slug] = sorted(set(page_review))
 
@@ -866,10 +888,12 @@ def build_report(ctx: _lib.Context, extras: dict[str, frozenset[str]]) -> dict:
             "pages_without_python": pages_no_python,
             "pages_scanned": pages_scanned,
             "offender_pages": len(offenders),
+            "allowlisted_pages": len(allowlisted),
             "missing_requirements_total": sum(len(v) for v in offenders.values()),
             "review_pages": len(review),
         },
         "offenders": offenders,
+        "allowlisted": allowlisted,
         "review": review,
     }
 
