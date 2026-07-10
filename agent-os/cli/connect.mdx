@@ -8,7 +8,7 @@ description: "Connect Claude Code, Claude Desktop, Codex, and Cursor to a runnin
 agno connect
 ```
 
-`agno connect` finds your running AgentOS, mints one service-account token per coding agent, writes each client's MCP configuration, and verifies every entry with a real MCP handshake. Your coding agents can then run your agents, teams, and workflows through the [AgentOS MCP server](/agent-os/mcp/mcp).
+`agno connect` finds your running AgentOS, mints one service-account token per coding agent when the AgentOS has authorization enabled, writes each client's MCP configuration, and verifies every entry with a real MCP handshake. Your coding agents can then run your agents, teams, and workflows through the [AgentOS MCP server](/agent-os/mcp/mcp).
 
 The AgentOS must have its MCP server enabled:
 
@@ -21,14 +21,16 @@ agent_os = AgentOS(
 
 ## The Execution Flow
 
-1. **Discover.** Resolve the AgentOS from `--url`, `AGENTOS_URL`, or a localhost probe, then read its version, MCP path, and auth mode from `GET /info`.
+1. **Discover.** Resolve the AgentOS from `--url`, `AGENTOS_URL` (the environment variable, or a project `.env.production` / `.env` file), or a localhost probe, then read its version, MCP path, and auth mode from `GET /info`.
 2. **Authenticate.** When authorization is enabled, resolve an admin credential from `AGNO_ADMIN_TOKEN` or `OS_SECURITY_KEY`, or prompt for it.
-3. **Mint.** Create one service account per client (named `claude-code`, `cursor`, and so on) with the server's default run and read scopes and a 90-day expiry.
-4. **Write.** Add an MCP server entry named `agno` to each client's own config file.
+3. **Mint.** When authorization is enabled, create one service account per client (named `claude-code`, `cursor`, and so on) with the server's default run and read scopes and a 90-day expiry. An unsecured AgentOS connects without credentials.
+4. **Write.** Add an MCP server entry, named after your AgentOS (`agentos` when it has no name), to each client's own config file.
 5. **Verify.** Read the entry back the way the client would resolve it, then complete an MCP `initialize` and `tools/list` call against the AgentOS with the configured token.
-6. **Report.** Print per-client results: `connected`, `already ok`, `skipped`, `action needed`, or `failed`.
+6. **Report.** Print per-client results: `connected`, `sign in`, `already ok`, `skipped`, `action needed`, or `failed`.
 
-Re-runs are safe. Entries that still verify are left alone, broken or stale ones are rotated, and `--skip-existing` never touches anything that exists.
+When the MCP endpoint is OAuth-protected, nothing is minted: entries are written without tokens and each app completes a one-time sign-in (`sign in` in the report). Pass `--pat` to mint tokens anyway, for headless clients.
+
+Re-runs are safe. Entries that still verify are left alone, broken or stale ones are rotated (interactive runs confirm first), and `--skip-existing` never touches anything that exists.
 
 ## Supported Clients
 
@@ -65,7 +67,7 @@ Requirements:
 - Both apps' Connectors UIs authenticate with OAuth, not bearer tokens, so the AgentOS must be public or OAuth-enabled. A token-protected AgentOS cannot be added from the UI yet.
 - In the app: Settings -> Connectors -> Add custom connector, then paste the printed MCP URL. Custom connectors need a paid plan.
 
-When discovery lands on a public HTTPS AgentOS with authorization disabled, `connect` prints these steps automatically, without `--clients`.
+When discovery lands on a public HTTPS AgentOS with authorization disabled, or with an OAuth-protected MCP endpoint, `connect` prints these steps automatically, without `--clients`.
 
 ## Options
 
@@ -77,11 +79,13 @@ When discovery lands on a public HTTPS AgentOS with authorization disabled, `con
 | `--scopes`, `-s` | server's run + read scopes | Scope to grant (repeatable) |
 | `--expires` | `90d` | Token lifetime in days, or `never` |
 | `--privileged` | off | Required when `--scopes` grants write, delete, admin, or service_accounts scopes |
-| `--server-name` | `agno` | MCP server entry name written to client configs |
+| `--pat` | off | Mint tokens even when the MCP endpoint is OAuth-protected (for headless clients) |
+| `--server-name` | derived from the AgentOS name | MCP server entry name written to client configs |
 | `--project` | off | Write project-scoped configs (`.mcp.json` / `.cursor/mcp.json`) |
 | `--rotate` | off | Revoke and re-mint existing accounts without asking |
 | `--skip-existing` | off | Never touch existing accounts or config entries |
 | `--allow-http` | off | Permit credentials over plaintext HTTP to a non-loopback host |
+| `--yes`, `-y` | off | Trust a remote `AGENTOS_URL` from a `.env` file without prompting |
 | `--json` | off | Emit a single JSON document |
 
 ## Security
@@ -99,6 +103,14 @@ agno tokens revoke claude-code
 | Token storage | Written only to the client's config file (mode `0600`). The CLI stores nothing. |
 | Transport | The CLI refuses to send credentials over plaintext HTTP to a non-loopback host unless you pass `--allow-http`. |
 | Rotation | After `--rotate`, restart the affected client. A running client keeps its old in-process connection until it restarts. |
+
+## Disconnect
+
+```bash
+agno disconnect
+```
+
+`agno disconnect` removes the AgentOS entry from each client's config. It edits configs only, so it works with the AgentOS stopped and needs no admin credential. Without `--server-name` it removes every entry pointing at the target AgentOS; entries pointing at any other server are never touched. Pass `--revoke` to also revoke the service accounts `connect` minted (this path needs the running AgentOS and an admin credential).
 
 ## Scripting
 

@@ -62,14 +62,14 @@ Provide `agent`, `team`, or `workflow`. Call `get_router()` to get the FastAPI `
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
-| `agent` | `Optional[Agent]` | `None` | Agno `Agent` instance. |
-| `team` | `Optional[Team]` | `None` | Agno `Team` instance. |
-| `workflow` | `Optional[Workflow]` | `None` | Agno `Workflow` instance. |
+| `agent` | `Optional[Union[Agent, RemoteAgent]]` | `None` | Agno `Agent` or `RemoteAgent` instance. |
+| `team` | `Optional[Union[Team, RemoteTeam]]` | `None` | Agno `Team` or `RemoteTeam` instance. |
+| `workflow` | `Optional[Union[Workflow, RemoteWorkflow]]` | `None` | Agno `Workflow` or `RemoteWorkflow` instance. |
 | `prefix` | `str` | `"/telegram"` | Custom FastAPI route prefix for the Telegram interface. |
 | `tags` | `Optional[List[str]]` | `None` | FastAPI route tags for API documentation. Defaults to `["Telegram"]` if not provided. |
 | `token` | `Optional[str]` | `None` | Bot token. Falls back to `TELEGRAM_TOKEN` environment variable. |
 | `streaming` | `bool` | `True` | Enable token-by-token streaming with live message edits. |
-| `show_reasoning` | `bool` | `False` | Show the model's reasoning as a blockquote message. Works in both streaming and non-streaming modes. |
+| `show_reasoning` | `bool` | `False` | Send the model's reasoning as a separate message before the response. Non-streaming mode only. |
 | `reply_to_mentions_only` | `bool` | `True` | When `True` (default), bot responds to @mentions and replies in groups, and all messages in DMs. When `False`, responds to all messages in groups. |
 | `reply_to_bot_messages` | `bool` | `True` | When `True`, also responds when users reply to the bot's own messages in groups. |
 | `start_message` | `str` | `"Hello! I'm ready to help..."` | Message sent in response to the `/start` command. |
@@ -78,6 +78,7 @@ Provide `agent`, `team`, or `workflow`. Call `get_router()` to get the FastAPI `
 | `new_message` | `str` | `"New conversation started..."` | Message sent when a user starts a new session with `/new`. |
 | `commands` | `Optional[List[Dict]]` | `None` | List of bot commands to register with Telegram. Each dict has `command` and `description` keys. Defaults to `/start`, `/help`, and `/new` when not provided. |
 | `register_commands` | `bool` | `True` | Automatically register commands with the Telegram Bot API on first message. |
+| `quoted_responses` | `bool` | `False` | Bot replies quote the user's message (reply-to behavior). |
 
 ## Endpoints
 
@@ -178,7 +179,7 @@ agent = Agent(
 | `edit_message` | Edit a previously sent message by `message_id`. |
 | `delete_message` | Delete a message by `message_id`. |
 
-All methods return a JSON string with `{"status": "success", "message_id": ...}` on success or `{"status": "error", "message": ...}` on failure.
+Methods return a JSON string with `{"status": "success", "message_id": ...}` on success or `{"status": "error", "message": ...}` on failure. `delete_message` returns `{"status": "success", "deleted": true}`.
 
 For the full toolkit reference, see [TelegramTools](/tools/toolkits/social/telegram).
 
@@ -197,11 +198,11 @@ For the full toolkit reference, see [TelegramTools](/tools/toolkits/social/teleg
 | No response from the bot | Server not running or webhook not set | Check server: `curl http://localhost:7777/telegram/status`. Check webhook: `curl "https://api.telegram.org/bot${TELEGRAM_TOKEN}/getWebhookInfo"` |
 | Bot ignores group messages | Privacy mode enabled (default) | Message @BotFather, send `/setprivacy`, select your bot, choose **Disable** |
 | `/new` has no effect | No database configured | Add a `SqliteDb` (or other DB) to the agent/team. Without a DB, sessions are ephemeral and `/new` cannot create a new one. |
-| `TELEGRAM_TOKEN is not set` | Missing env var | Export `TELEGRAM_TOKEN` before running |
+| `TELEGRAM_TOKEN environment variable is not set` | Missing env var | Export `TELEGRAM_TOKEN` before running |
 
 ## Developer Resources
 
-- [Telegram deploy guide](/agent-os/interfaces/telegram/introduction)
+- [Telegram setup guide](/agent-os/interfaces/telegram/setup)
 - [Telegram examples](/agent-os/usage/interfaces/telegram/basic)
 - [TelegramTools reference](/tools/toolkits/social/telegram)
 - [Deployment templates](/deploy/introduction)
