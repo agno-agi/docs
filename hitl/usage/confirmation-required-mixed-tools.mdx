@@ -10,7 +10,6 @@ mode: wide
 
   <Step title="Create a Python file">
     ```python confirmation_required_mixed_tools.py
-    import asyncio
     import json
 
     import httpx
@@ -25,7 +24,6 @@ mode: wide
     console = Console()
 
 
-    @tool(requires_confirmation=True)
     def get_top_hackernews_stories(num_stories: int) -> str:
         """Fetch top stories from Hacker News.
 
@@ -52,14 +50,28 @@ mode: wide
         return json.dumps(all_stories)
 
 
+    @tool(requires_confirmation=True)
+    def send_email(to: str, subject: str, body: str) -> str:
+        """Send an email.
+
+        Args:
+            to (str): Email address to send to
+            subject (str): Subject of the email
+            body (str): Body of the email
+        """
+        return f"Email sent to {to} with subject {subject} and body {body}"
+
+
     agent = Agent(
         model=OpenAIResponses(id="gpt-5.2"),
-        tools=[get_top_hackernews_stories],
+        tools=[get_top_hackernews_stories, send_email],
         markdown=True,
         db=SqliteDb(db_file="tmp/confirmation_required_mixed_tools.db"),
     )
 
-    run_response = asyncio.run(agent.arun("Fetch the top 2 hackernews stories"))
+    run_response = agent.run(
+        "Fetch the top 2 hackernews stories and email them to john@doe.com."
+    )
     if run_response.is_paused:
         for requirement in run_response.active_requirements:
             if requirement.needs_confirmation:
@@ -78,17 +90,11 @@ mode: wide
                 else:
                     requirement.confirm()
 
-
-    run_response = asyncio.run(agent.acontinue_run(run_response=run_response))
-    # Or
-    # run_response = asyncio.run(agent.acontinue_run(run_id=run_response.run_id))
-
-    pprint.pprint_run_response(run_response)
-
-
-    # Or for simple debug flow
-    # asyncio.run(agent.aprint_response("Fetch the top 2 hackernews stories"))
-
+        run_response = agent.continue_run(
+            run_id=run_response.run_id,
+            requirements=run_response.requirements,
+        )
+        pprint.pprint_run_response(run_response)
     ```
   </Step>
 
@@ -96,7 +102,7 @@ mode: wide
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U agno openai httpx rich
+    uv pip install -U agno openai httpx rich sqlalchemy
     ```
   </Step>
 

@@ -6,7 +6,7 @@ keywords: [workflow, HITL, executor, agent, team, tool, requires_confirmation, r
 mode: wide
 ---
 
-Executor-level HITL pauses a workflow *during* a step, when the agent or team running inside the step calls a tool marked with `requires_confirmation`, `requires_user_input`, or `external_execution`. The pause propagates from the agent/team up to the workflow, and the user resolves it the same way they would on a standalone agent run.
+Executor-level HITL pauses a workflow *during* a step, when the agent or team running inside the step calls a tool marked with `requires_confirmation`, `requires_user_input`, or `external_execution`. The pause propagates from the agent/team up to the workflow. The paused tool calls arrive as serialized requirement dicts; you resolve them by mutating the dicts, then continuing the run.
 
 ```python
 from agno.agent import Agent
@@ -41,7 +41,8 @@ if response.is_paused:
     for step_req in response.step_requirements or []:
         if step_req.requires_executor_input:
             for executor_req in step_req.executor_requirements or []:
-                executor_req.confirm()  # or executor_req.reject(note="...")
+                executor_req["confirmation"] = True  # False to reject
+                executor_req["tool_execution"]["confirmed"] = True
 
     response = workflow.continue_run(response)
 
@@ -67,9 +68,9 @@ Three decorator flags trigger executor-level pauses. They behave the same as on 
 
 | Decorator | Pauses For | Resolve With |
 |-----------|------------|--------------|
-| `@tool(requires_confirmation=True)` | User approval | `executor_req.confirm()` or `executor_req.reject(note=...)` |
-| `@tool(requires_user_input=True, user_input_fields=[...])` | User-supplied argument values | `executor_req.provide_user_input({...})` |
-| `@tool(external_execution=True)` | Out-of-process execution; user supplies the result | Set `tool_execution.result` on the requirement |
+| `@tool(requires_confirmation=True)` | User approval | Set `["confirmation"]` and `["tool_execution"]["confirmed"]` |
+| `@tool(requires_user_input=True, user_input_fields=[...])` | User-supplied argument values | Fill `value` on each field in `["tool_execution"]["user_input_schema"]` |
+| `@tool(external_execution=True)` | Out-of-process execution; user supplies the result | Set `["external_execution_result"]` and `["tool_execution"]["result"]` |
 
 ```python
 from agno.tools import tool
@@ -92,18 +93,20 @@ def run_query(sql: str) -> str:
 
 ## The Pause Object
 
-An executor pause sets `run_output.pause_kind == "executor"`. The matching `StepRequirement` has `requires_executor_input == True` and holds the paused tool calls in `executor_requirements`:
+An executor pause sets `run_output.pause_kind == "executor"`. The matching `StepRequirement` has `requires_executor_input == True` and holds the paused tool calls in `executor_requirements`. Each entry is the agent's `RunRequirement` serialized to a dict:
 
 ```python
-step_req.executor_name                          # "WeatherAgent"
-step_req.executor_type                          # "agent" | "team"
-executor_req = step_req.executor_requirements[0]
-executor_req.tool_execution.tool_name           # "get_the_weather"
-executor_req.tool_execution.tool_args           # {"city": "Tokyo"}
-executor_req.needs_confirmation                 # True for requires_confirmation
-executor_req.needs_user_input                   # True for requires_user_input
-executor_req.needs_external_execution           # True for external_execution
+step_req.executor_name                                         # "WeatherAgent"
+step_req.executor_type                                         # "agent" | "team"
+executor_req = step_req.executor_requirements[0]               # a dict
+executor_req["tool_execution"]["tool_name"]                    # "get_the_weather"
+executor_req["tool_execution"]["tool_args"]                    # {"city": "Tokyo"}
+executor_req["tool_execution"]["requires_confirmation"]        # True for requires_confirmation
+executor_req["tool_execution"]["requires_user_input"]          # True for requires_user_input
+executor_req["tool_execution"]["external_execution_required"]  # True for external_execution
 ```
+
+You resolve a pause by mutating these dicts in place, then calling `continue_run`.
 
 See [Pause Anatomy](/workflows/hitl/pause-anatomy) for the full structure of every pause object and its fields.
 
@@ -115,11 +118,13 @@ See [Pause Anatomy](/workflows/hitl/pause-anatomy) for the full structure of eve
 for step_req in response.step_requirements or []:
     if step_req.requires_executor_input:
         for executor_req in step_req.executor_requirements or []:
-            if executor_req.needs_confirmation:
-                if user_approves():
-                    executor_req.confirm()
-                else:
-                    executor_req.reject(note="User declined")
+            tool_exec = executor_req["tool_execution"]
+            if tool_exec.get("requires_confirmation"):
+                approved = user_approves()
+                executor_req["confirmation"] = approved
+                tool_exec["confirmed"] = approved
+                if not approved:
+                    tool_exec["confirmation_note"] = "User declined"
 
 response = workflow.continue_run(response)
 ```
@@ -132,12 +137,19 @@ When rejected, the agent receives the rejection note and decides what to do next
 for step_req in response.step_requirements or []:
     if step_req.requires_executor_input:
         for executor_req in step_req.executor_requirements or []:
-            if executor_req.needs_user_input:
+            tool_exec = executor_req["tool_execution"]
+            if tool_exec.get("requires_user_input"):
                 values = {
-                    field.name: prompt(field.name)
-                    for field in executor_req.user_input_schema or []
+                    field["name"]: prompt(field["name"])
+                    for field in executor_req.get("user_input_schema") or []
                 }
-                executor_req.provide_user_input(values)
+                for schema in (
+                    executor_req.get("user_input_schema"),
+                    tool_exec.get("user_input_schema"),
+                ):
+                    for field in schema or []:
+                        if field["name"] in values:
+                            field["value"] = values[field["name"]]
 
 response = workflow.continue_run(response)
 ```
@@ -146,15 +158,16 @@ The values overwrite the corresponding tool arguments before the tool runs.
 
 ### External Execution
 
-`@tool(external_execution=True)` means the agent never runs the tool itself. The workflow pauses, hands you the tool name and arguments, and you run it however you want: call a backend service, dispatch a job, hit a privileged API. Set `tool_execution.result` to whatever the tool was supposed to return, and the agent resumes with that result.
+`@tool(external_execution=True)` means the agent never runs the tool itself. The workflow pauses, hands you the tool name and arguments, and you run it however you want: call a backend service, dispatch a job, hit a privileged API. Set the result on the requirement, and the agent resumes with that result.
 
 ```python
 for step_req in response.step_requirements or []:
     if step_req.requires_executor_input:
         for executor_req in step_req.executor_requirements or []:
-            if executor_req.needs_external_execution:
-                tool_name = executor_req.tool_execution.tool_name
-                tool_args = executor_req.tool_execution.tool_args
+            tool_exec = executor_req["tool_execution"]
+            if tool_exec.get("external_execution_required"):
+                tool_name = tool_exec["tool_name"]
+                tool_args = tool_exec["tool_args"]
 
                 # Replace this with your own dispatch logic, for example:
                 #   result = my_backend.run(tool_name, **tool_args)
@@ -162,7 +175,8 @@ for step_req in response.step_requirements or []:
                 #   result = await microservice.call(tool_name, tool_args)
                 result = my_dispatcher(tool_name, tool_args)
 
-                executor_req.tool_execution.result = result
+                executor_req["external_execution_result"] = result
+                tool_exec["result"] = result
 
 response = workflow.continue_run(response)
 ```
@@ -193,7 +207,8 @@ run_output = session.runs[-1] if session and session.runs else None
 if run_output and run_output.is_paused:
     for step_req in run_output.step_requirements or []:
         for executor_req in step_req.executor_requirements or []:
-            executor_req.confirm()
+            executor_req["confirmation"] = True
+            executor_req["tool_execution"]["confirmed"] = True
 
     for event in workflow.continue_run(run_output, stream=True):
         if hasattr(event, "content") and event.content:

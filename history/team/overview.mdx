@@ -13,8 +13,7 @@ We can give the Team access to the chat history in the following ways:
   - You can set `add_history_to_context=True` and `num_history_runs=5` to add the inputs and responses from the last 5 runs automatically to every request sent to the team leader.
   - You can be more granular about how many messages to add to include in the list sent to the model, by setting `num_history_messages`.
   - You can set `read_chat_history=True` to provide a `get_chat_history()` tool to your team allowing it to read any message in the entire chat history.
-  - You can set `read_tool_call_history=True` to provide a `get_tool_call_history()` tool to your team allowing it to read tool calls in reverse chronological order.
-  - You can enable `search_session_history` to allow searching through previous sessions.
+  - You can enable `search_past_sessions` to allow searching through previous sessions.
   - You can set `add_team_history_to_members=True` and `num_team_history_runs=5` to add the inputs and responses from the last 5 runs (that is the team-level inputs and responses) automatically to every message sent to the team members.
 
 **Member-Level History**:
@@ -80,8 +79,8 @@ See the [History Reference](#history-reference) for help on how to use the diffe
     team = Team(
         members=[...],
         db=SqliteDb(db_file="tmp/team.db"),
-        search_session_history=True,
-        num_history_sessions=2,  # Keep low
+        search_past_sessions=True,
+        num_past_sessions_to_search=10,
     )
     ```
   </Tab>
@@ -115,7 +114,8 @@ You can change the number of runs by setting `num_team_history_runs=n` where `n`
 When enabled, team history is appended to the task sent to a team member in this format:
 ```
 <team_history_context>
-input: Hallo, wie heißt du? Meine Name ist John.
+[run-1]
+input: Hallo, wie heißt du? Mein Name ist John.
 response: Ich heiße ChatGPT.
 </team_history_context>
 ```
@@ -137,13 +137,14 @@ If you want members to have access to all interactions that has happened during 
 When enabled, interaction details are appended to the task sent to a team member in this format:
 ```
 <member_interaction_context>
-- Member: Web Researcher
-- Task: Find information about the web
-- Response: I found information about the web
+See below interactions with other team members.
+Member: Web Researcher
+Task: Find information about the web
+Response: I found information about the web
 
-- Member: HackerNews Researcher
-- Task: Find information about the web
-- Response: I found information about the web
+Member: HackerNews Researcher
+Task: Find information about the web
+Response: I found information about the web
 </member_interaction_context>
 ```
 
@@ -159,13 +160,13 @@ This will provide a `get_chat_history()` tool to your team allowing it to read a
 
 In some scenarios, you might want to fetch messages from across multiple sessions to provide context or continuity in conversations.
 
-To enable fetching messages from the last N sessions, you need to use the following flags:
+Set `search_past_sessions=True` to give the team two tools: `search_past_sessions()` returns previews of recent sessions, and `read_past_session(session_id)` returns the full conversation for a specific session.
 
-- `search_session_history`: Set this to `True` to allow searching through previous sessions.
-- `num_history_sessions`: Specify the number of past sessions to include in the search.
+- `num_past_sessions_to_search`: Maximum number of past sessions to search. Defaults to 20.
+- `num_past_session_runs_in_search`: Number of runs per session shown in the preview. Defaults to 3.
 
 <Tip>
-Keep `num_history_sessions` low (2 or 3) to avoid filling up the context length of the model, which can lead to performance issues.
+Keep `num_past_sessions_to_search` low to avoid filling up the context length of the model, which can lead to performance issues.
 </Tip>
 
 

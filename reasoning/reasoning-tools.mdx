@@ -17,7 +17,7 @@ Agno provides **four specialized reasoning toolkits**, each optimized for differ
 | **MemoryTools**    | Reasoning about user memory operations | `think()`, `get/add/update/delete_memory()`, `analyze()` |
 | **WorkflowTools**  | Reasoning about workflow execution     | `think()`, `run_workflow()`, `analyze()`                 |
 
-> **Note:** All reasoning toolkits register their `think()`/`analyze()` functions under the same names. When you combine toolkits, the agent keeps only the first implementation of each function name and silently drops duplicates. Disable `enable_think`/`enable_analyze` (or rename/customize functions) on the later toolkits if you still want them to expose their domain-specific actions without conflicting with the scratchpad tools.
+> **Note:** All reasoning toolkits register their `think()`/`analyze()` functions under the same names. When you combine toolkits, the agent keeps only the first implementation of each function name and drops duplicates, logging a warning. Disable `enable_think`/`enable_analyze` (or rename/customize functions) on the later toolkits if you still want them to expose their domain-specific actions without conflicting with the scratchpad tools.
 
 All four toolkits follow the same **Think → Act → Analyze** pattern but provide domain-specific actions tailored to their use case.
 
@@ -189,6 +189,8 @@ For executing and analyzing complex workflows.
 - `run_workflow()` - Execute a workflow with specific inputs
 - `analyze()` - Evaluate workflow results
 
+`WorkflowTools` registers only `run_workflow()` by default. Set `enable_think=True` and `enable_analyze=True` to add the thinking tools.
+
 **When to use:**
 
 - Multi-step automated processes
@@ -218,7 +220,14 @@ research_workflow = Workflow(
 # Create agent with workflow tools
 orchestrator = Agent(
     model=OpenAIResponses(id="gpt-5.2"),
-    tools=[WorkflowTools(workflow=research_workflow, add_instructions=True)],
+    tools=[
+        WorkflowTools(
+            workflow=research_workflow,
+            enable_think=True,
+            enable_analyze=True,
+            add_instructions=True,
+        )
+    ],
 )
 
 orchestrator.print_response(
@@ -262,7 +271,7 @@ This mirrors how humans solve complex problems: we think before acting, evaluate
 
 ## Combining Multiple Reasoning Toolkits
 
-You can use multiple reasoning toolkits together for multi-domain reasoning. Tool names must stay unique, so disable overlapping `think`/`analyze` entries (or rename the later ones) to prevent silent overrides:
+You can use multiple reasoning toolkits together for multi-domain reasoning. Tool names must stay unique, so disable overlapping `think`/`analyze` entries (or rename the later ones) to prevent duplicates from being dropped:
 
 ```python
 from agno.agent import Agent
@@ -365,8 +374,8 @@ Use the think and analyze tools for rigorous scientific reasoning:
 """
 
 ReasoningTools(
-    instructions=custom_instructions,
-    add_instructions=False  # Don't include default instructions
+    instructions=custom_instructions,  # Replaces the default instructions
+    add_instructions=True,  # Inject your custom instructions into the prompt
 )
 ```
 

@@ -5,12 +5,12 @@ description: Consolidate all human-in-the-loop settings into a single config obj
 keywords: [workflow, HITL, human-review, config, confirmation, output review, iteration review, timeout]
 ---
 
-`HumanReview` groups all HITL settings into a single object instead of passing them as separate parameters. All workflow primitives accept `human_review=HumanReview(...)`: Step, Loop, Router, Condition, Steps, and Parallel.
+`HumanReview` groups all HITL settings into a single object instead of passing them as separate parameters. Step, Loop, Router, Condition, and Steps accept `human_review=HumanReview(...)`. Parallel accepts the parameter but rejects every HITL field, since parallel branches cannot be individually paused.
 
 ```python
 from agno.workflow.step import Step
 from agno.workflow.types import HumanReview
-from agno.workflow import OnReject
+from agno.workflow import OnReject, OnTimeout
 
 Step(
     name="draft_email",
@@ -53,33 +53,33 @@ If both `human_review` and flat parameters are provided, `human_review` takes pr
 | `requires_user_input` | `bool` | `False` | Pause to collect user input before execution |
 | `user_input_message` | `str` | `None` | Message shown when collecting input |
 | `user_input_schema` | `List[UserInputField]` | `None` | Schema defining expected input fields |
-| `requires_output_review` | `bool` | `False` | Pause after execution for output review |
+| `requires_output_review` | `bool` or `Callable[[StepOutput], bool]` | `False` | Pause after execution for output review |
 | `output_review_message` | `str` | `None` | Message shown during output review |
 | `requires_iteration_review` | `bool` | `False` | Pause after each loop iteration for review |
 | `iteration_review_message` | `str` | `None` | Message shown during iteration review |
 | `on_reject` | `OnReject` | `OnReject.skip` | Action when user rejects |
-| `on_error` | `OnError` | `None` | Action when step errors |
+| `on_error` | `OnError` | `OnError.skip` | Action when step errors |
 | `max_retries` | `int` | `3` | Max retries on rejection (when `on_reject=OnReject.retry`) |
 | `timeout` | `int` | `None` | Seconds to wait for user response |
-| `on_timeout` | `OnTimeout` | `None` | Action when timeout expires |
+| `on_timeout` | `OnTimeout` | `OnTimeout.cancel` | Action when timeout expires |
 
 ## Supported Fields by Component
 
-Not every field works on every component. Passing an unsupported field raises a `ValueError` at construction time.
+Not every field works on every component. Passing an unsupported `requires_*` flag raises a `ValueError` at construction time. The behavior fields (`on_reject`, `on_error`, `max_retries`, `timeout`, `on_timeout`) are not validated; they only take effect on the components marked below.
 
 | Field | Step | Loop | Router | Condition | Steps | Parallel |
 |-------|------|------|--------|-----------|-------|----------|
-| `requires_confirmation` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `requires_confirmation` | ✓ | ✓ | ✓ | ✓ | ✓ | - |
 | `requires_user_input` | ✓ | - | ✓ | - | - | - |
 | `requires_output_review` | ✓ | - | ✓ | - | - | - |
 | `requires_iteration_review` | - | ✓ | - | - | - | - |
-| `on_reject` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `on_error` | ✓ | - | - | - | - | - |
-| `max_retries` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `timeout` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `on_timeout` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `on_reject` | ✓ | ✓ | ✓ | ✓ | ✓ | - |
+| `on_error` | ✓ | - | - | ✓ | - | - |
+| `max_retries` | ✓ | - | ✓ | - | - | - |
+| `timeout` | ✓ | - | - | - | - | - |
+| `on_timeout` | ✓ | - | - | - | - | - |
 
-Condition, Steps, and Parallel only support `requires_confirmation`. Passing unsupported fields raises a clear error:
+Condition and Steps only support `requires_confirmation`. Parallel supports no HITL fields. Passing unsupported fields raises a clear error:
 
 ```python
 from agno.workflow.condition import Condition
@@ -157,7 +157,7 @@ HumanReview(
 
 ## Timeout
 
-Set a timeout for how long to wait for a user response. If the timeout expires, `on_timeout` determines what happens.
+Set a timeout for how long to wait for a user response. If the timeout expires, `on_timeout` determines what happens. Timeout is applied by Step pauses; other components ignore it.
 
 ```python
 from agno.workflow import OnTimeout
@@ -173,8 +173,8 @@ HumanReview(
 | `OnTimeout` Value | Behavior |
 |-------------------|----------|
 | `OnTimeout.approve` | Automatically approve and continue |
-| `OnTimeout.reject` | Automatically reject |
-| `OnTimeout.cancel` | Cancel the workflow |
+| `OnTimeout.skip` | Skip the step and continue |
+| `OnTimeout.cancel` | Cancel the workflow (default) |
 
 ## Serialization
 

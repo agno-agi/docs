@@ -129,13 +129,13 @@ print(name)  # e.g. "Product Launch Strategy"
 ```
 </CodeGroup>
 
-Calling `set_session_name(autogenerate=True)` asks the model to read the first few messages in the session and generate a short (≤5 words) label. The method returns the updated session object. Use `get_session_name()` to retrieve the generated name.
+Calling `set_session_name(autogenerate=True)` asks the model to read the messages in the session and generate a short (5 words max) label. The method returns the updated session object. Use `get_session_name()` to retrieve the generated name.
 
 **Best Practices:**
 - **Delay generation** until the conversation has meaningful context (e.g., after 2–3 messages)
 - **Provide a fallback**: wrap the call in your own helper that falls back to a human-entered name or a ticket ID if the generation fails
-- **Batch jobs**: loop over session IDs from your database and call `set_session_name(..., autogenerate=True)` once for each. The API is synchronous, so plan around model latency
-- **Costs**: Each generation is an extra model call. Use cheaper models via `session_summary_manager` or run it out-of-band if you're cost sensitive
+- **Batch jobs**: loop over session IDs from your database and call `set_session_name(..., autogenerate=True)` once for each. Use `aset_session_name` in async code
+- **Costs**: Each generation is an extra call to the agent's or team's model. Run it out-of-band if you're cost sensitive
 
 ## Session Caching
 
@@ -145,9 +145,11 @@ Session caching stores the session object in memory to improve performance. `cac
 ```python Agent
 from agno.agent import Agent
 from agno.models.openai import OpenAIResponses
+from agno.db.sqlite import SqliteDb
 
 agent = Agent(
     model=OpenAIResponses(id="gpt-5.2"),
+    db=SqliteDb(db_file="tmp/agent.db"),
     session_id="my_session",
     cache_session=True,  # Enable in-memory caching
 )
@@ -162,9 +164,12 @@ agent.run("Second message")
 ```python Team
 from agno.team import Team
 from agno.models.openai import OpenAIResponses
+from agno.db.sqlite import SqliteDb
 
 team = Team(
     model=OpenAIResponses(id="gpt-5.2"),
+    members=[...],
+    db=SqliteDb(db_file="tmp/team.db"),
     session_id="team_session",
     cache_session=True,  # Enable in-memory caching
 )

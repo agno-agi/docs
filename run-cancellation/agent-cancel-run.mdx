@@ -39,57 +39,69 @@ def long_running_task(agent: Agent, run_id_container: dict):
     Returns:
         Dictionary with run results and status
     """
-    # Start the agent run - this simulates a long task
-    final_response = None
-    content_pieces = []
+    try:
+        # Start the agent run - this simulates a long task
+        final_response = None
+        content_pieces = []
 
-    for chunk in agent.run(
-        "Write a very long story about a dragon who learns to code. "
-        "Make it at least 2000 words with detailed descriptions and dialogue. "
-        "Take your time and be very thorough.",
-        stream=True,
-    ):
-        if "run_id" not in run_id_container and chunk.run_id:
-            run_id_container["run_id"] = chunk.run_id
+        for chunk in agent.run(
+            "Write a very long story about a dragon who learns to code. "
+            "Make it at least 2000 words with detailed descriptions and dialogue. "
+            "Take your time and be very thorough.",
+            stream=True,
+        ):
+            if "run_id" not in run_id_container and chunk.run_id:
+                run_id_container["run_id"] = chunk.run_id
 
-        if chunk.event == RunEvent.run_content:
-            print(chunk.content, end="", flush=True)
-            content_pieces.append(chunk.content)
-        # When the run is cancelled, a `RunEvent.run_cancelled` event is emitted
-        elif chunk.event == RunEvent.run_cancelled:
-            print(f"\nRun was cancelled: {chunk.run_id}")
+            if chunk.event == RunEvent.run_content:
+                if chunk.content:
+                    print(chunk.content, end="", flush=True)
+                    content_pieces.append(chunk.content)
+            # When the run is cancelled, a `RunEvent.run_cancelled` event is emitted
+            elif chunk.event == RunEvent.run_cancelled:
+                print(f"\nRun was cancelled: {chunk.run_id}")
+                run_id_container["result"] = {
+                    "status": "cancelled",
+                    "run_id": chunk.run_id,
+                    "cancelled": True,
+                    "content": "".join(content_pieces)[:200] + "..."
+                    if content_pieces
+                    else "No content before cancellation",
+                }
+                return
+            elif hasattr(chunk, "status") and chunk.status == RunStatus.completed:
+                final_response = chunk
+
+        # If we get here, the run completed successfully
+        if final_response:
             run_id_container["result"] = {
-                "status": "cancelled",
-                "run_id": chunk.run_id,
-                "cancelled": True,
-                "content": "".join(content_pieces)[:200] + "..."
+                "status": final_response.status.value
+                if final_response.status
+                else "completed",
+                "run_id": final_response.run_id,
+                "cancelled": final_response.status == RunStatus.cancelled,
+                "content": ("".join(content_pieces)[:200] + "...")
                 if content_pieces
-                else "No content before cancellation",
+                else "No content",
             }
-            return
-        elif hasattr(chunk, "status") and chunk.status == RunStatus.completed:
-            final_response = chunk
+        else:
+            run_id_container["result"] = {
+                "status": "unknown",
+                "run_id": run_id_container.get("run_id"),
+                "cancelled": False,
+                "content": ("".join(content_pieces)[:200] + "...")
+                if content_pieces
+                else "No content",
+            }
 
-    # If we get here, the run completed successfully
-    if final_response:
+    except Exception as e:
+        print(f"\nException in run: {str(e)}")
         run_id_container["result"] = {
-            "status": final_response.status.value
-            if final_response.status
-            else "completed",
-            "run_id": final_response.run_id,
-            "cancelled": final_response.status == RunStatus.cancelled,
-            "content": ("".join(content_pieces)[:200] + "...")
-            if content_pieces
-            else "No content",
-        }
-    else:
-        run_id_container["result"] = {
-            "status": "unknown",
+            "status": "error",
+            "error": str(e),
             "run_id": run_id_container.get("run_id"),
-            "cancelled": False,
-            "content": ("".join(content_pieces)[:200] + "...")
-            if content_pieces
-            else "No content",
+            "cancelled": True,
+            "content": "Error occurred",
         }
 
 

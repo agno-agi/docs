@@ -12,92 +12,95 @@ Enable tracing for a workflow to automatically capture all workflow operations, 
 
   <Step title="Create a Python file">
     ```python basic_workflow_tracing.py
-from agno.agent import Agent
-from agno.db.sqlite import SqliteDb
-from agno.os import AgentOS
-from agno.tools.hackernews import HackerNewsTools
-from agno.workflow.condition import Condition
-from agno.workflow.step import Step
-from agno.workflow.types import StepInput
-from agno.workflow.workflow import Workflow
+    from agno.agent import Agent
+    from agno.db.sqlite import SqliteDb
+    from agno.tools.hackernews import HackerNewsTools
+    from agno.tracing import setup_tracing
+    from agno.workflow.condition import Condition
+    from agno.workflow.step import Step
+    from agno.workflow.types import StepInput
+    from agno.workflow.workflow import Workflow
 
-# Set up database
-db = SqliteDb(db_file="tmp/traces.db")
+    # Set up database for traces
+    db = SqliteDb(db_file="tmp/traces.db")
 
-# === BASIC AGENTS ===
-researcher = Agent(
-    name="Researcher",
-    instructions="Research the given topic and provide detailed findings.",
-    tools=[HackerNewsTools()],
-)
+    # Enable tracing (call once at startup)
+    setup_tracing(db=db)
 
-summarizer = Agent(
-    name="Summarizer",
-    instructions="Create a clear summary of the research findings.",
-)
+    # === BASIC AGENTS ===
+    researcher = Agent(
+        name="Researcher",
+        instructions="Research the given topic and provide detailed findings.",
+        tools=[HackerNewsTools()],
+    )
 
-fact_checker = Agent(
-    name="Fact Checker",
-    instructions="Verify facts and check for accuracy in the research.",
-    tools=[HackerNewsTools()],
-)
+    summarizer = Agent(
+        name="Summarizer",
+        instructions="Create a clear summary of the research findings.",
+    )
 
-writer = Agent(
-    name="Writer",
-    instructions="Write a comprehensive article based on all available research and verification.",
-)
+    fact_checker = Agent(
+        name="Fact Checker",
+        instructions="Verify facts and check for accuracy in the research.",
+        tools=[HackerNewsTools()],
+    )
 
-# === CONDITION EVALUATOR ===
+    writer = Agent(
+        name="Writer",
+        instructions="Write a comprehensive article based on all available research and verification.",
+    )
 
-
-def needs_fact_checking(step_input: StepInput) -> bool:
-    """Determine if the research contains claims that need fact-checking"""
-    return True
+    # === CONDITION EVALUATOR ===
 
 
-# === WORKFLOW STEPS ===
-research_step = Step(
-    name="research",
-    description="Research the topic",
-    agent=researcher,
-)
+    def needs_fact_checking(step_input: StepInput) -> bool:
+        """Determine if the research contains claims that need fact-checking"""
+        return True
 
-summarize_step = Step(
-    name="summarize",
-    description="Summarize research findings",
-    agent=summarizer,
-)
 
-# Conditional fact-checking step
-fact_check_step = Step(
-    name="fact_check",
-    description="Verify facts and claims",
-    agent=fact_checker,
-)
+    # === WORKFLOW STEPS ===
+    research_step = Step(
+        name="research",
+        description="Research the topic",
+        agent=researcher,
+    )
 
-write_article = Step(
-    name="write_article",
-    description="Write final article",
-    agent=writer,
-)
+    summarize_step = Step(
+        name="summarize",
+        description="Summarize research findings",
+        agent=summarizer,
+    )
 
-# === BASIC LINEAR WORKFLOW ===
-workflow = Workflow(
-    name="Basic Linear Workflow",
-    description="Research -> Summarize -> Condition(Fact Check) -> Write Article",
-    db=db,
-    steps=[
-        research_step,
-        summarize_step,
-        Condition(
-            name="fact_check_condition",
-            description="Check if fact-checking is needed",
-            evaluator=needs_fact_checking,
-            steps=[fact_check_step],
-        ),
-        write_article,
-    ],
-)
+    # Conditional fact-checking step
+    fact_check_step = Step(
+        name="fact_check",
+        description="Verify facts and claims",
+        agent=fact_checker,
+    )
+
+    write_article = Step(
+        name="write_article",
+        description="Write final article",
+        agent=writer,
+    )
+
+    # === BASIC LINEAR WORKFLOW ===
+    workflow = Workflow(
+        name="Basic Linear Workflow",
+        description="Research -> Summarize -> Condition(Fact Check) -> Write Article",
+        db=db,
+        steps=[
+            research_step,
+            summarize_step,
+            Condition(
+                name="fact_check_condition",
+                description="Check if fact-checking is needed",
+                evaluator=needs_fact_checking,
+                steps=[fact_check_step],
+            ),
+            write_article,
+        ],
+    )
 
     # Run the workflow - traces are captured automatically
     workflow.print_response("Write an article on AI agents?")
@@ -106,7 +109,7 @@ workflow = Workflow(
     traces, count = db.get_traces(workflow_id=workflow.id, limit=10)
     print(f"\nFound {count} traces for workflow '{workflow.name}'")
     for trace in traces:
-        print(f"  - {workflow.name}: {trace.duration_ms}ms ({trace.status})")
+        print(f"  - {trace.name}: {trace.duration_ms}ms ({trace.status})")
     ```
   </Step>
 

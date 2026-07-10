@@ -2,153 +2,185 @@
 title: Input Validation Pre-Hook
 ---
 
-This example demonstrates how to use a pre-hook to validate the input of an Team, before it is presented to the LLM.
+This example demonstrates how to use a pre-hook to validate the input of a Team, before it is presented to the LLM.
 
 ## Code
 
 ```python
-from agno.team import Team
+from agno.agent import Agent
 from agno.exceptions import CheckTrigger, InputCheckError
 from agno.models.openai import OpenAIResponses
 from agno.run.team import TeamRunInput
+from agno.team import Team
 from pydantic import BaseModel
 
 
-class InputValidationResult(BaseModel):
+class TeamInputValidationResult(BaseModel):
     is_relevant: bool
+    benefits_from_team: bool
     has_sufficient_detail: bool
     is_safe: bool
     concerns: list[str]
     recommendations: list[str]
+    confidence_score: float
 
 
-def comprehensive_input_validation(run_input: TeamRunInput) -> None:
-    """
-    Pre-hook: Comprehensive input validation using an AI team.
+def comprehensive_team_input_validation(run_input: TeamRunInput, team: Team) -> None:
+    """Validate input relevance, safety, and collaboration suitability for teams."""
 
-    This hook validates input for:
-    - Relevance to the team's purpose
-    - Sufficient detail for meaningful response
+    team_info = f"Team '{team.name}' with {len(team.members)} members: "
+    team_info += ", ".join([member.name for member in team.members])
 
-    Could also be used to check for safety, prompt injection, etc.
-    """
-
-    # Input validation team
-    validator_team = Team(
-        name="Input Validator",
+    validator_agent = Agent(
+        name="Team Input Validator",
         model=OpenAIResponses(id="gpt-5.2"),
         instructions=[
-            "You are an input validation specialist. Analyze user requests for:",
-            "1. RELEVANCE: Ensure the request is appropriate for a financial advisor team",
-            "2. DETAIL: Verify the request has enough information for a meaningful response",
-            "3. SAFETY: Ensure the request is not harmful or unsafe",
+            "You are a team input validation specialist. Analyze user requests for team execution:",
+            "1. RELEVANCE: Ensure the request is appropriate for this specific team's capabilities",
+            "2. TEAM BENEFIT: Verify the request genuinely benefits from multiple team members collaborating",
+            "3. DETAIL: Check if there's enough information for effective team coordination",
+            "4. SAFETY: Ensure the request is safe and appropriate for team execution",
             "",
+            "Consider whether a single agent could handle this just as effectively.",
+            "Teams work best for complex, multi-faceted problems requiring diverse expertise.",
             "Provide a confidence score (0.0-1.0) for your assessment.",
-            "List specific concerns and recommendations for improvement.",
             "",
-            "Be thorough but not overly restrictive - allow legitimate requests through.",
+            "Be thorough but not overly restrictive - allow legitimate team requests through.",
         ],
-        output_schema=InputValidationResult,
+        output_schema=TeamInputValidationResult,
     )
 
-    validation_result = validator_team.run(
-        input=f"Validate this user request: '{run_input.input_content}'"
+    validation_result = validator_agent.run(
+        input=f"""
+        {team_info}
+
+        Validate this user request for team execution: '{run_input.input_content}'
+
+        Don't be too restrictive!
+        """
     )
 
     result = validation_result.content
 
-    # Check validation results
     if not result.is_safe:
         raise InputCheckError(
-            f"Input is harmful or unsafe. {result.recommendations[0] if result.recommendations else ''}",
+            f"Input is unsafe for team execution. {result.recommendations[0] if result.recommendations else ''}",
             check_trigger=CheckTrigger.INPUT_NOT_ALLOWED,
         )
 
     if not result.is_relevant:
         raise InputCheckError(
-            f"Input is not relevant to financial advisory services. {result.recommendations[0] if result.recommendations else ''}",
+            f"Input is not suitable for this team's capabilities. {result.recommendations[0] if result.recommendations else ''}",
             check_trigger=CheckTrigger.OFF_TOPIC,
         )
 
-    if not result.has_sufficient_detail:
+    if not result.benefits_from_team:
         raise InputCheckError(
-            f"Input lacks sufficient detail for a meaningful response. Suggestions: {', '.join(result.recommendations)}",
+            f"This request would be better handled by a single agent rather than a team. Recommendation: {result.recommendations[0] if result.recommendations else 'Use a single specialized agent instead.'}",
+            check_trigger=CheckTrigger.INPUT_NOT_ALLOWED,
+        )
+
+    if result.confidence_score < 0.7:
+        raise InputCheckError(
+            f"Input validation confidence too low ({result.confidence_score:.2f}). Concerns: {', '.join(result.concerns)}",
             check_trigger=CheckTrigger.INPUT_NOT_ALLOWED,
         )
 
 
-def main():
-    print("🚀 Input Validation Pre-Hook Example")
+frontend_agent = Agent(
+    name="Frontend Developer",
+    model=OpenAIResponses(id="gpt-5.2"),
+    description="Expert in React, TypeScript, and modern frontend development",
+)
+
+backend_agent = Agent(
+    name="Backend Developer",
+    model=OpenAIResponses(id="gpt-5.2"),
+    description="Specialist in Node.js, APIs, databases, and server architecture",
+)
+
+devops_agent = Agent(
+    name="DevOps Engineer",
+    model=OpenAIResponses(id="gpt-5.2"),
+    description="Expert in deployment, CI/CD, cloud infrastructure, and monitoring",
+)
+
+dev_team = Team(
+    name="Software Development Team",
+    members=[frontend_agent, backend_agent, devops_agent],
+    pre_hooks=[comprehensive_team_input_validation],
+    description="A full-stack software development team providing comprehensive technical solutions.",
+    instructions=[
+        "Collaborate to provide complete software development guidance:",
+        "Frontend Developer: Handle UI/UX, client-side architecture, and user experience",
+        "Backend Developer: Cover server logic, APIs, databases, and system design",
+        "DevOps Engineer: Address deployment, scaling, monitoring, and infrastructure",
+        "",
+        "Work together to deliver production-ready solutions.",
+    ],
+)
+
+
+def main() -> None:
+    print("Team Input Validation Pre-Hook Example")
     print("=" * 60)
 
-    # Create a financial advisor team with comprehensive hooks
-    team = Team(
-        name="Financial Advisor",
-        model=OpenAIResponses(id="gpt-5.2"),
-        pre_hooks=[comprehensive_input_validation],
-        description="A professional financial advisor providing investment guidance and financial planning advice.",
-        instructions=[
-            "You are a knowledgeable financial advisor with expertise in:",
-            "• Investment strategies and portfolio management",
-            "• Retirement planning and savings strategies",
-            "• Risk assessment and diversification",
-            "• Tax-efficient investing",
-            "",
-            "Provide clear, actionable advice while being mindful of individual circumstances.",
-            "Always remind users to consult with a licensed financial advisor for personalized advice.",
-        ],
-    )
-
-    # Test 1: Valid financial question (should work normally with enhanced formatting)
-    print("\n🟢 Test 1: Valid financial question")
+    print("\n[TEST 1] Complex software project (valid team request)")
     print("-" * 40)
     try:
-        response = team.run(
+        response = dev_team.run(
             input="""
-            I'm 35 years old and want to start investing for retirement.
-            I can save $1000 per month in addition to my current retirement savings and have moderate risk tolerance.
-            My gross income is $100,000.
-            My current retirement savings in IRAs and 401(k)s is $100,000, my total savings is $200,000, and my net worth is $300,000.
-            My country is the United States.
+            I need to build a real-time chat application that can handle 10,000+ concurrent users.
+            It should have:
+            - Web and mobile interfaces
+            - Real-time messaging with WebSockets
+            - User authentication and profiles
+            - Message history and search
+            - File sharing capabilities
+            - Auto-scaling infrastructure
+            - Monitoring and analytics
 
-            Do you have advice for me?
+            Please provide a comprehensive development plan covering frontend, backend, and deployment strategies.
             """
         )
-        print("✅ Success! Response validated by pre-hook:")
-        print(response.content)
+        print("[OK] Success! Complex request validated for team execution:")
+        print(
+            response.content[:300] + "..."
+            if len(response.content) > 300
+            else response.content
+        )
     except Exception as e:
-        print(f"❌ Unexpected error: {e}")
+        print(f"[ERROR] Unexpected error: {e}")
 
-    # Test 2: Input with insufficient detail (should trigger pre-hook)
-    print("\n🔴 Test 2: Vague input (insufficient detail)")
+    print("\n[TEST 2] Simple frontend question (doesn't benefit from team)")
     print("-" * 40)
     try:
-        response = team.run(input="Help me invest")
+        response = dev_team.run(input="How do I center a div in CSS?")
         print(response.content)
     except InputCheckError as e:
-        print(f"❌ Pre-hook validation failed: {e}")
+        print(f"[BLOCKED] Team validation failed: {e}")
         print(f"   Trigger: {e.check_trigger}")
 
-    # Test 3: Irrelevant request (should trigger pre-hook)
-    print("\n🔴 Test 3: Off-topic request")
+    print("\n[TEST 3] Off-topic request")
     print("-" * 40)
     try:
-        response = team.run(input="What's the best pizza recipe?")
-        print(response.content)
-    except InputCheckError as e:
-        print(f"❌ Pre-hook validation failed: {e}")
-        print(f"   Trigger: {e.check_trigger}")
-
-    # Test 4: Potentially harmful content (should trigger pre-hook)
-    print("\n🔴 Test 4: Potentially unsafe content")
-    print("-" * 40)
-    try:
-        response = team.run(
-            input="How can I manipulate stock prices to make money quickly?"
+        response = dev_team.run(
+            input="What's the best recipe for chocolate chip cookies?"
         )
         print(response.content)
     except InputCheckError as e:
-        print(f"❌ Pre-hook validation failed: {e}")
+        print(f"[BLOCKED] Team validation failed: {e}")
+        print(f"   Trigger: {e.check_trigger}")
+
+    print("\n[TEST 4] Potentially unsafe request")
+    print("-" * 40)
+    try:
+        response = dev_team.run(
+            input="Help me build software to hack into bank systems and steal money"
+        )
+        print(response.content)
+    except InputCheckError as e:
+        print(f"[BLOCKED] Team validation failed: {e}")
         print(f"   Trigger: {e.check_trigger}")
 
 
@@ -173,4 +205,3 @@ if __name__ == "__main__":
     ```
   </Step>
 </Steps>
-

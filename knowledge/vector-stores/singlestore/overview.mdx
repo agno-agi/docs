@@ -8,18 +8,22 @@ description: Use SingleStore as a vector database for your Knowledge Base.
 
 ```shell
 docker run -d --name singlestoredb \
+  --platform linux/amd64 \
   -p 3306:3306 \
   -p 8080:8080 \
   -e ROOT_PASSWORD=admin \
-  -e SINGLESTORE_DB=AGNO \
-  -e SINGLESTORE_USER=root \
-  -e SINGLESTORE_PASSWORD=password \
-  singlestore/cluster-in-a-box
-
-docker start singlestoredb
+  -e LICENSE_KEY=accept \
+  ghcr.io/singlestore-labs/singlestoredb-dev:latest
 ```
 
-After running the container, set the environment variables:
+Create the database:
+
+```shell
+docker exec singlestoredb memsql -u root -padmin \
+  -e "CREATE DATABASE IF NOT EXISTS AGNO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+```
+
+Then set the environment variables:
 
 ```shell
 export SINGLESTORE_HOST="localhost"
@@ -34,8 +38,6 @@ SingleStore supports both cloud-based and local deployments. For step-by-step gu
 ## Example
 
 ```python agent_with_knowledge.py
-import typer
-from typing import Optional
 from os import getenv
 
 from sqlalchemy.engine import create_engine
@@ -57,7 +59,7 @@ if SSL_CERT:
 
 db_engine = create_engine(db_url)
 
-knowledge_base = Knowledge(
+knowledge = Knowledge(
     vector_db=SingleStore(
         collection="recipes",
         db_engine=db_engine,
@@ -65,31 +67,17 @@ knowledge_base = Knowledge(
     ),
 )
 
-def pdf_assistant(user: str = "user"):
-    run_id: Optional[str] = None
-
-    agent = Agent(
-        user_id=user,
-        knowledge=knowledge_base,
-        # Uncomment the following line to use traditional RAG
-        # add_knowledge_to_context=True,
-    )
-    if run_id is None:
-        run_id = agent.run_id
-        print(f"Started Run: {run_id}\n")
-    else:
-        print(f"Continuing Run: {run_id}\n")
-
-    while True:
-        agent.cli_app(markdown=True)
+agent = Agent(
+    knowledge=knowledge,
+    search_knowledge=True,
+)
 
 if __name__ == "__main__":
-    # Comment out after first run
-    knowledge_base.insert(
+    knowledge.insert(
         url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf"
     )
 
-    typer.run(pdf_assistant)
+    agent.print_response("How do I make pad thai?", markdown=True)
 ```
 
 ## SingleStore Params
