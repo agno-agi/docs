@@ -11,7 +11,7 @@ The `agno` CLI is published as the `agnoctl` package and ships as a dependency o
 | `agno` | `agno` >= 2.7, `agnoctl` | Primary command |
 | `agnoctl` | `agnoctl` | Same app. Enables `uvx agnoctl <command>` without installing the SDK. |
 
-`agnoctl` requires Python >= 3.9 and depends on `typer`, `rich`, and `httpx` only. It never imports `agno`.
+`agnoctl` requires Python >= 3.9 and depends on `typer`, `rich`, and `httpx` (plus `tomli` on Python < 3.11). It never imports `agno`.
 
 Running bare `agno` prints the command catalog. `agno --version` prints the CLI version.
 
@@ -19,15 +19,15 @@ Running bare `agno` prints the command catalog. `agno --version` prints the CLI 
 
 | Variable | Read by | Purpose |
 |----------|---------|---------|
-| `AGENTOS_URL` | `connect`, `status`, `tokens` | AgentOS base URL when `--url` is not passed. Skips the localhost probe. |
-| `AGNO_ADMIN_TOKEN` | `connect`, `tokens` | Admin credential for the service-accounts API. Checked first. |
-| `OS_SECURITY_KEY` | `connect`, `tokens` | Admin credential fallback when `AGNO_ADMIN_TOKEN` is unset. |
+| `AGENTOS_URL` | `connect`, `disconnect`, `status`, `tokens` | AgentOS base URL when `--url` is not passed. Skips the env-file lookup and localhost probe. |
+| `AGNO_ADMIN_TOKEN` | `connect`, `disconnect --revoke`, `tokens` | Admin credential for the service-accounts API. Checked first. |
+| `OS_SECURITY_KEY` | `connect`, `disconnect --revoke`, `tokens` | Admin credential fallback when `AGNO_ADMIN_TOKEN` is unset. |
 
 When neither credential variable is set and the AgentOS enforces authorization, the CLI prompts interactively. In `--json` mode or with a non-TTY stdin it exits with an error instead of prompting.
 
 ## Discovery
 
-Commands that talk to an AgentOS resolve its URL in this order: `--url` flag, `AGENTOS_URL`, then a probe of `http://localhost:7777`, `:7778`, `:7779`, and `:8000`.
+Commands that talk to an AgentOS resolve its URL in this order: `--url` flag, `AGENTOS_URL` env var, `AGENTOS_URL` read from `.env.production` then `.env` in the current directory, then a probe of `http://localhost:7777`, `:7778`, `:7779`, and `:8000`. Interactive `connect` and `disconnect` runs probe all candidates (including URLs found in existing client configs) and prompt when more than one AgentOS answers; `--json` and non-TTY runs resolve the single highest-priority target.
 
 Each candidate is checked with `GET /health`, then `GET /info`. Servers that report structured discovery fields (`mcp: {enabled, path}` and `auth_mode`) are read directly; older servers are probed with a `POST /mcp` (MCP mounted or not) and an unauthenticated `GET /config` (auth mode by status code). Detected auth modes: `none`, `security_key`, `jwt`, `unknown`.
 
@@ -35,10 +35,10 @@ Each candidate is checked with `GET /health`, then `GET /info`. Servers that rep
 
 | Code | Meaning |
 |------|---------|
-| `0` | Success. For `connect`: every selected client connected, was already connected, or received manual steps. |
+| `0` | Success. For `connect`: every selected client connected, was already connected, is configured pending a one-time OAuth sign-in, or received manual steps. |
 | `1` | Error. For `connect`: no client connected. |
 | `2` | Usage error (unknown command, flag, or argument). |
-| `3` | Partial success (`connect` only): some clients connected, others failed. |
+| `3` | Partial success (`connect` and `disconnect`): some clients succeeded, others failed. |
 
 ## Machine Mode (`--json`)
 
@@ -54,11 +54,14 @@ The document shapes per command are listed below. Two shared objects appear thro
 // OS object
 {
   "url": "http://localhost:7777",
+  "name": "AgentOS",
+  "os_id": "…",
   "version": "2.7.0",
-  "mcp": {"enabled": true, "path": "/mcp"},
+  "mcp": {"enabled": true, "path": "/mcp", "oauth": null},
   "auth_mode": "jwt",
   "discovered_via": "info",
-  "url_source": "default"
+  "url_source": "default",
+  "url_source_file": null
 }
 ```
 
@@ -77,7 +80,7 @@ The document shapes per command are listed below. Two shared objects appear thro
 }
 ```
 
-`url_source` is `flag`, `env`, or `default`. `discovered_via` is `info` or `probe`. Timestamps are Unix epoch seconds.
+`url_source` is `flag`, `env`, `env-file`, `client-config`, or `default`. `url_source_file` names the env file or client configs the URL came from. `mcp.oauth` carries `{authorization_servers, resource}` when `/mcp` is OAuth-protected. `discovered_via` is `info` or `probe`. Timestamps are Unix epoch seconds.
 
 ## agno create
 
@@ -105,21 +108,23 @@ JSON output:
 agno connect [OPTIONS]
 ```
 
-Connects coding agents to a running AgentOS over MCP: discover, mint one service account per client, write each client's MCP config, read the entry back, and verify it with a real MCP `initialize` + `tools/list` handshake. Requires the AgentOS to have `mcp_server=True`.
+Connects coding agents to a running AgentOS over MCP: discover, mint one service account per client, write each client's MCP config, read the entry back, and verify it with a real MCP `initialize` + `tools/list` handshake. Requires the AgentOS to have `mcp_server=True`. When `/mcp` is OAuth-protected, entries are written without tokens, nothing is minted, and each app completes a one-time sign-in; `--pat` opts back into minted tokens.
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--url` | autodiscover | AgentOS base URL |
-| `--clients` | detected | Comma-separated clients: `claude-code`, `claude-desktop`, `codex`, `cursor`; `claude-ai` and `chatgpt` print manual setup steps. Aliases: `claude` (Claude Code), `claude-app` (Claude Desktop), `gpt`/`openai` (ChatGPT). |
+| `--clients` | detected, plus `claude-ai`/`chatgpt` steps when the AgentOS is on a public URL | Comma-separated clients: `claude-code`, `claude-desktop`, `codex`, `cursor`; `claude-ai` and `chatgpt` print manual setup steps. Aliases: `claude` (Claude Code), `claude-app` (Claude Desktop), `gpt`/`openai` (ChatGPT). |
 | `--name` | one account per client | Use one shared service account with this name |
 | `--scopes`, `-s` | server's run + read scopes | Scope to grant (repeatable) |
 | `--expires` | `90d` | Token lifetime in days (`90d`, `30`) or `never` |
 | `--privileged` | off | Required when `--scopes` grants write, delete, admin, or service_accounts scopes |
-| `--server-name` | `agno` | MCP server entry name written to client configs. Letters, digits, `-`, `_` only. |
+| `--pat` | off | Mint service-account tokens even when the MCP endpoint is OAuth-protected (for headless clients) |
+| `--server-name` | derived from the AgentOS name, fallback `agentos` | MCP server entry name written to client configs. Letters, digits, `-`, `_` only. |
 | `--project` | off | Write project-scoped configs (`.mcp.json` / `.cursor/mcp.json`) instead of user-level |
-| `--rotate` | off | Revoke and re-mint existing accounts without asking |
+| `--rotate` | off | Rewrite existing entries without asking: revoke and re-mint their accounts, or convert them to OAuth sign-in |
 | `--skip-existing` | off | Never touch existing accounts or config entries |
 | `--allow-http` | off | Permit sending credentials over plaintext HTTP to a non-loopback host |
+| `--yes`, `-y` | off | Trust a remote `AGENTOS_URL` from a `.env` file without prompting |
 | `--json` | off | Emit a single JSON document |
 
 Config locations per client:
@@ -138,7 +143,7 @@ Exit codes: `0` all connected, `1` nothing connected, `2` usage error, `3` parti
 ```json
 {
   "os": { "…": "OS object" },
-  "server_name": "agno",
+  "server_name": "agentos",
   "results": [
     {
       "client": "claude-code",
@@ -146,7 +151,7 @@ Exit codes: `0` all connected, `1` nothing connected, `2` usage error, `3` parti
       "error": null,
       "location": "/Users/you/.claude.json (user scope)",
       "account": { "…": "service-account object" },
-      "verify": {"ok": true, "tools": 12, "status_code": 200, "error": null}
+      "verify": {"ok": true, "tools": 12, "status_code": 200, "error": null, "oauth_challenge": false}
     }
   ],
   "warning": null,
@@ -154,7 +159,43 @@ Exit codes: `0` all connected, `1` nothing connected, `2` usage error, `3` parti
 }
 ```
 
-Result `status` values: `connected`, `already-connected`, `skipped`, `failed`, and `manual` (chat apps; carries `url` and an `instructions` array instead of `location`). Optional result fields: `note`, `rotated` (a different token was replaced; restart the client), `replaced_url` (the entry previously pointed at another AgentOS). `warning` is set when the AgentOS accepts unauthenticated MCP requests despite enforcing auth elsewhere (a pre-enforcement agno version).
+Result `status` values: `connected`, `already-connected`, `needs-login` (OAuth entry written; carries an `instructions` array with the client's sign-in step), `skipped`, `failed`, and `manual` (chat apps; carries `url` and an `instructions` array instead of `location`). Optional result fields: `note`, `rotated` (a different token was replaced; restart the client), `replaced_url` (the entry previously pointed at another AgentOS), `replaced_legacy` (a stale `agno`-named entry was renamed), `replaced_token_entry` (a token-carrying entry was replaced by a tokenless one; the account behind it stays valid), `auto` (chat-app steps surfaced automatically). `warning` is set when the AgentOS accepts unauthenticated MCP requests despite enforcing auth elsewhere (a pre-enforcement agno version).
+
+## agno disconnect
+
+```bash
+agno disconnect [OPTIONS]
+```
+
+Removes the AgentOS MCP entries from client configs. Offline by default: no OS and no admin credential required. Without `--server-name`, every entry pointing at the target AgentOS is removed (its live address, or every address discovery would have tried when nothing answers). Entries pointing at any other server are never touched.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--url` | autodiscover | AgentOS base URL |
+| `--clients` | detected | Comma-separated clients; `claude-ai` and `chatgpt` print manual removal steps |
+| `--server-name` | every entry pointing at the target AgentOS | Remove exactly this entry name |
+| `--name` | one account per client | With `--revoke`: the shared service-account name used at connect time |
+| `--revoke` | off | Also revoke the matching service accounts (needs the OS and an admin credential) |
+| `--allow-http` | off | Permit sending credentials over plaintext HTTP to a non-loopback host |
+| `--yes`, `-y` | off | Trust a remote `AGENTOS_URL` from a `.env` file without prompting |
+| `--json` | off | Emit a single JSON document |
+
+Result `status` values: `removed` (carries a `removed` array of entry names), `not-found`, `failed`, and `manual` (chat apps). Exit codes: `0` all removed or nothing to remove, `1` every removal failed, `3` partial (including failed revocations). JSON output:
+
+```json
+{
+  "os": { "…": "OS object, or null when no AgentOS answered" },
+  "server_name": null,
+  "target_urls": ["http://localhost:7777"],
+  "results": [
+    {"client": "claude-code", "status": "removed", "error": null, "removed": ["agentos"], "location": "/Users/you/.claude.json"}
+  ],
+  "revocations": [],
+  "exit_code": 0
+}
+```
+
+`revocations` is populated by `--revoke`: `{"account": "<name>", "status": "revoked" | "not-found" | "failed", "error": null}` per account.
 
 ## agno status
 
@@ -165,7 +206,7 @@ agno status [--url <url>] [--server-name <name>] [--json]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--url` | autodiscover | AgentOS base URL |
-| `--server-name` | `agno` | MCP server entry name to look for in client configs |
+| `--server-name` | derived from the AgentOS name, fallback `agentos` | MCP server entry name to look for in client configs |
 | `--json` | off | Emit a single JSON document |
 
 JSON output:
@@ -212,7 +253,7 @@ JSON output for `up` and `down`:
 
 ## agno tokens
 
-Admin operations against the AgentOS service-accounts API. All three subcommands accept `--url`, `--json`, and `--allow-http`, and resolve the admin credential from `AGNO_ADMIN_TOKEN` / `OS_SECURITY_KEY` (or a prompt) when the AgentOS enforces authorization. The CLI refuses to send credentials over plaintext HTTP to a non-loopback host without `--allow-http`.
+Admin operations against the AgentOS service-accounts API. All three subcommands accept `--url`, `--json`, `--allow-http`, and `--yes` (trust a remote `AGENTOS_URL` from a `.env` file without prompting), and resolve the admin credential from `AGNO_ADMIN_TOKEN` / `OS_SECURITY_KEY` (or a prompt) when the AgentOS enforces authorization. The CLI refuses to send credentials over plaintext HTTP to a non-loopback host without `--allow-http`.
 
 ### agno tokens create
 
@@ -254,7 +295,7 @@ agno tokens revoke <name> [--yes] [--json]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--yes`, `-y` | off | Skip the interactive confirmation prompt |
+| `--yes`, `-y` | off | Skip confirmation prompts (revoking, and trusting a remote `.env`-file URL) |
 
 Irreversible; the account's tokens stop working on their next request. Interactive runs confirm first. `--yes`, `--json`, and non-TTY runs skip the prompt.
 
