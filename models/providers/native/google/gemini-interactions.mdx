@@ -26,7 +26,7 @@ uv pip install "google-genai>=2.0" agno
 
 ## Authentication
 
-Set the `GOOGLE_API_KEY` environment variable. You can get one [from Google AI Studio](https://ai.google.dev/gemini-api/docs/api-key).
+Set the `GOOGLE_API_KEY` environment variable. You can get one [from Google AI Studio](https://ai.google.dev/gemini-api/docs/api-key). The Interactions API requires a Gemini API key and is not available on Vertex AI.
 
 <CodeGroup>
 
@@ -95,15 +95,17 @@ This is transparent to the user. The `Agent` class handles `interaction_id` trac
 
 ## Multi-turn Conversations
 
-The key advantage of the Interactions API. Prior turns are stored server-side and referenced by ID, so only the new message is sent each turn.
+The key advantage of the Interactions API. Prior turns are stored server-side and referenced by ID, so only the new message is sent each turn. Multi-turn requires a database so the `interaction_id` from each turn is persisted on the assistant message and read back on the next turn.
 
 ```python
 from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
 from agno.models.google import GeminiInteractions
 
 agent = Agent(
     model=GeminiInteractions(id="gemini-3-flash-preview"),
     add_history_to_context=True,
+    db=SqliteDb(db_file="tmp/data.db"),
     markdown=True,
 )
 
@@ -116,7 +118,7 @@ Read more about multi-turn conversations [here](/models/providers/native/google/
 
 ## Thinking
 
-Enable extended reasoning with the `thinking_level` parameter. Accepts `"low"` or `"high"`.
+Enable extended reasoning with the `thinking_level` parameter. Accepts `"minimal"`, `"low"`, `"medium"`, or `"high"`.
 
 ```python
 from agno.agent import Agent
@@ -204,22 +206,9 @@ Read more about structured output [here](/models/providers/native/google/usage/i
 
 ## Background Execution
 
-For long-running tasks like Deep Research, enable background execution. The API offloads the task and returns results when complete.
+Long-running tasks run in the background on the managed agent path. Deep Research forces `background=True` and `store=True` on the request; the non-streaming path polls until the result is ready, waiting `agent_poll_interval` seconds between polls up to `agent_max_wait` seconds. Background execution is handled automatically and has no user-facing flag on `GeminiInteractions`.
 
-```python
-from agno.agent import Agent
-from agno.models.google import GeminiInteractions
-
-agent = Agent(
-    model=GeminiInteractions(
-        id="gemini-3-flash-preview",
-        background=True,
-    ),
-    markdown=True,
-)
-
-agent.print_response("Research the history of quantum computing.")
-```
+See [Deep Research](#deep-research).
 
 ## Managed Agents
 
@@ -325,8 +314,7 @@ Read more about Antigravity [here](/models/providers/native/google/usage/interac
 | `seed` | `Optional[int]` | `None` | Random seed for reproducibility |
 | `response_modalities` | `Optional[list[str]]` | `None` | Output types (e.g., `["text", "image"]`) |
 | `store` | `Optional[bool]` | `None` | Persist interactions server-side (default: True) |
-| `background` | `Optional[bool]` | `None` | Offload to background execution |
-| `thinking_level` | `Optional[str]` | `None` | Reasoning intensity: `"low"` or `"high"` |
+| `thinking_level` | `Optional[str]` | `None` | Reasoning intensity: `"minimal"`, `"low"`, `"medium"`, or `"high"` |
 | `search` | `bool` | `False` | Enable built-in Google Search |
 | `url_context` | `bool` | `False` | Enable URL context extraction |
 | `code_execution` | `bool` | `False` | Enable code execution |
@@ -338,6 +326,8 @@ Read more about Antigravity [here](/models/providers/native/google/usage/interac
 | `visualization` | `Optional[str]` | `None` | Deep Research: `"auto"` or `"off"`. Allow chart/graph generation. |
 | `environment` | `Optional[Union[str, Dict]]` | `None` | Antigravity sandbox: `"remote"`, `"env_<id>"`, or full `EnvironmentConfig` dict. |
 | `agent_poll_interval` | `float` | `10.0` | Seconds between status polls for background agents. |
+| `agent_max_wait` | `float` | `1800.0` | Max seconds to wait for a background agent to finish. |
+| `generation_config` | `Optional[Union[Dict, BaseModel]]` | `None` | Raw generation config passthrough. Keys override the fields above. |
 | `timeout` | `Optional[float]` | `None` | Request timeout in seconds |
 | `client_params` | `Optional[Dict[str, Any]]` | `None` | Additional client parameters |
 
