@@ -35,7 +35,7 @@ if __name__ == "__main__":
 | `agents`                  | `List[Agent]`            | `None`  | Agents to include                                              |
 | `teams`                   | `List[Team]`             | `None`  | Teams to include                                               |
 | `workflows`               | `List[Workflow]`         | `None`  | Workflows to include                                           |
-| `db`                      | `BaseDb`                 | `None`  | Database used for the AgentOS                                  |
+| `db`                      | `BaseDb` or `AsyncBaseDb` | `None`  | Database used for the AgentOS                                  |
 | `checkpoint`              | `str`                    | `None`  | Default checkpoint level for agents without their own: `"runs"`, `"tool-batch"`, or `"tools"` |
 | `tracing`                 | `bool`                   | `False` | Enable tracing to AgentOS `db`                                 |
 | `knowledge`               | `List[Knowledge]`        | `None`  | Knowledge bases                                                |
@@ -49,6 +49,7 @@ if __name__ == "__main__":
 | `authorization`           | `bool`                   | `False` | Enable authorization ([docs](/agent-os/security/authorization/overview))                  |
 | `authorization_config`    | `AuthorizationConfig`    | `None`  | JWT verification config                                        |
 | `mcp_server`              | `bool` or `MCPServerConfig` | `False` | Enable MCP server ([docs](/agent-os/mcp/mcp))               |
+| `mcp_auth`                | `AuthProvider`           | `None`  | Auth provider for the MCP endpoint (OAuth for connector clients). Requires `mcp_server` |
 | `cors_allowed_origins`    | `List[str]`              | `None`  | Allowed CORS origins                                           |
 | `auto_provision_dbs`      | `bool`                   | `True`  | Auto-provision databases                                       |
 | `run_hooks_in_background` | `bool`                   | `False` | Run hooks in background                                        |
@@ -79,16 +80,16 @@ Starts the AgentOS server.
 | `workers` | `int`              | `None`      | Number of workers                   |
 | `reload`  | `bool`             | `False`     | Enable auto-reload                  |
 
-#### Environment variable fallbacks
+#### Environment variable overrides
 
-When `host` or `port` are not passed explicitly, `serve()` reads from environment variables before using defaults.
+`serve()` reads `AGENT_OS_HOST` and `AGENT_OS_PORT` from the environment. When set, they override the `host` and `port` arguments.
 
-| Environment Variable | Fallback For | Default     |
-| -------------------- | ------------ | ----------- |
-| `AGENT_OS_HOST`      | `host`       | `localhost` |
-| `AGENT_OS_PORT`      | `port`       | `7777`      |
+| Environment Variable | Overrides | Default     |
+| -------------------- | --------- | ----------- |
+| `AGENT_OS_HOST`      | `host`    | `localhost` |
+| `AGENT_OS_PORT`      | `port`    | `7777`      |
 
-Precedence: explicit argument > environment variable > default value.
+Precedence: environment variable > explicit argument > default value.
 
 This is useful for containerized deployments where host and port are configured externally:
 
@@ -104,9 +105,9 @@ if __name__ == "__main__":
     agent_os.serve(app="my_os:app", reload=True)
 ```
 
-### `resync()`
+### `resync(app)`
 
-Reloads agents, teams, workflows, and resources.
+Reloads agents, teams, workflows, and resources on the given FastAPI app.
 
 ## Configuration
 
