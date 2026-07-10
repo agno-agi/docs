@@ -1,7 +1,99 @@
 ---
 title: Upstash Vector Database
 sidebarTitle: Overview
-description: Use Upstash as a vector database for your Knowledge Base.
+description: Use Upstash Vector as a serverless vector database for your Knowledge Base.
 ---
 
-TBD
+## Setup
+
+```shell
+uv pip install upstash-vector
+```
+
+Create an index in the [Upstash Console](https://console.upstash.com), then copy its REST URL and token.
+
+```shell
+export UPSTASH_VECTOR_REST_URL="your-index-url"
+export UPSTASH_VECTOR_REST_TOKEN="your-index-token"
+```
+
+## Example
+
+```python agent_with_knowledge.py
+import os
+
+from agno.agent import Agent
+from agno.knowledge.knowledge import Knowledge
+from agno.vectordb.upstashdb import UpstashVectorDb
+
+vector_db = UpstashVectorDb(
+    url=os.getenv("UPSTASH_VECTOR_REST_URL"),
+    token=os.getenv("UPSTASH_VECTOR_REST_TOKEN"),
+)
+
+knowledge = Knowledge(
+    name="Upstash Knowledge Base",
+    vector_db=vector_db,
+)
+
+knowledge.insert(
+    name="Recipes",
+    url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
+    metadata={"doc_type": "recipe_book"},
+)
+
+agent = Agent(knowledge=knowledge)
+agent.print_response("How to make Pad Thai?", markdown=True)
+```
+
+<Note>
+Without an `embedder`, `UpstashVectorDb` uses Upstash hosted embedding models. Create your index with an embedding model in the Upstash Console. To embed locally instead, pass an `embedder` and make sure its dimension matches the index.
+</Note>
+
+<Card title="Async Support ⚡">
+  <div className="mt-2">
+    <p>
+      Upstash also supports asynchronous operations, enabling concurrency and leading to better performance.
+    </p>
+
+    ```python async_upstash_db.py
+    import asyncio
+    import os
+
+    from agno.agent import Agent
+    from agno.knowledge.embedder.openai import OpenAIEmbedder
+    from agno.knowledge.knowledge import Knowledge
+    from agno.vectordb.upstashdb import UpstashVectorDb
+
+    vector_db = UpstashVectorDb(
+        url=os.getenv("UPSTASH_VECTOR_REST_URL"),
+        token=os.getenv("UPSTASH_VECTOR_REST_TOKEN"),
+        dimension=1536,
+        embedder=OpenAIEmbedder(enable_batch=True),
+    )
+
+    knowledge = Knowledge(
+        vector_db=vector_db,
+    )
+
+    agent = Agent(knowledge=knowledge)
+
+    if __name__ == "__main__":
+        asyncio.run(
+            knowledge.ainsert(
+                url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf"
+            )
+        )
+
+        asyncio.run(agent.aprint_response("How to make Tom Kha Gai", markdown=True))
+    ```
+
+    <Tip className="mt-4">
+      Use <code>ainsert()</code> and <code>aprint_response()</code> methods with <code>asyncio.run()</code> for non-blocking operations in high-throughput applications.
+    </Tip>
+  </div>
+</Card>
+
+## UpstashVectorDb Params
+
+<Snippet file="vectordb_upstashdb_params.mdx" />
