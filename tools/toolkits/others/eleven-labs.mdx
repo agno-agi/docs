@@ -23,17 +23,35 @@ export ELEVEN_LABS_API_KEY=****
 The following agent will use Eleven Labs to generate audio based on a user prompt.
 
 ```python cookbook/91_tools/elevenlabs_tools.py
+import base64
+
 from agno.agent import Agent
+from agno.models.google import Gemini
 from agno.tools.eleven_labs import ElevenLabsTools
+from agno.utils.media import save_base64_data
 
-# Create an Agent with the ElevenLabs tool
-agent = Agent(tools=[
-    ElevenLabsTools(
-        voice_id="JBFqnCBsd6RMkjVDRZzb", model_id="eleven_multilingual_v2", target_directory="audio_generations"
-    )
-], name="ElevenLabs Agent")
+audio_agent = Agent(
+    model=Gemini(id="gemini-2.5-pro"),
+    tools=[
+        ElevenLabsTools(
+            voice_id="21m00Tcm4TlvDq8ikWAM",
+            model_id="eleven_multilingual_v2",
+        )
+    ],
+    description="You are an AI agent that can generate audio using the ElevenLabs API.",
+    instructions=[
+        "Use the `text_to_speech` tool to convert text into natural voice audio.",
+        "Use the `generate_sound_effect` tool to create sound effects from text descriptions.",
+    ],
+    markdown=True,
+)
 
-agent.print_response("Generate a audio summary of the big bang theory", markdown=True)
+response = audio_agent.run("Generate an audio summary of the french revolution")
+
+if response.audio:
+    print("Agent response:", response.content)
+    base64_audio = base64.b64encode(response.audio[0].content).decode("utf-8")
+    save_base64_data(base64_audio, "tmp/french_revolution.mp3")
 ```
 
 ## Toolkit Params
