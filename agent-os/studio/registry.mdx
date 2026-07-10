@@ -34,14 +34,19 @@ Example of registry configuration:
 
 ```python
 from agno.db.postgres import PostgresDb
-from agno.models.openai import OpenAIChat
+from agno.knowledge.knowledge import Knowledge
+from agno.memory import MemoryManager
 from agno.models.anthropic import Claude
+from agno.models.openai import OpenAIChat, OpenAIResponses
 from agno.os import AgentOS
 from agno.registry import Registry
+from agno.session import SessionSummaryManager
 from agno.tools.calculator import CalculatorTools
 from agno.tools.websearch import WebSearchTools
 from agno.vectordb.pgvector import PgVector
 from pydantic import BaseModel
+
+DB_URL = "postgresql+psycopg://ai:ai@localhost:5532/ai"
 
 class InputSchema(BaseModel):
     input: str
@@ -50,11 +55,11 @@ class InputSchema(BaseModel):
 def custom_evaluator(input: str) -> bool:
     return "urgent" in input.lower()
 
-db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai", id="postgres_db")
+db = PostgresDb(db_url=DB_URL, id="postgres_db")
 user_memory_manager = MemoryManager(
-    model=Claude(id="claude-opus-4-7"),
+    model=Claude(id="claude-sonnet-4-5"),
     db=db,
-     additional_instructions="""
+    additional_instructions="""
     IMPORTANT: Don't store any memories about the user's name. Just say "The User" instead of referencing the user's name.
     """,
 )
@@ -78,7 +83,7 @@ registry = Registry(
     tools=[CalculatorTools(), WebSearchTools()],
     models=[OpenAIChat(id="gpt-5-mini"), Claude(id="claude-sonnet-4-5")],
     dbs=[db],
-    vector_dbs=[PgVector(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai", table_name="embeddings")],
+    vector_dbs=[PgVector(db_url=DB_URL, table_name="embeddings")],
     schemas=[InputSchema],
     functions=[custom_evaluator],
     memory_managers=[user_memory_manager],
@@ -97,7 +102,7 @@ The registry exposes a [`GET /registry`](/reference-api/schema/registry/list-reg
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `component_type` | `string` | `None` | Filter by type: `TOOL`, `MODEL`, `DB`, `VECTOR_DB`, `SCHEMA`, `FUNCTION` |
+| `resource_type` | `string` | `None` | Filter by type: `tool`, `model`, `db`, `vector_db`, `schema`, `function`, `agent`, `team`, `knowledge`, `memory_manager`, `session_summary_manager` |
 | `name` | `string` | `None` | Partial name match (case-insensitive) |
 | `page` | `int` | `1` | Page number |
 | `limit` | `int` | `20` | Items per page (1-100) |
@@ -114,11 +119,11 @@ Each component in the response includes type-specific metadata:
 | Vector DB | `collection`, `table_name` |
 | Schema | JSON schema definition |
 | Function | `signature`, `parameters` |
-| Knowledge | `name`, `description`, `vector_db`, `contents_db` |
-| Memory Manager | `model`, `additional_instructions`, `db` |
-| Session Summary Manager | `model`, `session_summary_prompt`, `last_n_runs` |
-| Team | `name`, `type`, `id`, `metadata` |
-| Agent | `name`, `type`, `id`, `metadata` |
+| Knowledge | `class_path`, `vector_db_class`, `contents_db_class`, `max_results`, `num_readers` |
+| Memory Manager | `class_path`, `model_class`, `model_id`, `db_class`, memory flags (`add_memories`, `update_memories`, `delete_memories`, `clear_memories`) |
+| Session Summary Manager | `class_path`, `model_class`, `model_id`, `last_n_runs`, `conversation_limit` |
+| Team | `id`, `class_path` |
+| Agent | `id`, `class_path` |
 
 ## Developer Resources
 

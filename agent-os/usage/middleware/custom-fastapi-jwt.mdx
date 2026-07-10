@@ -50,9 +50,12 @@ app = FastAPI(
 app.add_middleware(
     AuthMiddleware,
     verification_keys=[JWT_SECRET],
+    algorithm="HS256",  # The default is RS256. Match the algorithm used to sign the token.
     excluded_route_paths=[
-        "/auth/login"
-    ],  # We don't want to validate the token for the login endpoint
+        "/auth/login",
+        "/docs",
+        "/openapi.json",
+    ],  # Skip token validation for the login endpoint and the API docs
     validate=True,  # Set validate to False to skip token validation
 )
 
@@ -153,14 +156,14 @@ if __name__ == "__main__":
     # Test agent interaction
     curl -X POST "http://localhost:7777/agents/research-agent/runs" \
       -H "Authorization: Bearer $TOKEN" \
-      -H "Content-Type: application/json" \
-      -d '{"message": "Search for information about FastAPI middleware"}'
+      -H "Content-Type: application/x-www-form-urlencoded" \
+      -d "message=Search for information about FastAPI middleware"
     ```
     
     **Step 3: Test without token (should get 401)**
     ```bash
     curl "http://localhost:7777/config"
-    # Should return: {"detail": "Not authenticated"}
+    # Should return: {"detail": "Authorization header missing"}
     ```
   </Step>
   <Step title="Test on a browser">
@@ -168,7 +171,7 @@ if __name__ == "__main__":
     1. **Visit the API docs**: http://localhost:7777/docs
     2. **Login via form**: Try the `/auth/login` endpoint with `username=demo` and `password=password`
     3. **Copy the token**: From the response, copy the `access_token` value
-    4. **Authorize in docs**: Click the "Authorize" button and paste `Bearer <your-token>`
+    4. **Authorize in docs**: Click the "Authorize" button and paste the token. Swagger adds the `Bearer` prefix for you.
     5. **Test protected endpoints**: Try any AgentOS endpoint - they should now work
 
   </Step>
