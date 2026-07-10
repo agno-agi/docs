@@ -1,11 +1,11 @@
 ---
 title: Wiki
 sidebarTitle: Wiki
-description: "Read and write to a Git-backed markdown wiki."
-keywords: [context providers, wiki, markdown, git, knowledge base]
+description: "Read and write a markdown wiki backed by Git, the local filesystem, or Notion."
+keywords: [context providers, wiki, markdown, git, notion, knowledge base]
 ---
 
-Read and write to a directory of markdown files. The provider exposes two tools: `query_wiki` for reading, `update_wiki` for writing. With a Git backend, writes auto-commit and push.
+Read and write to a directory of markdown files. The provider exposes two tools: `query_wiki` for reading, `update_wiki` for writing. With a Git backend, writes auto-commit and push. With a Notion backend, writes sync to a Notion database.
 
 ```python
 from os import getenv
@@ -60,13 +60,29 @@ await wiki.aclose()
     wiki = WikiContextProvider(backend=backend)
     ```
   </Tab>
+  <Tab title="Notion">
+    Mirrors a Notion database. Each row becomes a local markdown page; writes push back to Notion, which stays the source of truth.
+    
+    ```python
+    from os import getenv
+    from agno.context.wiki.backend import NotionDatabaseBackend
+    
+    backend = NotionDatabaseBackend(
+        database_id=getenv("NOTION_DATABASE_ID"),
+        token=getenv("NOTION_API_KEY"),
+    )
+    wiki = WikiContextProvider(backend=backend)
+    ```
+    
+    `token` falls back to the `NOTION_API_KEY` environment variable. `NotionPageBackend` (nested page trees) is planned and raises `NotImplementedError` today. See the [Notion wiki example](https://github.com/agno-agi/agno/blob/main/cookbook/12_context/15a_wiki_notion.py).
+  </Tab>
 </Tabs>
 
 ## Configuration
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `backend` | `WikiBackend` | required | GitBackend, FileSystemBackend, NotionPageBackend, or NotionDatabaseBackend. |
+| `backend` | `WikiBackend` | required | GitBackend, FileSystemBackend, or NotionDatabaseBackend. |
 | `id` | `str` | `"wiki"` | Tools become `query_<id>` and `update_<id>`. |
 | `web` | `ContextBackend` | `None` | Optional web backend for ingestion (fetch URL → write page). |
 | `model` | `Model` | `None` | Model for sub-agents. |
