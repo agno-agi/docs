@@ -46,16 +46,35 @@ curl -X POST http://localhost:7777/agents/data-agent/runs \
 | Scheduled digest | A cron job runs the agent and posts "yesterday's numbers" every morning |
 | Backend check | A pipeline calls the agent to sanity-check a metric before publishing |
 
-The serving model is identical to a [product agent](/use-cases/product-agents/serve-as-an-api). The difference is what the agent does, not how it is served. Sessions still scope per user, so each analyst's thread and learnings stay separate.
+The serving model is identical to a [product agent](/use-cases/product-agents/serve-as-an-api). The difference is what the agent does, not how it is served. Sessions still scope per user, so each analyst's thread stays separate.
 
 ## Learnings are shared, sessions are not
 
-A data agent's value compounds when corrections are shared across the team. Scope conversation threads per user with `session_id`, but keep learnings in a shared namespace so a fix one analyst's question triggered helps everyone.
+A data agent's value compounds when corrections are shared across the team. Conversation threads stay scoped per user with `user_id` and `session_id`. Sharing learnings takes one change to the setup above: `learning=True` keeps learnings per user, so pass a knowledge base to `LearningMachine` instead. That enables the [Learned Knowledge store](/learning/stores/learned-knowledge), whose namespace defaults to `"global"`, so a fix one analyst's question triggered helps everyone.
+
+```python
+from agno.knowledge import Knowledge
+from agno.learn import LearningMachine
+from agno.vectordb.pgvector import PgVector
+
+knowledge = Knowledge(
+    vector_db=PgVector(
+        db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
+        table_name="warehouse_learnings",
+    ),
+)
+
+agent = Agent(
+    id="data-agent",
+    # same model, db, and tools as above
+    learning=LearningMachine(knowledge=knowledge),
+)
+```
 
 | State | Scope |
 |-------|-------|
 | Conversation thread | Per `user_id` and `session_id` |
-| Learnings about the warehouse | Shared namespace across users |
+| Learnings about the warehouse | Learned Knowledge store, shared `"global"` namespace by default |
 
 ## Next steps
 
