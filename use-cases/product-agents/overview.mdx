@@ -4,11 +4,11 @@ sidebarTitle: "Overview"
 description: "Build a system of agents to power every part of your product and operations, from chat to proactive assistance."
 ---
 
-Software is becoming agentic and many parts of your product will become agent-driven.
+Product agents can support chat, inline actions, personalized help, and proactive workflows.
 
-Most products start with a chat copilot, then add more agent-driven surfaces: smart empty states, inline workflow recommendations, personalized help notes, proactive nudges. Each one is its own agent with its own job.
+Many products start with a chat copilot, then add smart empty states, inline workflow recommendations, personalized help notes, and proactive nudges. Each agent can own a specific job.
 
-Agno runs all of them in one place. Sessions, memory, knowledge, and auth are shared across every surface, so the product feels like one system.
+Agno can run them in one AgentOS deployment. Clients can share sessions, memory, and knowledge when they use consistent identities and storage.
 
 ```python
 from agno.agent import Agent
@@ -34,16 +34,22 @@ if __name__ == "__main__":
     agent_os.serve(app="copilot:app", port=7777)
 ```
 
-That is the start of your product copilot. Persistent multi-turn history, per-user memory, and an HTTP API with streaming, sessions, and auth.
+That is the start of a product copilot with multi-turn history, per-user memory, and an HTTP API with streaming and sessions.
 
-## Auth and tenancy are built in
+## Configure authentication and user isolation
 
-Your AgentOS ships with JWT-based authentication. Turn it on and identity is read from a bearer token. `user_id`, `session_id`, and scope claims all come from the token.
+AgentOS supports JWT authentication and scope checks. Configure a JWT verification source, then enable authorization. Set `user_isolation=True` to scope non-admin session, memory, trace, and run access to the JWT subject.
 
 ```python
 from agno.os import AgentOS
+from agno.os.config import AuthorizationConfig
 
-agent_os = AgentOS(agents=[agent], authorization=True)
+# Set JWT_VERIFICATION_KEY or JWT_JWKS_FILE before creating the app.
+agent_os = AgentOS(
+    agents=[agent],
+    authorization=True,
+    authorization_config=AuthorizationConfig(user_isolation=True),
+)
 # Every endpoint except public routes like /health and /docs now
 # requires a valid JWT. user_id, session_id, and scopes are read
 # from the token before any agent code runs.
@@ -60,13 +66,13 @@ The agent runs in your AgentOS as a service. Every product surface is a client t
 | Slack / Telegram / WhatsApp | An interface adapter maps the channel onto runs and sessions |
 | Backend event (webhook, cron) | A custom FastAPI route calling `agent.arun(...)` |
 
-Every surface shares the same `(user_id, session_id)` state. A user the agent met in the chat panel is already known to the inline action agent.
+Calls that use the same agent, `user_id`, and `session_id` share session history. Agentic memory is keyed by `user_id`, so clients must map identities consistently across surfaces.
 
 ## Guided paths
 
 | You have | You want | Start with |
 |----------|----------|------------|
-| A B2B SaaS product | Per-customer, per-user isolation out of the box | [Serve as an API](/use-cases/product-agents/serve-as-an-api) |
+| A B2B SaaS product | JWT authentication and per-user isolation | [Serve as an API](/use-cases/product-agents/serve-as-an-api) |
 | Users in Slack or the browser | The same agent where they already work | [Interfaces](/use-cases/product-agents/interfaces) |
 | Internal docs, Drive, databases | An agent grounded in live company data | [Connecting your data](/use-cases/product-agents/connecting-your-data) |
 | Multi-day user relationships | Memory that persists per user across surfaces | [Sessions and memory](/use-cases/product-agents/sessions-and-memory) |
@@ -84,7 +90,7 @@ Every surface shares the same `(user_id, session_id)` state. A user the agent me
     Give the agent live access to Slack, Drive, databases, and MCP servers.
   </Card>
   <Card title="Interfaces" icon="comments" href="/use-cases/product-agents/interfaces">
-    Slack, Telegram, WhatsApp, and browser surfaces with one line each.
+    Connect Slack, Telegram, WhatsApp, and browser surfaces through interface adapters.
   </Card>
 </CardGroup>
 

@@ -11,12 +11,14 @@ The Telegram interface exposes an Agno Agent, Team, or Workflow on Telegram via 
 
 Follow the [Telegram setup guide](/agent-os/interfaces/telegram/setup) to set up your bot.
 
-Install dependencies: `uv pip install 'agno[os,telegram]' google-genai`
+Install dependencies: `uv pip install 'agno[os,telegram]' google-genai openai`
 
 Required configuration:
 
 - `TELEGRAM_TOKEN` (bot token from @BotFather)
-- `TELEGRAM_WEBHOOK_SECRET_TOKEN` -- required in production, skipped when `APP_ENV=development`
+- `TELEGRAM_WEBHOOK_SECRET_TOKEN`. Required in production and skipped when `APP_ENV=development`
+- `GOOGLE_API_KEY` for the Gemini model in the interface example
+- `OPENAI_API_KEY` for the default model in the `TelegramTools` example
 - An ngrok tunnel (for local development) and webhook pointing to `/telegram/webhook`
 
 ## Example Usage
@@ -74,13 +76,13 @@ Provide `agent`, `team`, or `workflow`. Call `get_router()` to get the FastAPI `
 | `show_reasoning` | `bool` | `False` | Send the model's reasoning as a separate message before the response. Non-streaming mode only. |
 | `reply_to_mentions_only` | `bool` | `True` | When `True` (default), bot responds to @mentions and replies in groups, and all messages in DMs. When `False`, responds to all messages in groups. |
 | `reply_to_bot_messages` | `bool` | `True` | When `True`, also responds when users reply to the bot's own messages in groups. |
-| `start_message` | `str` | `"Hello! I'm ready to help..."` | Message sent in response to the `/start` command. |
-| `help_message` | `str` | `"Send me text, photos..."` | Message sent in response to the `/help` command. |
-| `error_message` | `str` | `"Sorry, there was an error..."` | Message sent when processing fails. |
-| `new_message` | `str` | `"New conversation started..."` | Message sent when a user starts a new session with `/new`. |
-| `commands` | `Optional[List[Dict]]` | `None` | List of bot commands to register with Telegram. Each dict has `command` and `description` keys. Defaults to `/start`, `/help`, and `/new` when not provided. |
+| `start_message` | `str` | `"Hello! I'm ready to help. Send me a message to get started."` | Message sent in response to the `/start` command. |
+| `help_message` | `str` | `"Send me text, photos, voice notes, videos, or documents and I'll help you with them."` | Message sent in response to the `/help` command. |
+| `error_message` | `str` | `"Sorry, there was an error processing your message. Send /new to start a fresh conversation."` | Message sent when processing fails. |
+| `new_message` | `str` | `"New conversation started. How can I help you?"` | Message sent when a user starts a new session with `/new`. |
+| `commands` | `Optional[List[Dict[str, str]]]` | `None` | List of bot commands to register with Telegram. Each dict has `command` and `description` keys. Defaults to `/start`, `/help`, and `/new` when not provided. |
 | `register_commands` | `bool` | `True` | Automatically register commands with the Telegram Bot API on first message. |
-| `quoted_responses` | `bool` | `False` | Bot replies quote the user's message (reply-to behavior). |
+| `quoted_responses` | `bool` | `False` | Quote the user's message in private chats. Group replies are always quoted. |
 
 ## Endpoints
 
@@ -98,7 +100,7 @@ Receives Telegram updates (messages, edited messages).
 - Deduplicates updates by `update_id`.
 - Processes text, photos, voice notes, audio, video, documents, stickers, and animations.
 - Streams or sends responses back to the originating chat (splits long messages at Telegram's 4096 character limit).
-- Responses: `200 {"status": "processing"}` or `{"status": "ignored"}`, `403` invalid secret token, `500` errors.
+- Responses: `200 {"status": "processing"}`, `{"status": "ignored"}`, or `{"status": "duplicate"}`; `403` invalid secret token; `500` errors.
 
 ## Behavior
 
@@ -109,10 +111,10 @@ Sessions are scoped by chat and entity. The `entity_id` is the agent, team, or w
 - **DMs and basic groups**: `tg:telegram-bot:123456789`
 - **Supergroup threads and forum topics**: `tg:telegram-bot:123456789:42`
 
-When a database is configured on the agent/team, the `/new` command creates a fresh session. Without a database, sessions reset on server restart. History and memory are not persisted.
+When a database is configured on the agent, team, or workflow, the `/new` command creates a fresh session. Without a database, `/new` has no persisted session to replace. History and memory are not persisted.
 
 <Note>
-The `/new` command only works when a database is configured. Without a database, each server restart already starts a fresh session.
+The `/new` command requires a database. Without a database, there is no persisted session to replace.
 </Note>
 
 ### Streaming
@@ -143,6 +145,7 @@ To have the bot respond to all messages in a group, set `reply_to_mentions_only=
 `TelegramTools` is a standalone toolkit that lets agents proactively send messages and media to Telegram chats. It is independent from the Telegram interface. The interface handles inbound webhooks; the toolkit gives agents outbound actions.
 
 ```python
+from agno.agent import Agent
 from agno.tools.telegram import TelegramTools
 
 agent = Agent(
@@ -199,7 +202,7 @@ For the full toolkit reference, see [TelegramTools](/tools/toolkits/social/teleg
 | 403 errors on webhook | Running in production mode without a webhook secret | Set `APP_ENV=development` for local testing, or set `TELEGRAM_WEBHOOK_SECRET_TOKEN` and register the webhook with the matching `secret_token` |
 | No response from the bot | Server not running or webhook not set | Check server: `curl http://localhost:7777/telegram/status`. Check webhook: `curl "https://api.telegram.org/bot${TELEGRAM_TOKEN}/getWebhookInfo"` |
 | Bot ignores group messages | Privacy mode enabled (default) | Message @BotFather, send `/setprivacy`, select your bot, choose **Disable** |
-| `/new` has no effect | No database configured | Add a `SqliteDb` (or other DB) to the agent/team. Without a DB, sessions are ephemeral and `/new` cannot create a new one. |
+| `/new` has no effect | No database configured | Add a `SqliteDb` (or other DB) to the agent, team, or workflow. Without a DB, `/new` has no persisted session to replace. |
 | `TELEGRAM_TOKEN environment variable is not set` | Missing env var | Export `TELEGRAM_TOKEN` before running |
 
 ## Developer Resources

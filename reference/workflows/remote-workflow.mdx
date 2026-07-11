@@ -1,10 +1,10 @@
 ---
 title: RemoteWorkflow
 sidebarTitle: RemoteWorkflow
-description: Execute workflows hosted on a remote AgentOS instance
+description: Execute workflows hosted on a remote AgentOS or A2A server.
 ---
 
-`RemoteWorkflow` allows you to run workflows that are hosted on a remote AgentOS instance. It provides the same interface as a local workflow, making it easy to integrate remote workflows into your applications.
+`RemoteWorkflow` runs workflows hosted on a remote AgentOS instance or A2A-compatible server.
 
 ## Installation
 
@@ -122,12 +122,40 @@ async for event in workflow.arun(
 - `WorkflowRunOutput` when `stream=False`
 - `AsyncIterator[WorkflowRunOutputEvent]` when `stream=True`
 
-### `cancel_run`
+### `acontinue_run`
 
-Cancel a running workflow execution.
+Continue a paused workflow run through the AgentOS protocol.
 
 ```python
-success = await workflow.cancel_run(run_id="run-123")
+response = await workflow.acontinue_run(
+    run_id="run-123",
+    session_id="session-456",
+    step_requirements=resolved_requirements,
+)
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `run_response` | `Optional[WorkflowRunOutput]` | `None` | Paused run output containing the run ID, session ID, and requirements |
+| `run_id` | `Optional[str]` | `None` | Run ID. Required unless `run_response` supplies one |
+| `session_id` | `Optional[str]` | `None` | Session ID. Overrides the ID from `run_response` |
+| `step_requirements` | `Optional[List[Any]]` | `None` | Resolved requirements. Overrides requirements from `run_response` |
+| `stream` | `bool` | `False` | Whether to stream the continued run |
+| `auth_token` | `Optional[str]` | `None` | JWT token for authentication |
+
+**Returns:**
+
+- `WorkflowRunOutput` when `stream=False`
+- `AsyncIterator[WorkflowRunOutputEvent]` when `stream=True`
+
+### `acancel_run`
+
+Cancel a running workflow execution through the AgentOS protocol.
+
+```python
+success = await workflow.acancel_run(run_id="run-123")
 if success:
     print("Run cancelled")
 ```
@@ -155,10 +183,10 @@ print(f"Steps: {config.steps}")
 
 ### `refresh_config`
 
-Force refresh the cached workflow configuration.
+Force refresh the cached workflow configuration through the AgentOS protocol.
 
 ```python
-config = workflow.refresh_config()
+config = await workflow.refresh_config()
 ```
 
 **Returns:** `WorkflowResponse`
@@ -170,7 +198,7 @@ config = workflow.refresh_config()
 ### Connecting to Agno A2A Servers
 
 ```python
-from agno.team import RemoteTeam
+from agno.workflow import RemoteWorkflow
 
 # Connect to an Agno AgentOS with A2A interface
 workflow = RemoteWorkflow(

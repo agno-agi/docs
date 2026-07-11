@@ -4,17 +4,23 @@ sidebarTitle: Overview
 description: Use Weaviate as a vector database for your Knowledge Base.
 ---
 
-Follow steps mentioned in [Weaviate setup guide](https://weaviate.io/developers/weaviate/quickstart) to setup Weaviate.
+Follow the [local Docker quickstart](https://docs.weaviate.io/weaviate/quickstart/local) to run Weaviate locally.
 
 ## Setup
 
-Install weaviate packages
+Install Agno, the Weaviate client, the OpenAI client, and the PDF reader:
 
 ```shell
-uv pip install weaviate-client openai
+uv pip install agno weaviate-client openai pypdf
 ```
 
-Run weaviate
+Set your OpenAI API key for the default embedder and agent model:
+
+```shell
+export OPENAI_API_KEY=***
+```
+
+Start Weaviate locally:
 
 ```shell
 docker run -d \
@@ -22,12 +28,6 @@ docker run -d \
   -p 50051:50051 \
   --name weaviate \
   cr.weaviate.io/semitechnologies/weaviate:1.28.4
-```
-
-or
-
-```shell
-./cookbook/scripts/run_weaviate.sh
 ```
 
 ## Example
@@ -64,10 +64,10 @@ if __name__ == "__main__":
     agent.print_response("How to make Thai curry?", markdown=True)
 ```
 
-<Card title="Async Support ⚡">
+<Card title="Async Support">
   <div className="mt-2">
     <p>
-      Weaviate also supports asynchronous operations, enabling concurrency and leading to better performance.
+      Use asynchronous operations when knowledge loading or search must not block the event loop.
     </p>
 
     ```python async_weaviate_db.py
@@ -96,19 +96,18 @@ if __name__ == "__main__":
         search_knowledge=True,
     )
 
-    if __name__ == "__main__":
-        # Load knowledge base asynchronously
-        asyncio.run(knowledge_base.ainsert(
-                url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf"
-            )
+    async def main():
+        await knowledge_base.ainsert(
+            url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf"
         )
+        await agent.aprint_response("How to make Tom Kha Gai", markdown=True)
 
-        # Create and use the agent asynchronously
-        asyncio.run(agent.aprint_response("How to make Tom Kha Gai", markdown=True))
+    if __name__ == "__main__":
+        asyncio.run(main())
     ```
 
     <Tip className="mt-4">
-      Weaviate's async capabilities leverage <code>WeaviateAsyncClient</code> to provide non-blocking vector operations. This is particularly valuable for applications requiring high concurrency and throughput.
+      The async methods use <code>WeaviateAsyncClient</code> for non-blocking vector operations.
     </Tip>
   </div>
 </Card>
