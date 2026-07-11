@@ -32,6 +32,15 @@ EXCLUDE_FILES = {
     os.path.join(DOCS_ROOT, "other", "v2-changelog.mdx"),
 }
 
+# This page intentionally shows a complete Workflows 1.0 example before the
+# current Workflows 2.0 replacement. Skip only the legacy block so imports in
+# the replacement example remain covered.
+LEGACY_BLOCK_MARKERS = {
+    os.path.join(DOCS_ROOT, "other", "workflows-migration.mdx"): (
+        "from agno.storage.sqlite import SqliteStorage",
+    ),
+}
+
 CODEBLOCK_RE = re.compile(r"```(\w+)?[^\n]*\n(.*?)```", re.DOTALL)
 IMPORT_START_RE = re.compile(r"^\s*(from\s+agno[.\s]|import\s+agno)")
 
@@ -51,12 +60,14 @@ def iter_mdx_files():
                     yield path
 
 
-def extract_imports(text):
+def extract_imports(text, legacy_markers=()):
     for m in CODEBLOCK_RE.finditer(text):
         lang = (m.group(1) or "").lower()
         if lang not in ("python", "py"):
             continue
         body = m.group(2)
+        if any(marker in body for marker in legacy_markers):
+            continue
         lines = body.split("\n")
         i = 0
         while i < len(lines):
@@ -173,7 +184,7 @@ def main():
     for path in iter_mdx_files():
         with open(path, encoding="utf-8") as f:
             text = f.read()
-        for stmt in extract_imports(text):
+        for stmt in extract_imports(text, LEGACY_BLOCK_MARKERS.get(path, ())):
             stmt_files.setdefault(stmt, set()).add(path)
 
     print(f"Found {len(stmt_files)} unique agno import statements", file=sys.stderr)

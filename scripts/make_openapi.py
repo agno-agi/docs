@@ -8,7 +8,7 @@ the checked-in reference-api/openapi.yaml to scripts/out/openapi-diff.md.
 Never touches reference-api/ itself: review the diff, then copy
 scripts/out/openapi.yaml over reference-api/openapi.yaml by hand.
 
-Run with a venv where agno[os] (and ideally a2a-sdk) is importable:
+Run with a venv where agno[os,mcp,telegram,agui,a2a,slack] is importable:
   python scripts/make_openapi.py
 
 Interfaces whose optional dependency is missing (e.g. a2a-sdk for A2A) are
@@ -34,6 +34,8 @@ os.environ.setdefault("SLACK_SIGNING_SECRET", "fake-signing-secret")
 os.environ.setdefault("WHATSAPP_ACCESS_TOKEN", "fake-whatsapp-access-token")
 os.environ.setdefault("WHATSAPP_PHONE_NUMBER_ID", "0000000000")
 os.environ.setdefault("WHATSAPP_VERIFY_TOKEN", "fake-verify-token")
+os.environ.setdefault("TELEGRAM_TOKEN", "123456789:AAFakeTokenValueForOpenAPIGenerationOnly")
+os.environ.setdefault("TELEGRAM_WEBHOOK_SECRET_TOKEN", "fake-telegram-webhook-secret")
 os.environ.setdefault("AGNO_TELEMETRY", "false")
 
 import yaml  # noqa: E402
@@ -73,6 +75,11 @@ try:
 except ImportError as _e:
     Whatsapp = None
     NOTES.append(f"interface Whatsapp: EXCLUDED, import failed: {_e}")
+try:
+    from agno.os.interfaces.telegram import Telegram  # noqa: E402
+except ImportError as _e:
+    Telegram = None
+    NOTES.append(f"interface Telegram: EXCLUDED, import failed: {_e}")
 
 
 def build_app():
@@ -146,6 +153,17 @@ def build_app():
             NOTES.append("interface Whatsapp: included (fake meta credentials, encryption disabled)")
         except Exception as e:
             NOTES.append(f"interface Whatsapp: EXCLUDED, construction failed: {e}")
+    if Telegram is not None:
+        try:
+            interfaces.append(
+                Telegram(
+                    agent=simple_agent,
+                    token=os.environ["TELEGRAM_TOKEN"],
+                )
+            )
+            NOTES.append("interface Telegram: included (fake token; status and webhook routes)")
+        except Exception as e:
+            NOTES.append(f"interface Telegram: EXCLUDED, construction failed: {e}")
     if AGUI is not None:
         try:
             interfaces.append(AGUI(agent=simple_agent))
@@ -158,10 +176,6 @@ def build_app():
             NOTES.append("interface A2A: included (agents + teams + workflows)")
         except Exception as e:
             NOTES.append(f"interface A2A: EXCLUDED, construction failed: {e}")
-    # Telegram's long-polling design contributes no HTTP routes worth
-    # documenting here; it has never been part of the reference spec.
-    NOTES.append("interface Telegram: intentionally excluded (no HTTP routes in spec scope)")
-
     agent_os = AgentOS(
         id="agentos-demo",
         name="Agno API Reference",
@@ -174,7 +188,7 @@ def build_app():
         interfaces=interfaces,
         registry=registry,
         db=db,
-        enable_mcp_server=True,  # mounts /mcp sub-app; sub-app routes don't appear in app.openapi()
+        mcp_server=True,  # mounts /mcp sub-app; sub-app routes don't appear in app.openapi()
         telemetry=False,  # telemetry POSTs home at init; this is an offline dry run
     )
     return agent_os.get_app()

@@ -71,34 +71,19 @@ def main() -> None:
         'description: "Groq reasoning model works through the classic 9.11 vs 9.9 comparison."',
     )
 
-    # 3. Model-less Agent defaults to OpenAI, and google.auth.default() needs ADC;
-    #    neither is derivable from imports.
+    # 3. google.auth.default() needs application-default credentials. The
+    #    generator now derives the model-less Agent's OpenAI requirement.
     sub(
         "storage/gcs/gcs-json-for-agent.mdx",
-        """  <Step title="Run the example">
-    Save the code above as `gcs_json_for_agent.py`, then run:""",
-        """  <Step title="Export your OpenAI API key">
-    The agent uses the default OpenAI model.
-    <CodeGroup>
-    ```bash Mac/Linux
-    export OPENAI_API_KEY="your_openai_api_key_here"
-    ```
-
-    ```bash Windows
-    $Env:OPENAI_API_KEY="your_openai_api_key_here"
-    ```
-    </CodeGroup>
-  </Step>
-
-  <Step title="Set up Google Cloud credentials">
+        """  <Step title="Run the example">""",
+        """  <Step title="Set up Google Cloud credentials">
     `google.auth.default()` needs application-default credentials and a project:
     ```bash
     gcloud auth application-default login
     ```
   </Step>
 
-  <Step title="Run the example">
-    Save the code above as `gcs_json_for_agent.py`, then run:""",
+  <Step title="Run the example">""",
     )
 
     # 4. Curated page shipped with an empty description.

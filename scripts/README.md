@@ -27,7 +27,7 @@ The rest need a venv with agno installed; run them with that venv's python:
 | Script | Venv needs |
 |--------|-----------|
 | `reference_drift.py` | `agno` importable. `agno[os,mcp]` plus provider SDKs widen runtime-introspection coverage; unimportable modules fall back to pure-AST extraction. |
-| `make_openapi.py` | `agno[os]` and `pyyaml`. Add `a2a-sdk` (`agno[a2a]`) and `slack-sdk` (`agno[slack]`) or the A2A/Slack routes are excluded (noted in the diff output). |
+| `make_openapi.py` | `agno[os,mcp,telegram,agui,a2a,slack]` and `pyyaml`. Missing interface extras exclude their routes and are reported in the diff output. |
 | `check_imports.py` | `agno` installed. Statements failing only on missing third-party deps still pass via the static source check. |
 
 ## Environment variables

@@ -52,7 +52,11 @@ MODEL_PROVIDERS = {
     "aimlapi": ("AI/ML API", ["openai"], ["AIMLAPI_API_KEY"]),
     "anthropic": ("Anthropic", ["anthropic"], ["ANTHROPIC_API_KEY"]),
     "aws": ("AWS Bedrock", ["boto3", "aioboto3"], ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]),
-    "azure": ("Azure", ["azure-ai-inference", "aiohttp"], ["AZURE_API_KEY"]),
+    "azure": (
+        "Azure AI Foundry",
+        ["azure-ai-inference", "aiohttp"],
+        ["AZURE_API_KEY", "AZURE_ENDPOINT"],
+    ),
     "cerebras": ("Cerebras", ["cerebras-cloud-sdk"], ["CEREBRAS_API_KEY"]),
     "cloudflare": ("Cloudflare Workers AI", ["openai"], ["CLOUDFLARE_API_TOKEN"]),
     "cohere": ("Cohere", ["cohere"], ["CO_API_KEY"]),
@@ -96,15 +100,48 @@ MODEL_PROVIDERS = {
     "xiaomi": ("Xiaomi MiMo", ["openai"], ["MIMO_API_KEY"]),
 }
 
+# Some provider packages export classes backed by different SDKs. Resolve
+# these before falling back to the module-segment mapping above.
+MODEL_CLASS_PROVIDERS = {
+    "azure": {
+        "AzureAIFoundry": (
+            "Azure AI Foundry",
+            ["azure-ai-inference", "aiohttp"],
+            ["AZURE_API_KEY", "AZURE_ENDPOINT"],
+        ),
+        "AzureOpenAI": (
+            "Azure OpenAI",
+            ["openai"],
+            ["AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT"],
+        ),
+        "AzureFoundryClaude": (
+            "Azure AI Foundry Claude",
+            ["anthropic"],
+            ["ANTHROPIC_FOUNDRY_API_KEY", "ANTHROPIC_FOUNDRY_RESOURCE"],
+        ),
+        "Claude": (
+            "Azure AI Foundry Claude",
+            ["anthropic"],
+            ["ANTHROPIC_FOUNDRY_API_KEY", "ANTHROPIC_FOUNDRY_RESOURCE"],
+        ),
+    },
+    "meta": {
+        "Llama": ("Meta Llama", ["llama-api-client"], ["LLAMA_API_KEY"]),
+        "LlamaOpenAI": ("Meta Llama", ["openai"], ["LLAMA_API_KEY"]),
+    },
+}
+
 # agno module prefix -> agno pip extra (installed as agno[extra]).
 # Matches how the rest of the docs install these features.
 EXTRA_MODULES = {
     "agno.os.interfaces.a2a": "a2a",
     "agno.os.interfaces.agui": "agui",
     "agno.os.interfaces.slack": "slack",
-    "agno.os.interfaces.whatsapp": "whatsapp",
+    "agno.os.interfaces.telegram": "telegram",
+    "agno.os.interfaces.whatsapp": "os",
     "agno.os": "os",
     "agno.tools.mcp": "mcp",
+    "agno.tools.telegram": "telegram",
     "agno.tracing": "os",  # tracing ships with the AgentOS/opentelemetry bundle
 }
 
@@ -114,15 +151,48 @@ EXTRA_MODULES = {
 EXTRA_PROVIDES: dict[str, set[str]] = {
     "a2a": {"a2a-sdk"},
     "agui": {"ag-ui-protocol", "jsonpatch"},
+    "clickhouse": {"clickhouse-connect"},
     "mcp": {"mcp", "fastmcp"},
     "os": {
         "fastapi", "python-multipart", "uvicorn", "websockets", "sqlalchemy",
-        "pyjwt", "opentelemetry-sdk", "openinference-instrumentation-agno",
+        "pyjwt", "starlette", "opentelemetry-sdk", "openinference-instrumentation-agno",
         # via agno[scheduler]
         "croniter", "pytz",
     },
     "slack": {"slack-sdk", "aiohttp"},
-    "whatsapp": set(),  # no whatsapp extra in pyproject; nothing extra installed
+    "telegram": {"pytelegrambotapi", "telebot", "aiohttp"},
+}
+
+# Interface and toolkit credentials loaded from helper modules that are not
+# reached by the single-module source probe.
+REQUIRED_ENV_OVERRIDES = {
+    "agno.knowledge.embedder.azure_openai": {
+        "AZURE_EMBEDDER_OPENAI_API_KEY",
+        "AZURE_EMBEDDER_OPENAI_ENDPOINT",
+    },
+    "agno.context.calendar": {
+        "GOOGLE_CLIENT_ID",
+        "GOOGLE_CLIENT_SECRET",
+        "GOOGLE_PROJECT_ID",
+    },
+    "agno.os.interfaces.slack": {"SLACK_SIGNING_SECRET", "SLACK_TOKEN"},
+    "agno.os.interfaces.telegram": {"TELEGRAM_TOKEN"},
+    "agno.os.interfaces.whatsapp": {
+        "WHATSAPP_ACCESS_TOKEN",
+        "WHATSAPP_APP_SECRET",
+        "WHATSAPP_PHONE_NUMBER_ID",
+        "WHATSAPP_VERIFY_TOKEN",
+    },
+    "agno.tools.google.calendar": {
+        "GOOGLE_CLIENT_ID",
+        "GOOGLE_CLIENT_SECRET",
+        "GOOGLE_PROJECT_ID",
+    },
+    "agno.tools.googlecalendar": {
+        "GOOGLE_CLIENT_ID",
+        "GOOGLE_CLIENT_SECRET",
+        "GOOGLE_PROJECT_ID",
+    },
 }
 
 # Human-written frontmatter descriptions, keyed by docs slug. See the module
@@ -153,11 +223,28 @@ PACKAGE_OVERRIDES = {
     "agno.db.firestore": ["google-cloud-firestore"],
     "agno.db.gcs": ["google-cloud-storage"],
     "agno.db.surrealdb": ["surrealdb"],
+    "agno.context.calendar": [
+        "google-api-python-client",
+        "google-auth-httplib2",
+        "google-auth-oauthlib",
+    ],
+    "agno.vectordb.pineconedb": ["pinecone==5.4.2"],
     "agno.vectordb.pgvector": ["sqlalchemy", "psycopg-binary", "pgvector"],
     "agno.knowledge.embedder.openai": ["openai"],
     "agno.knowledge.embedder.google": ["google-genai"],
     "agno.tools.duckduckgo": ["ddgs"],
     "agno.eval.performance": ["memory_profiler"],
+}
+
+# Consolidated DB packages export both sync and async classes. Infer drivers
+# from imported class names and retain both when both classes are imported.
+DB_CLASS_PACKAGES = {
+    "mysql": {"MySQLDb": ["pymysql"], "AsyncMySQLDb": ["asyncmy"]},
+    "postgres": {
+        "PostgresDb": ["psycopg-binary"],
+        "AsyncPostgresDb": [],
+    },
+    "sqlite": {"SqliteDb": [], "AsyncSqliteDb": ["aiosqlite"]},
 }
 
 # Third-party (non-agno) import name -> pip package(s). Stdlib is filtered
@@ -237,16 +324,26 @@ ENV_ALLOWLIST = {
     "LANGSMITH_PROJECT",  # read with no default; sent as the Langsmith-Project header
 }
 
+# AgentOS supports JWT configuration but does not require it. A cookbook file
+# that explicitly reads this key still adds it through env_keys_in_source().
+PROBED_ENV_DENYLIST = {"JWT_VERIFICATION_KEY", "WHATSAPP_ENCRYPTION_KEY"}
+
 # Local services an example depends on -> docker step. Triggered by module
 # prefix (agno modules) or import name (third-party clients). PgVector is
 # handled separately via the run-pgvector-step.mdx snippet.
 SERVICE_TRIGGERS = {
+    "mysql": ("agno.db.mysql", "agno.db.async_mysql"),
     "mongodb": ("agno.db.mongo", "agno.vectordb.mongodb", "pymongo", "motor"),
     "qdrant": ("agno.vectordb.qdrant", "qdrant_client"),
     "redis": ("agno.db.redis", "agno.vectordb.redis", "redis"),
     "surrealdb": ("agno.db.surrealdb", "agno.vectordb.surrealdb", "surrealdb"),
 }
 SERVICE_STEPS = {
+    "mysql": (
+        "Run MySQL",
+        "docker run -d --name mysql -e MYSQL_ROOT_PASSWORD=ai -e MYSQL_DATABASE=ai "
+        "-e MYSQL_USER=ai -e MYSQL_PASSWORD=ai -p 3306:3306 mysql:8",
+    ),
     "mongodb": ("Run MongoDB", "docker run -d -p 27017:27017 --name mongodb mongo:latest"),
     "qdrant": ("Run Qdrant", "docker run -d --name qdrant -p 6333:6333 qdrant/qdrant:latest"),
     "redis": ("Run Redis", "docker run -d --name my-redis -p 6379:6379 redis"),
@@ -284,12 +381,60 @@ SMALL_WORDS = {"a", "an", "and", "as", "at", "for", "in", "of", "on", "or", "the
 # Titles the docstring cannot yield in docs voice, keyed by docs slug.
 # Consulted at render time, before description/intro derivation.
 TITLE_OVERRIDES = {
+    "examples/agent-os/rbac/symmetric/basic": "Symmetric RBAC Basic",
     "examples/agent-os/scheduler/team-workflow-schedules": "Scheduling Teams and Workflows",
+    "examples/models/azure/ai-foundry/basic": "Azure AI Foundry Basic",
+    "examples/models/azure/openai/basic": "Azure OpenAI Basic",
+    "examples/tools/webbrowser-tools": "WebBrowser Tools",
+}
+
+# These examples read files or directory trees that already exist in the Agno
+# checkout. Other uses of __file__ create/download outputs or locate the script
+# itself and remain runnable when the code block is saved standalone.
+REPO_LAYOUT_SLUGS = {
+    "examples/agent-os/knowledge/agentos-docling-markdown-analyst",
+    "examples/agent-os/knowledge/agentos-excel-analyst",
+    "examples/agent-os/os-config/yaml-config",
+    "examples/agent-os/skills/skills-with-agentos",
+    "examples/agents/skills/basic-skills",
+    "examples/basics/run",
+    "examples/context/engineering-briefing",
+    "examples/context/filesystem",
+    "examples/context/multi-provider",
+    "examples/context/workspace",
+    "examples/models/google/gemini/file-search-advanced",
+    "examples/models/google/gemini/file-search-basic",
+    "examples/models/google/gemini/file-search-rag-pipeline",
+    "examples/teams/reasoning/reasoning-multi-purpose-team",
+    "examples/teams/skills/basic-skills-team",
+    "examples/tools/antigravity/antigravity-directory-tools",
+    "examples/tools/docling-tools/basic-examples",
+    "examples/tools/docling-tools/ocr-example",
+    "examples/tools/docling-tools/paths",
+    "examples/tools/docling-tools/run",
+    "examples/tools/mcp-tools",
+    "examples/tools/mcp/filesystem",
+    "examples/tools/mcp/groq-mcp",
+    "examples/tools/mcp/include-tools",
+}
+
+SUPPRESS_INTRO_SLUGS = {
+    "examples/agent-os/factories/workflow/tiered-workflow-factory",
+    "examples/agent-os/knowledge/agentos-docling-markdown-analyst",
+    "examples/agents/state-and-session/dynamic-session-state",
+    "examples/evals/performance/simple-response",
+    "examples/evals/reliability/team/ai-news",
+    "examples/reasoning/tools/capture-reasoning-content-reasoning-tools",
+    "examples/teams/basics/broadcast-mode",
+    "examples/tools/tool-hooks/tool-hook",
+    "examples/workflows/advanced-concepts/nested-workflows/deeply-nested-workflow",
 }
 
 GITHUB_BLOB = "https://github.com/agno-agi/agno/blob/main"
 
-STDLIB = set(getattr(sys, "stdlib_module_names", ()))
+# Keep dependency inference stable across Python versions. Agno still probes
+# this removed stdlib module before falling back to `filetype`.
+STDLIB = set(getattr(sys, "stdlib_module_names", ())) | {"imghdr"}
 
 
 # ---------------------------------------------------------------------------
@@ -632,6 +777,17 @@ def env_keys_in_source(src: str) -> list[str]:
     return [a or b for a, b in hits]
 
 
+def declared_env_keys(src: str) -> list[str]:
+    """Environment variables declared as named prerequisites in a docstring."""
+    try:
+        docstring = ast.get_docstring(ast.parse(src), clean=False) or ""
+    except SyntaxError:
+        return []
+    return sorted(
+        set(re.findall(r"\bexport\s+([A-Z][A-Z0-9_]{3,})\s*:", docstring))
+    )
+
+
 def filter_env(keys: list[str]) -> list[str]:
     out = []
     for k in keys:
@@ -646,6 +802,271 @@ def filter_env(keys: list[str]) -> list[str]:
     return sorted(set(out))
 
 
+def model_provider_infos(
+    module: str, names: set[str]
+) -> list[tuple[str, list[str], list[str]]]:
+    """Provider requirements for one agno.models import."""
+    parts = module.split(".")
+    if len(parts) < 3 or parts[1] != "models":
+        return []
+    segment = parts[2]
+    class_map = MODEL_CLASS_PROVIDERS.get(segment, {})
+    selected = sorted(names & class_map.keys())
+    if not selected and len(parts) > 3:
+        leaf = parts[3]
+        if segment == "azure":
+            selected = (
+                ["AzureOpenAI"]
+                if leaf == "openai_chat"
+                else ["AzureAIFoundry"]
+                if leaf == "ai_foundry"
+                else ["Claude"]
+                if leaf == "claude"
+                else []
+            )
+        elif segment == "meta":
+            selected = ["LlamaOpenAI"] if leaf == "llama_openai" else ["Llama"] if leaf == "llama" else []
+    if selected:
+        infos = []
+        for name in selected:
+            display, packages, envs = class_map[name]
+            if segment == "meta" and len(parts) == 3 and name == "LlamaOpenAI":
+                # agno.models.meta imports Llama before its guarded
+                # LlamaOpenAI import, so the package-level import needs both.
+                packages = packages + ["llama-api-client"]
+            infos.append((display, packages, envs))
+        return infos
+    fallback = MODEL_PROVIDERS.get(segment)
+    return [fallback] if fallback else []
+
+
+def db_class_packages(module: str, names: set[str]) -> list[str] | None:
+    """Resolve sync and async DB drivers from imported class names."""
+    for family, class_map in DB_CLASS_PACKAGES.items():
+        prefixes = (f"agno.db.{family}", f"agno.db.async_{family}")
+        if not any(module == prefix or module.startswith(prefix + ".") for prefix in prefixes):
+            continue
+        selected = sorted(names & class_map.keys())
+        if not selected and (
+            module == f"agno.db.async_{family}"
+            or module.startswith(f"agno.db.async_{family}.")
+            or f".async_{family}" in module
+        ):
+            selected = [next(name for name in class_map if name.startswith("Async"))]
+        if not selected:
+            return None
+        packages = ["sqlalchemy"]
+        for name in selected:
+            packages.extend(class_map[name])
+        return packages
+    return None
+
+
+def has_modelless_agent_or_team(src: str) -> bool:
+    """True when an imported Agent or Team constructor uses its default model."""
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return False
+    constructors: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom) or not node.module:
+            continue
+        if node.module == "agno.agent" or node.module.startswith("agno.agent."):
+            wanted = "Agent"
+        elif node.module == "agno.team" or node.module.startswith("agno.team."):
+            wanted = "Team"
+        else:
+            continue
+        for alias in node.names:
+            if alias.name == wanted:
+                constructors[alias.asname or alias.name] = wanted
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+            continue
+        kind = constructors.get(node.func.id)
+        if not kind:
+            continue
+        model_kw = next((kw.value for kw in node.keywords if kw.arg == "model"), None)
+        if model_kw is not None:
+            if isinstance(model_kw, ast.Constant) and model_kw.value is None:
+                return True
+            continue
+        if kind == "Agent" or len(node.args) < 3:
+            return True
+        if isinstance(node.args[2], ast.Constant) and node.args[2].value is None:
+            return True
+    return False
+
+
+def has_pdf_string(src: str) -> bool:
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return False
+
+    class RuntimeStringVisitor(ast.NodeVisitor):
+        found = False
+
+        def visit_Expr(self, node: ast.Expr) -> None:
+            # Module/function docstrings and standalone illustrative strings
+            # are not executable data flow.
+            if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                return
+            self.generic_visit(node)
+
+        def visit_Constant(self, node: ast.Constant) -> None:
+            if isinstance(node.value, str) and ".pdf" in node.value.lower():
+                self.found = True
+
+    visitor = RuntimeStringVisitor()
+    visitor.visit(tree)
+    return visitor.found
+
+
+def _call_name(node: ast.Call) -> str | None:
+    if isinstance(node.func, ast.Name):
+        return node.func.id
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr
+    return None
+
+
+def has_literal_true_keyword(src: str, call_name: str, keyword: str) -> bool:
+    """Return whether a constructor explicitly enables an optional feature."""
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if _call_name(node) != call_name:
+            continue
+        for item in node.keywords:
+            if item.arg == keyword and isinstance(item.value, ast.Constant) and item.value.value is True:
+                return True
+    return False
+
+
+def has_nonfalse_keyword(src: str, call_name: str, keyword: str) -> bool:
+    """Return whether a constructor enables a keyword with a non-false value."""
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or _call_name(node) != call_name:
+            continue
+        for item in node.keywords:
+            if item.arg != keyword:
+                continue
+            if isinstance(item.value, ast.Constant) and item.value.value in (False, None):
+                continue
+            return True
+    return False
+
+
+def call_uses_default_keyword(
+    src: str, call_name: str, keyword: str, positional_index: int
+) -> bool:
+    """Return whether a call omits a keyword or explicitly passes None."""
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or _call_name(node) != call_name:
+            continue
+        value = next((item.value for item in node.keywords if item.arg == keyword), None)
+        if value is not None:
+            if isinstance(value, ast.Constant) and value.value is None:
+                return True
+            continue
+        if len(node.args) <= positional_index:
+            return True
+        if isinstance(node.args[positional_index], ast.Constant) and node.args[positional_index].value is None:
+            return True
+    return False
+
+
+def all_calls_supply_keywords(srcs: list[str], call_name: str, keywords: set[str]) -> bool:
+    """Return whether every matching call explicitly supplies each keyword."""
+    found = False
+    for src in srcs:
+        try:
+            tree = ast.parse(src)
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or _call_name(node) != call_name:
+                continue
+            found = True
+            supplied = {
+                item.arg
+                for item in node.keywords
+                if item.arg is not None
+                and not (isinstance(item.value, ast.Constant) and item.value.value is None)
+            }
+            if not keywords <= supplied:
+                return False
+    return found
+
+
+def ollama_model_ids(src: str) -> set[str]:
+    """Literal model IDs used by Ollama constructors."""
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return set()
+    model_ids: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or _call_name(node) not in {"Ollama", "OllamaResponses"}:
+            continue
+        value = next((item.value for item in node.keywords if item.arg == "id"), None)
+        if value is None and node.args:
+            value = node.args[0]
+        if isinstance(value, ast.Constant) and isinstance(value.value, str):
+            model_ids.add(value.value)
+    return model_ids
+
+
+def uses_npx_command(src: str) -> bool:
+    """Return whether executable code invokes an npx command."""
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return False
+
+    class NpxVisitor(ast.NodeVisitor):
+        found = False
+
+        def visit_Expr(self, node: ast.Expr) -> None:
+            if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                return
+            self.generic_visit(node)
+
+        def visit_Constant(self, node: ast.Constant) -> None:
+            if isinstance(node.value, str) and re.search(r"\bnpx\b", node.value, re.I):
+                self.found = True
+
+    visitor = NpxVisitor()
+    visitor.visit(tree)
+    return visitor.found
+
+
+def requirement_key(requirement: str) -> str:
+    """Canonical distribution name for a pip requirement token."""
+    match = re.match(r"^([A-Za-z0-9_.-]+)", requirement)
+    name = match.group(1) if match else requirement
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def uses_repo_relative_layout(slug: str | None) -> bool:
+    """True for reviewed examples that consume committed repository assets."""
+    return slug in REPO_LAYOUT_SLUGS
+
+
 class Requirements:
     def __init__(self) -> None:
         self.packages: set[str] = set()
@@ -654,6 +1075,8 @@ class Requirements:
         self.providers: list[str] = []  # display names, for the step title
         self.needs_pgvector = False
         self.services: set[str] = set()  # keys into SERVICE_STEPS
+        self.ollama_models: set[str] = set()
+        self.needs_npx = False
 
 
 def derive_requirements(
@@ -673,34 +1096,43 @@ def derive_requirements(
             if any(module == t or module.startswith(t + ".") for t in triggers):
                 req.services.add(service)
         if top == "agno":
-            parts = module.split(".")
+            for prefix, envs in REQUIRED_ENV_OVERRIDES.items():
+                if module == prefix or module.startswith(prefix + "."):
+                    req.env_keys.update(envs)
             # agno extras (mcp, slack, os, ...)
             for prefix, extra in sorted(EXTRA_MODULES.items(), key=lambda kv: -len(kv[0])):
                 if module == prefix or module.startswith(prefix + "."):
                     req.extras.add(extra)
                     break
             # model providers
-            if len(parts) >= 3 and parts[1] == "models":
-                info = MODEL_PROVIDERS.get(parts[2])
-                if info:
-                    display, pkgs, envs = info
+            provider_infos = model_provider_infos(module, names)
+            if provider_infos:
+                for display, pkgs, envs in provider_infos:
                     req.packages.update(pkgs)
                     req.env_keys.update(envs)
                     if display not in req.providers:
                         req.providers.append(display)
-                    continue
+                continue
             # curated overrides, longest prefix first
-            matched = False
-            for prefix in sorted(PACKAGE_OVERRIDES, key=len, reverse=True):
-                if module == prefix or module.startswith(prefix + "."):
-                    req.packages.update(PACKAGE_OVERRIDES[prefix])
-                    matched = True
-                    break
+            db_packages = db_class_packages(module, names)
+            matched = db_packages is not None
+            if db_packages is not None:
+                req.packages.update(db_packages)
+            else:
+                for prefix in sorted(PACKAGE_OVERRIDES, key=len, reverse=True):
+                    if module == prefix or module.startswith(prefix + "."):
+                        req.packages.update(PACKAGE_OVERRIDES[prefix])
+                        matched = True
+                        break
             # probe the agno source for pip hints and env keys
             pkgs, envs = probe_agno_module(agno_pkg_root, module, names)
+            if module in {"agno.os", "agno.os.app"}:
+                # AgentOS only imports fastmcp for optional MCP features. A
+                # direct fastmcp import in the cookbook remains discoverable.
+                pkgs = [package for package in pkgs if requirement_key(package) != "fastmcp"]
             if not matched:
                 req.packages.update(pkgs)
-            req.env_keys.update(filter_env(envs))
+            req.env_keys.update(k for k in filter_env(envs) if k not in PROBED_ENV_DENYLIST)
             if module.startswith(
                 ("agno.vectordb.pgvector", "agno.db.postgres", "agno.db.async_postgres")
             ):
@@ -711,9 +1143,122 @@ def derive_requirements(
             req.packages.update(map_third_party(module, names))
     for src in srcs:
         req.env_keys.update(filter_env(env_keys_in_source(src)))
+        req.env_keys.update(declared_env_keys(src))
+        if uses_npx_command(src):
+            req.needs_npx = True
+    imports_async_postgres = any(
+        "AsyncPostgresDb" in names
+        and (
+            module == "agno.db.postgres"
+            or module.startswith("agno.db.postgres.")
+            or module == "agno.db.async_postgres"
+            or module.startswith("agno.db.async_postgres.")
+        )
+        for module, names in modules.items()
+    )
+    if imports_async_postgres:
+        source_text = "\n".join(srcs)
+        found_driver = False
+        if "postgresql+asyncpg" in source_text:
+            req.packages.add("asyncpg")
+            found_driver = True
+        if "postgresql+psycopg" in source_text:
+            req.packages.add("psycopg-binary")
+            found_driver = True
+        if not found_driver:
+            # Match the async-postgres extra when the source supplies its URL
+            # or engine dynamically and no driver can be derived.
+            req.packages.add("asyncpg")
+    if any(
+        has_nonfalse_keyword(src, "AgentOS", keyword)
+        for src in srcs
+        for keyword in ("mcp_server", "mcp_auth")
+    ):
+        req.extras.add("mcp")
+    if any(has_modelless_agent_or_team(src) for src in srcs):
+        req.packages.add("openai")
+        req.env_keys.add("OPENAI_API_KEY")
+        if "OpenAI" not in req.providers:
+            req.providers.append("OpenAI")
+    if (
+        any(module == "agno.knowledge" or module.startswith("agno.knowledge.") for module in modules)
+        and any(has_pdf_string(src) for src in srcs)
+        and not any("DoclingReader" in names for names in modules.values())
+    ):
+        req.packages.add("pypdf")
+    if any(
+        call_uses_default_keyword(src, "PgVector", "embedder", positional_index=7)
+        for src in srcs
+    ):
+        req.packages.add("openai")
+        req.env_keys.add("OPENAI_API_KEY")
+        if "OpenAI" not in req.providers:
+            req.providers.append("OpenAI")
+    if any(module == "agno.vectordb.pineconedb" or module.startswith("agno.vectordb.pineconedb.") for module in modules) and any(
+        has_literal_true_keyword(src, "PineconeDb", "use_hybrid_search") for src in srcs
+    ):
+        req.packages.add("pinecone-text")
+    if all_calls_supply_keywords(srcs, "Slack", {"token", "signing_secret"}):
+        req.env_keys.difference_update({"SLACK_TOKEN", "SLACK_SIGNING_SECRET"})
+    if all_calls_supply_keywords(
+        srcs,
+        "Whatsapp",
+        {"access_token", "phone_number_id", "verify_token"},
+    ):
+        req.env_keys.difference_update(
+            {
+                "WHATSAPP_ACCESS_TOKEN",
+                "WHATSAPP_PHONE_NUMBER_ID",
+                "WHATSAPP_VERIFY_TOKEN",
+            }
+        )
+    if all_calls_supply_keywords(srcs, "TelegramTools", {"token", "chat_id"}):
+        req.env_keys.difference_update({"TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID"})
+    if any(
+        has_nonfalse_keyword(src, "AuthConfig", "service_account_path")
+        for src in srcs
+    ):
+        req.env_keys.difference_update(
+            {
+                "GOOGLE_CLIENT_ID",
+                "GOOGLE_CLIENT_SECRET",
+                "GOOGLE_PROJECT_ID",
+                "GOOGLE_CLOUD_QUOTA_PROJECT_ID",
+                "GOOGLE_TOKEN_ENCRYPTION_KEY",
+            }
+        )
+        req.env_keys.update({"GOOGLE_SERVICE_ACCOUNT_FILE", "GOOGLE_DELEGATED_USER"})
+    for src in srcs:
+        for model_id in ollama_model_ids(src):
+            if model_id.endswith("-cloud"):
+                req.env_keys.add("OLLAMA_API_KEY")
+            else:
+                req.ollama_models.add(model_id)
+    # A cookbook pip hint can contain agno extras. Merge those extras into the
+    # single quoted agno token rendered below.
+    for package in list(req.packages):
+        match = re.match(r"^agno\[([^]]+)\]", package.replace("_", "-"), re.I)
+        if not match:
+            continue
+        req.extras.update(item.strip() for item in match.group(1).split(",") if item.strip())
+        req.packages.remove(package)
     # PEP 503: underscores and hyphens are interchangeable; normalize so the
-    # same package never appears twice in one install line.
-    req.packages = {p.replace("_", "-") for p in req.packages}
+    # same distribution never appears twice in one install line. Prefer a
+    # versioned requirement over the bare name reported by an import.
+    normalized: dict[str, str] = {}
+    for package in sorted(p.replace("_", "-") for p in req.packages):
+        match = re.match(r"^([A-Za-z0-9.-]+)", package)
+        key = requirement_key(package)
+        current = normalized.get(key)
+        if current is None:
+            normalized[key] = package
+            continue
+        current_name = re.match(r"^([A-Za-z0-9.-]+)", current)
+        current_suffix = current[current_name.end() :] if current_name else ""
+        candidate_suffix = package[match.end() :] if match else ""
+        if candidate_suffix and not current_suffix:
+            normalized[key] = package
+    req.packages = set(normalized.values())
     req.packages -= CORE_DEPS
     req.providers.sort()
     return req
@@ -755,16 +1300,13 @@ def yaml_str(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def pep503(name: str) -> str:
-    """Canonical PyPI package name (PEP 503)."""
-    return re.sub(r"[-_.]+", "-", name).lower()
-
-
 def render_env_step(env_keys: list[str], providers: list[str]) -> str:
-    if len(env_keys) == 1 and len(providers) == 1:
+    if len(env_keys) == 1 and len(providers) == 1 and env_keys[0].endswith("_API_KEY"):
         title = f"Export your {providers[0]} API key"
-    else:
+    elif all(key.endswith("_API_KEY") for key in env_keys):
         title = "Export your API keys"
+    else:
+        title = "Export environment variables"
     mac = "\n    ".join(f'export {k}="your_{k.lower()}_here"' for k in env_keys)
     win = "\n    ".join(f'$Env:{k}="your_{k.lower()}_here"' for k in env_keys)
     return f"""  <Step title="{title}">
@@ -790,6 +1332,8 @@ def render(
 
     stem = source_path.stem
     run_name = re.sub(r"^\d+[a-z]?_", "", stem) + ".py"
+    if re.search(rf"app\s*=\s*['\"]{re.escape(stem)}:app['\"]", src):
+        run_name = source_path.name
     title = derive_title(docstring, stem, source_path.parent.name)
     if slug and slug in TITLE_OVERRIDES:
         title = TITLE_OVERRIDES[slug]
@@ -798,11 +1342,15 @@ def render(
     siblings = collect_siblings(source_path, src)
     sibling_srcs = [(p, p.read_text(encoding="utf-8")) for p in siblings]
     skip_modules = frozenset(p.stem for p in siblings)
-    req = derive_requirements([src] + [s for _, s in sibling_srcs], agno_root, skip_modules)
+    all_srcs = [src] + [s for _, s in sibling_srcs]
+    req = derive_requirements(all_srcs, agno_root, skip_modules)
+    needs_repo_layout = uses_repo_relative_layout(slug)
 
     override = DESC_OVERRIDES.get(slug) if slug else None
     if override is not None:
         description = override
+        if slug in SUPPRESS_INTRO_SLUGS:
+            intro = None
     elif description is None:
         print(
             f"WARNING: no usable docstring description in {cookbook_rel}; "
@@ -822,7 +1370,11 @@ def render(
         provided = set()
     install = " ".join(
         [agno_token]
-        + sorted(p for p in req.packages if p != "agno" and pep503(p) not in provided)
+        + sorted(
+            p
+            for p in req.packages
+            if p != "agno" and requirement_key(p) not in provided
+        )
     )
 
     code = src.strip("\n")
@@ -843,8 +1395,8 @@ def render(
     parts.append(fence)
     parts.append("")
     if sibling_srcs:
-        plural = "s" if len(sibling_srcs) > 1 else ""
-        parts.append(f"The example imports this helper module{plural} from the same directory:")
+        helper_label = "this helper module" if len(sibling_srcs) == 1 else "these helper modules"
+        parts.append(f"The example imports {helper_label} from the same directory:")
         parts.append("")
         for sib_path, sib_src in sibling_srcs:
             sib_code = sib_src.strip("\n")
@@ -863,6 +1415,15 @@ def render(
     parts.append(f"    uv pip install -U {install}")
     parts.append("    ```")
     parts.append("  </Step>")
+    if req.needs_npx:
+        parts.append("")
+        parts.append('  <Step title="Prepare Node.js">')
+        parts.append("    The MCP server runs with `npx`. Install Node.js, then verify the commands:")
+        parts.append("    ```bash")
+        parts.append("    node --version")
+        parts.append("    npx --version")
+        parts.append("    ```")
+        parts.append("  </Step>")
     env_keys = sorted(req.env_keys)
     if env_keys:
         parts.append("")
@@ -870,6 +1431,16 @@ def render(
     if req.needs_pgvector:
         parts.append("")
         parts.append('  <Snippet file="run-pgvector-step.mdx" />')
+    if req.ollama_models:
+        parts.append("")
+        parts.append('  <Step title="Prepare Ollama">')
+        model_label = "model" if len(req.ollama_models) == 1 else "models"
+        parts.append(f"    Install and start Ollama, then pull the {model_label} used by this example:")
+        parts.append("    ```bash")
+        for model_id in sorted(req.ollama_models):
+            parts.append(f"    ollama pull {model_id}")
+        parts.append("    ```")
+        parts.append("  </Step>")
     for service in sorted(req.services):
         step_title, command = SERVICE_STEPS[service]
         parts.append("")
@@ -880,7 +1451,9 @@ def render(
         parts.append("  </Step>")
     parts.append("")
     parts.append('  <Step title="Run the example">')
-    if sibling_srcs:
+    if needs_repo_layout:
+        parts.append("    Clone Agno and run the example from the repository root:")
+    elif sibling_srcs:
         file_names = [f"`{n}`" for n in [run_name] + [p.name for p, _ in sibling_srcs]]
         joiner = " and " if len(file_names) == 2 else ", "
         parts.append(
@@ -890,7 +1463,12 @@ def render(
     else:
         parts.append(f"    Save the code above as `{run_name}`, then run:")
     parts.append("    ```bash")
-    parts.append(f"    python {run_name}")
+    if needs_repo_layout:
+        parts.append("    git clone https://github.com/agno-agi/agno.git")
+        parts.append("    cd agno")
+        parts.append(f"    python {cookbook_rel}")
+    else:
+        parts.append(f"    python {run_name}")
     parts.append("    ```")
     parts.append("  </Step>")
     parts.append("</Steps>")
