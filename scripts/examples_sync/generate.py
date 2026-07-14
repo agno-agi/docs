@@ -523,6 +523,7 @@ TITLE_OVERRIDES = {
     "examples/tools/models/gemini-video-generation": "Gemini Video Generation",
     "examples/tools/other/human-in-the-loop": "Human in the Loop",
     "examples/tools/clickup-tools": "ClickUp Tools",
+    "examples/tools/spotify-tools": "Spotify Tools",
     "examples/tools/exceptions/retry-tool-call-from-post-hook": "Post-Hook Retry",
     "examples/tools/trafilatura-tools": "Trafilatura Tools",
     "examples/tools/webbrowser-tools": "WebBrowser Tools",
@@ -1011,6 +1012,24 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "90_models/lmstudio/retry.py": {"pre_run_steps": [LMSTUDIO_RETRY_STEP]},
     "90_models/lmstudio/structured_output.py": {"pre_run_steps": [LMSTUDIO_STEP]},
     "90_models/lmstudio/tool_use.py": {"pre_run_steps": [LMSTUDIO_STEP]},
+    "90_models/ollama/chat/demo_gemma.py": {
+        "pre_run_steps": [
+            (
+                "Add the sample image",
+                "Place an image named `super-agents.png` in the same directory as the script, or update `image_path` to point to your own image.",
+                None,
+            )
+        ],
+    },
+    "90_models/ollama/chat/image_agent.py": {
+        "pre_run_steps": [
+            (
+                "Add the sample image",
+                "Place an image named `super-agents.png` in the same directory as the script, or update `image_path` to point to your own image.",
+                None,
+            )
+        ],
+    },
     "90_models/litellm_openai/basic.py": {
         "package_add": {"litellm[proxy]"},
         "package_remove": {"litellm"},
@@ -1160,6 +1179,15 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
             (
                 "Start SearxNG",
                 "Start a SearxNG instance at `http://localhost:53153` before running the example.",
+                None,
+            )
+        ],
+    },
+    "91_tools/spotify_tools.py": {
+        "pre_run_steps": [
+            (
+                "Create a Spotify access token",
+                "Create a Spotify OAuth user access token with `user-read-private` and the playlist scopes required by your playlist visibility: `playlist-modify-public` and/or `playlist-modify-private`. See [Spotify authorization scopes](https://developer.spotify.com/documentation/web-api/concepts/scopes).",
                 None,
             )
         ],
