@@ -417,6 +417,12 @@ EXPLICIT_ROW_OVERRIDES = {
             "Run a team hosted on another AgentOS with RemoteTeam in single-shot or streaming mode.",
         ),
     },
+    "examples/models/anthropic/overview": {
+        "examples/models/anthropic/adaptive-thinking": (
+            "Anthropic Adaptive Thinking",
+            'Let Claude 4.6 decide its own thinking depth with `thinking={"type": "adaptive"}` and an effort level.',
+        ),
+    },
 }
 
 # These pages have a reviewed, factual mismatch that is grammatical enough not
