@@ -770,6 +770,13 @@ EXPLICIT_ROW_REFRESH = {
     },
 }
 
+# These reviewed indexes must mirror every target page's current title and
+# description. New rows are covered automatically because the refresh set is
+# derived from the table rather than maintained target by target.
+FULL_ROW_REFRESH_OVERVIEWS = {
+    "examples/models/google/gemini/overview",
+}
+
 EXPLICIT_LABEL_REFRESH = {
     "examples/agent-os/advanced-demo/reasoning-model",
     "examples/agent-os/client-a2a/servers/agno-server",
@@ -1341,7 +1348,13 @@ def render_row(row: dict[str, str]) -> str:
     return f'| [{row["label"]}](/' + row["target"] + f') | {row["description"]} |\n'
 
 
-def repaired_row(overview: str, row: dict[str, str], *, force_description: bool = False) -> tuple[dict[str, str], bool]:
+def repaired_row(
+    overview: str,
+    row: dict[str, str],
+    *,
+    force_description: bool = False,
+    force_label: bool = False,
+) -> tuple[dict[str, str], bool]:
     target = row["target"]
     if overview == "examples/tools/overview":
         tool_description = row["description"].strip()
@@ -1372,7 +1385,8 @@ def repaired_row(overview: str, row: dict[str, str], *, force_description: bool 
     changed = False
     label = row["label"]
     bad_label = bool(
-        explicit_row
+        force_label
+        or explicit_row
         or target in EXPLICIT_LABEL_REFRESH
         or re.match(r"^(?:setup|steps?|run|install|uv\s+pip|pip\s+install)\b", label, re.I)
         or (normalized_words(label) == normalized_words(title) and label != title)
@@ -1439,7 +1453,13 @@ def repair_overview_tables() -> None:
         positions = [nav[target] for target in targets]
         assert positions == sorted(positions), f"ordered table is not in docs.json order: {overview}"
 
-    overview_slugs = ROW_REPAIR_OVERVIEWS | set(EXPLICIT_MISSING_ROWS) | set(EXPLICIT_ROW_REFRESH) | set(EXPLICIT_TABLE_ORDER)
+    overview_slugs = (
+        ROW_REPAIR_OVERVIEWS
+        | set(EXPLICIT_MISSING_ROWS)
+        | set(EXPLICIT_ROW_REFRESH)
+        | FULL_ROW_REFRESH_OVERVIEWS
+        | set(EXPLICIT_TABLE_ORDER)
+    )
     for overview in sorted(overview_slugs):
         p = docs_path(overview)
         assert p.is_file(), f"missing overview: {overview}"
@@ -1447,7 +1467,11 @@ def repair_overview_tables() -> None:
         # Only pages with the standard two-column table participate. Other
         # overview formats are intentionally left alone.
         if not any(TABLE_HEADER_RE.fullmatch(line) for line in text.splitlines()):
-            assert overview not in EXPLICIT_MISSING_ROWS and overview not in EXPLICIT_ROW_REFRESH, (
+            assert (
+                overview not in EXPLICIT_MISSING_ROWS
+                and overview not in EXPLICIT_ROW_REFRESH
+                and overview not in FULL_ROW_REFRESH_OVERVIEWS
+            ), (
                 f"{overview}: explicit repair page has no supported table"
             )
             continue
@@ -1467,13 +1491,19 @@ def repair_overview_tables() -> None:
         assert not duplicates, f"{overview}: duplicate targets: {duplicates}"
 
         repaired: list[dict[str, str]] = []
-        forced = EXPLICIT_ROW_REFRESH.get(overview, set())
         existing_targets = set(counts)
+        full_refresh = overview in FULL_ROW_REFRESH_OVERVIEWS
+        forced = existing_targets if full_refresh else EXPLICIT_ROW_REFRESH.get(overview, set())
         missing = EXPLICIT_MISSING_ROWS.get(overview, [])
         for target in forced:
             assert target in existing_targets, f"{overview}: explicit refresh target is absent: {target}"
         for row in rows:
-            row, row_changed = repaired_row(overview, row, force_description=row["target"] in forced)
+            row, row_changed = repaired_row(
+                overview,
+                row,
+                force_description=row["target"] in forced,
+                force_label=full_refresh,
+            )
             repaired.append(row)
             changed |= row_changed
 
@@ -2052,6 +2082,100 @@ python valkey_db.py
 </Steps>
 
 Full source: [cookbook/05_agent_os/dbs/valkey_db.py](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/dbs/valkey_db.py)""",
+    )
+
+    root_sub(
+        "knowledge/vector-stores/mongodb/usage/mongo-db-hybrid-search.mdx",
+        """  </Step>
+  <Step title="Set environment variables">""",
+        """  </Step>
+  <Step title="Create the keyword search index">
+    Hybrid search requires a keyword Search index named `default` in addition to the vector index Agno creates. Wait for MongoDB, create the collection if needed, then create the index and wait until it is queryable:
+    ```bash
+    until [ "$(docker inspect --format='{{.State.Health.Status}}' mongodb-container)" = "healthy" ]; do
+      sleep 1
+    done
+
+    docker exec mongodb-container mongosh --quiet --eval '
+    const database = db.getSiblingDB("agno");
+    if (!database.getCollectionNames().includes("recipes")) {
+      database.createCollection("recipes");
+    }
+    if (!database.recipes.aggregate([
+      { $listSearchIndexes: { name: "default" } }
+    ]).hasNext()) {
+      database.recipes.createSearchIndex("default", {
+        mappings: {
+          dynamic: false,
+          fields: { content: { type: "string" } }
+        }
+      });
+    }
+    while (!database.recipes.aggregate([
+      { $listSearchIndexes: { name: "default" } }
+    ]).toArray()[0]?.queryable) {
+      sleep(1000);
+    }
+    '
+    ```
+  </Step>
+  <Step title="Set environment variables">""",
+    )
+    root_sub(
+        "multimodal/agent/usage/audio-streaming.mdx",
+        """  </Step>
+
+  <Step title="Run Agent">""",
+        """  </Step>
+
+  <Step title="Create the output directory">
+    ```bash
+    python -c "from pathlib import Path; Path('tmp').mkdir(parents=True, exist_ok=True)"
+    ```
+  </Step>
+
+  <Step title="Run Agent">""",
+    )
+    root_sub(
+        "multimodal/agent/usage/audio-streaming.mdx",
+        """## Key Features
+
+- **Real-time Audio Streaming**: Streams audio responses in real-time using OpenAI's `gpt-audio` model
+- **PCM16 Audio Format**: Uses high-quality PCM16 format for audio streaming
+- **Transcript Generation**: Provides simultaneous text transcription of generated audio
+- **WAV File Creation**: Saves streamed audio directly to a WAV file format
+- **Error Handling**: Includes robust error handling for audio decoding
+
+## Use Cases
+
+- Interactive voice assistants
+- Real-time storytelling applications
+- Audio content generation
+- Voice-enabled chatbots
+- Dynamic audio responses for applications
+
+## Technical Details
+
+The example configures audio streaming with 24kHz sample rate, mono channel, and 16-bit sample width. The streaming approach allows for real-time audio playback while maintaining high audio quality through the PCM16 format.""",
+        """## Key Features
+
+- **Streamed output**: Consumes audio chunks as the model returns them
+- **PCM16 format**: Writes 16-bit PCM audio at 24 kHz in mono
+- **Transcript output**: Prints transcript chunks as they arrive
+- **WAV file**: Saves the audio stream to `tmp/response_stream.wav`
+- **Decode failures**: Prints chunk decoding failures and continues consuming the stream
+
+## Next Steps
+
+| Task | Guide |
+|------|-------|
+| Send and receive audio | [Audio Input and Output](/multimodal/agent/usage/audio-input-output) |
+| Transcribe audio | [Audio to Text](/multimodal/agent/usage/audio-to-text) |
+| Continue an audio conversation | [Audio Multi-Turn](/multimodal/agent/usage/audio-multi-turn) |
+
+## Output Format
+
+The agent writes 24 kHz, mono, 16-bit PCM audio to `tmp/response_stream.wav`. The script saves the stream to disk. It does not play the audio.""",
     )
 
     # 7. Reviewed frontmatter overrides consumed by the overview row pass.

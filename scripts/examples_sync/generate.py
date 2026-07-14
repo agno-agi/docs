@@ -622,6 +622,15 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
             )
         ],
     },
+    "02_agents/12_multimodal/audio_streaming.py": {
+        "pre_run_steps": [
+            (
+                "Create the output directory",
+                "Create the directory used for the WAV file:",
+                'python -c "from pathlib import Path; Path(\'tmp\').mkdir(parents=True, exist_ok=True)"',
+            )
+        ],
+    },
     "02_agents/12_multimodal/video_caption.py": {
         # The source's prose paragraph is an incomplete install instruction.
         "suppress_intro": True,

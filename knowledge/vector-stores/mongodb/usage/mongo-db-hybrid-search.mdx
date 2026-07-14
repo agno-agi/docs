@@ -69,6 +69,36 @@ docker run -d \
   mongodb/mongodb-atlas-local:8.0.3
     ```
   </Step>
+  <Step title="Create the keyword search index">
+    Hybrid search requires a keyword Search index named `default` in addition to the vector index Agno creates. Wait for MongoDB, create the collection if needed, then create the index and wait until it is queryable:
+    ```bash
+    until [ "$(docker inspect --format='{{.State.Health.Status}}' mongodb-container)" = "healthy" ]; do
+      sleep 1
+    done
+
+    docker exec mongodb-container mongosh --quiet --eval '
+    const database = db.getSiblingDB("agno");
+    if (!database.getCollectionNames().includes("recipes")) {
+      database.createCollection("recipes");
+    }
+    if (!database.recipes.aggregate([
+      { $listSearchIndexes: { name: "default" } }
+    ]).hasNext()) {
+      database.recipes.createSearchIndex("default", {
+        mappings: {
+          dynamic: false,
+          fields: { content: { type: "string" } }
+        }
+      });
+    }
+    while (!database.recipes.aggregate([
+      { $listSearchIndexes: { name: "default" } }
+    ]).toArray()[0]?.queryable) {
+      sleep(1000);
+    }
+    '
+    ```
+  </Step>
   <Step title="Set environment variables">
     ```bash
     export OPENAI_API_KEY=xxx
