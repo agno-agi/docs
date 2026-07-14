@@ -519,6 +519,7 @@ TITLE_OVERRIDES = {
     "examples/tools/mcp/supabase": "Supabase MCP Agent",
     "examples/tools/mcp/local-server/server": "FastMCP Local Server",
     "examples/tools/mcp/notion-mcp-agent": "Notion MCP Agent",
+    "examples/tools/models/gemini-image-generation": "Gemini Image Generation",
     "examples/tools/models/gemini-video-generation": "Gemini Video Generation",
     "examples/tools/other/human-in-the-loop": "Human in the Loop",
     "examples/tools/clickup-tools": "ClickUp Tools",
