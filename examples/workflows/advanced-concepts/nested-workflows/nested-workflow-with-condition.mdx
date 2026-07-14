@@ -1,10 +1,22 @@
 ---
 title: "Nested Workflow with Condition"
-description: "Inner workflow with a `Condition` step for conditional fact-checking before passing results to the outer workflow."
+description: "Demonstrates using a workflow (containing a Condition step) as a step in an outer workflow."
+source: cookbook/04_workflows/06_advanced_concepts/workflow_as_a_step/nested_workflow_with_condition.py
 ---
-```python
+
+Demonstrates using a workflow (containing a Condition step) as a step in an outer workflow. The inner workflow decides whether content needs fact-checking before passing results to the outer workflow's writer.
+
+```python nested_workflow_with_condition.py
+"""
+Nested Workflow with Condition
+
+Demonstrates using a workflow (containing a Condition step) as a step
+in an outer workflow. The inner workflow decides whether content needs
+fact-checking before passing results to the outer workflow's writer.
+"""
+
 from agno.agent import Agent
-from agno.models.openai import OpenAIChat
+from agno.models.openai import OpenAIResponses
 from agno.workflow import Condition
 from agno.workflow.step import Step
 from agno.workflow.types import StepInput, StepOutput
@@ -18,20 +30,21 @@ def needs_fact_check(step_input: StepInput) -> bool:
 
 
 def format_for_writer(step_input: StepInput) -> StepOutput:
+    """Pass content through for the outer workflow's writer step."""
     prev = step_input.previous_step_content or step_input.input
     return StepOutput(content=prev)
 
 
-# Inner workflow: research with conditional fact-checking
+# --- Inner workflow: research with conditional fact-checking ---
 researcher = Agent(
     name="Researcher",
-    model=OpenAIChat(id="gpt-4o-mini"),
+    model=OpenAIResponses(id="gpt-5.4"),
     instructions="Research the topic. Include specific dates and numbers where relevant.",
 )
 
 fact_checker = Agent(
     name="Fact Checker",
-    model=OpenAIChat(id="gpt-4o-mini"),
+    model=OpenAIResponses(id="gpt-5.4"),
     instructions="Verify the facts in the provided text. Correct any inaccuracies.",
 )
 
@@ -50,10 +63,10 @@ inner_workflow = Workflow(
     ],
 )
 
-# Outer workflow
+# --- Outer workflow ---
 writer = Agent(
     name="Writer",
-    model=OpenAIChat(id="gpt-4o-mini"),
+    model=OpenAIResponses(id="gpt-5.4"),
     instructions="Write a polished paragraph from the research provided.",
 )
 
@@ -75,11 +88,34 @@ if __name__ == "__main__":
 ```
 
 ## Run the Example
-```bash
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/04_workflows/06_advanced_concepts/workflow_as_a_step
 
-pip install agno openai
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
 
-python nested_workflow_with_condition.py
-```
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno cel-python fastapi openai
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `nested_workflow_with_condition.py`, then run:
+    ```bash
+    python nested_workflow_with_condition.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/04_workflows/06_advanced_concepts/workflow_as_a_step/nested_workflow_with_condition.py](https://github.com/agno-agi/agno/blob/main/cookbook/04_workflows/06_advanced_concepts/workflow_as_a_step/nested_workflow_with_condition.py)

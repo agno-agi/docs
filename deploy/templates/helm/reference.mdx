@@ -1,0 +1,213 @@
+---
+title: "Kubernetes Reference"
+sidebarTitle: "Reference"
+description: "Commands, customization, environment variables, and troubleshooting for the Kubernetes template."
+---
+
+The scripts install the Helm release `agentos` into the `agentos` namespace. Override with `AGENTOS_RELEASE` and `AGENTOS_NAMESPACE`.
+
+## Manage
+
+| Task | Command |
+|------|---------|
+| Roll to a new image tag | `IMAGE_TAG=v2 ./scripts/k8s/redeploy.sh` (build and push the tag first) |
+| Restart pods in place | `./scripts/k8s/redeploy.sh` |
+| Sync env variables | `./scripts/k8s/env-sync.sh` (connection and secret keys only; defaults to `.env.production`, pass `.env` to sync that instead) |
+| Tail logs | `kubectl logs deploy/agentos -n agentos -f` |
+| Port-forward the API | `kubectl port-forward svc/agentos 8000:8000 -n agentos` |
+| Roll back a release | `helm rollback agentos -n agentos` |
+| Tear down | `./scripts/k8s/down.sh` (add `--yes` to skip the confirmation) |
+
+## Production auth
+
+Token-Based Authorization is on by default. Without a `JWT_VERIFICATION_KEY` or `JWT_JWKS_FILE`, the app refuses to serve traffic in production. The platform's job is to keep your data private, so the safe default is refuse to start.
+
+Token-Based Auth gives you three things:
+
+1. **No public access.** The server rejects requests without a valid token.
+2. **Per-request identity.** Middleware parses the token and extracts the `user_id`, `session_id`, and custom claims. Each request is tied to a user and session, giving you auditability and traceability.
+3. **Granular permissions.** User tokens can run an agent and view their own sessions. Admin tokens read everyone's sessions and test any agent.
+
+To opt out (not recommended), set `authorization=False` in `app/main.py`, then build and push a new image tag and roll to it with `IMAGE_TAG=<tag> ./scripts/k8s/redeploy.sh`. Use this only inside a private VPC behind another auth layer. Without it, anyone who guesses your AgentOS URL can access your platform.
+
+## Customize
+
+<AccordionGroup>
+  <Accordion title="Add an agent">
+Ask your coding agent to run `/create-new-agent`, or do it by hand. Create `agents/my_agent.py`:
+
+```python
+from agno.agent import Agent
+
+from app.settings import default_model
+from db import get_postgres_db
+
+INSTRUCTIONS = """\
+What the agent does, which tools it uses, the rules to follow when answering.
+"""
+
+my_agent = Agent(
+    id="my-agent",
+    name="My Agent",
+    model=default_model(),
+    db=get_postgres_db(),
+    instructions=INSTRUCTIONS,
+    enable_agentic_memory=True,
+    add_datetime_to_context=True,
+    add_history_to_context=True,
+    num_history_runs=5,
+)
+```
+
+Register it in `app/main.py`:
+
+```python
+from agents.my_agent import my_agent
+
+agent_os = AgentOS(
+    ...
+    agents=[agent_builder, platform_manager, web_search, my_agent],
+)
+```
+
+Local containers hot-reload on save. For production, build and push a new image tag, then run `IMAGE_TAG=<tag> ./scripts/k8s/redeploy.sh`. If the release still runs the official image, point it at your registry first: `IMAGE_REPOSITORY=<registry>/agentos IMAGE_TAG=<tag> ./scripts/k8s/up.sh`.
+  </Accordion>
+
+  <Accordion title="Change the model">
+`app/settings.py` defines `default_model()`, used by every agent. Change it in one place:
+
+```python
+from agno.models.anthropic import Claude
+
+def default_model():
+    return Claude(id="claude-sonnet-5")
+```
+
+Add `anthropic` to `pyproject.toml`, set the provider key in your env, and regenerate pins:
+
+```bash
+./scripts/generate_requirements.sh
+```
+
+Rebuild locally with `docker compose up -d --build`. For production:
+
+```bash
+./scripts/k8s/env-sync.sh
+docker build -t <registry>/agentos:v2 . && docker push <registry>/agentos:v2
+IMAGE_TAG=v2 ./scripts/k8s/redeploy.sh
+```
+  </Accordion>
+
+  <Accordion title="Add tools">
+Agno ships 100+ toolkits. See [Toolkits](/tools/toolkits/overview).
+
+```python
+from agno.tools.slack import SlackTools
+
+my_agent = Agent(
+    ...
+    tools=[SlackTools()],
+)
+```
+  </Accordion>
+
+  <Accordion title="Add dependencies">
+1. Edit `pyproject.toml`.
+2. Regenerate pins: `./scripts/generate_requirements.sh` (add `upgrade` to refresh every pin).
+3. Rebuild locally with `docker compose up -d --build`, or build and push a new tag and roll to it with `IMAGE_TAG=<tag> ./scripts/k8s/redeploy.sh`.
+  </Accordion>
+
+  <Accordion title="Enable Slack">
+Set both variables in your env file:
+
+```bash
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_SIGNING_SECRET=...
+```
+
+Sync with `./scripts/k8s/env-sync.sh`. The interface activates automatically and routes messages to Agent Builder; change the `agent=` argument in `app/main.py` to point at another agent. See [Slack setup](/agent-os/interfaces/slack/setup).
+  </Accordion>
+
+  <Accordion title="Toggle scheduled workflows">
+The deployment check runs daily by default (`ENABLE_DEPLOY_CHECK=True`); it is deterministic and free. Scheduled evals are off by default (`ENABLE_SCHEDULED_EVALS=False`) because they use model calls. Both workflows stay runnable on demand regardless.
+
+In the cluster these are chart values. Set them via `extraEnv` and `helm upgrade`; `./scripts/k8s/env-sync.sh` syncs only the connection and secret keys.
+  </Accordion>
+</AccordionGroup>
+
+## Format, validate, and run evals
+
+The format, validate, and eval scripts run on the host and need a venv. Set it up once:
+
+```bash
+./scripts/venv_setup.sh
+source .venv/bin/activate
+```
+
+| Task | Command |
+|------|---------|
+| Format | `./scripts/format.sh` |
+| Lint and type-check | `./scripts/validate.sh` |
+| Run smoke evals | `python -m evals --tag smoke` |
+
+`./scripts/mcp_check.sh` runs inside the container, so it needs no venv.
+
+## Environment variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `OPENAI_API_KEY` | Yes | - | Models and embeddings. |
+| `RUNTIME_ENV` | No | `prd` | `dev` disables JWT. Compose sets it for local. Never put it in an env file that syncs to a real cluster, or production deploys unauthenticated. |
+| `JWT_VERIFICATION_KEY` | Production | - | Public key from os.agno.com. Quote the value so the multi-line PEM parses as one variable. |
+| `JWT_JWKS_FILE` | Production | - | Path to a JWKS file inside the container. Alternative to `JWT_VERIFICATION_KEY`. `up.sh` and `env-sync.sh` deliver it as the chart value `jwtJwksFile`. |
+| `MCP_CONNECT_SECRET` | No | - | OAuth consent secret (16+ chars) for connecting claude.ai and ChatGPT to `/mcp`. `up.sh` generates it into `.env.production` when the deploy has a public URL (`INGRESS_HOST` or `AGENTOS_URL`); set it by hand otherwise. |
+| `AGENTOS_MCP_SIGNING_KEY` | No | generated | Optional high-entropy signing-key material (32+ chars) for OAuth tokens. Unset, a strong key is generated and persisted in the database. Rotating it invalidates outstanding tokens. |
+| `AGENTOS_URL` | No | `http://127.0.0.1:8000` | Scheduler base URL. The chart resolves it automatically: explicit value, then ingress URL, then in-cluster service DNS. Set it by hand only for a custom domain or tunnel. Also the public origin OAuth metadata derives from when `MCP_CONNECT_SECRET` is set. |
+| `ENABLE_DEPLOY_CHECK` | No | `True` | Daily deployment-check cron. |
+| `ENABLE_SCHEDULED_EVALS` | No | `False` | Daily run-evals cron. Uses model calls. |
+| `EVALS_TAG` | No | `smoke` | Eval tag the run-evals workflow runs. |
+| `EVALS_CASE_TIMEOUT_SECONDS` | No | `90` | Per-case timeout for run-evals runs. |
+| `EVALS_SUITE_TIMEOUT_SECONDS` | No | `900` | Whole-suite timeout for run-evals runs. |
+| `PARALLEL_API_KEY` | No | - | WebSearch uses the Parallel SDK when set, keyless MCP otherwise. |
+| `SLACK_BOT_TOKEN` | No | - | Set with the signing secret to enable Slack. |
+| `SLACK_SIGNING_SECRET` | No | - | Set with the bot token to enable Slack. |
+| `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASS` / `DB_DATABASE` | No | matches compose | Postgres connection. `up.sh` generates `DB_PASS` once and saves it to your env file. |
+| `DB_DRIVER` | No | `postgresql+psycopg` | SQLAlchemy driver. |
+| `AGNO_DEBUG` | No | `False` | Verbose Agno logs. Compose sets it for dev. |
+| `WAIT_FOR_DB` | No | `False` | If `True`, the entrypoint blocks on the database before starting. Compose sets it. |
+| `AGENTOS_NAMESPACE` | No | `agentos` | Namespace the k8s scripts target. |
+| `AGENTOS_RELEASE` | No | `agentos` | Helm release name the k8s scripts target. |
+| `IMAGE_REPOSITORY` | No | `agnohq/agentos` | Image the chart deploys. Read by `up.sh`. |
+| `IMAGE_TAG` | No | `latest` | Image tag. `up.sh` installs it; `redeploy.sh` rolls the release to it. |
+| `IMAGE_PULL_POLICY` | No | `IfNotPresent` | Set `Never` for images loaded into kind. Read by `up.sh`. |
+| `INGRESS_HOST` | No | - | Publishes the API behind your ingress controller at this host. Read by `up.sh`. |
+| `INGRESS_CLASS` | No | - | Ingress class name, for example `nginx`. Read by `up.sh`. |
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="kubectl or helm: command not found">
+Install [kubectl](https://kubernetes.io/docs/tasks/tools/) and [Helm](https://helm.sh/docs/intro/install/) 3+. The scripts check for both before doing anything.
+  </Accordion>
+  <Accordion title="up.sh exits: no context or cluster not reachable">
+`up.sh` deploys into your current kubectl context and verifies it can reach the cluster first. Point kubectl at the target cluster and confirm `kubectl get namespace` works, then rerun.
+  </Accordion>
+  <Accordion title="up.sh pauses asking for a JWT key">
+Expected. Mint the key at [os.agno.com](https://os.agno.com): connect your OS (**Connect OS** → **Live**, enter your AgentOS URL), then turn on **Token-Based Authorization (JWT)** under **Settings** → **OS & Security** and paste the full PEM. To do it later, skip the prompt, add `JWT_VERIFICATION_KEY` or `JWT_JWKS_FILE` to `.env.production`, and run `./scripts/k8s/env-sync.sh`.
+  </Accordion>
+  <Accordion title="App refuses to serve in production">
+JWT auth is on whenever `RUNTIME_ENV` is not `dev`. Set `JWT_VERIFICATION_KEY` or `JWT_JWKS_FILE` and sync. To opt out inside a private VPC behind another auth layer, set `authorization=False` in `app/main.py` and roll out your own image build.
+  </Accordion>
+  <Accordion title="Pods stuck in ImagePullBackOff">
+The cluster can't pull the image. Confirm the tag was pushed and the cluster has access to your registry; for private registries, set `imagePullSecrets` in `charts/agentos/values.yaml`. On kind, `kind load docker-image` the tag and deploy with `IMAGE_PULL_POLICY=Never`.
+  </Accordion>
+  <Accordion title="Database rejects the app after a password change">
+The Postgres volume reads its password only on first initialization, so a lost or regenerated `DB_PASS` locks the app out of an existing volume. Restore the `DB_PASS` that `up.sh` saved to your env file and sync, fix the database in place with `ALTER USER`, or delete the PVC to reinitialize. Deleting the PVC deletes all data.
+  </Accordion>
+  <Accordion title="Scheduled jobs never fire">
+`AGENTOS_URL` resolves automatically: explicit value, then ingress URL, then in-cluster service DNS. If you set it by hand, make sure the pod can reach that URL, then run `./scripts/k8s/env-sync.sh`.
+  </Accordion>
+  <Accordion title="claude.ai or ChatGPT can't connect to /mcp">
+`up.sh` generates `MCP_CONNECT_SECRET` only when the deploy has a public URL (`INGRESS_HOST` or an explicit `AGENTOS_URL`). Deployed without one? Set `MCP_CONNECT_SECRET` and a public `AGENTOS_URL` in `.env.production` and run `./scripts/k8s/env-sync.sh`.
+  </Accordion>
+</AccordionGroup>

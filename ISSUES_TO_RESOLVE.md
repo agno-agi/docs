@@ -4,22 +4,22 @@ Punch list to clear before merging to `main`. Update as work lands.
 
 ## 1. Sidebar restructure and lock-ins
 
-- [x] SDK introduction migration — `5cc2b21c`
-- [x] Home tab sidebar restructure — `5cc2b21c`
-- [x] Runtime section polish — `3b11607a`
-- [x] Demo OS polish — `8aa9edeb`
-- [x] Dash tutorial polish — `75cd7fd6`
-- [x] Coda tutorial polish — `7f9814b0`
-- [x] Blank Canvas pages — `f7f71392`
-- [x] Homepage opener refinement — `930085b0`
-- [x] Scout tutorial tightening — `1c9d0807`
+- [x] SDK introduction migration: `5cc2b21c`
+- [x] Home tab sidebar restructure: `5cc2b21c`
+- [x] Runtime section polish: `3b11607a`
+- [x] Demo OS polish: `8aa9edeb`
+- [x] Dash tutorial polish: `75cd7fd6`
+- [x] Coda tutorial polish: `7f9814b0`
+- [x] Blank Canvas pages: `f7f71392`
+- [x] Homepage opener refinement: `930085b0`
+- [x] Scout tutorial tightening: `1c9d0807`
 
 ## 2. Cleanup
 
-- [x] Drop `_legacy/production/*` and `TBD/2_6_remove/` orphans (46 files) — `7a6cc9b4`
-- [x] Refresh `connect-agent-os-ui` snippet — `07123216`
-- [x] Add `agentos-api-scroll` demo video — `43baf92a`
-- [x] Fix CI broken links — `609bacfa`
+- [x] Drop `_legacy/production/*` and `TBD/2_6_remove/` orphans (46 files): `7a6cc9b4`
+- [x] Refresh `connect-agent-os-ui` snippet: `07123216`
+- [x] Add `agentos-api-scroll` demo video: `43baf92a`
+- [x] Fix CI broken links: `609bacfa`
 
 ## 3. Verify before merge
 

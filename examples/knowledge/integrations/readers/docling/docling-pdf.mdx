@@ -1,0 +1,221 @@
+---
+title: "Docling Reader: PDF Documents"
+description: "Examples of using Docling to process PDF files with different output formats."
+source: cookbook/07_knowledge/05_integrations/readers/docling/docling_pdf.py
+---
+
+```python docling_pdf.py
+"""
+Docling Reader: PDF Documents
+==============================
+Examples of using Docling to process PDF files with different output formats.
+"""
+
+import asyncio
+
+from agno.knowledge.reader.docling_reader import DoclingReader
+from utils import get_agent, get_knowledge
+
+# ---------------------------------------------------------------------------
+# Setup
+# ---------------------------------------------------------------------------
+
+knowledge = get_knowledge(table_name="docling_pdf")
+agent = get_agent(knowledge)
+
+# ---------------------------------------------------------------------------
+# Run Demo
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+
+    async def main():
+        # --- Local PDF file with markdown output ---
+        print("\n" + "=" * 60)
+        print("Local PDF file (markdown output)")
+        print("=" * 60 + "\n")
+
+        await knowledge.ainsert(
+            name="CV_Local",
+            path="cookbook/07_knowledge/testing_resources/cv_1.pdf",
+            reader=DoclingReader(output_format="markdown"),
+        )
+        agent.print_response("What skills does Jordan Mitchell have?", stream=True)
+
+        # --- PDF from URL with text output ---
+        print("\n" + "=" * 60)
+        print("PDF from URL (text output)")
+        print("=" * 60 + "\n")
+
+        await knowledge.ainsert(
+            name="Recipes_URL",
+            url="https://agno-public.s3.amazonaws.com/recipes/thai_recipes_short.pdf",
+            reader=DoclingReader(output_format="text"),
+        )
+        agent.print_response("What Thai recipes are available?", stream=True)
+
+        # --- ArXiv paper from URL with md output---
+        print("\n" + "=" * 60)
+        print("ArXiv paper from URL (markdown output)")
+        print("=" * 60 + "\n")
+
+        await knowledge.ainsert(
+            name="Docling_Paper",
+            url="https://arxiv.org/pdf/2408.09869",
+            reader=DoclingReader(),
+        )
+        agent.print_response(
+            "What is Docling and what are its key features?", stream=True
+        )
+
+        # --- JSON output for structured data ---
+        print("\n" + "=" * 60)
+        print("PDF with JSON output")
+        print("=" * 60 + "\n")
+
+        await knowledge.ainsert(
+            name="Structured_Doc",
+            path="cookbook/07_knowledge/testing_resources/cv_1.pdf",
+            reader=DoclingReader(output_format="json"),
+        )
+        agent.print_response(
+            "What is the structure of this document?",
+            stream=True,
+        )
+
+        # --- PDF with HTML output ---
+        print("\n" + "=" * 60)
+        print("PDF with HTML output")
+        print("=" * 60 + "\n")
+
+        await knowledge.ainsert(
+            name="HTML_Doc",
+            path="cookbook/07_knowledge/testing_resources/cv_1.pdf",
+            reader=DoclingReader(output_format="html"),
+        )
+        agent.print_response(
+            "Summarize the candidate's experience",
+            stream=True,
+        )
+
+        # --- PDF with Doctags output ---
+        print("\n" + "=" * 60)
+        print("PDF with Doctags output")
+        print("=" * 60 + "\n")
+
+        await knowledge.ainsert(
+            name="Doctags_Doc",
+            path="cookbook/07_knowledge/testing_resources/cv_1.pdf",
+            reader=DoclingReader(output_format="doctags"),
+        )
+        agent.print_response(
+            "What sections are in this document?",
+            stream=True,
+        )
+
+    asyncio.run(main())
+```
+
+The example imports this helper module from the same directory:
+
+```python utils.py
+"""
+Docling Reader: Shared Utilities
+=================================
+Common setup and utilities for Docling reader examples.
+
+Docling uses IBM's advanced document conversion library to extract content from multiple document formats.
+
+Supported formats examples::
+- PDF: PDFs with advanced layout understanding and text extraction
+- DOCX: Microsoft Word documents with structure preservation
+- PPTX: PowerPoint presentations
+- Markdown: Markdown files
+- CSV: CSV spreadsheets
+- XLSX: Excel spreadsheets
+
+Output formats examples:
+- markdown: Preserves structure and formatting
+- text: Plain text output
+- json: Lossless serialization with full document structure
+- html: HTML with image embedding/referencing support
+- doctags: Markup format with full content and layout characteristics
+
+Key features:
+- Advanced document structure understanding
+- Better handling of complex layouts (tables, columns, etc.)
+- Multiple output formats for different use cases
+- Ideal for complex documents with rich formatting
+
+Run `uv pip install docling openai-whisper` to install python dependencies.
+System requirement ffmpeg (https://www.ffmpeg.org/download.html) for audio formats.
+
+See also: 01_documents.py for PDF/DOCX, 02_data.py for CSV/JSON and 03_web.py for web sources.
+"""
+
+import warnings
+
+from agno.agent import Agent
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.knowledge.knowledge import Knowledge
+from agno.models.openai import OpenAIResponses
+from agno.vectordb.lancedb import LanceDb, SearchType
+
+# Suppress Whisper FP16 warnings when running on CPU
+warnings.filterwarnings("ignore", message="FP16 is not supported on CPU")
+
+
+def get_knowledge(table_name: str = "docling_reader") -> Knowledge:
+    return Knowledge(
+        vector_db=LanceDb(
+            uri="tmp/lancedb",
+            table_name=table_name,
+            search_type=SearchType.hybrid,
+            embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+        ),
+    )
+
+
+def get_agent(knowledge: Knowledge) -> Agent:
+    return Agent(
+        model=OpenAIResponses(id="gpt-5.2"),
+        knowledge=knowledge,
+        search_knowledge=True,
+        markdown=True,
+    )
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno docling lancedb openai pyarrow
+    ```
+  </Step>
+
+  <Step title="Export your API keys">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export LANCEDB_API_KEY="your_lancedb_api_key_here"
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:LANCEDB_API_KEY="your_lancedb_api_key_here"
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code blocks above as `docling_pdf.py` and `utils.py` in the same directory, then run:
+    ```bash
+    python docling_pdf.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/07_knowledge/05_integrations/readers/docling/docling_pdf.py](https://github.com/agno-agi/agno/blob/main/cookbook/07_knowledge/05_integrations/readers/docling/docling_pdf.py)

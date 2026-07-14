@@ -1,93 +1,91 @@
 ---
-title: "Deploy to Railway"
+title: "AgentOS on Railway"
 sidebarTitle: "Deploy"
-description: "Deploy AgentOS to Railway with PostgreSQL, automatic HTTPS, and a public domain."
+description: "Run AgentOS locally using Docker and deploy to production on Railway."
 ---
 
-This template deploys AgentOS and PostgreSQL to Railway. It includes agents you can extend with Claude Code, automatic HTTPS, and a public domain.
+AgentOS is a secure, scalable platform for running agents. The [agentos-railway](https://github.com/agno-agi/agentos-railway) codebase runs AgentOS locally using Docker and deploys to production on Railway. It comes with:
 
-## Prerequisites
+- **2 platform agents** that build and run the platform for you. **Agent Builder** creates agents, teams, and workflows. **Platform Manager** monitors and manages the platform.
+- **5 [skills](/deploy/templates/improve-agents)** that let coding agents build, test, and improve the platform for you.
 
-- [Docker Desktop](https://docker.com/desktop)
-- [OpenAI API key](https://platform.openai.com)
+Because the trace data, agent code, evals, and system logs all live in one place, the platform can inspect and improve itself automatically.
 
-## Development
+## Get started
 
-Run locally before deploying to Railway.
+The fastest way to get started is using a coding agent. Copy the prompt below into Claude Code, Cursor or Codex and it'll take you from zero to a running platform.
+
+<Snippet file="setup-prompt-railway.mdx" />
+
+Prefer to drive yourself? Follow the manual steps below.
+
+## Manual setup
+
+**Prerequisites:** [Docker](https://www.docker.com/get-started/) installed and running. An [OpenAI API key](https://platform.openai.com).
 
 <Steps>
-  <Step title="Clone the template">
+  <Step title="Clone and configure">
 ```bash
-git clone \
-  https://github.com/agno-agi/agentos-railway-template.git \
-  agentos
-
+git clone https://github.com/agno-agi/agentos-railway.git agentos
 cd agentos
-```
 
-The template includes the following agents:
-
-| Agent | Pattern | Description |
-| :--- | :--- | :--- |
-| WebSearch | Direct tools | Search the web using Parallel SDK or keyless MCP. |
-| CodeSearch | Context provider | Answer questions about this codebase. |
-  </Step>
-
-  <Step title="Set your API key">
-```bash
 cp example.env .env
 ```
 
-Edit `.env` and add your `OPENAI_API_KEY`.
+Edit `.env` and set `OPENAI_API_KEY`.
   </Step>
 
-  <Step title="Start AgentOS">
+  <Step title="Start the platform">
 ```bash
 docker compose up -d --build
 ```
+
+The first build takes a few minutes. Confirm the API is available at [localhost:8000/docs](http://localhost:8000/docs).
   </Step>
 
-  <Step title="Confirm it's running">
+  <Step title="Verify end to end">
+```bash
+./scripts/mcp_check.sh
+```
 
-Navigate to [localhost:8000/docs](http://localhost:8000/docs) to see your AgentOS API.
-
+Prints `MCP OK` with the tool count and a real agent answer through the MCP endpoint.
   </Step>
 
-  <Step title="Connect to the control plane">
+  <Step title="Connect the AgentOS UI">
+1. Open [os.agno.com](https://os.agno.com) and sign in.
+2. Click **Connect OS**, enter `http://localhost:8000`, and name it **Local AgentOS**.
+  </Step>
 
-1. Go to [os.agno.com](https://os.agno.com)
-2. Click **Connect OS** → Select **Local**
-3. Enter `http://localhost:8000`
-
+  <Step title="Build your first agent">
+1. Chat with **Agent Builder**: "Build an agent that tracks AI news and writes a daily brief". Go through the agent development process.
+2. Once created, click **Refresh** on the top right, pick the new agent from the **Agents** dropdown, and ask: "What's new with Anthropic?"
+3. Ask **Platform Manager**: "How healthy is the platform?" It answers from eval history, deployment checks, schedules, and the agent you just built.
   </Step>
 </Steps>
 
-<Check>Your AgentOS is running locally.</Check>
+<Check>At this point, your AgentOS is running locally.</Check>
 
-## Production
+## Connect your frontends
 
-Deploy to Railway when you're ready to go live.
+| Frontend | How |
+|----------|-----|
+| MCP clients on your machine | `uvx agno connect` auto-detects Claude Code, Claude Desktop, Codex, and Cursor and registers `http://localhost:8000/mcp`. Verify from the app: "can you access my agentos mcp?" |
+| AgentOS UI | [os.agno.com](https://os.agno.com) → **Connect OS** → `http://localhost:8000`. |
+| claude.ai and ChatGPT | Hosted sessions can't reach localhost. Deploy to production first, then add `https://<railway-domain>/mcp` as a custom connector and approve the consent page with the `MCP_CONNECT_SECRET` that `up.sh` generates. |
+| Slack | Set `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET`. See [Slack setup](/agent-os/interfaces/slack/setup). |
+| Your product | Call the AgentOS REST API with 80+ endpoints. Browse them at `/docs`. |
 
-### Prerequisites
+## Deploy to production
 
-- [Railway account](https://railway.app) (free tier works)
-- [Railway CLI](https://docs.railway.com/cli#installing-the-cli)
+**Prerequisites:** [Railway CLI](https://docs.railway.com/cli#installing-the-cli) installed and `railway login` completed.
 
 <Steps>
-  <Step title="Login to Railway">
-```bash
-railway login
-```
-
-  </Step>
-
-  <Step title="Set up production env">
+  <Step title="Create a production env">
 ```bash
 cp .env .env.production
 ```
 
-Edit `.env.production` with production values. The deploy scripts read `.env.production` first and fall back to `.env`.
-
+Edit `.env.production` with production values: a different OpenAI key, production-only credentials, a different Slack workspace.
   </Step>
 
   <Step title="Deploy">
@@ -95,45 +93,29 @@ Edit `.env.production` with production values. The deploy scripts read `.env.pro
 ./scripts/railway/up.sh
 ```
 
-Takes ~2 minutes. The script creates your Railway project, provisions PostgreSQL with pgvector, and deploys AgentOS.
-
+Provisions the AgentOS service and PostgreSQL on the same private network, creates your public domain, and sets `AGENTOS_URL` to it so scheduled jobs reach the platform.
   </Step>
 
-  <Step title="Get your verification key">
+  <Step title="Mint your JWT key">
+The script pauses for a `JWT_VERIFICATION_KEY`. Token-Based Authorization is on by default and without a verification key or a `JWT_JWKS_FILE`, the platform refuses to serve production traffic.
 
-Your first deploy will fail by design. Token-Based Authorization is on by default.
+1. Open [os.agno.com](https://os.agno.com), click **Connect OS** → **Live**, enter your Railway domain, and name it **Live AgentOS**.
+2. Go to **Settings** → **OS & Security** and turn on **Token-Based Authorization (JWT)**.
+3. Copy the public key and paste the full PEM into the `up.sh` prompt. The script saves it to your env file and deploys.
 
-1. Go to [os.agno.com](https://os.agno.com)
-2. Click **Connect OS** → Select **Live**
-3. Enter your Railway domain
-4. Enable **Token Based Authorization**
-5. Copy the public key into `.env.production`:
+If you skip the prompt, add the key to `.env.production` later and run `./scripts/railway/env-sync.sh`.
 
-```bash
-JWT_VERIFICATION_KEY=-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkq...
------END PUBLIC KEY-----
-```
-
+<Note>Live AgentOS connections are a paid feature. Use code `PLATFORM30` for one month off.</Note>
   </Step>
 
-  <Step title="Sync env and verify">
-
-Point the scheduler at your Railway domain:
-
-```bash
-# In .env.production
-AGENTOS_URL=https://<your-app>.up.railway.app
-```
-
-Push variables to Railway:
+  <Step title="Connect your MCP clients">
+Re-run `uvx agno connect`, this time pointed at your deployed domain:
 
 ```bash
-./scripts/railway/env-sync.sh
+uvx agno connect --url https://<railway-domain>
 ```
 
-Railway auto-deploys when env values change.
-
+For claude.ai and ChatGPT on the web: add `https://<railway-domain>/mcp` as a custom connector in the chat app's connector settings. Leave the form's optional OAuth fields (client ID / client secret) empty. Click **Connect** and, on the consent page, enter the `MCP_CONNECT_SECRET` that `up.sh` generated during deploy (saved in `.env.production`).
   </Step>
 
   <Step title="Confirm it's live">
@@ -141,48 +123,41 @@ Railway auto-deploys when env values change.
 railway logs --service agent-os
 ```
 
-Navigate to `<your-domain>/docs` to confirm the API is running.
-
-<Frame>
-  <img
-    className="block dark:hidden"
-    src="/images/agent-os-connection-railway-light.png"
-    alt="AgentOS connection dialog"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/agent-os-connection-railway.png"
-    alt="AgentOS connection dialog"
-  />
-</Frame>
-
+Open `https://<railway-domain>/docs` to confirm the API is serving.
   </Step>
 </Steps>
 
 <Check>Your AgentOS is live on Railway.</Check>
 
-## Environment Variables
+### Redeploy after code changes
 
-| Variable | Required | Description |
-| :--- | :--- | :--- |
-| `OPENAI_API_KEY` | Yes | OpenAI API key |
-| `RUNTIME_ENV` | No | `dev` enables hot-reload and disables JWT |
-| `JWT_VERIFICATION_KEY` | Production | Public key from os.agno.com |
-| `AGENTOS_URL` | No | Scheduler base URL (default: `http://127.0.0.1:8000`) |
-| `SLACK_BOT_TOKEN` | No | Enable Slack interface |
-| `SLACK_SIGNING_SECRET` | No | Enable Slack interface |
-| `PARALLEL_API_KEY` | No | Parallel SDK key for WebSearch |
+```bash
+./scripts/railway/redeploy.sh
+```
 
-## Next Steps
+### Sync environment variables
 
-<CardGroup cols={3}>
-  <Card title="Extend" icon="wand-magic-sparkles" href="/deploy/templates/improve-agents">
-    Build and improve agents with Claude Code and evals.
+```bash
+./scripts/railway/env-sync.sh
+```
+
+### Tear down
+
+```bash
+./scripts/railway/down.sh
+```
+
+<Warning>
+Deletes the Railway project: the `agent-os` service, the pgvector database, and its volume, including all data. It also removes `AGENTOS_URL` from your env file so a future `up.sh` starts clean.
+</Warning>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Build with coding agents" icon="wand-magic-sparkles" href="/deploy/templates/improve-agents">
+    Skills to create → improve → evaluate your platform using coding agents.
   </Card>
-  <Card title="Interfaces" icon="comments" href="/deploy/interfaces">
-    Connect Slack, Discord, WhatsApp, or MCP.
-  </Card>
-  <Card title="Reference" icon="book" href="/deploy/templates/railway/reference">
-    Manage, customize, and troubleshoot.
+  <Card title="Railway reference" icon="book" href="/deploy/templates/railway/reference">
+    Commands, environment variables, troubleshooting.
   </Card>
 </CardGroup>

@@ -1,6 +1,6 @@
 ---
 title: Agent Observability
-description: "Store traces, run history, and audit logs in your own database. Natively in Agno"
+description: "Store traces, run history, and audit logs in your own database with the built-in tracing provider."
 ---
 
 AgentOS comes with a built-in tracing provider that routes every run to your database. There is no external observability SaaS to sign up for, no API key to manage, and no data egress. Your traces live in `agno_traces` and `agno_spans` in the same `db` you already use for sessions and memory.
@@ -15,7 +15,7 @@ agent_os = AgentOS(
 )
 ```
 
-Every run produces a trace tree: spans for the LLM call, each tool, hook, retrieval, and team delegation. Tracing is built on [OpenTelemetry](https://opentelemetry.io/) and instruments your agents with zero code changes.
+Every run produces a trace tree: spans for the LLM call, each tool, team delegation, and workflow step. Tracing is built on [OpenTelemetry](https://opentelemetry.io/) and instruments your agents with zero code changes.
 
 ## Your data never leaves your db
 
@@ -39,14 +39,13 @@ Prompts, tool arguments, and model outputs often contain customer PII, internal 
 
 | Span | Attributes |
 |------|------------|
-| **Run** | `agent_id`, `user_id`, `session_id`, `model`, latency, status |
-| **LLM call** | Model, prompt tokens, completion tokens, temperature, tool calls returned |
-| **Tool** | Tool name, arguments, result, duration, exception (if any) |
-| **Pre/post hook** | Hook name, duration, modified input/output |
-| **Retrieval** | Query, vector store, k, returned docs, scores |
-| **Team delegation** | Member name, mode, sub-run trace |
+| **Run** | `agent_id`, `user_id`, `session_id`, latency, status |
+| **LLM call** | Model, prompt tokens, completion tokens, invocation parameters, tool calls |
+| **Tool** | Tool name, arguments, result, duration, error (if any) |
+| **Team delegation** | Team name, member runs as nested spans |
+| **Workflow step** | Step name, step type, input/output |
 
-Traces follow OpenTelemetry semantic conventions, so you can query them directly:
+Traces follow OpenInference semantic conventions, so you can query them directly:
 
 ```sql
 -- Top 10 slowest span types by average duration
@@ -62,7 +61,7 @@ LIMIT 10;
 
 ## In the AgentOS UI
 
-The [control plane](https://os.agno.com) renders the same traces visually. Click a run to see the full tree: LLM hops, tool calls with their inputs and outputs, hooks, and sub-agent traces. Filter by user, session, or time range.
+The [control plane](https://os.agno.com) renders the same traces visually. Click a run to see the full tree: LLM hops, tool calls with their inputs and outputs, and sub-agent traces. Filter by user, session, or time range.
 
 <Frame caption="The same traces, rendered in the AgentOS control plane">
   <img src="/images/traces-in-os.png" alt="Trace tree in the AgentOS UI" style={{ borderRadius: "0.5rem" }} />
@@ -100,7 +99,7 @@ See [Multi-DB tracing](/agent-os/tracing/usage/tracing-with-multi-db-scenario) f
 
 If you already run an observability platform, AgentOS can export to it instead of (or alongside) your database. Add an OpenTelemetry exporter to send traces to Langfuse, Langsmith, Arize, Logfire, MLflow, or any OTel endpoint.
 
-See the [Observability section](/observability/overview): [Langfuse](/observability/langfuse), [Langsmith](/observability/langsmith), [Arize](/observability/arize), [Logfire](/observability/logfire), [MLflow](/observability/mlflow).
+See the [Observability section](/observability/overview): [Langfuse](/observability/langfuse), [Langsmith](/observability/langsmith), [Arize](/observability/arize), [Logfire](/examples/integrations/observability/logfire-via-openinference), [MLflow](/observability/mlflow).
 
 ## Developer Resources
 

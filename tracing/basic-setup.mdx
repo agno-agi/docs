@@ -8,14 +8,14 @@ This guide walks you through setting up tracing for your Agno agents. Tracing is
 
 ## Installation
 
-Install the required OpenTelemetry packages:
+Install the required packages:
 
 ```bash
-uv pip install -U opentelemetry-api opentelemetry-sdk openinference-instrumentation-agno
+uv pip install -U "agno[os]" openai opentelemetry-api opentelemetry-sdk openinference-instrumentation-agno
 ```
 
 <Note>
-  These packages provide the OpenTelemetry instrumentation infrastructure and the Agno-specific instrumentation logic.
+  The OpenTelemetry packages provide the instrumentation infrastructure and the Agno-specific instrumentation logic. `agno[os]` covers the database and AgentOS dependencies used in the examples below.
 </Note>
 
 ## Two Ways to Enable Tracing
@@ -141,19 +141,19 @@ hackernews_agent = Agent(
     db=agent1_db,  # Agent's own database
 )
 
-# Agent 2: Web search specialist with its own database
-search_agent = Agent(
-    name="Web Search Agent",
+# Agent 2: Research specialist with its own database
+research_agent = Agent(
+    name="Research Agent",
     model=OpenAIResponses(id="gpt-5.2"),
     tools=[HackerNewsTools()],
-    instructions="You are a web search agent. Answer questions concisely.",
+    instructions="You are a research agent. Answer questions concisely.",
     markdown=True,
     db=agent2_db,  # Agent's own database
 )
 
 # Both agents are traced to the same db
 hackernews_agent.run("What's trending on HackerNews?")
-search_agent.run("Latest AI news")
+research_agent.run("Latest AI news on HackerNews")
 
 # Query traces for both agents from one place
 traces, count = db.get_traces(limit=20)
@@ -166,6 +166,10 @@ Once configured, traces and spans are automatically stored in your database. The
 
 <Tip>
   **Use ClickHouse for high-volume tracing.** Traces are an append-heavy, OLAP workload: billions of rows, time-bucketed aggregates, low-cardinality filters. [ClickHouse](/database/providers/clickhouse/overview) is purpose-built for that shape. Pair it with a row-store (Postgres, MySQL, MongoDB) for sessions and memory; route traces to ClickHouse.
+
+  ```bash
+  uv pip install -U clickhouse-connect psycopg
+  ```
 
   ```python clickhouse_tracing.py
   from agno.db.clickhouse import ClickhouseDb

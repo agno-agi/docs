@@ -12,9 +12,11 @@ Custom retrievers let you implement your own search logic instead of using the d
 - Combine multiple data sources
 
 ```python
+from typing import Optional
+
 from agno.agent import Agent
 
-def knowledge_retriever(query: str, num_documents: int = 5, **kwargs) -> list[dict]:
+def knowledge_retriever(query: str, num_documents: Optional[int] = None, **kwargs) -> list[dict]:
     # Your custom retrieval logic here
     return [{"content": "..."}]
 
@@ -42,14 +44,15 @@ from agno.agent import Agent
 def knowledge_retriever(
     query: str,
     agent: Optional[Agent] = None,
-    num_documents: int = 5,
+    num_documents: Optional[int] = None,
     **kwargs
 ) -> Optional[list[dict]]:
     """
     Args:
         query: The search query from the agent
         agent: The agent instance (optional, for accessing agent state)
-        num_documents: Number of documents to retrieve
+        num_documents: Number of documents to retrieve. The agent passes the
+            knowledge base's max_results, or None if no Knowledge is attached.
         **kwargs: Additional arguments passed from the agent
 
     Returns:
@@ -74,7 +77,7 @@ embedder = OpenAIEmbedder(id="text-embedding-3-small")
 qdrant_client = QdrantClient(url="http://localhost:6333")
 
 def knowledge_retriever(
-    query: str, num_documents: int = 5, **kwargs
+    query: str, num_documents: Optional[int] = None, **kwargs
 ) -> Optional[list[dict]]:
     try:
         # Generate embedding for the query
@@ -84,7 +87,7 @@ def knowledge_retriever(
         results = qdrant_client.query_points(
             collection_name="recipes",
             query=query_embedding,
-            limit=num_documents,
+            limit=num_documents or 5,
         )
 
         return results.model_dump().get("points")
@@ -105,11 +108,13 @@ agent.print_response("What ingredients do I need for Massaman Gai?")
 Expand or modify queries before searching:
 
 ```python
+from typing import Optional
+
 from agno.knowledge.knowledge import Knowledge
 
 knowledge = Knowledge(vector_db=vector_db)
 
-def knowledge_retriever(query: str, num_documents: int = 5, **kwargs) -> list[dict]:
+def knowledge_retriever(query: str, num_documents: Optional[int] = None, **kwargs) -> list[dict]:
     # Expand common terms
     expanded_query = query.replace("vacation", "vacation PTO paid time off")
     expanded_query = expanded_query.replace("WFH", "work from home remote")
@@ -124,7 +129,7 @@ def knowledge_retriever(query: str, num_documents: int = 5, **kwargs) -> list[di
 
 Combine results from multiple knowledge bases:
 ```python
-def knowledge_retriever(query: str, num_documents: int = 5, **kwargs) -> list[dict]:
+def knowledge_retriever(query: str, num_documents: Optional[int] = None, **kwargs) -> list[dict]:
     # Search multiple sources
     policy_results = policy_knowledge.search(query, max_results=3)
     faq_results = faq_knowledge.search(query, max_results=3)

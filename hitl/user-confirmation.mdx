@@ -21,7 +21,7 @@ When you mark a tool with `@tool(requires_confirmation=True)`, your agent will:
 3. **Wait for you** to review the tool call and decide whether to approve or reject it
 4. **Continue execution** once you call `continue_run()` with your decision
 
-This gives you complete control over which tools execute and when, making it perfect for production scenarios where you need human oversight.
+This gives you complete control over which tools execute and when. Use it in production scenarios that need human oversight.
 
 ## Basic Example
 
@@ -30,6 +30,7 @@ The following example shows how to implement user confirmation with a custom too
 ```python
 from agno.tools import tool
 from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
 from agno.models.openai import OpenAIResponses
 
 @tool(requires_confirmation=True)
@@ -38,9 +39,11 @@ def sensitive_operation(data: str) -> str:
     # Implementation here
     return "Operation completed"
 
+# A database is required to continue a run by run_id
 agent = Agent(
     model=OpenAIResponses(id="gpt-5.2"),
     tools=[sensitive_operation],
+    db=SqliteDb(db_file="tmp/example.db"),
 )
 
 # Run the agent
@@ -50,9 +53,11 @@ run_response = agent.run("Perform sensitive operation")
 for requirement in run_response.active_requirements:
     if requirement.needs_confirmation:
         # Get user confirmation
-        print(f"Tool {requirement.tool.tool_name}({requirement.tool.tool_args}) requires confirmation")
-        confirmed = input(f"Confirm? (y/n): ").lower() == "y"
-        requirement.confirmed = confirmed
+        print(f"Tool {requirement.tool_execution.tool_name}({requirement.tool_execution.tool_args}) requires confirmation")
+        if input("Confirm? (y/n): ").lower() == "y":
+            requirement.confirm()
+        else:
+            requirement.reject()
 
 # After resolving the requirement, you can continue the run:
 response = agent.continue_run(run_id=run_response.run_id, requirements=run_response.requirements)
@@ -64,8 +69,8 @@ You can also specify which specific tools in a toolkit require confirmation usin
 
 ```python
 from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
 from agno.models.openai import OpenAIResponses
-from agno.tools import tool
 from agno.tools.yfinance import YFinanceTools
 from agno.utils import pprint
 from rich.console import Console
@@ -75,8 +80,9 @@ console = Console()
 
 agent = Agent(
     model=OpenAIResponses(id="gpt-5.2"),
-    tools=[YFinanceTools(requires_confirmation_tools=["get_stock_price"])],
+    tools=[YFinanceTools(requires_confirmation_tools=["get_current_stock_price"])],
     markdown=True,
+    db=SqliteDb(db_file="tmp/example.db"),
 )
 
 run_response = agent.run("Get the current stock price of Apple?")
@@ -85,7 +91,7 @@ for requirement in run_response.active_requirements:
     if requirement.needs_confirmation:
         # Ask for confirmation
         console.print(
-            f"Tool name [bold blue]{tool.tool_name}({tool.tool_args})[/] requires confirmation."
+            f"Tool name [bold blue]{requirement.tool_execution.tool_name}({requirement.tool_execution.tool_args})[/] requires confirmation."
         )
         message = (
             Prompt.ask("Do you want to continue?", choices=["y", "n"], default="y")
@@ -96,10 +102,9 @@ for requirement in run_response.active_requirements:
         if message == "n":
             requirement.reject()
         else:
-            # Update the tools in place
             requirement.confirm()
 
-response = agent.continue_run(run_id=run_response.run_id, requirements=run_response.requirements)
+run_response = agent.continue_run(run_id=run_response.run_id, requirements=run_response.requirements)
 pprint.pprint_run_response(run_response)
 ```
 
@@ -128,6 +133,7 @@ You can mix tools that require confirmation with tools that don't. The agent wil
 
 ```python
 from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
 from agno.models.openai import OpenAIResponses
 from agno.tools import tool
 
@@ -143,6 +149,7 @@ def risky_operation() -> str:
 agent = Agent(
     model=OpenAIResponses(id="gpt-5.2"),
     tools=[safe_operation, risky_operation],
+    db=SqliteDb(db_file="tmp/example.db"),
 )
 
 run_response = agent.run("Perform both operations")
@@ -158,7 +165,7 @@ if run_response.is_paused:
 
 ## Async Support
 
-User confirmation works seamlessly with async agents. Just use `arun()` and `acontinue_run()`:
+User confirmation works with async agents. Use `arun()` and `acontinue_run()`:
 
 ```python
 run_response = await agent.arun("Perform sensitive operation")

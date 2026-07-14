@@ -1,10 +1,16 @@
 ---
 title: "Team Metrics"
-sidebarTitle: "Metrics"
-description: "Retrieve team leader, session, and member-level execution metrics."
+description: "Demonstrates retrieving team, session, and member-level execution metrics."
+source: cookbook/03_teams/22_metrics/01_team_metrics.py
 ---
-```python
-"""Team leader, session, and member-level execution metrics."""
+
+```python team_metrics.py
+"""
+Team Metrics
+=============================
+
+Demonstrates retrieving team, session, and member-level execution metrics.
+"""
 
 from agno.agent import Agent
 from agno.db.postgres import PostgresDb
@@ -14,9 +20,15 @@ from agno.tools.yfinance import YFinanceTools
 from agno.utils.pprint import pprint_run_response
 from rich.pretty import pprint
 
+# ---------------------------------------------------------------------------
+# Setup
+# ---------------------------------------------------------------------------
 db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
 db = PostgresDb(db_url=db_url, session_table="team_metrics_sessions")
 
+# ---------------------------------------------------------------------------
+# Create Members
+# ---------------------------------------------------------------------------
 stock_searcher = Agent(
     name="Stock Searcher",
     model=OpenAIResponses(id="gpt-5-mini"),
@@ -24,6 +36,9 @@ stock_searcher = Agent(
     tools=[YFinanceTools()],
 )
 
+# ---------------------------------------------------------------------------
+# Create Team
+# ---------------------------------------------------------------------------
 team = Team(
     name="Stock Research Team",
     model=OpenAIResponses(id="gpt-5-mini"),
@@ -35,6 +50,9 @@ team = Team(
     store_member_responses=True,
 )
 
+# ---------------------------------------------------------------------------
+# Run Team
+# ---------------------------------------------------------------------------
 if __name__ == "__main__":
     run_output = team.run("What is the stock price of NVDA")
     pprint_run_response(run_output, markdown=True)
@@ -66,32 +84,55 @@ if __name__ == "__main__":
     pprint(team.get_session_metrics(session_id="team_metrics_demo"))
 
     print("=" * 50)
-    print("MEMBER RUN METRICS")
+    print("TEAM MEMBER MESSAGE METRICS")
     print("=" * 50)
 
     if run_output.member_responses:
         for member_response in run_output.member_responses:
-            print(f"\nMember: {member_response.agent_name}")
-            print("-" * 20, "Run Metrics", "-" * 20)
-            pprint(member_response.metrics)
-
             if member_response.messages:
                 for message in member_response.messages:
                     if message.role == "assistant":
-                        print("-" * 20, "Message Metrics", "-" * 20)
+                        if message.content:
+                            print(f" Member Message: {message.content[:100]}...")
+                        elif message.tool_calls:
+                            print(f"Member Tool calls: {message.tool_calls}")
+
+                        print("-" * 20, "Member Metrics", "-" * 20)
                         pprint(message.metrics)
                         print("-" * 60)
 ```
 
 ## Run the Example
-```bash
-# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/03_teams/22_metrics
 
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
 
-python 01_team_metrics.py
-```
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai psycopg-binary sqlalchemy yfinance
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Snippet file="run-pgvector-step.mdx" />
+
+  <Step title="Run the example">
+    Save the code above as `team_metrics.py`, then run:
+    ```bash
+    python team_metrics.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/03_teams/22_metrics/01_team_metrics.py](https://github.com/agno-agi/agno/blob/main/cookbook/03_teams/22_metrics/01_team_metrics.py)

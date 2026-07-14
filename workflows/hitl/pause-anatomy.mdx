@@ -78,25 +78,25 @@ Each entry in `step_requirements` describes one paused step. The fields that are
 
 ## 3. Executor Requirements
 
-When `requires_executor_input` is `True`, the step paused because the agent or team called a HITL tool. Each entry in `executor_requirements` is one pending tool call. These are the same `RunRequirement` objects an agent exposes on a standalone run.
+When `requires_executor_input` is `True`, the step paused because the agent or team called a HITL tool. Each entry in `executor_requirements` is one pending tool call: the agent's `RunRequirement` serialized to a dict. You resolve it by mutating the dict in place.
 
-| Field | Description |
-|-------|-------------|
-| `tool_execution.tool_name` | Name of the paused tool |
-| `tool_execution.tool_args` | Arguments the agent chose |
-| `tool_execution.result` | Set this for `external_execution` tools |
-| `user_input_schema` | Fields the user must supply (for `requires_user_input` tools) |
+| Key | Description |
+|-----|-------------|
+| `["tool_execution"]["tool_name"]` | Name of the paused tool |
+| `["tool_execution"]["tool_args"]` | Arguments the agent chose |
+| `["tool_execution"]["requires_confirmation"]` | `True` for `requires_confirmation` tools |
+| `["tool_execution"]["requires_user_input"]` | `True` for `requires_user_input` tools |
+| `["tool_execution"]["external_execution_required"]` | `True` for `external_execution` tools |
+| `["tool_execution"]["user_input_schema"]` | Fields the user must supply (for `requires_user_input` tools) |
 
-**Status properties:** `needs_confirmation`, `needs_user_input`, `needs_external_execution`, `is_resolved`.
+**Resolution mutations** (executor-level):
 
-**Resolution methods** (executor-level):
-
-| Method | For |
-|--------|-----|
-| `confirm()` | `@tool(requires_confirmation=True)` |
-| `reject(note=...)` | `@tool(requires_confirmation=True)` |
-| `provide_user_input({...})` | `@tool(requires_user_input=True)` |
-| set `tool_execution.result` | `@tool(external_execution=True)` |
+| Mutation | For |
+|----------|-----|
+| `["confirmation"] = True` and `["tool_execution"]["confirmed"] = True` | Approve `@tool(requires_confirmation=True)` |
+| `["confirmation"] = False`, `["tool_execution"]["confirmed"] = False`, optional `["tool_execution"]["confirmation_note"]` | Reject a confirmation |
+| Fill `value` on each field in `["user_input_schema"]` and `["tool_execution"]["user_input_schema"]` | `@tool(requires_user_input=True)` |
+| `["external_execution_result"] = result` and `["tool_execution"]["result"] = result` | `@tool(external_execution=True)` |
 
 See [Executor HITL](/workflows/hitl/executor) for full resolution examples.
 
@@ -110,7 +110,8 @@ while run_output.is_paused:
     for step_req in (run_output.step_requirements or [])[-1:]:
         if step_req.requires_executor_input:
             for executor_req in step_req.executor_requirements or []:
-                executor_req.confirm()
+                executor_req["confirmation"] = True
+                executor_req["tool_execution"]["confirmed"] = True
         elif step_req.needs_confirmation:
             step_req.confirm()
         elif step_req.needs_user_input:

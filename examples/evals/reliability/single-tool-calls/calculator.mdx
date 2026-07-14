@@ -1,13 +1,16 @@
 ---
 title: "Single Tool Call Reliability Evaluation"
-description: "Demonstrates reliability checks for one expected tool call."
+description: "Demonstrates reliability checks for one expected tool call, including argument validation."
+source: cookbook/09_evals/reliability/single_tool_calls/calculator.py
 ---
-```python
+
+```python calculator.py
 """
 Single Tool Call Reliability Evaluation
 =======================================
 
-Demonstrates reliability checks for one expected tool call.
+Demonstrates reliability checks for one expected tool call,
+including argument validation.
 """
 
 from typing import Optional
@@ -20,7 +23,7 @@ from agno.tools.calculator import CalculatorTools
 
 
 # ---------------------------------------------------------------------------
-# Create Evaluation Function
+# Create Evaluation Functions
 # ---------------------------------------------------------------------------
 def factorial():
     agent = Agent(
@@ -38,22 +41,63 @@ def factorial():
         result.assert_passed()
 
 
+def multiply_with_argument_check():
+    """Verify that the tool was called with the correct arguments."""
+    agent = Agent(
+        model=OpenAIChat(id="gpt-5.2"),
+        tools=[CalculatorTools()],
+    )
+    response: RunOutput = agent.run("What is 10 * 5?")
+    evaluation = ReliabilityEval(
+        name="Tool Call Argument Validation",
+        agent_response=response,
+        expected_tool_calls=["multiply"],
+        expected_tool_call_arguments={
+            "multiply": {"a": 10, "b": 5},
+        },
+    )
+    result: Optional[ReliabilityResult] = evaluation.run(print_results=True)
+    if result:
+        result.assert_passed()
+
+
 # ---------------------------------------------------------------------------
 # Run Evaluation
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     factorial()
+    multiply_with_argument_check()
 ```
 
 ## Run the Example
-```bash
-# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/09_evals/reliability/single_tool_calls
 
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
 
-python calculator.py
-```
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `calculator.py`, then run:
+    ```bash
+    python calculator.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/09_evals/reliability/single_tool_calls/calculator.py](https://github.com/agno-agi/agno/blob/main/cookbook/09_evals/reliability/single_tool_calls/calculator.py)

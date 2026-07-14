@@ -1,0 +1,212 @@
+---
+title: "Modal Reference"
+sidebarTitle: "Reference"
+description: "Commands, customization, environment variables, and troubleshooting for the Modal template."
+---
+
+The Modal app is `agentos`, served as one always-warm container. Configuration lives in the `agentos-secrets` Modal secret, and the database is a Neon Postgres project named `agentos`.
+
+## Manage
+
+| Task | Command |
+|------|---------|
+| Deploy code changes | `./scripts/modal/redeploy.sh` |
+| Sync env variables | `./scripts/modal/env-sync.sh` (defaults to `.env.production`; pass `.env` to sync that instead) |
+| Tail logs | `modal app logs agentos` |
+| List apps and status | `modal app list` |
+| Tear down | `./scripts/modal/down.sh` (add `--yes` to skip the confirmation) |
+
+<Note>
+`modal_app.py` pins `min_containers=1` and `max_containers=1`. The always-warm container keeps the in-process scheduler and MCP streams alive, and the cap stops two schedulers from double-firing every cron. Keep both settings.
+</Note>
+
+## Production auth
+
+Token-Based Authorization is on by default. Without a `JWT_VERIFICATION_KEY` or `JWT_JWKS_FILE`, the app refuses to serve traffic in production. The platform's job is to keep your data private, so the safe default is refuse to start.
+
+Token-Based Auth gives you three things:
+
+1. **No public access.** The server rejects requests without a valid token.
+2. **Per-request identity.** Middleware parses the token and extracts the `user_id`, `session_id`, and custom claims. Each request is tied to a user and session, giving you auditability and traceability.
+3. **Granular permissions.** User tokens can run an agent and view their own sessions. Admin tokens read everyone's sessions and test any agent.
+
+To opt out (not recommended), set `authorization=False` in `app/main.py` and redeploy. Use this only inside a private VPC behind another auth layer. Without it, anyone who guesses your modal.run URL can access your platform.
+
+## Customize
+
+<AccordionGroup>
+  <Accordion title="Add an agent">
+Ask your coding agent to run `/create-new-agent`, or do it by hand. Create `agents/my_agent.py`:
+
+```python
+from agno.agent import Agent
+
+from app.settings import default_model
+from db import get_postgres_db
+
+INSTRUCTIONS = """\
+What the agent does, which tools it uses, the rules to follow when answering.
+"""
+
+my_agent = Agent(
+    id="my-agent",
+    name="My Agent",
+    model=default_model(),
+    db=get_postgres_db(),
+    instructions=INSTRUCTIONS,
+    enable_agentic_memory=True,
+    add_datetime_to_context=True,
+    add_history_to_context=True,
+    num_history_runs=5,
+)
+```
+
+Register it in `app/main.py`:
+
+```python
+from agents.my_agent import my_agent
+
+agent_os = AgentOS(
+    ...
+    agents=[agent_builder, platform_manager, web_search, my_agent],
+)
+```
+
+Local containers hot-reload on save. For production, run `./scripts/modal/redeploy.sh`.
+  </Accordion>
+
+  <Accordion title="Change the model">
+`app/settings.py` defines `default_model()`, used by every agent. Change it in one place:
+
+```python
+from agno.models.anthropic import Claude
+
+def default_model():
+    return Claude(id="claude-sonnet-5")
+```
+
+Add `anthropic` to `pyproject.toml`, set the provider key in your env, and regenerate pins:
+
+```bash
+./scripts/generate_requirements.sh
+```
+
+Rebuild locally with `docker compose up -d --build`. For production:
+
+```bash
+./scripts/modal/env-sync.sh
+```
+
+`env-sync.sh` rewrites the secret with the new provider key and redeploys. The redeploy rebuilds the image, so the new dependency ships with it.
+  </Accordion>
+
+  <Accordion title="Add tools">
+Agno ships 100+ toolkits. See [Toolkits](/tools/toolkits/overview).
+
+```python
+from agno.tools.slack import SlackTools
+
+my_agent = Agent(
+    ...
+    tools=[SlackTools()],
+)
+```
+  </Accordion>
+
+  <Accordion title="Add dependencies">
+1. Edit `pyproject.toml`.
+2. Regenerate pins: `./scripts/generate_requirements.sh` (add `upgrade` to refresh every pin).
+3. Rebuild locally with `docker compose up -d --build`, or redeploy with `./scripts/modal/redeploy.sh`.
+  </Accordion>
+
+  <Accordion title="Enable Slack">
+Set both variables in your env file:
+
+```bash
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_SIGNING_SECRET=...
+```
+
+Sync with `./scripts/modal/env-sync.sh`. The interface activates automatically and routes messages to Agent Builder; change the `agent=` argument in `app/main.py` to point at another agent. See [Slack setup](/agent-os/interfaces/slack/setup).
+  </Accordion>
+
+  <Accordion title="Toggle scheduled workflows">
+The deployment check runs daily by default (`ENABLE_DEPLOY_CHECK=True`); it is deterministic and free. Scheduled evals are off by default (`ENABLE_SCHEDULED_EVALS=False`) because they use model calls. Both workflows stay runnable on demand regardless.
+  </Accordion>
+</AccordionGroup>
+
+## Format, validate, and run evals
+
+The format, validate, and eval scripts run on the host and need a venv. Set it up once:
+
+```bash
+./scripts/venv_setup.sh
+source .venv/bin/activate
+```
+
+| Task | Command |
+|------|---------|
+| Format | `./scripts/format.sh` |
+| Lint and type-check | `./scripts/validate.sh` |
+| Run smoke evals | `python -m evals --tag smoke` |
+
+`./scripts/mcp_check.sh` runs inside the container, so it needs no venv.
+
+## Environment variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `OPENAI_API_KEY` | Yes | - | Models and embeddings. |
+| `RUNTIME_ENV` | No | `prd` | `dev` disables JWT. Compose sets it for local. Never put it in an env file that syncs to Modal, or production deploys unauthenticated. |
+| `JWT_VERIFICATION_KEY` | Production | - | Public key from os.agno.com. Quote the value so the multi-line PEM parses as one variable. |
+| `JWT_JWKS_FILE` | Production | - | Path to a JWKS file. Alternative to `JWT_VERIFICATION_KEY`. `up.sh` carries it into the `agentos-secrets` secret when set. |
+| `MCP_CONNECT_SECRET` | No | generated by `up.sh` | OAuth consent secret (16+ chars) for connecting claude.ai and ChatGPT to `/mcp`. `up.sh` generates one on deploy and writes it to `.env.production`. |
+| `AGENTOS_MCP_SIGNING_KEY` | No | generated | Optional high-entropy signing-key material (32+ chars) for OAuth tokens. Unset, a strong key is generated and persisted in the database. Rotating it invalidates outstanding tokens. |
+| `AGENTOS_URL` | No | `http://127.0.0.1:8000` | Scheduler base URL. `up.sh` sets it to your modal.run URL. Scheduled jobs never fire if it stays at the default in production. Also the public origin OAuth metadata derives from when `MCP_CONNECT_SECRET` is set. |
+| `ENABLE_DEPLOY_CHECK` | No | `True` | Daily deployment-check cron. |
+| `ENABLE_SCHEDULED_EVALS` | No | `False` | Daily run-evals cron. Uses model calls. |
+| `EVALS_TAG` | No | `smoke` | Eval tag the run-evals workflow runs. |
+| `EVALS_CASE_TIMEOUT_SECONDS` | No | `90` | Per-case timeout for run-evals runs. |
+| `EVALS_SUITE_TIMEOUT_SECONDS` | No | `900` | Whole-suite timeout for run-evals runs. |
+| `PARALLEL_API_KEY` | No | - | WebSearch uses the Parallel SDK when set, keyless MCP otherwise. |
+| `SLACK_BOT_TOKEN` | No | - | Set with the signing secret to enable Slack. |
+| `SLACK_SIGNING_SECRET` | No | - | Set with the bot token to enable Slack. |
+| `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASS` / `DB_DATABASE` | No | matches compose | Postgres connection. `up.sh` fills these from your Neon project. |
+| `DB_DRIVER` | No | `postgresql+psycopg` | SQLAlchemy driver. |
+| `NEON_PROJECT_ID` | No | written by `up.sh` | Identifies the Neon project so `down.sh` can delete it. `env-sync.sh` skips NEON_* keys; they never sync to the app. |
+| `NEON_ORG_ID` | No | - | Neon organization for unattended deploys. `neonctl projects create` prompts for an org and hangs non-interactive runs; set it (find yours with `neonctl orgs list`) so `up.sh` can pass `--org-id`. |
+| `PGSSLMODE` | No | - | The deploy scripts set it to `require` in the Modal secret. Neon requires TLS, and libpq honors the variable, so the app needs no change. |
+| `AGNO_DEBUG` | No | `False` | Verbose Agno logs. Compose sets it for dev. |
+| `WAIT_FOR_DB` | No | `False` | If `True`, the entrypoint blocks on the database before starting. Compose sets it. |
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="modal: command not found">
+Install the CLI with `pip install modal` or `uv tool install modal`, then run `modal token new`.
+  </Accordion>
+  <Accordion title="neonctl: command not found">
+Install it with `brew install neonctl` or `npm i -g neonctl`, then run `neonctl auth`.
+  </Accordion>
+  <Accordion title="up.sh stops at a Neon organization prompt">
+Neon projects are org-scoped, so `neonctl projects create` asks which organization to use and hangs non-interactive runs. Set `NEON_ORG_ID` in `.env.production` (find yours with `neonctl orgs list`) and re-run `./scripts/modal/up.sh`; the script passes it as `--org-id` so the deploy runs unattended.
+  </Accordion>
+  <Accordion title="up.sh pauses asking for a JWT key">
+Expected. Mint the key at [os.agno.com](https://os.agno.com): connect your OS (**Connect OS** → **Live**, enter your modal.run URL), then turn on **Token-Based Authorization (JWT)** under **Settings** → **OS & Security** and paste the full PEM. To do it later, skip the prompt, add `JWT_VERIFICATION_KEY` or `JWT_JWKS_FILE` to `.env.production`, and run `./scripts/modal/env-sync.sh`.
+  </Accordion>
+  <Accordion title="App refuses to serve in production">
+JWT auth is on whenever `RUNTIME_ENV` is not `dev`. Set `JWT_VERIFICATION_KEY` or `JWT_JWKS_FILE` and sync. To opt out inside a private VPC behind another auth layer, set `authorization=False` in `app/main.py`.
+  </Accordion>
+  <Accordion title="Env changes don't take effect">
+Secrets are read at container start, so rewriting the secret alone changes nothing. `./scripts/modal/env-sync.sh` does both steps: it rewrites `agentos-secrets` and redeploys to roll the container.
+  </Accordion>
+  <Accordion title="Scheduled jobs never fire">
+`AGENTOS_URL` is still the localhost default. `up.sh` sets it to your modal.run URL automatically; for a custom domain or tunnel, set it by hand and run `./scripts/modal/env-sync.sh`.
+  </Accordion>
+  <Accordion title='up.sh says "Reusing database" after a teardown'>
+`down.sh` deletes the Neon project but leaves `NEON_PROJECT_ID` and the `DB_*` values in your env file, so `up.sh` thinks a database still exists. Delete those lines and re-run `./scripts/modal/up.sh` to provision a fresh one.
+  </Accordion>
+  <Accordion title='down.sh reports "Teardown incomplete"'>
+The script only declares success once the app no longer shows as running in `modal app list` and the project is gone from `neonctl projects list`. Check both, then re-run it or finish by hand: `modal app stop agentos` and `neonctl projects delete <project-id>`.
+  </Accordion>
+</AccordionGroup>

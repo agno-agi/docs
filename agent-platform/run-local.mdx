@@ -1,14 +1,12 @@
 ---
 title: Run Locally
-description: "Run your agent platform locally."
+description: "Run AgentOS and Postgres locally with Docker."
 ---
 
 Today we're going to run an agent platform made of:
 
 - AgentOS on FastAPI
-- Postgres + PgVector
-
-Two containers. Stateless FastAPI in front of Postgres, the same stack you run in production.
+- Postgres + pgvector
 
 ## Prerequisites
 
@@ -20,7 +18,7 @@ Two containers. Stateless FastAPI in front of Postgres, the same stack you run i
 <Steps>
   <Step title="Clone the template">
     ```bash
-    git clone https://github.com/agno-agi/agent-platform-railway.git agent-platform
+    git clone https://github.com/agno-agi/agentos-railway.git agent-platform
     cd agent-platform
     ```
 
@@ -42,7 +40,7 @@ Two containers. Stateless FastAPI in front of Postgres, the same stack you run i
     docker compose up -d --build
     ```
 
-    This runs two containers: a FastAPI app on port 8000 and a Postgres on port 5432.
+    This runs two containers: a FastAPI app on port 8000 and a Postgres database on port 5432. The first build takes a few minutes.
   </Step>
 
   <Step title="Verify it's running">
@@ -54,30 +52,41 @@ Two containers. Stateless FastAPI in front of Postgres, the same stack you run i
       <img src="/videos/first-agent-api.gif" alt="AgentOS API" />
     </Frame>
   </Step>
+
+  <Step title="Verify end to end">
+    ```bash
+    ./scripts/mcp_check.sh
+    ```
+
+    This script prints `MCP OK` and a real agent answer through the MCP endpoint.
+  </Step>
 </Steps>
 
-You now have an agent platform made of AgentOS on FastAPI and Postgres. The AgentOS server exposes 50+ actions through a REST API.
+You now have an agent platform made of AgentOS on FastAPI and Postgres. The AgentOS server exposes 80+ endpoints for runs, sessions, memory, knowledge, and evals.
 
 AgentOS also comes with a UI at [os.agno.com](https://os.agno.com).
 
 ## Connect the AgentOS UI
 
-1. Open [os.agno.com](https://os.agno.com) and log in.
-2. Click **Connect OS**, choose **Local**, enter `http://localhost:8000` as the URL, and name it **Local AgentOS**.
+1. Open [os.agno.com](https://os.agno.com) and sign in.
+2. Click **Connect OS**, enter `http://localhost:8000` as the URL, and name it **Local AgentOS**.
 3. Click **Connect**.
 
-You should see two agents:
+You should see three agents:
 
-| Agent             | Pattern             | What it does                                                            |
-| ----------------- | ------------------- | ----------------------------------------------------------------------- |
-| **code_search**   | Context provider    | Reads files in the workspace and answers questions about the codebase. |
-| **web_search**    | Direct tools        | Searches the web and synthesizes answers grounded in citations.        |
+| Agent                | Pattern           | What it does                                                              |
+| -------------------- | ----------------- | ------------------------------------------------------------------------- |
+| **Agent Builder**    | Studio builder    | Builds agents, teams, and workflows from a chat prompt.                   |
+| **Platform Manager** | Context provider  | Monitors the platform and answers questions about the codebase.           |
+| **WebSearch**        | Direct tools      | Searches the web and synthesizes answers grounded in citations.           |
 
 Try a prompt against each:
 
-> _"What's in this repo?"_ → `code_search` lists the directory and explains the structure.
+> _"Build an agent that tracks AI news and writes a daily brief"_ → **Agent Builder** walks you through the agent development process.
 
-> _"What did Anthropic publish about agents recently?"_ → `web_search` returns a summary.
+> _"How healthy is the platform?"_ → **Platform Manager** answers from eval history, deployment checks, and schedules.
+
+> _"What did Anthropic publish about agents recently?"_ → **WebSearch** returns a summary with citations.
 
 Open **Sessions** and **Traces** in the sidebar. Every run is captured with full message history, tool calls, and timing. This is what powers the iteration loop on the next page.
 
@@ -85,12 +94,13 @@ Open **Sessions** and **Traces** in the sidebar. Every run is captured with full
 
 We now have a locally running agent platform with:
 
-- Our agent runtime (AgentOS) running on port 8000 with request isolation, session management, scheduling, and 50+ endpoints.
+- Our agent runtime (AgentOS) running on port 8000 with request isolation, session management, scheduling, and 80+ endpoints.
 - A Postgres database for storing sessions, memory, knowledge, and traces.
-- A `docs/` folder of Claude Code prompts for managing the entire agent development lifecycle: create, improve, extend, eval, and review.
+- An MCP server at `/mcp`. Run `uvx agno connect` to register it in Claude Code, Claude Desktop, Codex, and Cursor.
+- Five coding-agent skills in `.agents/skills/` covering the agent development lifecycle: create, improve, extend, eval, and review.
 
 <Tip>
-  Hot-reload is on. Edits to `agents/*.py` and `app/*.py` should be live in ~2s.
+  Hot-reload is on. Edits anywhere in the source (`agents/`, `app/`, `db/`, `evals/`, `workflows/`) are live in ~2s.
 </Tip>
 
 ## Next

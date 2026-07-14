@@ -1,13 +1,16 @@
 ---
 title: "Multiple Tool Call Reliability Evaluation"
-description: "Demonstrates reliability checks for multiple expected tool calls."
+description: "Demonstrates reliability checks for multiple expected tool calls, including subset matching with allow_additional_tool_calls."
+source: cookbook/09_evals/reliability/multiple_tool_calls/calculator.py
 ---
-```python
+
+```python calculator.py
 """
 Multiple Tool Call Reliability Evaluation
 =========================================
 
-Demonstrates reliability checks for multiple expected tool calls.
+Demonstrates reliability checks for multiple expected tool calls,
+including subset matching with allow_additional_tool_calls.
 """
 
 from typing import Optional
@@ -20,7 +23,7 @@ from agno.tools.calculator import CalculatorTools
 
 
 # ---------------------------------------------------------------------------
-# Create Evaluation Function
+# Create Evaluation Functions
 # ---------------------------------------------------------------------------
 def multiply_and_exponentiate():
     agent = Agent(
@@ -40,22 +43,63 @@ def multiply_and_exponentiate():
         result.assert_passed()
 
 
+def subset_matching():
+    """Only require 'multiply' -- extra tool calls like 'exponentiate' are allowed."""
+    agent = Agent(
+        model=OpenAIChat(id="gpt-5.2"),
+        tools=[CalculatorTools()],
+    )
+    response: RunOutput = agent.run(
+        "What is 10*5 then to the power of 2? do it step by step"
+    )
+    evaluation = ReliabilityEval(
+        name="Subset Tool Calls",
+        agent_response=response,
+        expected_tool_calls=["multiply"],
+        allow_additional_tool_calls=True,
+    )
+    result: Optional[ReliabilityResult] = evaluation.run(print_results=True)
+    if result:
+        result.assert_passed()
+
+
 # ---------------------------------------------------------------------------
 # Run Evaluation
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     multiply_and_exponentiate()
+    subset_matching()
 ```
 
 ## Run the Example
-```bash
-# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/09_evals/reliability/multiple_tool_calls
 
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
 
-python calculator.py
-```
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `calculator.py`, then run:
+    ```bash
+    python calculator.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/09_evals/reliability/multiple_tool_calls/calculator.py](https://github.com/agno-agi/agno/blob/main/cookbook/09_evals/reliability/multiple_tool_calls/calculator.py)

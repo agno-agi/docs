@@ -1,0 +1,200 @@
+---
+title: "Docling Reader: Audio Files"
+description: "Examples of using Docling to process audio files with speech-to-text transcription."
+source: cookbook/07_knowledge/05_integrations/readers/docling/docling_audio.py
+---
+
+```python docling_audio.py
+"""
+Docling Reader: Audio Files
+============================
+Examples of using Docling to process audio files with speech-to-text transcription.
+
+Supported formats:
+- WAV: Waveform Audio File Format
+- MP3: MPEG Audio Layer III
+- MP4: MPEG-4 Part 14 (audio)
+
+Output formats:
+- markdown: Transcription as markdown text (default)
+- text: Plain text transcription
+- html: HTML formatted transcription
+- vtt: WebVTT subtitle format with timestamps
+
+Docling uses OpenAI Whisper for high-quality speech recognition.
+
+Dependencies:
+- Python packages: `uv pip install docling openai-whisper`
+- System requirement: ffmpeg (https://www.ffmpeg.org/download.html)
+"""
+
+import asyncio
+
+from agno.knowledge.reader.docling_reader import DoclingReader
+from utils import get_agent, get_knowledge
+
+# ---------------------------------------------------------------------------
+# Setup
+# ---------------------------------------------------------------------------
+
+knowledge = get_knowledge(table_name="docling_audio")
+agent = get_agent(knowledge)
+
+# ---------------------------------------------------------------------------
+# Run Demo
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+
+    async def main():
+        # --- WAV audio - Agno description with HTML output ---
+        print("\n" + "=" * 60)
+        print("WAV audio - Agno Description (HTML output)")
+        print("=" * 60 + "\n")
+
+        await knowledge.ainsert(
+            name="Agno_Audio_WAV",
+            path="cookbook/07_knowledge/testing_resources/agno_description.wav",
+            reader=DoclingReader(output_format="html"),
+        )
+        agent.print_response(
+            "What does the audio describe about Agno?",
+            stream=True,
+        )
+
+        # --- MP3 audio - Agno description ---
+        print("\n" + "=" * 60)
+        print("MP3 audio - Agno Description (markdown output)")
+        print("=" * 60 + "\n")
+
+        await knowledge.ainsert(
+            name="Agno_Audio_MP3",
+            path="cookbook/07_knowledge/testing_resources/agno_description.mp3",
+            reader=DoclingReader(),
+        )
+        agent.print_response(
+            "Summarize what Agno framework is used for",
+            stream=True,
+        )
+
+        # --- MP4 audio - Agno description with VTT output ---
+        print("\n" + "=" * 60)
+        print("MP4 audio - Agno Description (VTT output)")
+        print("=" * 60 + "\n")
+
+        await knowledge.ainsert(
+            name="Agno_Audio_MP4",
+            path="cookbook/07_knowledge/testing_resources/agno_description.mp4",
+            reader=DoclingReader(output_format="vtt"),
+        )
+        agent.print_response(
+            "What are the key features of Agno mentioned in the audio?",
+            stream=True,
+        )
+
+    asyncio.run(main())
+```
+
+The example imports this helper module from the same directory:
+
+```python utils.py
+"""
+Docling Reader: Shared Utilities
+=================================
+Common setup and utilities for Docling reader examples.
+
+Docling uses IBM's advanced document conversion library to extract content from multiple document formats.
+
+Supported formats examples::
+- PDF: PDFs with advanced layout understanding and text extraction
+- DOCX: Microsoft Word documents with structure preservation
+- PPTX: PowerPoint presentations
+- Markdown: Markdown files
+- CSV: CSV spreadsheets
+- XLSX: Excel spreadsheets
+
+Output formats examples:
+- markdown: Preserves structure and formatting
+- text: Plain text output
+- json: Lossless serialization with full document structure
+- html: HTML with image embedding/referencing support
+- doctags: Markup format with full content and layout characteristics
+
+Key features:
+- Advanced document structure understanding
+- Better handling of complex layouts (tables, columns, etc.)
+- Multiple output formats for different use cases
+- Ideal for complex documents with rich formatting
+
+Run `uv pip install docling openai-whisper` to install python dependencies.
+System requirement ffmpeg (https://www.ffmpeg.org/download.html) for audio formats.
+
+See also: 01_documents.py for PDF/DOCX, 02_data.py for CSV/JSON and 03_web.py for web sources.
+"""
+
+import warnings
+
+from agno.agent import Agent
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.knowledge.knowledge import Knowledge
+from agno.models.openai import OpenAIResponses
+from agno.vectordb.lancedb import LanceDb, SearchType
+
+# Suppress Whisper FP16 warnings when running on CPU
+warnings.filterwarnings("ignore", message="FP16 is not supported on CPU")
+
+
+def get_knowledge(table_name: str = "docling_reader") -> Knowledge:
+    return Knowledge(
+        vector_db=LanceDb(
+            uri="tmp/lancedb",
+            table_name=table_name,
+            search_type=SearchType.hybrid,
+            embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+        ),
+    )
+
+
+def get_agent(knowledge: Knowledge) -> Agent:
+    return Agent(
+        model=OpenAIResponses(id="gpt-5.2"),
+        knowledge=knowledge,
+        search_knowledge=True,
+        markdown=True,
+    )
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno docling lancedb openai pyarrow
+    ```
+  </Step>
+
+  <Step title="Export your API keys">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export LANCEDB_API_KEY="your_lancedb_api_key_here"
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:LANCEDB_API_KEY="your_lancedb_api_key_here"
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code blocks above as `docling_audio.py` and `utils.py` in the same directory, then run:
+    ```bash
+    python docling_audio.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/07_knowledge/05_integrations/readers/docling/docling_audio.py](https://github.com/agno-agi/agno/blob/main/cookbook/07_knowledge/05_integrations/readers/docling/docling_audio.py)

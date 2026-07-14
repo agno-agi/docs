@@ -17,14 +17,14 @@ Telegram(agent=my_agent, streaming=True, prefix="/telegram")
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
-| `agent` | `Optional[Agent]` | `None` | Agno `Agent` instance. |
-| `team` | `Optional[Team]` | `None` | Agno `Team` instance. |
-| `workflow` | `Optional[Workflow]` | `None` | Agno `Workflow` instance. |
+| `agent` | `Optional[Union[Agent, RemoteAgent]]` | `None` | Agno `Agent` or `RemoteAgent` instance. |
+| `team` | `Optional[Union[Team, RemoteTeam]]` | `None` | Agno `Team` or `RemoteTeam` instance. |
+| `workflow` | `Optional[Union[Workflow, RemoteWorkflow]]` | `None` | Agno `Workflow` or `RemoteWorkflow` instance. |
 | `prefix` | `str` | `"/telegram"` | URL prefix for Telegram endpoints (e.g., `/telegram/webhook`). |
 | `tags` | `Optional[List[str]]` | `["Telegram"]` | FastAPI route tags for API documentation. |
 | `token` | `Optional[str]` | `None` | Bot token. Falls back to `TELEGRAM_TOKEN` environment variable. |
 | `streaming` | `bool` | `True` | Enable token-by-token streaming with live message edits. |
-| `show_reasoning` | `bool` | `False` | Send reasoning content as a blockquote message before the response. |
+| `show_reasoning` | `bool` | `False` | Send the model's reasoning as a separate message before the response. Non-streaming mode only. |
 | `reply_to_mentions_only` | `bool` | `True` | In groups, respond only to @mentions and replies to the bot. In DMs, always respond. |
 | `reply_to_bot_messages` | `bool` | `True` | Respond when users reply to the bot's own messages in groups. |
 | `start_message` | `str` | `"Hello! I'm ready..."` | Message sent for `/start` command. |
@@ -56,7 +56,7 @@ Receives Telegram updates (messages, edited messages, media).
 | **200** | `{"status": "duplicate"}` | Webhook retry detected (ignored). |
 | **200** | `{"status": "ignored"}` | Not a message event (callback query, etc.). |
 | **403** | Error | Invalid `X-Telegram-Bot-Api-Secret-Token` header. |
-| **500** | Error | Processing error or missing `TELEGRAM_TOKEN`. |
+| **500** | Error | Processing error, or `TELEGRAM_WEBHOOK_SECRET_TOKEN` not set in production. |
 
 ### `GET {prefix}/status`
 
@@ -96,7 +96,7 @@ When `streaming=True`, the interface dispatches real-time status updates:
 | --- | --- |
 | `reasoning_started` | "Reasoning..." |
 | `tool_call_started` | "{ToolName}..." |
-| `tool_call_completed` | Status cleared |
+| `tool_call_completed` | "{ToolName}" (trailing ellipsis removed) |
 | `tool_call_error` | "{ToolName} failed" |
 | `run_content` | Accumulated content, edited every 1.0s |
 | `memory_update_started` | "Updating memory..." |
@@ -129,7 +129,7 @@ Messages exceeding 4096 characters are automatically split.
 
 | Type | Converted To |
 | --- | --- |
-| Photos | `Image` |
+| Photos, Stickers | `Image` |
 | Voice, Audio | `Audio` |
 | Video, Animation, Video Note | `Video` |
 | Documents | `File` |

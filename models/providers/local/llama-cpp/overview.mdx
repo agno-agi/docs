@@ -10,9 +10,9 @@ description: Run local models with LlamaCpp in Agno agents.
 
 Run Large Language Models locally with LLaMA CPP
 
-[LlamaCpp](https://github.com/ggerganov/llama.cpp) is a powerful tool for running large language models locally with efficient inference. LlamaCpp supports multiple open-source models and provides an OpenAI-compatible API server.
+[LlamaCpp](https://github.com/ggerganov/llama.cpp) runs large language models locally with efficient inference. LlamaCpp supports multiple open-source models and provides an OpenAI-compatible API server.
 
-LlamaCpp supports a wide variety of models in GGML format. You can find models on HuggingFace, including the default `ggml-org/gpt-oss-20b-GGUF` used in the examples below.
+LlamaCpp supports a wide variety of models in GGUF format. You can find models on HuggingFace, including the default `ggml-org/gpt-oss-20b-GGUF` used in the examples below.
 
 We recommend experimenting to find the best model for your use case. Here are some popular model recommendations:
 
@@ -43,7 +43,8 @@ First, install LlamaCpp following the [official installation guide](https://gith
 ```bash install
 git clone https://github.com/ggerganov/llama.cpp.git
 cd llama.cpp
-make
+cmake -B build
+cmake --build build --config Release
 ```
 
 Or using package managers:
@@ -55,7 +56,7 @@ brew install llama.cpp
 
 ### Download a Model
 
-Download a model in GGUF format following the [llama.cpp model download guide](https://github.com/ggerganov/llama.cpp#obtaining-and-using-the-facebook-llama-2-model). For the examples below, we use `ggml-org/gpt-oss-20b-GGUF`.
+Download a model in GGUF format following the [llama.cpp model guide](https://github.com/ggerganov/llama.cpp#obtaining-and-quantizing-models). For the examples below, we use `ggml-org/gpt-oss-20b-GGUF`.
 
 ### Start the Server
 
@@ -65,11 +66,15 @@ Start the LlamaCpp server with your model:
 llama-server -hf ggml-org/gpt-oss-20b-GGUF --ctx-size 0 --jinja -ub 2048 -b 2048
 ```
 
-This starts the server at `http://127.0.0.1:8080` with an OpenAI Chat compatible endpoints
+This starts the server at `http://127.0.0.1:8080` with OpenAI-compatible endpoints.
 
 ## Example
 
-After starting the LlamaCpp server, use the `LlamaCpp` model class to access it:
+After starting the LlamaCpp server, use the `LlamaCpp` model class to access it. It uses the OpenAI client, so install the `openai` package:
+
+```bash
+uv pip install -U openai agno
+```
 
 <CodeGroup>
 
@@ -116,15 +121,13 @@ agent = Agent(
 
 | Parameter      | Type                       | Default                        | Description                                                                                                          |
 | -------------- | -------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
-| `id`           | `str`                      | `"llama-cpp"`                  | The identifier for the Llama.cpp model                                                                              |
+| `id`           | `str`                      | `"ggml-org/gpt-oss-20b-GGUF"`  | The identifier for the Llama.cpp model                                                                              |
 | `name`         | `str`                      | `"LlamaCpp"`                   | The name of the model                                                                                                |
 | `provider`     | `str`                      | `"LlamaCpp"`                   | The provider of the model                                                                                            |
-| `base_url`     | `str`                      | `"http://localhost:8080"`      | The base URL for the Llama.cpp server                                                                               |
-| `api_key`      | `Optional[str]`            | `None`                         | The API key (usually not needed for local Llama.cpp)                                                               |
-| `n_ctx`        | `Optional[int]`            | `None`                         | The context window size                                                                                              |
+| `base_url`     | `str`                      | `"http://127.0.0.1:8080/v1"`   | The base URL for the Llama.cpp server                                                                               |
+| `api_key`      | `Optional[str]`            | `"not-provided"`               | The API key (usually not needed for local Llama.cpp)                                                               |
 | `temperature`  | `Optional[float]`          | `None`                         | Sampling temperature (0.0 to 2.0)                                                                                   |
 | `top_p`        | `Optional[float]`          | `None`                         | Top-p sampling parameter                                                                                             |
-| `top_k`        | `Optional[int]`            | `None`                         | Top-k sampling parameter                                                                                             |
 
 `LlamaCpp` is a subclass of the [OpenAILike](/models/providers/openai-like) class and has access to the same params.
 
@@ -157,13 +160,16 @@ LlamaCpp supports various acceleration backends:
 
 ```bash gpu acceleration
 # NVIDIA GPU (CUDA)
-make LLAMA_CUDA=1
+cmake -B build -DGGML_CUDA=ON
+cmake --build build --config Release
 
-# Apple Metal (macOS)
-make LLAMA_METAL=1
+# Apple Metal (enabled by default on macOS)
+cmake -B build
+cmake --build build --config Release
 
-# OpenCL
-make LLAMA_CLBLAST=1
+# Vulkan
+cmake -B build -DGGML_VULKAN=ON
+cmake --build build --config Release
 ```
 
 ### Model Quantization
@@ -186,7 +192,7 @@ curl http://127.0.0.1:8080/v1/models
 
 ### Model Loading Problems
 
-- Verify the model file exists and is in GGML format
+- Verify the model file exists and is in GGUF format
 - Check available memory for large models
 - Ensure the model is compatible with your LlamaCpp version
 

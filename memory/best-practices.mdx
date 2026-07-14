@@ -5,12 +5,12 @@ sidebarTitle: Best Practices
 keywords: [production, best practices, cost optimization, memory pruning, token management, performance, scaling, memory limits]
 ---
 
-Memory is powerful, but without careful configuration, it can lead to unexpected token consumption, behavioral issues, and high costs. This guide shows you what to watch out for and how to optimize your memory usage for production.
+Without careful configuration, memory can lead to unexpected token consumption, behavioral issues, and high costs. This guide shows you what to watch out for and how to optimize your memory usage for production.
 
 ## Quick Reference
 
 - **Default to automatic memory** (`update_memory_on_run=True`) unless you have a specific reason for agentic control
-- **Always provide user_id**, don't rely on the default "default" user
+- **Always provide user_id**. Don't rely on the default "default" user
 - **Use cheaper models** for memory operations when using agentic memory
 - **Implement pruning** for long-running applications
 - **Monitor token usage** in production to catch memory-related cost spikes
@@ -30,7 +30,7 @@ Here's what happens under the hood:
    - Detailed system prompt (~50 lines)
    - ALL existing user memories loaded into context
    - Memory management instructions and tools
-4. Memory LLM makes tool calls (add, update, delete)
+4. Memory LLM makes tool calls (add, update, and delete if enabled on the `MemoryManager`)
 5. Control returns to main conversation
 
 **Real-world impact:**
@@ -53,13 +53,13 @@ As memories accumulate, each memory operation gets more expensive. With 200 memo
 
 ## Mitigation Strategy #1: Use Automatic Memory
 
-For most use cases, automatic memory is your best bet—it's significantly more efficient:
+For most use cases, use automatic memory. Each run still triggers one memory manager call that loads all existing memories, but the call runs in a background thread and keeps memory instructions and tool calls out of the main conversation context:
 
 ```python
-# Recommended: Single memory processing after conversation
+# Recommended: memory processing runs in the background
 agent = Agent(
     db=db,
-    update_memory_on_run=True  # Processes memories once at end
+    update_memory_on_run=True  # One background call per run, outside the conversation
 )
 
 # Only use agentic memory when you specifically need:
@@ -70,19 +70,19 @@ agent = Agent(
 
 ## Mitigation Strategy #2: Use a Cheaper Model for Memory Operations
 
-If you do need agentic memory, use a less expensive model for memory management while keeping a powerful model for conversation:
+If you do need agentic memory, use a less expensive model for memory management while keeping a more capable model for conversation:
 
 ```python
 from agno.memory import MemoryManager
 from agno.models.openai import OpenAIResponses
 
-# Cheap model for memory operations (60x less expensive)
+# Cheaper model for memory operations
 memory_manager = MemoryManager(
     db=db,
-    model=OpenAIResponses(id="gpt-5.2")
+    model=OpenAIResponses(id="gpt-5-mini")
 )
 
-# Expensive model for main conversations
+# More capable model for main conversations
 agent = Agent(
     db=db,
     model=OpenAIResponses(id="gpt-5.2"),
@@ -91,7 +91,7 @@ agent = Agent(
 )
 ```
 
-This approach can reduce memory-related costs by 98% while maintaining conversation quality.
+This cuts the cost of each nested memory call while maintaining conversation quality.
 
 ## Mitigation Strategy #3: Guide Memory Behavior with Instructions
 
@@ -131,7 +131,7 @@ prune_old_memories(db, user_id="john_doe@example.com")
 
 ## Mitigation Strategy #5: Set Tool Call Limits
 
-Prevent runaway memory operations by limiting tool calls per conversation:
+Prevent runaway memory operations by limiting tool calls per run:
 
 ```python
 agent = Agent(
@@ -161,7 +161,7 @@ agent.print_response("I'm allergic to dairy", user_id="user_456")
 
 ### The Double-Enable Pitfall
 
-**The Problem:** Using both `update_memory_on_run=True` and `enable_agentic_memory=True` doesn't give you both—agentic mode overrides automatic mode.
+**The Problem:** Using both `update_memory_on_run=True` and `enable_agentic_memory=True` doesn't give you both. Agentic mode overrides automatic mode.
 
 ```python
 # ❌ Doesn't work as expected - automatic memory is disabled
@@ -197,5 +197,5 @@ if len(memories) > 500:
 
 ## Developer Resources
 
-- View [Examples](/memory/working-with-memories/overview)
-- View [Cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/09_memory/)
+- [Memory examples](/memory/working-with-memories/overview)
+- [Memory cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/11_memory/)

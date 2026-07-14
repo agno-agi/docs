@@ -1,0 +1,105 @@
+---
+title: "Followups (Built-in)"
+description: "Enable built-in followup prompts on any agent with a single flag."
+source: cookbook/02_agents/02_input_output/followup_suggestions.py
+---
+
+```python followup_suggestions.py
+"""
+Followups (Built-in)
+====================
+
+Enable built-in followup prompts on any agent with a single flag.
+
+After the main response, the agent automatically makes a second model call
+to generate structured followup prompts and attaches them to RunOutput.
+
+Key concepts:
+- followups=True: enables the feature
+- num_followups: controls how many suggestions (default 3)
+- followup_model: optional cheaper model for generating followups
+- run_response.followups: the structured result
+
+The main response is never constrained — it streams freely as normal text.
+
+Example prompts to try:
+- "Which national park is the best?"
+- "What programming language should I learn first?"
+- "How do I start investing?"
+"""
+
+from agno.agent import Agent, RunOutput
+from agno.models.openai import OpenAIResponses
+
+# ---------------------------------------------------------------------------
+# Create the Agent — just set followups=True
+# ---------------------------------------------------------------------------
+agent = Agent(
+    model=OpenAIResponses(id="gpt-4o"),
+    instructions="You are a knowledgeable assistant. Answer questions thoroughly.",
+    # Enable built-in followups
+    followups=True,
+    num_followups=3,
+    # Optionally use a cheaper model for followups
+    # followup_model=OpenAIResponses(id="gpt-4o-mini"),
+    markdown=True,
+)
+
+
+# ---------------------------------------------------------------------------
+# Run the Agent
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    run: RunOutput = agent.run("Which national park is the best?")
+
+    # The main response — full free-form text
+    print(f"\n{'=' * 60}")
+    print("Response:")
+    print(f"{'=' * 60}")
+    print(run.content)
+
+    # Followups — structured, attached to RunOutput
+    print(f"\n{'=' * 60}")
+    print("Followups:")
+    print(f"{'=' * 60}")
+    if run.followups:
+        for i, suggestion in enumerate(run.followups, 1):
+            print(f"  {i}. {suggestion}")
+    else:
+        print("  No followups generated.")
+
+    print()
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `followup_suggestions.py`, then run:
+    ```bash
+    python followup_suggestions.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/02_agents/02_input_output/followup_suggestions.py](https://github.com/agno-agi/agno/blob/main/cookbook/02_agents/02_input_output/followup_suggestions.py)

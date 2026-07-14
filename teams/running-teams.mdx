@@ -14,7 +14,6 @@ from agno.agent import Agent
 from agno.models.openai import OpenAIResponses
 from agno.tools.hackernews import HackerNewsTools
 from agno.tools.yfinance import YFinanceTools
-from agno.utils.pprint import pprint_run_response
 
 news_agent = Agent(name="News Agent", role="Get tech news", tools=[HackerNewsTools()])
 finance_agent = Agent(name="Finance Agent", role="Get stock data", tools=[YFinanceTools()])
@@ -22,7 +21,7 @@ finance_agent = Agent(name="Finance Agent", role="Get stock data", tools=[YFinan
 team = Team(
     name="Research Team",
     members=[news_agent, finance_agent],
-    model=OpenAIResponses(id="gpt-4o")
+    model=OpenAIResponses(id="gpt-5.4-mini")
 )
 
 # Run and get response
@@ -48,7 +47,7 @@ When you call `run()`:
 7. **Post-hooks execute** (if configured)
 8. **Session and metrics are stored** (if database configured)
 
-[Callable factories](./overview#callable-factories) are resolved after session state is loaded, so factories can access `run_context` and `session_state`. Async factories require `arun()` or `aprint_response()`.
+[Callable factories](/teams/overview#callable-factories) are resolved after session state is loaded, so factories can access `run_context` and `session_state`. Async factories require `arun()` or `aprint_response()`.
 
 <Snippet file="team-execution-style.mdx" />
 
@@ -56,7 +55,6 @@ In `TeamMode.tasks`, the leader uses task management tools to build and execute 
 
 Teams can pause for human-in-the-loop requirements (e.g., approvals or user input). When a run requires confirmation, the run returns with pending requirements so you can collect input or resolve approvals before continuing.
 Paused runs return `status=RunStatus.paused` and `requirements` on the `TeamRunOutput`.
-Human oversight is a control path. Runs can pause for confirmation or external execution and resume when requirements are resolved.
 
 <Accordion title="Execution Flow Diagram">
 <img
@@ -83,7 +81,7 @@ for chunk in stream:
 ```
 
 <Note>
-Streaming is not supported in `TeamMode.tasks`. If you set `stream=True`, the run falls back to non-streaming execution.
+In `TeamMode.tasks`, streaming also emits dedicated task events (`TeamTaskCreated`, `TeamTaskUpdated`, `TeamTaskIterationStarted`) when `stream_events=True`. See [Task Mode Streaming Events](/examples/teams/modes/tasks/streaming-events).
 </Note>
 
 ### Stream All Events
@@ -91,6 +89,8 @@ Streaming is not supported in `TeamMode.tasks`. If you set `stream=True`, the ru
 By default, only content is streamed. Set `stream_events=True` to get tool calls, reasoning steps, and other internal events:
 
 ```python
+from agno.run.team import TeamRunEvent
+
 stream = team.run(
     "What are the trending AI stories?",
     stream=True,
@@ -120,7 +120,7 @@ Disable member event streaming with `stream_member_events=False`:
 team = Team(
     name="Research Team",
     members=[news_agent, finance_agent],
-    model=OpenAIResponses(id="gpt-4o"),
+    model=OpenAIResponses(id="gpt-5.4-mini"),
     stream_member_events=False
 )
 ```
@@ -163,7 +163,7 @@ from agno.models.openai import OpenAIResponses
 team = Team(
     name="Ops Team",
     members=[news_agent, finance_agent],
-    model=OpenAIResponses(id="gpt-4o"),
+    model=OpenAIResponses(id="gpt-5.4-mini"),
     mode=TeamMode.tasks,
     max_iterations=6
 )
@@ -229,7 +229,7 @@ For development, use `print_response()` to display formatted output:
 team.print_response("What are the top AI stories?", stream=True)
 
 # Show member responses too
-team.print_response("What are the top AI stories?", show_members_responses=True)
+team.print_response("What are the top AI stories?", show_member_responses=True)
 ```
 
 <Accordion title="Event Types Reference">
@@ -280,7 +280,7 @@ team.print_response("What are the top AI stories?", show_members_responses=True)
 
 ## Background Execution
 
-Run teams in the background with `background=True`. The team continues running even if the client disconnects. Combine with `stream=True` for resumable SSE streaming with automatic event buffering and reconnection.
+Run teams in the background with `arun(background=True)`. The team continues running even if the client disconnects. Combine with `stream=True` for resumable SSE streaming with automatic event buffering and reconnection.
 
 See [Background Execution](/background-execution/overview) for polling, resumable streaming, and the `/resume` endpoint.
 
@@ -288,4 +288,4 @@ See [Background Execution](/background-execution/overview) for polling, resumabl
 
 - [Team reference](/reference/teams/team)
 - [TeamRunOutput schema](/reference/teams/team-response)
-- [Team examples](/cookbook/teams/overview)
+- [Team examples](/examples/teams/overview)

@@ -1,0 +1,92 @@
+---
+title: "OpenAI Gemini"
+description: "Move one conversation between GPT-4o and Gemini across turns with history persisted in Postgres."
+source: cookbook/02_agents/14_advanced/interchange_model/openai_gemini.py
+---
+
+```python openai_gemini.py
+import os
+
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.google import Gemini
+from agno.models.openai import OpenAIChat
+
+
+def get_weather(city: str) -> str:
+    """Get the current weather for a city."""
+    return f"The weather in {city} is sunny and 22C."
+
+
+def main() -> None:
+    db_url = os.getenv(
+        "AGNO_POSTGRES_URL",
+        "postgresql+psycopg://ai:ai@localhost:5532/ai",
+    )
+    db = PostgresDb(db_url)
+
+    agent = Agent(
+        model=OpenAIChat(id="gpt-4o"),
+        db=db,
+        add_history_to_context=True,
+        num_history_runs=10,
+        tools=[get_weather],
+        debug_mode=True,
+    )
+
+    # Turn 1 — OpenAI with tool call (works fine)
+    agent.print_response("What is the weather in Paris?")
+
+    # Turn 2 — Gemini with tool call
+    agent.model = Gemini()
+    agent.print_response("What is the weather in London?")
+
+    # Turn 3 — OpenAI with tool call (works fine on its own)
+    agent.model = OpenAIChat(id="gpt-4o")
+    agent.print_response("What is the weather in Tokyo?")
+
+    # Turn 4 — Gemini summary
+    agent.model = Gemini()
+    agent.print_response("Summarize all the weather we checked.")
+
+
+if __name__ == "__main__":
+    main()
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno google-genai openai psycopg-binary sqlalchemy
+    ```
+  </Step>
+
+  <Step title="Export your API keys">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export GOOGLE_API_KEY="your_google_api_key_here"
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:GOOGLE_API_KEY="your_google_api_key_here"
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Snippet file="run-pgvector-step.mdx" />
+
+  <Step title="Run the example">
+    Save the code above as `openai_gemini.py`, then run:
+    ```bash
+    python openai_gemini.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/02_agents/14_advanced/interchange_model/openai_gemini.py](https://github.com/agno-agi/agno/blob/main/cookbook/02_agents/14_advanced/interchange_model/openai_gemini.py)

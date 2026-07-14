@@ -1,0 +1,92 @@
+---
+title: "Claude Gemini"
+description: "Switch a single agent between Claude and Gemini mid-conversation with shared Postgres history."
+source: cookbook/02_agents/14_advanced/interchange_model/claude_gemini.py
+---
+
+```python claude_gemini.py
+import os
+
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.anthropic import Claude
+from agno.models.google import Gemini
+
+
+def get_weather(city: str) -> str:
+    """Get the current weather for a city."""
+    return f"The weather in {city} is sunny and 22C."
+
+
+def main() -> None:
+    db_url = os.getenv(
+        "AGNO_POSTGRES_URL",
+        "postgresql+psycopg://ai:ai@localhost:5532/ai",
+    )
+    db = PostgresDb(db_url)
+
+    agent = Agent(
+        model=Claude(),
+        db=db,
+        add_history_to_context=True,
+        num_history_runs=10,
+        tools=[get_weather],
+        debug_mode=True,
+    )
+
+    # Turn 1 — Claude with tool call
+    agent.print_response("What is the weather in Paris?")
+
+    # Turn 2 — Gemini with tool call
+    agent.model = Gemini()
+    agent.print_response("What is the weather in London?")
+
+    # Turn 3 — Claude with tool call (works fine on its own)
+    agent.model = Claude()
+    agent.print_response("What is the weather in Tokyo?")
+
+    # Turn 4 — Gemini summary
+    agent.model = Gemini()
+    agent.print_response("Summarize all the weather we checked.")
+
+
+if __name__ == "__main__":
+    main()
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno anthropic google-genai psycopg-binary sqlalchemy
+    ```
+  </Step>
+
+  <Step title="Export your API keys">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export ANTHROPIC_API_KEY="your_anthropic_api_key_here"
+    export GOOGLE_API_KEY="your_google_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:ANTHROPIC_API_KEY="your_anthropic_api_key_here"
+    $Env:GOOGLE_API_KEY="your_google_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Snippet file="run-pgvector-step.mdx" />
+
+  <Step title="Run the example">
+    Save the code above as `claude_gemini.py`, then run:
+    ```bash
+    python claude_gemini.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/02_agents/14_advanced/interchange_model/claude_gemini.py](https://github.com/agno-agi/agno/blob/main/cookbook/02_agents/14_advanced/interchange_model/claude_gemini.py)

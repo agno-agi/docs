@@ -1,0 +1,98 @@
+---
+title: "Scheduler Tools"
+description: "Give an agent the ability to create and manage recurring schedules."
+source: cookbook/91_tools/scheduler_tools.py
+---
+
+```python scheduler_tools.py
+"""
+Scheduler Tools
+=============================
+
+Give an agent the ability to create and manage recurring schedules.
+
+The agent can convert natural language requests like "do this every day at 9am"
+into cron-based schedules that run via the AgentOS scheduler infrastructure.
+
+Prerequisites:
+    pip install agno[scheduler]
+    # A running AgentOS server with scheduler enabled
+    # See cookbook/05_agent_os/scheduler/scheduler_tools_agent.py for full setup
+"""
+
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+from agno.tools.scheduler import SchedulerTools
+
+# ---------------------------------------------------------------------------
+# Database
+# ---------------------------------------------------------------------------
+
+db = PostgresDb(
+    id="scheduler-tools-db",
+    db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
+)
+
+# ---------------------------------------------------------------------------
+# Create Agent
+# ---------------------------------------------------------------------------
+
+agent = Agent(
+    id="scheduler-demo",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    tools=[
+        SchedulerTools(
+            db=db,
+            default_endpoint="/agents/scheduler-demo/runs",
+        ),
+    ],
+    instructions=["You are a helpful assistant that can schedule recurring tasks."],
+    db=db,
+    markdown=True,
+)
+
+# ---------------------------------------------------------------------------
+# Run Agent
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    agent.print_response(
+        "Schedule a daily weather briefing every weekday at 8:30am EST"
+    )
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai psycopg-binary sqlalchemy
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Snippet file="run-pgvector-step.mdx" />
+
+  <Step title="Run the example">
+    Save the code above as `scheduler_tools.py`, then run:
+    ```bash
+    python scheduler_tools.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/91_tools/scheduler_tools.py](https://github.com/agno-agi/agno/blob/main/cookbook/91_tools/scheduler_tools.py)
