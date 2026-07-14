@@ -601,6 +601,13 @@ CLIENT_SERVER_STEP = (
     "In another terminal, start the [client example server](/examples/agent-os/client/server) on port 7777:",
     "python cookbook/05_agent_os/client/server.py",
 )
+AUTHENTICATED_MONGODB_STEP = (
+    "Run MongoDB",
+    None,
+    "docker run -d -p 27017:27017 --name mongodb "
+    "-e MONGO_INITDB_ROOT_USERNAME=mongoadmin "
+    "-e MONGO_INITDB_ROOT_PASSWORD=secret mongo:latest",
+)
 
 SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "00_quickstart/agent_search_over_knowledge.py": {
@@ -1187,6 +1194,18 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
                 None,
             )
         ],
+    },
+    "06_storage/mongo/async_mongo/async_mongodb_for_agent.py": {
+        "service_remove": {"mongodb"},
+        "pre_run_steps": [AUTHENTICATED_MONGODB_STEP],
+    },
+    "06_storage/mongo/async_mongo/async_mongodb_for_team.py": {
+        "service_remove": {"mongodb"},
+        "pre_run_steps": [AUTHENTICATED_MONGODB_STEP],
+    },
+    "06_storage/mongo/async_mongo/async_mongodb_for_workflow.py": {
+        "service_remove": {"mongodb"},
+        "pre_run_steps": [AUTHENTICATED_MONGODB_STEP],
     },
     "91_tools/searxng_tools.py": {
         "pre_run_steps": [
