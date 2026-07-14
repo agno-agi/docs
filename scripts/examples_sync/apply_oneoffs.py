@@ -404,7 +404,7 @@ EXPLICIT_ROW_OVERRIDES = {
     "examples/agent-os/rbac/symmetric/overview": {
         "examples/agent-os/rbac/symmetric/advanced-scopes": (
             "Advanced Scopes",
-            "Issue HS256 tokens across five privilege tiers to test global, per-agent, and wildcard scopes.",
+            "Issue HS256 tokens across five privilege tiers to show global, per-agent, and wildcard scopes filtering the agent list and gating agent runs.",
         ),
     },
     "examples/agent-os/remote/overview": {
@@ -478,6 +478,7 @@ EXPLICIT_ROW_REFRESH = {
     },
     "examples/agent-os/rbac/symmetric/overview": {
         "examples/agent-os/rbac/symmetric/advanced-scopes",
+        "examples/agent-os/rbac/symmetric/basic",
         "examples/agent-os/rbac/symmetric/with-cookie",
     },
     "examples/agent-os/remote/overview": {
@@ -594,13 +595,19 @@ EXPLICIT_ROW_REFRESH = {
         "examples/models/aimlapi/tool-use",
     },
     "examples/models/anthropic/overview": {
+        "examples/models/anthropic/betas",
+        "examples/models/anthropic/context-management",
         "examples/models/anthropic/db",
         "examples/models/anthropic/image-input-file-upload",
         "examples/models/anthropic/image-input-local-file",
         "examples/models/anthropic/knowledge",
         "examples/models/anthropic/memory",
+        "examples/models/anthropic/pdf-input-file-upload",
         "examples/models/anthropic/prompt-caching",
         "examples/models/anthropic/prompt-caching-extended",
+        "examples/models/anthropic/retry",
+        "examples/models/anthropic/skills/overview",
+        "examples/models/anthropic/structured-output-strict-tools",
         "examples/models/anthropic/tool-use",
     },
     "examples/models/cometapi/overview": {
@@ -1620,6 +1627,16 @@ def main() -> None:
     )
     sub(
         "tools/aws-lambda-tools.mdx",
+        """## Prerequisites:
+- Run: `uv pip install boto3` to install dependencies
+- Set up AWS credentials (AWS CLI, environment variables, or IAM roles)
+- Ensure proper IAM permissions for Lambda operations""",
+        """## Prerequisites
+- Set up AWS credentials (AWS CLI, environment variables, or IAM roles)
+- Ensure proper IAM permissions for Lambda operations""",
+    )
+    sub(
+        "tools/aws-lambda-tools.mdx",
         """# Example 4: Invoke-only agent for testing
 agent_tester = Agent(
     tools=[
@@ -1637,18 +1654,20 @@ agent_tester = Agent(
     )
     sub(
         "tools/aws-lambda-tools.mdx",
-        """cd agno/cookbook/91_tools
-
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
-
-python aws_lambda_tools.py""",
         """cd agno
 
 # Create and activate virtual environment
 ./scripts/demo_setup.sh
 source .venvs/demo/bin/activate
+
+python cookbook/91_tools/aws_lambda_tools.py""",
+        """cd agno
+
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+uv pip install -U boto3
+export OPENAI_API_KEY="your_openai_api_key_here"
 
 python cookbook/91_tools/aws_lambda_tools.py""",
     )
@@ -1685,6 +1704,31 @@ python bitbucket_tools.py""",
 source .venvs/demo/bin/activate
 
 python cookbook/91_tools/bitbucket_tools.py""",
+    )
+    sub(
+        "tools/github-tools.mdx",
+        """    <Tabs>
+        <Tab title="Public GitHub">
+            export GITHUB_ACCESS_TOKEN="your_token_here"
+            export GITHUB_BASE_URL="https://api.github.com"
+        </Tab>
+        <Tab title="Enterprise GitHub">
+            export GITHUB_BASE_URL="https://YOUR-ENTERPRISE-HOSTNAME/api/v3"
+        </Tab>
+    </Tabs>""",
+        """    <Tabs>
+      <Tab title="Public GitHub">
+        ```bash
+        export GITHUB_ACCESS_TOKEN="your_token_here"
+        export GITHUB_BASE_URL="https://api.github.com"
+        ```
+      </Tab>
+      <Tab title="Enterprise GitHub">
+        ```bash
+        export GITHUB_BASE_URL="https://YOUR-ENTERPRISE-HOSTNAME/api/v3"
+        ```
+      </Tab>
+    </Tabs>""",
     )
     sub(
         "tools/github-tools.mdx",
