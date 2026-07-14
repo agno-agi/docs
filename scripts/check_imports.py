@@ -26,7 +26,16 @@ AGNO_SRC = os.path.join(
     "libs", "agno", "agno",
 )
 
-EXCLUDE_DIRS = {"deploy", "TBD", "examples", "agno", "node_modules", ".git", "scripts"}
+EXCLUDE_DIRS = {
+    "deploy",
+    "TBD",
+    "examples",
+    "agno",
+    "node_modules",
+    ".git",
+    "scripts",
+    "tmp",
+}
 EXCLUDE_FILES = {
     os.path.join(DOCS_ROOT, "other", "v2-migration.mdx"),
     os.path.join(DOCS_ROOT, "other", "v2-changelog.mdx"),

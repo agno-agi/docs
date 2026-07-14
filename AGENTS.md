@@ -11,11 +11,11 @@ Agno docs are direct, concrete, and professional. No marketing fluff. No AI-soun
 - **Agno source:** symlinked at `./agno` (-> `~/code/agno`). Read it before writing about APIs, parameters, or behavior. Don't guess from memory or training data.
 - **Cookbook examples:** `agno/cookbook/` has runnable examples. Reference or adapt these rather than inventing new ones.
 - **Reusable snippets:** `_snippets/` holds shared install steps, setup blocks, and recurring components. Check there before duplicating content.
-- **Current branch:** `v2.6.0`. We're restructuring docs, not just patching. Prefer rewriting muddled pages to layering on top of them.
+- **Agno version:** Verify the exact `./agno` tag before writing. Stop and ask if the checkout is not on the version targeted by the current docs work.
 
 ## Before Writing Any Page
 
-Define these four things before you write:
+Define these five things before you write:
 
 1. **What is this page about?** (one sentence)
 2. **What does the user need to do?** (the code)
@@ -108,7 +108,7 @@ Every page's `description` field should describe what the page covers, not say "
 
 ### 5. No em dashes
 
-Em dashes (—) are an AI tell. Use periods or rewrite.
+Em dashes (`U+2014`) are an AI tell. Use periods or rewrite.
 ````
 ❌ "No data leaves your environment—ideal for security-conscious teams."
 ✅ "No data leaves your environment. Ideal for security-conscious teams."
@@ -142,10 +142,10 @@ Analogies and editorializing waste space.
 ### 8. Specific over generic
 ````
 ❌ "Use a better model for improved results."
-✅ "Use Codex Opus 4.5 for better prose quality."
+✅ "Use `claude-opus-4-5` for better prose quality."
 
 ❌ "You can customize various settings."
-✅ "Set `temperature=0` for deterministic output."
+✅ "Set `temperature=0` to reduce sampling variability."
 ````
 
 ### 9. Tighten wordy phrases
@@ -226,14 +226,14 @@ Don't define things by what they aren't. State what they are directly.
 | "Leading framework" | Unsubstantiated | State facts |
 | "Happy building!" | Unnecessary | End with links |
 | "Here's how it looks:" | Filler | [Remove] |
-| Em dashes (—) | AI tell | Periods or rewrite |
+| Em dashes (`U+2014`) | AI tell | Periods or rewrite |
 | "It's not X, it's Y" / "X isn't just Y" | Contrastive negation, AI tell | State what it is directly |
 
 ## Capitalization & Terminology
 
 | Wrong | Right |
 |-------|-------|
-| id | ID |
+| id in prose | ID. Preserve literal source identifiers such as `id` parameters. |
 | pydantic | Pydantic |
 | vector db | vector database |
 | 3rd party | third-party |
@@ -258,6 +258,9 @@ Use on landing and overview pages where Agno is being introduced. Don't repeat t
 - Minimal inline comments - code should be self-explanatory
 - Keep examples consistent across related pages
 - Show the minimal working example first, then variations
+- Pages under `examples/**` mirror cookbook code and docstrings byte-for-byte. Do not restyle generated code in place.
+- Change generated example descriptions through `scripts/examples_sync/description-overrides.json`.
+- Flag cookbook code or docstring problems upstream instead of changing the generated page.
 
 ## Mintlify Components
 
@@ -368,9 +371,13 @@ description: "What this combination achieves."
 # Preview locally (run from the directory with docs.json)
 mint dev
 
-# Check for broken links
-mint broken-links
+# Run deterministic repository checks
+python3 scripts/inventory/run_all.py
+python3 scripts/check_install_coverage.py
+python3 scripts/examples_sync/plan.py
+python3 scripts/examples_sync/check_integrity.py
 
-# Catch build errors before pushing
-mint build
+# Check Mintlify structure and links
+mint broken-links
+mint validate
 ````
