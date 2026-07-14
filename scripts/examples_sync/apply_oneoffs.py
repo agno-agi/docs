@@ -1713,6 +1713,51 @@ uv pip install -U agno openai valkey-glide-sync
 
 ### Run Valkey""",
     )
+    root_sub(
+        "database/providers/valkey/usage/valkey-for-team.mdx",
+        """## Usage
+
+### Run Valkey""",
+        """## Usage
+
+Install dependencies:
+
+```bash
+uv pip install -U agno openai valkey-glide-sync
+```
+
+### Run Valkey""",
+    )
+    root_sub(
+        "database/providers/valkey/usage/valkey-for-workflow.mdx",
+        """## Usage
+
+### Run Valkey""",
+        """## Usage
+
+Install dependencies:
+
+```bash
+uv pip install -U agno fastapi openai valkey-glide-sync
+```
+
+### Run Valkey""",
+    )
+    root_sub(
+        "knowledge/vector-stores/valkey/overview.mdx",
+        """## Setup
+
+Valkey vector search requires""",
+        """## Setup
+
+Install dependencies:
+
+```bash
+uv pip install -U agno openai pypdf valkey-glide-sync
+```
+
+Valkey vector search requires""",
+    )
     sub(
         "storage/valkey/valkey-for-team.mdx",
         "Run `uv pip install ddgs valkey-glide-sync` to install dependencies.",
