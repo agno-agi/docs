@@ -653,7 +653,10 @@ EXPLICIT_ROW_REFRESH = {
     "examples/models/litellm-openai/overview": {
         "examples/models/litellm-openai/tool-use",
     },
-    "examples/models/llama-cpp/overview": {"examples/models/llama-cpp/tool-use"},
+    "examples/models/llama-cpp/overview": {
+        "examples/models/llama-cpp/retry",
+        "examples/models/llama-cpp/tool-use",
+    },
     "examples/models/mistral/overview": {
         "examples/models/mistral/mistral-small",
         "examples/models/mistral/tool-use",

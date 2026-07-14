@@ -581,6 +581,11 @@ LMSTUDIO_RETRY_STEP = (
     "Start the LM Studio local server at `http://127.0.0.1:1234/v1`. The source uses a deliberately invalid model ID to exercise retries.",
     None,
 )
+LLAMA_CPP_STEP = (
+    "Start llama.cpp",
+    "Serve `ggml-org/gpt-oss-20b-GGUF` at `http://127.0.0.1:8080/v1`:",
+    "llama-server -hf ggml-org/gpt-oss-20b-GGUF --ctx-size 0 --jinja -ub 2048 -b 2048",
+)
 LITELLM_STEP = (
     "Start LiteLLM",
     "Start the local OpenAI-compatible proxy on port 4000:",
@@ -743,6 +748,9 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
                 "python cookbook/05_agent_os/remote/server.py",
             ),
         ],
+    },
+    "04_workflows/06_advanced_concepts/run_control/executor_events.py": {
+        "intro_override": "Setting `stream_executor_events=False` suppresses intermediate executor events. Terminal executor events still propagate.",
     },
     "04_workflows/06_advanced_concepts/long_running/disruption_catchup.py": {
         "repo_layout": True,
@@ -1012,6 +1020,9 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "90_models/lmstudio/retry.py": {"pre_run_steps": [LMSTUDIO_RETRY_STEP]},
     "90_models/lmstudio/structured_output.py": {"pre_run_steps": [LMSTUDIO_STEP]},
     "90_models/lmstudio/tool_use.py": {"pre_run_steps": [LMSTUDIO_STEP]},
+    "90_models/llama_cpp/basic.py": {"pre_run_steps": [LLAMA_CPP_STEP]},
+    "90_models/llama_cpp/structured_output.py": {"pre_run_steps": [LLAMA_CPP_STEP]},
+    "90_models/llama_cpp/tool_use.py": {"pre_run_steps": [LLAMA_CPP_STEP]},
     "90_models/ollama/chat/demo_gemma.py": {
         "pre_run_steps": [
             (
@@ -1346,6 +1357,13 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "12_context/12_engineering_briefing.py": {
         "env_remove": {"SLACK_TOKEN", "SLACK_USER_TOKEN"},
+        "pre_run_steps": [
+            (
+                "Prepare Slack channels",
+                "Create public channels named `#agents` and `#test-agents`, then invite the Slack app to both. Update the hardcoded channel names in the prompt if you use different channels. See [chat.postMessage channel membership](https://api.slack.com/methods/chat.postMessage#channels).",
+                None,
+            )
+        ],
     },
     "12_context/15_wiki_git.py": {
         "env_remove": {"WIKI_LOCAL_PATH"},
