@@ -5,8 +5,9 @@ Reads the plan from out/sync-plan.json (run plan.py first) and verifies:
   (a) frontmatter shape, fence balance, and source field on every generated page
   (b) every cookbook path referenced under examples/ exists in the cookbook
   (c) pages the plan flagged as fence-mangled now carry the full cookbook source
-  (d) file inventory report (mdx count, stray non-mdx files, git status summary)
-  (e) PRESERVE_CURATED pages untouched (per git status)
+  (d) curated_source bindings carry the complete cookbook source
+  (e) file inventory report (mdx count, stray non-mdx files, git status summary)
+  (f) PRESERVE_CURATED pages untouched (per git status)
 
 Writes out/integrity-log.json; exits 1 if any check fails.
 
@@ -110,6 +111,7 @@ problems += [f"(a) {s}: {w}" for s, w in a_bad]
 # ---------------------------------------------------------------------------
 ref_res = [
     re.compile(r"^source: (cookbook/\S+)$", re.M),
+    re.compile(r"^curated_source: (cookbook/\S+)$", re.M),
     re.compile(r"cd agno/(cookbook/[^\s`\"']+)"),
     re.compile(r"github\.com/agno-agi/agno/(?:blob|tree)/[^/\s]+/(cookbook/[^)\s\"'`]+)"),
 ]
@@ -150,14 +152,40 @@ for s in c_bad:
 problems += [f"(c) {s} code block != cookbook source" for s in c_bad]
 
 # ---------------------------------------------------------------------------
-# (d) file inventory report (informational; only stray non-mdx files fail)
+# (d) curated_source bindings carry the complete cookbook source
+# ---------------------------------------------------------------------------
+d_bound = []
+d_bad = []
+for p in all_mdx:
+    text = p.read_text(encoding="utf-8")
+    match = re.search(r"^curated_source: cookbook/(\S+)\s*$", text, re.M)
+    if not match:
+        continue
+    rel = match.group(1)
+    slug = str(p.relative_to(DOCS_ROOT)).removesuffix(".mdx")
+    d_bound.append(slug)
+    target = COOKBOOK / rel
+    code = extract_first_code_block(text)
+    if not target.is_file():
+        d_bad.append((slug, f"missing cookbook/{rel}"))
+    elif code is None:
+        d_bad.append((slug, "no Python code fence"))
+    elif code.strip("\n") != target.read_text(encoding="utf-8").strip("\n"):
+        d_bad.append((slug, f"code block != cookbook/{rel}"))
+print(f"(d) curated_source: {len(d_bound)} bindings checked, {len(d_bad)} bad")
+for slug, why in d_bad:
+    print("   BAD:", slug, "--", why)
+problems += [f"(d) {slug}: {why}" for slug, why in d_bad]
+
+# ---------------------------------------------------------------------------
+# (e) file inventory report (informational; only stray non-mdx files fail)
 # ---------------------------------------------------------------------------
 n_files = len(all_mdx)
 non_mdx = [str(p) for p in (DOCS_ROOT / "examples").rglob("*") if p.is_file() and p.suffix != ".mdx"]
-print(f"(d) files under examples/: {n_files} mdx; non-mdx files: {len(non_mdx)}")
+print(f"(e) files under examples/: {n_files} mdx; non-mdx files: {len(non_mdx)}")
 for f in non_mdx[:10]:
     print("   NON-MDX:", f)
-problems += [f"(d) non-mdx file under examples/: {f}" for f in non_mdx]
+problems += [f"(e) non-mdx file under examples/: {f}" for f in non_mdx]
 
 # --untracked-files=all: plain --porcelain collapses fully-untracked
 # directories into one "dir/" entry, undercounting the ?? files.
@@ -173,18 +201,18 @@ for line in status:
         st[code] += 1
     else:
         outside.append((code, path))
-print(f"(d) git status under examples/: {dict(st)}; entries outside examples/: {len(outside)}")
+print(f"(e) git status under examples/: {dict(st)}; entries outside examples/: {len(outside)}")
 
 # ---------------------------------------------------------------------------
-# (e) PRESERVE_CURATED untouched (all of them, not just a sample)
+# (f) PRESERVE_CURATED untouched (all of them, not just a sample)
 # ---------------------------------------------------------------------------
 changed = {line[3:] for line in status}
 preserve = [e["slug"] for e in plan["pages"] if e["class"] == "PRESERVE_CURATED"]
 e_bad = [s for s in preserve if f"{s}.mdx" in changed]
-print(f"(e) PRESERVE_CURATED: {len(preserve)} slugs, {len(e_bad)} appear in git status")
+print(f"(f) PRESERVE_CURATED: {len(preserve)} slugs, {len(e_bad)} appear in git status")
 for s in e_bad[:10]:
     print("   TOUCHED:", s)
-problems += [f"(e) curated page touched: {s}" for s in e_bad]
+problems += [f"(f) curated page touched: {s}" for s in e_bad]
 
 print()
 print(f"TOTAL PROBLEMS: {len(problems)}")

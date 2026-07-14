@@ -1,28 +1,36 @@
 ---
 title: "Notion MCP Agent"
-description: "Use the Agno MCP tools to interact with Notion workspace."
+description: "Query and update connected Notion pages through the official Notion MCP server."
+source: cookbook/91_tools/mcp/notion_mcp_agent.py
 ---
 
-## Prerequisites
+This example uses the official Notion MCP server (`@notionhq/notion-mcp-server`) over stdio with an integration token.
 
-1. Start by setting up a new internal integration in Notion: https://www.notion.so/profile/integrations
-2. Export your new Notion key: `export NOTION_API_KEY=ntn_****`
-3. Connect your relevant Notion pages to the integration. To do this, you'll need to visit that page, and click on the 3 dots, and select "Connect to integration".
-4. Install dependencies: `uv pip install "agno[mcp]" openai`
-
-```python
+```python notion_mcp_agent.py
 """
+Notion MCP Agent - Manages your documents
+
+This example uses the official Notion MCP server (`@notionhq/notion-mcp-server`)
+over stdio with an integration token.
+
+Setup:
+1. Create an internal integration in Notion: https://www.notion.so/profile/integrations
+2. Export the integration token: `export NOTION_TOKEN=ntn_****`
+3. Connect the pages you want the agent to access: open each page, click the "..." menu,
+   and select "Connect to integration".
+
+Dependencies: uv pip install agno mcp openai
+
 Usage:
-  python cookbook/90_tools/mcp/notion_mcp_agent.py
+  python cookbook/91_tools/mcp/notion_mcp_agent.py
 """
 
 import asyncio
-import json
 import os
 from textwrap import dedent
 
 from agno.agent import Agent
-from agno.models.openai import OpenAIChat
+from agno.models.openai import OpenAIResponses
 from agno.tools.mcp import MCPTools
 from mcp import StdioServerParameters
 
@@ -32,25 +40,20 @@ from mcp import StdioServerParameters
 
 
 async def run_agent():
-    token = os.getenv("NOTION_API_KEY")
+    token = os.getenv("NOTION_TOKEN")
     if not token:
-        raise ValueError(
-            "Missing Notion API key: provide --NOTION_API_KEY or set NOTION_API_KEY environment variable"
-        )
+        raise ValueError("Missing Notion integration token: set NOTION_TOKEN=ntn_****")
 
-    command = "npx"
-    args = ["-y", "@notionhq/notion-mcp-server"]
-    env = {
-        "OPENAPI_MCP_HEADERS": json.dumps(
-            {"Authorization": f"Bearer {token}", "Notion-Version": "2022-06-28"}
-        )
-    }
-    server_params = StdioServerParameters(command=command, args=args, env=env)
+    server_params = StdioServerParameters(
+        command="npx",
+        args=["-y", "@notionhq/notion-mcp-server"],
+        env={"NOTION_TOKEN": token},
+    )
 
     async with MCPTools(server_params=server_params) as mcp_tools:
         agent = Agent(
             name="NotionDocsAgent",
-            model=OpenAIChat(id="gpt-5.4-mini"),
+            model=OpenAIResponses(id="gpt-5.4"),
             tools=[mcp_tools],
             description="Agent to query and modify Notion docs via MCP",
             instructions=dedent("""\
@@ -78,17 +81,44 @@ if __name__ == "__main__":
 ```
 
 ## Run the Example
-```bash
-# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/91_tools/mcp
 
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
 
-# Export relevant API keys
-export NOTION_API_KEY="***"
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U "agno[mcp]" openai
+    ```
+  </Step>
 
-python notion_mcp_agent.py
-```
+  <Step title="Prepare Node.js">
+    The MCP server runs with `npx`. Install Node.js, then verify the commands:
+    ```bash
+    node --version
+    npx --version
+    ```
+  </Step>
+
+  <Step title="Export environment variables">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export NOTION_TOKEN="your_notion_token_here"
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:NOTION_TOKEN="your_notion_token_here"
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `notion_mcp_agent.py`, then run:
+    ```bash
+    python notion_mcp_agent.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/91_tools/mcp/notion_mcp_agent.py](https://github.com/agno-agi/agno/blob/main/cookbook/91_tools/mcp/notion_mcp_agent.py)

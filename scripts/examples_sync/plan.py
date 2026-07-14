@@ -110,6 +110,42 @@ NAV_SEEDS = {
 SIM_ACCEPT = 0.55   # basename match: accept relocation at/above this ratio
 KNOWLEDGE_REDIRECT_SIM = 0.5
 
+# Shipped example routes that now have canonical homes elsewhere. Keep the
+# source files as hidden redirect sources so a fresh plan never proposes
+# deleting them, but do not let them claim cookbook sources or nav slots.
+# These overrides are applied after fallback redirect selection.
+CANONICAL_REDIRECT_OVERRIDES: tuple[tuple[str, str], ...] = (
+    (
+        "examples/agent-os/factories/agent/hitl-factory",
+        "examples/agent-os/factories/hitl-factory",
+    ),
+    (
+        "examples/agent-os/factories/agent/jwt-role-factory",
+        "examples/agent-os/factories/jwt-role-factory",
+    ),
+    (
+        "examples/integrations/rag/overview",
+        "examples/knowledge/overview",
+    ),
+    (
+        "examples/integrations/rag/agentic-rag-infinity-reranker",
+        "examples/knowledge/integrations/rag/agentic-rag-infinity-reranker",
+    ),
+    (
+        "examples/integrations/rag/agentic-rag-with-lightrag",
+        "examples/knowledge/integrations/rag/agentic-rag-with-lightrag",
+    ),
+    (
+        "examples/integrations/rag/local-rag-langchain-qdrant",
+        "examples/knowledge/integrations/rag/local-rag-langchain-qdrant",
+    ),
+    (
+        "examples/reasoning/models/xai/overview",
+        "examples/reasoning/models/xai/reasoning-effort",
+    ),
+)
+REDIRECT_SOURCE_SLUGS = {source for source, _ in CANONICAL_REDIRECT_OVERRIDES}
+
 # ---------------------------------------------------------------------------
 # Parsing helpers
 # ---------------------------------------------------------------------------
@@ -131,10 +167,15 @@ def parse_page(text: str) -> dict:
     page["mangled_fence"] = mangled
 
     # source ref, in priority order:
-    # 1. `source: cookbook/...` frontmatter (written by generate.py; its
-    #    presence marks the page as machine-generated, never curated)
-    # 2. legacy run-block heuristic: cd + python inside the same bash block
+    # 1. `curated_source: cookbook/...` binds one curated code fence to source
+    # 2. `source: cookbook/...` marks a fully generated page
+    # 3. legacy run-block heuristic: cd + python inside the same bash block
     page["src_field"] = False
+    page["curated_source"] = False
+    cm = re.search(r"^curated_source: cookbook/(\S+)\s*$", page["frontmatter"], re.M)
+    if cm:
+        page["ref"] = cm.group(1)
+        page["curated_source"] = True
     sm = re.search(r"^source: cookbook/(\S+)\s*$", page["frontmatter"], re.M)
     if sm:
         page["ref"] = sm.group(1)
@@ -384,6 +425,8 @@ def main() -> None:
         return info["slug"].endswith("/overview") or (info["code"] is None and info["ref"] is None)
 
     def is_curated(info) -> bool:
+        if info.get("curated_source"):
+            return True
         if info.get("src_field"):
             return False  # `source:` frontmatter marks a generated page
         if info["mangled_fence"]:
@@ -420,6 +463,15 @@ def main() -> None:
             "in_nav": info["in_nav"],
             "group": list(nav_group_of.get(slug, ())),
         }
+        if slug in REDIRECT_SOURCE_SLUGS:
+            entry.update({
+                "class": "PRESERVE_CURATED",
+                "subtype": "redirect-source",
+                "in_nav": False,
+                "note": "preserved hidden source for an explicit canonical redirect",
+            })
+            results.append(entry)
+            continue
         if slug.startswith("examples/knowledge/") and not info.get("src_field"):
             # Legacy (pre-restructure) knowledge page: handled in the
             # restructure pass. Generated pages (`source:` frontmatter)
@@ -583,7 +635,7 @@ def main() -> None:
             continue
         slug = slug_for(rel)
         e = entry_by_slug.get(slug)
-        if e and e["class"] != "DELETE":
+        if e and e["class"] != "DELETE" and e.get("subtype") != "redirect-source":
             claimed[rel] = slug
             if not e.get("cookbook_path") and not e.get("new_cookbook_path"):
                 e["new_cookbook_path"] = rel
@@ -707,7 +759,7 @@ def main() -> None:
                 return cand
         return "examples/introduction"
 
-    redirects = []
+    redirects_by_source: dict[str, str] = {}
     for e in results:
         if e["class"] != "DELETE":
             continue
@@ -716,13 +768,35 @@ def main() -> None:
         dest = e.get("redirect_to") or fallback_dest(e["slug"])
         if dest not in live:  # never redirect to a dead page
             dest = fallback_dest(e["slug"])
-        redirects.append({"source": "/" + e["slug"], "destination": "/" + dest})
-    redirects.sort(key=lambda r: r["source"])
+        source = "/" + e["slug"]
+        if source in redirects_by_source:
+            raise RuntimeError(f"duplicate generated redirect source: {source}")
+        redirects_by_source[source] = "/" + dest
+
+    override_sources = [source for source, _ in CANONICAL_REDIRECT_OVERRIDES]
+    if len(override_sources) != len(set(override_sources)):
+        raise RuntimeError("duplicate source in CANONICAL_REDIRECT_OVERRIDES")
+    for source, dest in CANONICAL_REDIRECT_OVERRIDES:
+        if dest not in live:
+            raise RuntimeError(
+                f"canonical redirect destination is not live: /{source} -> /{dest}"
+            )
+        # Explicit canonical redirects replace any fallback selected above and
+        # also emit for preserved hidden sources that are not DELETE entries.
+        redirects_by_source["/" + source] = "/" + dest
+
+    redirects = [
+        {"source": source, "destination": redirects_by_source[source]}
+        for source in sorted(redirects_by_source)
+    ]
+    if len(redirects) != len({redirect["source"] for redirect in redirects}):
+        raise RuntimeError("duplicate redirect source in output")
 
     # ---- outputs -----------------------------------------------------------
     counts: dict[str, int] = {}
     for e in results:
         counts[e["class"]] = counts.get(e["class"], 0) + 1
+    counts.setdefault("DELETE", 0)
     counts["NEW"] = len(new_entries) + len(knowledge_plan["new_tree"])
 
     plan = {
