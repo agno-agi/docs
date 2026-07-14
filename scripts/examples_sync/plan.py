@@ -146,6 +146,17 @@ CANONICAL_REDIRECT_OVERRIDES: tuple[tuple[str, str], ...] = (
 )
 REDIRECT_SOURCE_SLUGS = {source for source, _ in CANONICAL_REDIRECT_OVERRIDES}
 
+# These examples landed on docs main after the pinned v2.7.2 source tag. Keep
+# their shipped pages while this sync remains pinned to that tag. The strict
+# source-field and navigation assertions make a renamed or replaced page fail
+# closed instead of silently bypassing source validation.
+POST_TAG_CURATED_SOURCE_OVERRIDES = {
+    "examples/agent-os/dbs/valkey-db": "05_agent_os/dbs/valkey_db.py",
+    "examples/storage/valkey/valkey-for-agent": "06_storage/valkey/valkey_for_agent.py",
+    "examples/storage/valkey/valkey-for-team": "06_storage/valkey/valkey_for_team.py",
+    "examples/storage/valkey/valkey-for-workflow": "06_storage/valkey/valkey_for_workflow.py",
+}
+
 # ---------------------------------------------------------------------------
 # Parsing helpers
 # ---------------------------------------------------------------------------
@@ -463,6 +474,23 @@ def main() -> None:
             "in_nav": info["in_nav"],
             "group": list(nav_group_of.get(slug, ())),
         }
+        post_tag_source = POST_TAG_CURATED_SOURCE_OVERRIDES.get(slug)
+        if post_tag_source is not None:
+            assert info["in_nav"], f"post-tag curated page left navigation: {slug}"
+            assert info["ref"] == post_tag_source, (
+                f"post-tag curated source changed: {slug}: {info['ref']!r} != {post_tag_source!r}"
+            )
+            assert post_tag_source not in cb_files, (
+                f"post-tag source now exists in the pinned source tree; remove the override: {slug}"
+            )
+            entry.update({
+                "class": "PRESERVE_CURATED",
+                "subtype": "post-tag-source",
+                "cookbook_path": post_tag_source,
+                "note": "shipped after the pinned source tag; preserve the upstream page",
+            })
+            results.append(entry)
+            continue
         if slug in REDIRECT_SOURCE_SLUGS:
             entry.update({
                 "class": "PRESERVE_CURATED",

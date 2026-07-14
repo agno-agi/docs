@@ -595,6 +595,7 @@ EXPLICIT_ROW_REFRESH = {
         "examples/storage/mongo/overview",
         "examples/storage/dynamodb/overview",
     },
+    "examples/tools/overview": {"examples/tools/searchapi-tools"},
     "examples/teams/basics/overview": {"examples/teams/basics/basic-coordination"},
     "examples/teams/learning/overview": {"examples/teams/learning/team-learned-knowledge"},
     "examples/teams/modes/tasks/overview": {
