@@ -1,9 +1,9 @@
 ---
 title: Security & Auth
-description: "Build a layered security model: authenticate every request, use scopes and roles for permissions, and isolate data between users."
+description: "Configure JWT authentication, RBAC scopes, request isolation, and per-user data isolation."
 ---
 
-AgentOS security works in layers. Each one stops a different class of attack, from unauthenticated requests at the edge to cross-user data access in the database. AgentOS gives you good defaults at every layer.
+AgentOS security works in layers: JWT authentication at the edge, scope-based authorization per endpoint, per-request component copies, and opt-in per-user data isolation. Network controls and database permissions cover the rest.
 
 <Note>
 
@@ -27,10 +27,10 @@ agent_os = AgentOS(
 
 `authorization=True` drives both layers:
 
-- **Authentication** (this section): requires a valid JWT on every request.
+- **Authentication** (this section): requires a valid JWT on protected central routes.
 - **Authorization** (below): enforces the token's scopes per endpoint.
 
-A small set of public routes are exempt from the JWT requirement: `/`, `/health`, `/info`, `/docs`, `/redoc`, `/openapi.json`, `/docs/oauth2-redirect`.
+A small set of public routes are exempt from the JWT requirement: `/`, `/health`, `/info`, `/docs`, `/redoc`, `/openapi.json`, `/docs/oauth2-redirect`. Slack, Telegram, and WhatsApp routes use their interface-specific request verification instead of central JWT middleware.
 
 ### Generate a Verification Key from the Control Plane
 
@@ -84,13 +84,13 @@ agent_os = AgentOS(
 
 With `verify_audience=True`, AgentOS rejects tokens whose `aud` claim doesn't match the expected audience. That expected value defaults to the AgentOS `id`; set `audience` to override it when your provider mints a different value.
 
-JWT claim names (`scopes`, `sub`) are configured on the JWT middleware itself, not on `AuthorizationConfig`. The defaults (`scopes` for the scopes claim, `sub` for the user id claim) match the tokens minted by the control plane.
+JWT claim names (`scopes`, `sub`) are configured on the JWT middleware itself, not on `AuthorizationConfig`. The defaults (`scopes` for the scopes claim, `sub` for the user ID claim) match the tokens minted by the control plane.
 
 For the full self-hosted setup including multi-issuer, see [Self-Hosted](/agent-os/security/authorization/self-hosted).
 
 ## Authorization
 
-Every JWT carries a claim listing the caller's permissions (`scopes` by default; configurable via `scopes_claim` if your provider uses a different name, like WorkOS's `permissions`). Endpoints are gated on those scopes.
+AgentOS reads the caller's permissions from a JWT claim (`scopes` by default). If your provider uses a different name, such as WorkOS's `permissions`, set the `scopes_claim` argument on the JWT middleware. It is not a field on `AuthorizationConfig`. Endpoints are gated on those scopes.
 
 | Scope | Grants |
 |-------|--------|
@@ -103,15 +103,15 @@ The AgentOS control plane mints each token with the appropriate scopes. Scopes a
 
 ## Request isolation
 
-Every request gets a fresh copy of the agent, team, or workflow it's hitting. AgentOS calls `deep_copy()` on the registered component per request, so mutable state (session-scoped variables, tool execution context, run metadata) never bleeds between concurrent calls.
+Each run request gets a fresh copy of the agent, team, or workflow it's hitting. AgentOS calls `deep_copy()` on the registered component before the run, so mutable per-run state (session-scoped variables, tool execution context, run metadata) never bleeds between concurrent calls.
 
-Heavy resources (the DB connection, the model client, MCP tool handles) are shared by reference; only the mutable per-run state is isolated. You get cheap concurrency without the footgun of two requests racing on the same in-memory agent instance.
+Heavy resources (the database connection, the model client, MCP tool handles) are shared by reference; only the mutable per-run state is isolated. You get cheap concurrency without two requests racing on the same in-memory agent instance.
 
-This is on by default for every run endpoint. There's nothing to configure.
+This is on by default for run endpoints. There's nothing to configure.
 
 ## User isolation
 
-Per-user data isolation is **opt-in**. Authorization stays in force without it, but routes operate on the unscoped DB. A caller with `agents:my-agent:run` could read another user's sessions if they know the IDs. For multi-tenant deployments, turn it on:
+Per-user data isolation is **opt-in**. Authorization remains active without it, but user-scoped database reads are not automatically filtered by the JWT subject. A caller with session or memory read scopes can query rows across users unless another restriction applies. For multi-tenant deployments, turn it on:
 
 ```python
 from agno.os.config import AuthorizationConfig
@@ -136,7 +136,7 @@ With `user_isolation=True`, every non-admin caller gets:
 | **Run ownership** | Cancel, resume, and continue routes require `session_id` and verify the run belongs to the caller's session. |
 | **WebSocket reconnect** | Reconnecting to a workflow run requires `session_id` and `workflow_id`, then verifies the caller owns the run. |
 
-Admin callers (whoever holds the configured `admin_scope`, defaulting to `agent_os:admin`) bypass all of the above and see the full unscoped view: service accounts, internal tooling, the control plane.
+Admin callers with the configured `admin_scope`, which defaults to `agent_os:admin`, bypass user isolation and receive the unscoped view.
 
 Per-user isolation requires a database that records `user_id` (PostgreSQL recommended for production).
 
@@ -145,7 +145,7 @@ Per-user isolation requires a database that records `user_id` (PostgreSQL recomm
 | Concern | Default behavior |
 |---------|------------------|
 | Authentication | `authorization=False`. Opt in with `authorization=True` and `JWT_VERIFICATION_KEY` for production. |
-| Request isolation | On. Every run endpoint deep-copies the component. |
+| Request isolation | On. Run endpoints deep-copy the registered component. |
 | User isolation | **Off**. Opt in via `AuthorizationConfig(user_isolation=True)` for multi-tenant. |
 
 See the [AuthorizationConfig reference](/reference/agent-os/authorization-config) for all configuration options and their defaults.

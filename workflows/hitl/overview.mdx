@@ -73,7 +73,7 @@ if run_output.is_paused:
 | Pause event | `StepPausedEvent`, `RouterPausedEvent`, `StepOutputReviewEvent` | `StepExecutorPausedEvent` |
 | Continue event | `StepContinuedEvent` | `StepExecutorContinuedEvent` |
 | Use case | Gate the whole step | Gate a specific tool call |
-| Resolved by | `req.confirm()`, `req.set_user_input(...)`, `req.select(...)` | `executor_req.confirm()`, `executor_req.provide_user_input(...)` |
+| Resolved by | `req.confirm()`, `req.set_user_input(...)`, `req.select(...)` | Mutating the requirement dicts (see [Executor HITL](/workflows/hitl/executor)) |
 
 ## Supported Primitives
 
@@ -97,8 +97,8 @@ HITL workflows need a database to persist state between pauses.
 from agno.db.sqlite import SqliteDb       # SQLite for development
 from agno.db.postgres import PostgresDb   # PostgreSQL for production
 
-workflow = Workflow(db=SqliteDb(db_file="workflow.db"), ...)
-workflow = Workflow(db=PostgresDb(db_url="postgresql://..."), ...)
+workflow = Workflow(db=SqliteDb(db_file="workflow.db"))
+workflow = Workflow(db=PostgresDb(db_url="postgresql+psycopg://user:password@localhost:5432/dbname"))
 ```
 
 ## Run Output Properties
@@ -110,7 +110,7 @@ When a workflow pauses, inspect `WorkflowRunOutput`:
 | `is_paused` | `True` if waiting for user action |
 | `pause_kind` | `"step"` or `"executor"` |
 | `paused_step_name` | Name of the step where the pause occurred |
-| `step_requirements` | List of pending requirements (last entry is the active one) |
+| `step_requirements` | All requirements for the run (last entry is the active one) |
 | `steps_requiring_confirmation` | Filter: steps needing confirm/reject |
 | `steps_requiring_user_input` | Filter: steps needing user input values |
 | `steps_requiring_output_review` | Filter: steps needing output review |
@@ -134,7 +134,7 @@ For the full structure of every pause object (`WorkflowRunOutput`, `StepRequirem
 
 ## Timeout
 
-Every HITL pause can have a deadline. If the user does not respond in time, `on_timeout` decides what happens.
+Step confirmation and output-review pauses can have a deadline. If the user does not respond in time, `on_timeout` decides what happens. Other primitives ignore the timeout fields.
 
 ```python
 from agno.workflow import OnTimeout
@@ -152,7 +152,7 @@ Step(
 )
 ```
 
-See [Timeout](/workflows/hitl/timeout) for the full set of behaviors and per-primitive details.
+See [Timeout](/workflows/hitl/timeout) for the full set of behaviors.
 
 ## Streaming
 

@@ -4,7 +4,7 @@ description: "Include previous messages in context for multi-turn conversations.
 keywords: [chat history, history, conversation history, multi-turn, context]
 ---
 
-Chat history enables multi-turn conversations. Without it, each run is isolated and the agent has no idea what was said before. With a database and `add_history_to_context=True`, previous messages are automatically included in every request.
+Chat history gives each run messages from earlier runs in the same session. Configure a database and set `add_history_to_context=True` to add those messages to the model context.
 
 ## Enable Chat History
 
@@ -19,7 +19,7 @@ from agno.db.sqlite import SqliteDb
 agent = Agent(
     db=SqliteDb(db_file="agent.db"),
     add_history_to_context=True,
-    num_history_runs=3,  # Include last 3 turns
+    num_history_runs=3,  # Include the last 3 runs
 )
 
 agent.print_response("My name is Sarah", session_id="chat_123")
@@ -30,9 +30,10 @@ from agno.team import Team
 from agno.db.sqlite import SqliteDb
 
 team = Team(
+    members=[...],
     db=SqliteDb(db_file="team.db"),
     add_history_to_context=True,
-    num_history_runs=3,  # Include last 3 turns
+    num_history_runs=3,  # Include the last 3 runs
 )
 
 team.print_response("My name is Sarah", session_id="chat_123")
@@ -41,7 +42,7 @@ team.print_response("What's my name?", session_id="chat_123")  # Team knows: "Sa
 </CodeGroup>
 
 <Note>
-Chat history requires a database. Without one, there's nothing to retrieve.
+Chat history requires a database that stores the session runs.
 </Note>
 
 ## Control History Size
@@ -90,6 +91,8 @@ agent = Agent(
 )
 ```
 
+The agent gets `search_past_sessions` and `read_past_session` tools to look up previous conversations.
+
 <Warning>
 Keep `num_past_sessions_to_search` low (2-3). Cross-session history can quickly fill your context window.
 </Warning>
@@ -98,7 +101,7 @@ Keep `num_past_sessions_to_search` low (2-3). Cross-session history can quickly 
 
 Retrieve history directly in your code:
 ```python
-# Get user-assistant message pairs
+# Get user and assistant messages
 chat_history = agent.get_chat_history(session_id="chat_123")
 
 # Get all messages from the session
@@ -115,6 +118,7 @@ Use this for building custom UIs, debugging, or exporting transcripts.
 Teams support additional history sharing between members:
 ```python
 team = Team(
+    members=[...],
     db=SqliteDb(db_file="team.db"),
     add_history_to_context=True,
     num_history_runs=3,

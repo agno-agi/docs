@@ -1,6 +1,6 @@
 ---
 title: Agent API
-description: "API and MCP server for every agent, team, and workflow in your AgentOS."
+description: "REST API and optional MCP server for agents, teams, and workflows in AgentOS."
 ---
 
 Shipping an agent needs more than a `/run` endpoint. A live agent needs an API that can:
@@ -12,7 +12,7 @@ Shipping an agent needs more than a `/run` endpoint. A live agent needs an API t
 - Gate sensitive tool calls on human approval
 - Resume paused runs once that approval comes back
 
-AgentOS generates all of this for your agents, teams, and workflows automatically. Browse the live API at `/docs` or fetch the spec from `/openapi.json` on any AgentOS instance.
+AgentOS registers run routes for your agents, teams, and workflows. Database-backed routes and opt-in features such as scheduling, tracing, and MCP depend on the AgentOS configuration. Browse the live API at `/docs` or fetch the spec from `/openapi.json`.
 
 <video
   autoPlay
@@ -32,8 +32,9 @@ Agents need to be reachable over more than one interface. Define an agent once a
 | Group | What you can do |
 |-------|-----------------|
 | **Runs** | Create, list, cancel, continue paused runs, resume disconnected streams. Stream over SSE or run as background jobs. |
-| **Sessions** | Create, list, rename, update, delete. Pull every run in a session. Scoped per user. |
+| **Sessions** | Create, list, rename, update, delete. Pull every run in a session. Enforce per-user scoping with user isolation. |
 | **Memory** | Create, update, delete user memories. Search content, filter by topic, view per-user stats. Run optimization to compact token usage. |
+| **Learnings** | Create, list, update, delete learnings captured from runs. List the users they belong to. |
 | **Knowledge** | Upload files, text, URLs, or content from S3, GCS, SharePoint, GitHub. Search via vector, keyword, or hybrid. List sources, files in a source, content status. |
 | **Evals** | Run accuracy, agent-as-judge, performance, and reliability evals. List, update, delete eval runs. |
 | **Traces** | List, search with a filter DSL, view full span trees, group by session. Inspect individual LLM calls and tool invocations. |
@@ -41,11 +42,12 @@ Agents need to be reachable over more than one interface. Define an agent once a
 | **Schedules** | CRUD, enable, disable, trigger now. List historical runs of a schedule. |
 | **Approvals** | List pending approvals, resolve them, count by user. |
 | **Components** | Version your agents, teams, and workflows. Manage drafts, publish, roll back to a previous version. |
+| **Service Accounts** | Mint a service account token (returned once), list accounts, revoke them. |
 | **Database** | Migrate one or all database schemas to a target version. |
 
 ## How a request looks
 
-Run endpoints accept `multipart/form-data` so a single call can carry text, files, and media. The response shape is the same whether it's an agent, a team, or a workflow:
+Run endpoints accept `multipart/form-data` so a single call can carry text, files, and media. Agents, teams, and workflows share this request pattern; each response identifies the component type that ran. An agent request looks like this:
 
 ```bash
 curl -X POST http://localhost:7777/agents/my-agent/runs \
@@ -90,6 +92,6 @@ The agent is a regular Python object. Call `agent.run(...)` or `await agent.arun
 
 ## Auth
 
-When `authorization=True`, every endpoint except the public routes (`/`, `/health`, `/info`, and the API docs routes like `/docs` and `/openapi.json`) requires a valid JWT in the `Authorization: Bearer ...` header. AgentOS validates the token, extracts claims, and applies RBAC scopes per request before any agent code runs.
+When `authorization=True`, central REST routes require a valid JWT in the `Authorization: Bearer ...` header except for the public routes (`/`, `/health`, `/info`, and API docs routes such as `/docs` and `/openapi.json`). AgentOS validates the token, extracts claims, and applies RBAC scopes before agent code runs. Self-authenticating interfaces such as Slack, Telegram, and WhatsApp verify requests through their own interface middleware.
 
 See [Security & Auth](/features/security-and-auth) for the details.

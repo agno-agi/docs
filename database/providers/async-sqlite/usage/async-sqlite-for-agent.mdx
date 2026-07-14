@@ -1,17 +1,20 @@
 ---
-title: Async Sqlite for Agent
+title: Async SQLite for Agent
 sidebarTitle: Agent
+description: Store agent sessions and run history asynchronously in SQLite with AsyncSqliteDb.
 ---
 
-Agno supports using Sqlite asynchronously as a storage backend for Agents, with the `AsyncSqliteDb` class.
+`AsyncSqliteDb` stores an Agent's sessions and run history asynchronously in SQLite. Use async Agent methods such as `arun()` and `aprint_response()`.
 
 ## Usage
 
-Install the `sqlalchemy`, `aiosqlite`, `openai`, and `ddgs` packages:
+Install the `sqlalchemy` asyncio extra, `aiosqlite`, `openai`, and `ddgs`:
 
 ```shell
-uv pip install sqlalchemy aiosqlite openai ddgs
+uv pip install "sqlalchemy[asyncio]" aiosqlite openai ddgs
 ```
+
+`AsyncSqliteDb` uses an async `db_engine`, then `db_url`, then `db_file`. A `db_url` must use an async driver such as `sqlite+aiosqlite`. If none is provided, it creates `agno.db` in the current directory.
 
 ```python async_sqlite_for_agent.py
 import asyncio
@@ -20,8 +23,7 @@ from agno.agent import Agent
 from agno.db.sqlite import AsyncSqliteDb
 from agno.tools.websearch import WebSearchTools
 
-# Initialize AsyncSqliteDb
-db = AsyncSqliteDb(db_file="agent_storage.db")
+db = AsyncSqliteDb(db_file="tmp/data.db")
 
 agent = Agent(
     db=db,
@@ -32,15 +34,17 @@ agent = Agent(
 
 
 async def main():
-    await agent.aprint_response("How many people live in Canada?")
-    await agent.aprint_response("What is their national anthem called?")
+    try:
+        await agent.aprint_response("How many people live in Canada?")
+        await agent.aprint_response("What is their national anthem called?")
+    finally:
+        await db.close()
 
 
 if __name__ == "__main__":
     asyncio.run(main())
-
 ```
 
-## Params
+## Parameters
 
 <Snippet file="db-async-sqlite-params.mdx" />

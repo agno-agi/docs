@@ -54,7 +54,7 @@ invoice = agent.run(
 #         quantity=12, unit_price=99.0, amount=1188.0), LineItem(...)])
 ```
 
-The hard part is the missing-field discipline. A hallucinated `total` corrupts the AP ledger. Two lines in the instructions ("use exactly what the document shows", "null if missing") cut the hallucination rate substantially on noisy scans.
+The hard part is the missing-field discipline. A hallucinated `total` corrupts the AP ledger. Two lines in the instructions carry that discipline: "Null for missing fields" and "Do not invent line items". Without them, a model asked for a complete object tends to fill the gaps in a noisy scan with plausible values.
 
 ## Persist the row
 
@@ -68,10 +68,11 @@ engine = create_engine("postgresql+psycopg://ai:ai@localhost:5532/ap")
 with engine.begin() as conn:
     invoice_id = conn.execute(
         text(
-            "INSERT INTO invoices (invoice_number, vendor, invoice_date, "
-            "due_date, currency, subtotal, tax, total) "
-            "VALUES (:invoice_number, :vendor, :invoice_date, :due_date, "
-            ":currency, :subtotal, :tax, :total) RETURNING id"
+            "INSERT INTO invoices (invoice_number, vendor, vendor_tax_id, "
+            "bill_to, invoice_date, due_date, currency, subtotal, tax, total) "
+            "VALUES (:invoice_number, :vendor, :vendor_tax_id, :bill_to, "
+            ":invoice_date, :due_date, :currency, :subtotal, :tax, :total) "
+            "RETURNING id"
         ),
         invoice.model_dump(exclude={"lines"}),
     ).scalar_one()
@@ -88,11 +89,11 @@ with engine.begin() as conn:
         )
 ```
 
-Two writes per invoice. The schema decides the table layout; the agent decides the values.
+One insert for the header and one per line item. The schema decides the table layout; the agent decides the values.
 
 ## Receipts
 
-Receipts are invoices with a thinner header. Drop `due_date`, `vendor_tax_id`, and `bill_to`. Keep the same line-item shape. The same agent and the same instructions work; only `output_schema` changes.
+Receipts are invoices with a thinner header: merchant, purchase date, currency, total. Keep the same line-item shape. The same agent and the same instructions work; only `output_schema` changes.
 
 ```python
 class Receipt(BaseModel):

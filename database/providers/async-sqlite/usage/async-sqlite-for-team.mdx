@@ -1,18 +1,19 @@
 ---
-title: Async Sqlite for Team
+title: Async SQLite for Team
 sidebarTitle: Team
+description: Store team sessions and run history asynchronously in SQLite with AsyncSqliteDb.
 ---
 
-Agno supports using Sqlite asynchronously as a storage backend for Teams, with the `AsyncSqliteDb` class.
+`AsyncSqliteDb` stores a Team's sessions and run history asynchronously in SQLite. Use async Team methods such as `arun()` and `aprint_response()`.
 
 ## Usage
 
-Provide `db_url`, `db_file` or `db_engine`. If none is provided, a new database is created in the current directory. The following example uses `db_file`.
+`AsyncSqliteDb` uses an async `db_engine`, then `db_url`, then `db_file`. A `db_url` must use an async driver such as `sqlite+aiosqlite`. If none is provided, it creates `agno.db` in the current directory. The following example uses `db_file`.
 
-Install the `sqlalchemy`, `aiosqlite`, `openai`, and `ddgs` packages:
+Install the `sqlalchemy` asyncio extra, `aiosqlite`, `openai`, and `ddgs`:
 
 ```shell
-uv pip install sqlalchemy aiosqlite openai ddgs
+uv pip install "sqlalchemy[asyncio]" aiosqlite openai ddgs
 ```
 
 ```python async_sqlite_for_team.py
@@ -27,8 +28,7 @@ from agno.tools.hackernews import HackerNewsTools
 from agno.tools.websearch import WebSearchTools
 from pydantic import BaseModel
 
-# Initialize AsyncSqliteDb with a database file
-db = AsyncSqliteDb(db_file="team_storage.db")
+db = AsyncSqliteDb(db_file="tmp/team.db")
 
 class Article(BaseModel):
     title: str
@@ -38,7 +38,7 @@ class Article(BaseModel):
 hn_researcher = Agent(
     name="HackerNews Researcher",
     model=OpenAIResponses(id="gpt-5.2"),
-    role="Gets top stories from hackernews.",
+    role="Gets top stories from HackerNews.",
     tools=[HackerNewsTools()],
 )
 
@@ -56,7 +56,7 @@ hn_team = Team(
     members=[hn_researcher, web_searcher],
     db=db,
     instructions=[
-        "First, search hackernews for what the user is asking about.",
+        "First, search HackerNews for what the user is asking about.",
         "Then, ask the web searcher to search for each story to get more information.",
         "Finally, provide a thoughtful and engaging summary.",
     ],
@@ -65,11 +65,19 @@ hn_team = Team(
     show_members_responses=True,
 )
 
-asyncio.run(
-    hn_team.aprint_response("Write an article about the top 2 stories on hackernews")
-)
+async def main():
+    try:
+        await hn_team.aprint_response(
+            "Write an article about the top 2 stories on HackerNews"
+        )
+    finally:
+        await db.close()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
-## Params
+## Parameters
 
 <Snippet file="db-async-sqlite-params.mdx" />

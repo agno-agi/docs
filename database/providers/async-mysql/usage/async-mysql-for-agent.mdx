@@ -1,21 +1,22 @@
 ---
 title: Async MySQL for Agent
-sidebarTitle: Agent with AsyncDb
+sidebarTitle: Agent
+description: Store agent sessions and run history asynchronously in MySQL with AsyncMySQLDb.
 ---
 
-Agno supports using [MySQL](https://www.mysql.com/) asynchronously, with the `AsyncMySQLDb` class.
+`AsyncMySQLDb` stores an Agent's sessions and run history asynchronously in [MySQL](https://www.mysql.com/). Use async Agent methods such as `arun()` and `aprint_response()`.
 
 ## Usage
 
-Install the `sqlalchemy`, `asyncmy`, and `openai` packages:
+Install the `sqlalchemy`, `asyncmy`, `openai`, and `ddgs` packages:
 
 ```shell
-uv pip install sqlalchemy asyncmy openai
+uv pip install sqlalchemy asyncmy openai ddgs
 ```
 
 ### Run MySQL
 
-Install [docker desktop](https://docs.docker.com/desktop/install/mac-install/) and run **MySQL** on port **3306** using:
+Install [Docker Desktop](https://docs.docker.com/get-started/get-docker/), then start MySQL on port `3306`:
 
 ```bash
 docker run -d \
@@ -35,37 +36,41 @@ import uuid
 from agno.agent import Agent
 from agno.db.base import SessionType
 from agno.db.mysql import AsyncMySQLDb
-from agno.tools.hackernews import HackerNewsTools
+from agno.tools.websearch import WebSearchTools
 
 db_url = "mysql+asyncmy://ai:ai@localhost:3306/ai"
 db = AsyncMySQLDb(db_url=db_url)
 
 agent = Agent(
     db=db,
-    tools=[HackerNewsTools()],
+    tools=[WebSearchTools()],
     add_history_to_context=True,
     add_datetime_to_context=True,
 )
 
+
 async def main():
-    """Run the agent queries in the same event loop"""
-    session_id = str(uuid.uuid4())
-    await agent.aprint_response(
-        "How many people live in Canada?", session_id=session_id
-    )
-    await agent.aprint_response(
-        "What is their national anthem called?", session_id=session_id
-    )
-    session_data = await db.get_session(
-        session_id=session_id, session_type=SessionType.AGENT
-    )
-    print("\n=== SESSION DATA ===")
-    print(session_data.to_dict())
+    try:
+        session_id = str(uuid.uuid4())
+        await agent.aprint_response(
+            "How many people live in Canada?", session_id=session_id
+        )
+        await agent.aprint_response(
+            "What is their national anthem called?", session_id=session_id
+        )
+        session_data = await db.get_session(
+            session_id=session_id, session_type=SessionType.AGENT
+        )
+        print("\n=== SESSION DATA ===")
+        print(session_data.to_dict())
+    finally:
+        await db.close()
+
 
 if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-## Params
+## Parameters
 
 <Snippet file="db-async-mysql-params.mdx" />

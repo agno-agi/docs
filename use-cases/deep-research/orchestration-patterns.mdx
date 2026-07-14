@@ -9,11 +9,11 @@ A research question has a shape. A factual lookup wants one specialist. A high-s
 
 | Pattern | Primitive | Best for |
 |---------|-----------|----------|
-| **Route** | `Team` (route mode) | A direct question that one specialist owns |
+| **Route** | `Team` ([route mode](/teams/delegation#route-mode)) | A direct question that one specialist owns |
 | **Coordinate** | `Team` (coordinate mode) | Open-ended questions where a lead decides who to consult |
 | **Broadcast** | `Team` (broadcast mode) | High-stakes calls where every specialist evaluates independently |
-| **Task** | `Team` (tasks mode) | Multi-step jobs the team decomposes autonomously |
-| **Pipeline** | `Workflow` | Standardized, auditable reviews that must run the same way every time |
+| **Task** | `Team` ([tasks mode](/teams/delegation#tasks-mode)) | Multi-step jobs the team decomposes autonomously |
+| **Pipeline** | `Workflow` | Reviews with an explicit sequence and error policy |
 
 ## Coordinate: a lead orchestrates dynamically
 
@@ -34,15 +34,17 @@ coordinate_team = Team(
         "Always consult the Risk Officer before any allocation decision.",
         "Provide a final recommendation with a specific dollar allocation.",
     ],
-    show_members_responses=True,
 )
 
-answer = coordinate_team.run("Should we add NVDA at a $2M position?").content
-# The lead consults the analysts it judges relevant, always the Risk
-# Officer before sizing, then synthesizes one recommendation.
+response = coordinate_team.run("Should we add NVDA at a $2M position?")
+answer = response.content
+# The lead chooses which members to consult and synthesizes a recommendation.
+# response.member_responses holds each consulted member's run.
 ```
 
-## Broadcast: everyone evaluates, the lead synthesizes
+The instruction asks the lead to consult the Risk Officer, but model instructions do not enforce that invariant. Put mandatory review in a `Workflow` step or an application-side gate.
+
+## Broadcast: independent evaluations, one synthesis
 
 Every analyst assesses the same question independently. The lead reconciles agreement and disagreement into one call. Use this when independence reduces bias.
 
@@ -58,13 +60,14 @@ broadcast_team = Team(
         "Note where they agree and disagree, then decide.",
         "Weight the Risk Officer's concerns heavily in position sizing.",
     ],
-    show_members_responses=True,
 )
 ```
 
+Set `store_member_responses=True` to persist each member's run with the team's run record.
+
 ## Pipeline: the same steps, every time
 
-When a review must be auditable, a `Workflow` fixes the steps. Each step's output feeds the next; independent steps run in [parallel](/use-cases/deep-research/parallel-investigation).
+When a review needs an explicit execution path, a `Workflow` fixes the step graph. Each step's output feeds the next; independent steps run in [parallel](/use-cases/deep-research/parallel-investigation).
 
 ```python
 from agno.workflow import Parallel, Step, Workflow
@@ -88,7 +91,7 @@ investment_workflow = Workflow(
 result = investment_workflow.run("Run a full investment review on NVDA")
 # result.content is the Committee Decision; result.step_results holds each
 # step in order (the Deep Dive is one StepOutput with the two analyses in
-# its .steps). Same shape every run.
+# its .steps).
 ```
 
 ## Teams vs Workflows
@@ -97,10 +100,10 @@ result = investment_workflow.run("Run a full investment review on NVDA")
 |--|------|----------|
 | Control | A lead model decides the flow | You define the steps |
 | Best for | Open-ended or adaptive research | Standardized, repeatable reviews |
-| Auditability | Varies by run | Identical every run |
-| Failure mode | Lead picks a poor path | A step is wrong, but always the same step |
+| Execution path | The lead chooses members at run time | The declared step graph controls execution |
+| Error handling | The lead may retry or choose another member | Each step uses its configured `on_error` policy |
 
-A mature research system uses both: Teams for exploration, a Workflow for the decision of record.
+Use Teams for adaptive exploration and a Workflow when the decision path must be explicit. Add a database to retain the run record.
 
 ## Next steps
 
@@ -112,6 +115,7 @@ A mature research system uses both: Teams for exploration, a Workflow for the de
 ## Developer Resources
 
 - [Teams](/teams/overview)
+- [Team delegation](/teams/delegation)
 - [Team modes cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/03_teams/02_modes)
 - [Workflows](/workflows/overview)
 - [Workflow cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/04_workflows)

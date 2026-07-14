@@ -1,9 +1,9 @@
 ---
 title: "Agent Storage"
-description: "Store sessions, memory, knowledge, traces in any database backend."
+description: "Store sessions, memory, knowledge, and traces in a supported database backend."
 ---
 
-Agents can persist every data point they generate and use in a database, set by the `db` param. We can store sessions, memory, knowledge, traces, schedules, approvals, learnings and even usage metrics.
+Agents persist the data they generate and use in a database, set by the `db` param: sessions, memory, knowledge metadata, traces, schedules, approvals, learnings, and usage metrics.
 
 The primitives (agents, teams, workflows) and the AgentOS accept a `db` param. Pick from JSON files (local or cloud), embedded (SQLite), relational (Postgres, MySQL), document (MongoDB, Firestore), key-value (Redis, Valkey, DynamoDB), or distributed (SingleStore).
 
@@ -16,7 +16,7 @@ db = PostgresDb(db_url="postgresql+psycopg://user:pass@host:5432/agno")
 agent_os = AgentOS(agents=[agent], db=db)
 ```
 
-When we set the `db` param, AgentOS creates the tables and indexes on first boot.
+AgentOS creates the tables and indexes on first boot. Set `auto_provision_dbs=False` on `AgentOS` when you manage the schema yourself.
 
 ## What gets stored
 
@@ -24,6 +24,7 @@ When we set the `db` param, AgentOS creates the tables and indexes on first boot
 |-------|-------|
 | `agno_sessions` | Conversation history per `(user_id, session_id)` |
 | `agno_memories` | User memories the agent decides to keep |
+| `agno_learnings` | Learnings captured from runs |
 | `agno_knowledge` | Knowledge content metadata (embeddings live in the vector store) |
 | `agno_traces`, `agno_spans` | OpenTelemetry traces |
 | `agno_approvals` | Pending and resolved HITL requests |
@@ -35,7 +36,7 @@ When we set the `db` param, AgentOS creates the tables and indexes on first boot
 
 ## Pick a backend
 
-`PostgresDb` is the default for most tutorials and the recommended production database. It pairs well with `PgVector` to keep relational data and embeddings on the same engine.
+Most tutorials use `PostgresDb`. Pair it with `PgVector` when you want relational data and embeddings on the same Postgres instance.
 
 | Backend | When to use |
 |---------|-------------|
@@ -48,18 +49,20 @@ When we set the `db` param, AgentOS creates the tables and indexes on first boot
 | [`ValkeyDb`](/database/providers/valkey/overview) | Cache-friendly, ephemeral sessions |
 | [`DynamoDb`](/database/providers/dynamodb/overview) | AWS-native, serverless |
 | [`FirestoreDb`](/database/providers/firestore/overview) | GCP-native, serverless |
-| [`GcsJsonDb`](/database/providers/gcs/overview) | Cheap cold storage, knowledge as JSON in Cloud Storage |
+| [`JsonDb`](/database/providers/json/overview) | Local JSON files, no server to run |
+| [`GcsJsonDb`](/database/providers/gcs/overview) | JSON-backed records in Google Cloud Storage |
 | [`InMemoryDb`](/database/providers/in-memory/overview) | Tests, ephemeral demos |
 
 Postgres-compatible managed services like [Neon](/database/providers/neon/overview) and [Supabase](/database/providers/supabase/overview) work with `PostgresDb` directly. Point `db_url` at the managed instance. Async variants (`AsyncPostgresDb`, `AsyncSqliteDb`, `AsyncMongoDb`, `AsyncMySQLDb`) are documented under [Database](/database/overview).
 
 ## Vector storage
 
-Knowledge needs a vector store and Agno supports 15+ vector databases out of the box.
+Knowledge needs a vector store, and Agno supports 15+ vector databases out of the box.
 
 ```python
 from agno.knowledge import Knowledge
 from agno.vectordb.pgvector import PgVector
+from agno.vectordb.search import SearchType
 
 agent = Agent(
     db=db,
@@ -67,7 +70,7 @@ agent = Agent(
         vector_db=PgVector(
             table_name="my_kb",
             db_url=DB_URL,
-            search_type="hybrid",   # vector + full-text search
+            search_type=SearchType.hybrid,   # vector + full-text search
         ),
     ),
 )
@@ -75,7 +78,7 @@ agent = Agent(
 
 Other options: LanceDB, Qdrant, Weaviate, Pinecone, Chroma, MongoDB Atlas, Cosmos, Cassandra, ClickHouse, SurrealDB, Milvus. See [Vector Stores](/knowledge/vector-stores/index).
 
-For most production AgentOS deployments, **PgVector + PostgresDb on the same Postgres** is the right default. One database, hybrid search, transactional reads, no extra service to operate.
+For most production AgentOS deployments, **PgVector + PostgresDb on the same Postgres** is the right default: one database with hybrid search and transactional reads, and no extra service to operate.
 
 ## Splitting concerns across databases
 
@@ -96,7 +99,7 @@ agent_os = AgentOS(
 )
 ```
 
-Common splits: per-tenant DBs for strict isolation, a high-traffic agent on its own engine, or routing one workflow's session history to a cheaper backend.
+Common splits include separate tenant databases, a high-traffic agent on its own engine, or one workflow's session history on a different backend. Database-level tenant isolation also requires separate credentials and grants.
 
 ## File and blob storage
 

@@ -3,19 +3,28 @@ title: Run on Railway
 description: "Deploy your agent platform to Railway with JWT auth on."
 ---
 
-Next we're going to run our agent platform on Railway.
-
-Your company probably has a set way of running software. Follow that. If you're looking for a place to test this out without going through the full devops process, Railway is a great option. $20/month gets you pretty far and the codebase comes with scripts to:
+Your company probably has a set way of running software. Follow that. If you're looking for a place to test this out without going through the full DevOps process, Railway is a good option, and the template includes scripts to:
 
 - Deploy to Railway: `./scripts/railway/up.sh`
 - Sync environment variables: `./scripts/railway/env-sync.sh`
 - Redeploy the app: `./scripts/railway/redeploy.sh`
-- Tear everything down: `./scripts/railway/down.sh`
 
 ## Prerequisites
 
-- A [Railway](https://railway.app) account
+- A [Railway](https://railway.com) account
 - The [Railway CLI](https://docs.railway.com/cli#installing-the-cli) installed and authenticated (`railway login`)
+
+## Why JWT is on by default
+
+Token-Based Authorization is **ON** by default. Without a `JWT_VERIFICATION_KEY` (or `JWT_JWKS_FILE`), the app refuses to serve traffic in production. This is why the deploy script stops and asks you for a key.
+
+Token-Based Auth gives you three things:
+
+- **Protected application routes.** Requests to agent, team, workflow, and data routes require a valid token.
+- **Per-request identity.** Middleware parses the token and exposes `user_id`, `session_id`, and custom claims to protected routes.
+- **Granular permissions.** A user token can be scoped to run a single agent. An admin token can read all sessions and test any agent.
+
+AgentOS leaves its operational and API-documentation routes public: `/`, `/health`, `/info`, `/docs`, `/redoc`, `/openapi.json`, and `/docs/oauth2-redirect`.
 
 ## Deploy your agent platform to Railway
 
@@ -44,30 +53,17 @@ Your company probably has a set way of running software. Follow that. If you're 
     2. Provisions a Postgres service (with pgvector) and a persistent volume.
     3. Creates the `agent-os` service and forwards the database connection vars.
     4. Issues your public Railway domain and sets `AGENTOS_URL` to it, on Railway and in `.env.production`.
-    5. Generates an `MCP_CONNECT_SECRET` if you don't have one. This is the OAuth consent secret for connecting AI apps like Claude and ChatGPT.
-    6. Pauses and asks for a JWT verification key.
-    7. Builds and deploys from the current directory.
+    5. Pauses and asks for a JWT verification key.
+    6. Builds and deploys from the current directory.
 
     The domain takes a few minutes to start resolving after the first deploy.
 
   </Step>
 
-  <Step title="Why the script stops for a key">
-
-    Token-Based Authorization is **ON** by default. Without a `JWT_VERIFICATION_KEY` (or `JWT_JWKS_FILE`), the app refuses to serve traffic in production.
-
-    Your platform's job is to keep your data off the public web. Shipping with auth off by default would be a risky choice, since many people never turn it on. Token-Based Auth gives you three things:
-
-    - **No public access.** The server rejects requests without a valid token.
-    - **Per-request identity.** Middleware parses the token and injects `user_id`, `session_id`, and custom claims into every endpoint.
-    - **Granular permissions.** A user token can be scoped to run a single agent. An admin token can read all sessions and test any agent.
-
-  </Step>
-
   <Step title="Mint your verification key">
-    The fastest path is to let [os.agno.com](https://os.agno.com) generate the keypair while the script waits:
+    [os.agno.com](https://os.agno.com) can generate the keypair while the script waits:
 
-    1. Click **Connect OS** → **Live**, enter your Railway domain, and name it **Live AgentOS**.
+    1. Click **Connect OS** → **Live**, enter your Railway domain, and name it **Live Agent Platform**.
     2. Go to **Settings** → **OS & Security** and turn on **Token-Based Authorization (JWT)**. The UI generates an RSA keypair, keeps the private key, and shows you the public key.
     3. Paste the public key into the script prompt. The script saves it to `.env.production` and sets it on Railway, then deploys.
 
@@ -76,18 +72,6 @@ Your company probably has a set way of running software. Follow that. If you're 
     </Note>
 
     You can also bring your own keypair. Generate an RSA keypair, sign tokens with the private key in your own auth service, and put the matching public key in `JWT_VERIFICATION_KEY`. The middleware verifies RS256 by default. For another algorithm, set `algorithm` in `authorization_config`.
-  </Step>
-
-  <Step title="Connect your MCP clients">
-
-    Point your local coding agents at the production platform:
-
-    ```bash
-    uvx agno connect --url https://<your-app>.up.railway.app
-    ```
-
-    For Claude and ChatGPT apps, add `https://<your-app>.up.railway.app/mcp` as a custom connector and approve the consent page with the `MCP_CONNECT_SECRET` from `.env.production`.
-
   </Step>
 
   <Step title="Confirm it's live">
@@ -109,7 +93,7 @@ By default every code update needs `./scripts/railway/redeploy.sh`. To auto-depl
 2. Under **Source**, click **Connect Repo** and pick your repo.
 3. Set the deploy branch to `main`.
 
-Push to `main` now triggers a build and rolling deploy. `./scripts/railway/env-sync.sh` is still how you push env changes.
+Push to `main` now triggers a build and deploy. `./scripts/railway/env-sync.sh` is still how you push env changes.
 
 ## Opting out of JWT (not recommended)
 
@@ -117,7 +101,7 @@ If you must run production without auth (inside a private VPC behind another aut
 
 ## Scaling
 
-The default deploy is one replica at 4Gi memory and 2 vCPU. Bump `numReplicas` to 2+ in `railway.json` for zero-downtime rolling deploys and basic fault tolerance, and raise `limits` as your usage grows.
+The default deploy is one replica with 4 GiB of memory and 2 vCPU. Change `numReplicas` and `limits` in `railway.json` as your load and availability requirements grow.
 
 ## Operations
 
@@ -128,10 +112,10 @@ The default deploy is one replica at 4Gi memory and 2 vCPU. Bump `numReplicas` t
 | Run a command with production env vars | `railway run --service agent-os <command>`  |
 | Push env changes                      | `./scripts/railway/env-sync.sh`              |
 | Redeploy without git push             | `./scripts/railway/redeploy.sh`              |
-| Tear everything down                  | `./scripts/railway/down.sh`                  |
+| Tear everything down                  | Delete the project in the Railway dashboard  |
 
 <Warning>
-  `down.sh` deletes the whole Railway project: the app, the database, and all data.
+  Deleting the Railway project removes the app, the database, and all data.
 </Warning>
 
 ## Next

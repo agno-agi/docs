@@ -1,9 +1,13 @@
 ---
 title: "Self-correcting agents"
-description: "Turn every diagnosed error into a durable learning to prevent the same mistakes."
+description: "Save diagnosed query errors as learned knowledge and retrieve the corrections on later runs."
 ---
 
-When an agent gets a query wrong, the fix shouldn't live in your head. Agno's LearningMachine diagnoses the error, saves the correction as a learning, and pulls it back into context the next time a similar question comes in.
+When an agent gets a query wrong, the fix shouldn't live in your head. Agno's Learning Machine saves the correction as a learning and pulls it back into context the next time a similar question comes in.
+
+```bash
+uv pip install "agno[openai,pgvector,psycopg,sql]"
+```
 
 ```python
 from agno.agent import Agent
@@ -16,30 +20,35 @@ from agno.vectordb.pgvector import PgVector
 
 db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
 
+db = PostgresDb(db_url=db_url)
 knowledge = Knowledge(
     vector_db=PgVector(table_name="agent_learnings", db_url=db_url),
 )
 
 agent = Agent(
+    id="data-analyst",
     model=OpenAIResponses(id="gpt-5.5"),
-    db=PostgresDb(db_url=db_url),
+    db=db,
     tools=[SQLTools(db_url="postgresql+psycopg://readonly@warehouse/analytics")],
     learning=LearningMachine(knowledge=knowledge, decision_log=True),
-    instructions="When a query errors, diagnose the cause and record the correction.",
+    instructions=(
+        "When a query errors, diagnose the cause. Call save_learning for a "
+        "reusable correction. Call log_decision when you change the query shape."
+    ),
 )
 ```
 
-Passing `knowledge` to the `LearningMachine` enables the Learned Knowledge store, where corrections live. `decision_log=True` records the reasoning behind each change. The agent accumulates corrections across runs and pulls the relevant ones into context on future questions.
+Passing `knowledge` to `LearningMachine` enables the Learned Knowledge store, where corrections live. The store is agentic by default: the model calls `save_learning` when it finds something worth keeping. `decision_log=True` records decisions automatically after each run and adds the `log_decision` and `search_decisions` tools.
 
 ## The loop
 
 1. The agent writes SQL and runs it.
 2. It errors, or returns a number a human flags as wrong.
 3. The agent diagnoses the cause (wrong column, stale table, a join that double-counts).
-4. The fix is saved as a learning.
+4. The fix is saved as a learning: automatically, by tool call, or after approval, depending on the mode.
 5. The next similar question retrieves that learning before generating SQL.
 
-Each diagnosed error is written down and pulled back before the next similar query, so recurring errors stop recurring: the agent accumulates what your warehouse's sharp edges are.
+Each diagnosed error is written down and pulled back before the next similar query. Over time the agent learns where your warehouse's sharp edges are.
 
 ## Choose how learning happens
 
@@ -49,6 +58,7 @@ Each store takes a mode. For a data agent, you usually want errors captured auto
 from agno.learn import LearnedKnowledgeConfig, LearningMachine, LearningMode
 
 agent = Agent(
+    id="data-analyst",
     model=OpenAIResponses(id="gpt-5.5"),
     db=db,
     learning=LearningMachine(
@@ -60,9 +70,11 @@ agent = Agent(
 
 | Mode | Behavior | Use for |
 |------|----------|---------|
-| `ALWAYS` | Capture runs automatically after each response | Query-error corrections |
+| `ALWAYS` | Automatic extraction after each response | Query-error corrections |
 | `AGENTIC` | The agent decides what is worth saving | Nuanced domain insights |
 | `PROPOSE` | The agent proposes, a human approves before it persists | Anything that changes how numbers are computed |
+
+`ALWAYS` adds an extraction model call after each response. The extractor may still decide there is nothing worth saving.
 
 ## Audit what it learned
 

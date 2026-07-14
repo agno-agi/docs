@@ -1,17 +1,23 @@
 ---
 title: "Materialization"
-description: "When a question repeats, build a view once and answer from it forever."
+description: "Turn validated recurring queries into reusable views in an agent-owned schema."
 ---
 
-The third time someone asks "what's MRR by plan," the agent should not be writing the join from scratch. It should be reading a view it built the first time. Materialization is the data agent turning recurring questions into durable, reusable structure in a schema it owns.
+The third time someone asks "what's MRR by plan," the agent should be reading a view it built the first time. Materialization is the data agent turning recurring questions into durable, reusable structure in a schema it owns.
 
 ## The pattern
 
 A recurring question is a signal. The agent promotes it from an ad-hoc query to a view in an agent-managed schema, then answers from the view.
 
 1. A question repeats, or a query gets validated as correct.
-2. The Engineer builds a view in its own schema (for example `dash`), never in `public`.
-3. The next ask hits the view directly: faster, cheaper, and consistent across users.
+2. The agent proposes the view and a human approves the write.
+3. The Engineer builds the view in its own schema (for example `dash`), never in `public`.
+4. The new object's schema and an example query go into knowledge, so later runs can discover it.
+5. The next ask reads the view directly, which is faster, cheaper, and consistent across users.
+
+```bash
+uv pip install "agno[openai,psycopg,sql]"
+```
 
 ```python
 from agno.agent import Agent
@@ -22,15 +28,21 @@ engineer = Agent(
     name="Engineer",
     model=OpenAIResponses(id="gpt-5.5"),
     tools=[
-        # Reads public, writes only to the agent-owned `dash` schema.
-        SQLTools(db_url="postgresql+psycopg://dash_writer@warehouse/analytics"),
+        SQLTools(
+            db_url="postgresql+psycopg://dash_writer@warehouse/analytics",
+            requires_confirmation_tools=["run_sql_query"],
+        ),
     ],
     instructions=(
-        "When a question recurs, build a view in the dash schema that "
-        "answers it. Never create objects outside the dash schema."
+        "When the user requests or approves a reusable view, introspect the "
+        "schema and create it in dash. Never create objects outside dash."
     ),
 )
 ```
+
+Configure `dash_writer` as a non-owner role with read access to source data and write access only to `dash`. `requires_confirmation_tools` pauses every `run_sql_query` call. After the client continues the run with approval, `SQLTools` executes the statement. The role's grants must enforce the schema boundary because `SQLTools` does not restrict SQL by schema.
+
+After creation, add the object's columns, purpose, and example queries to the agent's knowledge, so later runs discover the view instead of rebuilding the query. Attach the `knowledge` store from [grounding](/use-cases/data-agents/grounding-in-context) to the Engineer and set `update_knowledge=True`. That gives the agent an `add_to_knowledge` tool, which writes the description back into the same store it searches.
 
 ## Why an agent-owned schema
 
@@ -46,13 +58,15 @@ Because the schema is disposable, a wrong view is a cheap mistake. Drop it and l
 
 ## Materialize from validated queries
 
-The best materialization candidates are the validated queries from [grounding](/use-cases/data-agents/grounding-in-context). A query analysts already trust, asked often, is exactly what should become a view. The agent is promoting known-good SQL, not inventing new shapes.
+The best materialization candidates are the validated queries from [grounding](/use-cases/data-agents/grounding-in-context). A query analysts already trust, asked often, is exactly what should become a view. Review the generated DDL before approving the write.
+
+A regular view evaluates its query when read. Summary tables and materialized views need explicit refresh logic; this example does not schedule that work.
 
 ## How it compounds
 
-Each repeat question promoted to a view is one less query generated from scratch. Composed with the other primitives, the system does less work over time, not more:
+Each repeat question promoted to a view is one less query generated from scratch:
 
-- Captured corrections stop the recurring errors ([self-correction](/use-cases/data-agents/self-correcting-agents)).
+- Captured corrections inform later runs ([self-correction](/use-cases/data-agents/self-correcting-agents)).
 - Validated query shapes sit in the knowledge stores ([grounding](/use-cases/data-agents/grounding-in-context)).
 - The agent-owned schema accumulates the views your team relies on, with no hand-written migration.
 
@@ -67,5 +81,5 @@ Repeated work becomes structure instead of recomputation, so the agent gets fast
 
 ## Developer Resources
 
-- [Dash: the materialize step](/deploy/templates/dash/overview)
+- [Dash: reusable views in the `dash` schema](/deploy/templates/dash/overview)
 - [Serve and embed](/use-cases/data-agents/serve-and-embed)

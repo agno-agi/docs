@@ -4,11 +4,11 @@ sidebarTitle: Running Workflows
 description: Execute workflows with Workflow.run() and process their output.
 ---
 
-The `Workflow.run()` function runs the workflow and generates a response, either as a `WorkflowRunOutput` object or a stream of `WorkflowRunOutputEvent` objects.
+`Workflow.run()` returns a `WorkflowRunOutput`, or an event iterator when streaming is enabled. The iterator contains workflow events and, by default, events forwarded by agent and team step executors.
 
-Many of our examples use `workflow.print_response()` which is a helper utility to print the response in the terminal. This uses `workflow.run()` under the hood.
+`workflow.print_response()` runs the workflow and formats its output in the terminal.
 
-## Running your Workflow
+## Running a Workflow
 
 Call `workflow.run()` and capture the result in `response`:
 
@@ -19,16 +19,15 @@ from agno.db.sqlite import SqliteDb
 from agno.team import Team
 from agno.tools.hackernews import HackerNewsTools
 from agno.tools.yfinance import YFinanceTools
-from agno.workflow import Step, Workflow
+from agno.workflow import Workflow
 from agno.run.workflow import WorkflowRunOutput
 from agno.utils.pprint import pprint_run_response
 
-# Define agents
 hackernews_agent = Agent(
-    name="Hackernews Agent",
+    name="HackerNews Agent",
     model=OpenAIResponses(id="gpt-5.2"),
     tools=[HackerNewsTools()],
-    role="Extract key insights and content from Hackernews posts",
+    role="Extract key insights from HackerNews posts",
 )
 finance_agent = Agent(
     name="Finance Agent",
@@ -37,7 +36,6 @@ finance_agent = Agent(
     role="Get stock prices and financial data",
 )
 
-# Define research team for complex analysis
 research_team = Team(
     name="Research Team",
     members=[hackernews_agent, finance_agent],
@@ -49,7 +47,7 @@ content_planner = Agent(
     model=OpenAIResponses(id="gpt-5.2"),
     instructions=[
         "Plan a content schedule over 4 weeks for the provided topic and research content",
-        "Ensure that I have posts for 3 posts per week",
+        "Schedule three posts per week",
     ],
 )
 
@@ -60,41 +58,35 @@ content_creation_workflow = Workflow(
     steps=[research_team, content_planner],
 )
 
-# Create and use workflow
 if __name__ == "__main__":
     response: WorkflowRunOutput = content_creation_workflow.run(
-        input="AI trends in 2024",
+        input="AI trends in 2026",
     )
 
     pprint_run_response(response, markdown=True)
 ```
 
 <Note>
-  The `Workflow.run()` function returns a `WorkflowRunOutput` object when not
-  streaming. Here is detailed documentation for
-  [WorkflowRunOutput](/reference/workflows/run-output).
+  Without streaming, `Workflow.run()` returns
+  [`WorkflowRunOutput`](/reference/workflows/run-output).
 </Note>
 
 ## Async Execution
 
 The `Workflow.arun()` function is the async version of `Workflow.run()`.
 
-Here is an example of how to use it:
-
 ```python
-from typing import AsyncIterator
 import asyncio
 
 from agno.agent import Agent
 from agno.tools.hackernews import HackerNewsTools
 from agno.utils.pprint import pprint_run_response
 from agno.workflow import Condition, Step, Workflow, StepInput
-from agno.run.workflow import WorkflowRunOutput, WorkflowRunOutputEvent, WorkflowRunEvent
+from agno.run.workflow import WorkflowRunOutput
 
-# === BASIC AGENTS ===
 researcher = Agent(
     name="Researcher",
-    instructions="Research the given topic and provide detailed findings.",
+    instructions="Find HackerNews stories related to the topic and summarize them.",
     tools=[HackerNewsTools()],
 )
 
@@ -103,20 +95,17 @@ summarizer = Agent(
     instructions="Create a clear summary of the research findings.",
 )
 
-fact_checker = Agent(
-    name="Fact Checker",
-    instructions="Verify facts and check for accuracy in the research.",
-    tools=[HackerNewsTools()],
+claim_reviewer = Agent(
+    name="Claim Reviewer",
+    instructions="List claims that still require verification from primary sources.",
 )
 
 writer = Agent(
     name="Writer",
-    instructions="Write a comprehensive article based on all available research and verification.",
+    instructions="Draft an article and identify claims that still require verification.",
 )
 
-# === CONDITION EVALUATOR ===
-def needs_fact_checking(step_input: StepInput) -> bool:
-    """Determine if the research contains claims that need fact-checking"""
+def needs_claim_review(step_input: StepInput) -> bool:
     summary = step_input.previous_step_content or ""
 
     # Look for keywords that suggest factual claims
@@ -140,7 +129,6 @@ def needs_fact_checking(step_input: StepInput) -> bool:
     return any(indicator in summary.lower() for indicator in fact_indicators)
 
 
-# === WORKFLOW STEPS ===
 research_step = Step(
     name="research",
     description="Research the topic",
@@ -153,11 +141,10 @@ summarize_step = Step(
     agent=summarizer,
 )
 
-# Conditional fact-checking step
-fact_check_step = Step(
-    name="fact_check",
-    description="Verify facts and claims",
-    agent=fact_checker,
+claim_review_step = Step(
+    name="claim_review",
+    description="Identify claims requiring source verification",
+    agent=claim_reviewer,
 )
 
 write_article = Step(
@@ -166,18 +153,17 @@ write_article = Step(
     agent=writer,
 )
 
-# === BASIC LINEAR WORKFLOW ===
 basic_workflow = Workflow(
     name="Basic Linear Workflow",
-    description="Research -> Summarize -> Condition(Fact Check) -> Write Article",
+    description="Research -> Summarize -> Condition(Claim Review) -> Write Article",
     steps=[
         research_step,
         summarize_step,
         Condition(
-            name="fact_check_condition",
-            description="Check if fact-checking is needed",
-            evaluator=needs_fact_checking,
-            steps=[fact_check_step],
+            name="claim_review_condition",
+            description="Check whether claims need source verification",
+            evaluator=needs_claim_review,
+            steps=[claim_review_step],
         ),
         write_article,
     ],
@@ -198,10 +184,10 @@ if __name__ == "__main__":
 
 ## Streaming Responses
 
-To enable streaming, set `stream=True` when calling `run()`. This will return an iterator of `WorkflowRunOutputEvent` objects instead of a single response.
+Set `stream=True` to return an event iterator instead of a single response. With `stream_executor_events=True`, the default, the iterator can also contain agent and team events from step executors.
 
 ```python
-# Define your agents/team
+# Definitions from the non-streaming example
 ...
 
 content_creation_workflow = Workflow(
@@ -211,36 +197,30 @@ content_creation_workflow = Workflow(
     steps=[research_team, content_planner],
 )
 
-# Create and use workflow
 if __name__ == "__main__":
-    response: Iterator[WorkflowRunOutputEvent] = content_creation_workflow.run(
-        input="AI trends in 2024",
+    response = content_creation_workflow.run(
+        input="AI trends in 2026",
         stream=True,
     )
 
     pprint_run_response(response, markdown=True)
 ```
 
-### Streaming all events
+### Streaming All Events
 
-By default, when you stream a response, only the `WorkflowStartedEvent` and `WorkflowCompletedEvent` events will be streamed (together with all the Agent and Team events).
+With `stream_events=False`, the default, the stream still includes the workflow start and completion events, step output events from function executors, and forwarded agent and team events.
 
-You can also stream all events by setting `stream_events=True`.
-
-This will provide real-time updates about the workflow's internal processes:
+Set `stream_events=True` to include workflow lifecycle events for steps, conditions, loops, routers, and parallel groups.
 
 ```python
-from typing import Iterator
-
 from agno.agent import Agent
 from agno.tools.hackernews import HackerNewsTools
 from agno.workflow import Condition, Step, Workflow, StepInput
-from agno.run.workflow import WorkflowRunOutput, WorkflowRunOutputEvent, WorkflowRunEvent
+from agno.run.workflow import WorkflowRunEvent
 
-# === BASIC AGENTS ===
 researcher = Agent(
     name="Researcher",
-    instructions="Research the given topic and provide detailed findings.",
+    instructions="Find HackerNews stories related to the topic and summarize them.",
     tools=[HackerNewsTools()],
 )
 
@@ -249,20 +229,17 @@ summarizer = Agent(
     instructions="Create a clear summary of the research findings.",
 )
 
-fact_checker = Agent(
-    name="Fact Checker",
-    instructions="Verify facts and check for accuracy in the research.",
-    tools=[HackerNewsTools()],
+claim_reviewer = Agent(
+    name="Claim Reviewer",
+    instructions="List claims that still require verification from primary sources.",
 )
 
 writer = Agent(
     name="Writer",
-    instructions="Write a comprehensive article based on all available research and verification.",
+    instructions="Draft an article and identify claims that still require verification.",
 )
 
-# === CONDITION EVALUATOR ===
-def needs_fact_checking(step_input: StepInput) -> bool:
-    """Determine if the research contains claims that need fact-checking"""
+def needs_claim_review(step_input: StepInput) -> bool:
     summary = step_input.previous_step_content or ""
 
     # Look for keywords that suggest factual claims
@@ -286,7 +263,6 @@ def needs_fact_checking(step_input: StepInput) -> bool:
     return any(indicator in summary.lower() for indicator in fact_indicators)
 
 
-# === WORKFLOW STEPS ===
 research_step = Step(
     name="research",
     description="Research the topic",
@@ -299,11 +275,10 @@ summarize_step = Step(
     agent=summarizer,
 )
 
-# Conditional fact-checking step
-fact_check_step = Step(
-    name="fact_check",
-    description="Verify facts and claims",
-    agent=fact_checker,
+claim_review_step = Step(
+    name="claim_review",
+    description="Identify claims requiring source verification",
+    agent=claim_reviewer,
 )
 
 write_article = Step(
@@ -312,18 +287,17 @@ write_article = Step(
     agent=writer,
 )
 
-# === BASIC LINEAR WORKFLOW ===
 basic_workflow = Workflow(
     name="Basic Linear Workflow",
-    description="Research -> Summarize -> Condition(Fact Check) -> Write Article",
+    description="Research -> Summarize -> Condition(Claim Review) -> Write Article",
     steps=[
         research_step,
         summarize_step,
         Condition(
-            name="fact_check_condition",
-            description="Check if fact-checking is needed",
-            evaluator=needs_fact_checking,
-            steps=[fact_check_step],
+            name="claim_review_condition",
+            description="Check whether claims need source verification",
+            evaluator=needs_claim_review,
+            steps=[claim_review_step],
         ),
         write_article,
     ],
@@ -331,7 +305,7 @@ basic_workflow = Workflow(
 
 if __name__ == "__main__":
     try:
-        response: Iterator[WorkflowRunOutputEvent] = basic_workflow.run(
+        response = basic_workflow.run(
             input="Recent breakthroughs in quantum computing",
             stream=True,
             stream_events=True,
@@ -364,21 +338,14 @@ if __name__ == "__main__":
 
 ### Streaming Executor Events
 
-The events from Agents and Teams used inside your workflow are automatically yielded during the streaming of a Workflow. You can choose not to stream these executor events by setting `stream_executor_events=False`.
+Events from agents and teams inside a workflow are forwarded by default. Set `stream_executor_events=False` to filter their nonterminal events. Executor completion and cancellation events are still forwarded.
 
-The following Workflow events will be streamed in all cases:
-- `WorkflowStarted`
-- `WorkflowCompleted`
-- `StepStarted`
-- `StepCompleted`
-
-See the following example:
+Workflow-level events are not affected by this setting. With `stream_events=True`, events such as `WorkflowStarted`, `StepStarted`, `ConditionExecutionStarted`, and their completion events remain in the stream.
 
 ```python
 from agno.agent import Agent
 from agno.models.openai import OpenAIResponses
-from agno.workflow.step import Step
-from agno.workflow.workflow import Workflow
+from agno.workflow import Step, Workflow
 
 agent = Agent(
     name="ResearchAgent",
@@ -390,18 +357,17 @@ workflow = Workflow(
     name="Research Workflow",
     steps=[Step(name="Research", agent=agent)],
     stream=True,
-    stream_executor_events=False,  # <- Filter out internal executor events
+    stream_executor_events=False,
 )
 
 print("\n" + "=" * 70)
 print("Workflow Streaming Example: stream_executor_events=False")
 print("=" * 70)
 print(
-    "\nThis will show only workflow and step events and will not yield RunContent and TeamRunContent events"
+    "\nThis filters nonterminal agent and team events such as RunContent and TeamRunContent."
 )
-print("filtering out internal agent/team events for cleaner output.\n")
+print("Executor completion and cancellation events remain in the stream.\n")
 
-# Run workflow and display events
 for event in workflow.run(
     "What is Python?",
     stream=True,
@@ -413,17 +379,15 @@ for event in workflow.run(
 
 ### Async Streaming
 
-The `Workflow.arun(stream=True)` returns an async iterator of `WorkflowRunOutputEvent` objects instead of a single response.
-So for example, if you want to stream the response, you can do the following:
+`Workflow.arun(stream=True)` returns an async event iterator instead of a single response. It can include forwarded agent and team events under the same `stream_executor_events` setting.
 
-```Python
-
+```python
 # Define your workflow
 ...
 
 async def main():
     try:
-        response: AsyncIterator[WorkflowRunOutputEvent] = basic_workflow.arun(
+        response = basic_workflow.arun(
             input="Recent breakthroughs in quantum computing",
             stream=True,
             stream_events=True,
@@ -458,9 +422,9 @@ if __name__ == "__main__":
 
 See the [Async Streaming](/workflows/usage/async-events-streaming) example for more details.
 
-### Event Types
+### Common Event Types
 
-The following events are yielded by the `Workflow.run()` and `Workflow.arun()` functions depending on the workflow's configuration:
+The following workflow events are commonly yielded by `Workflow.run()` and `Workflow.arun()` when streaming is configured. The event enum also includes pause, continuation, cancellation, review, workflow-agent, and custom events.
 
 #### Core Events
 
@@ -525,12 +489,12 @@ See detailed documentation in the [WorkflowRunOutputEvent](/reference/workflows/
 
 ### Storing Events
 
-Workflows can automatically store all execution events for analysis, debugging, and audit purposes. Filter specific event types to reduce noise and storage overhead while maintaining essential execution records.
+Set `store_events=True` to retain generated events on the workflow run. Use `events_to_skip` to exclude selected event types.
 
-Access stored events via `workflow.get_last_run_output().events` and in the `runs` column of your workflow's session database (SQLite, PostgreSQL, etc.).
+Access retained events through `workflow.get_last_run_output().events`. When the workflow has a database, the events are persisted with the run.
 
-- `store_events=True`: Automatically stores all workflow events in the database
-- `events_to_skip=[]`: Filter out specific event types to reduce storage and noise
+- `store_events=True`: Retain events on `WorkflowRunOutput.events`
+- `events_to_skip=[...]`: Exclude matching workflow, agent, or team event types
 
 **Available Events to Skip:**
 ```python
@@ -555,11 +519,11 @@ events_to_skip = [
 ```
 
 **Use Cases**
-- **Debugging**: Store all events to analyze workflow execution flow
-- **Audit Trails**: Keep records of all workflow activities for compliance
-- **Performance Analysis**: Analyze timing and execution patterns
-- **Error Investigation**: Review event sequences leading to failures
-- **Noise Reduction**: Skip verbose events like `step_started` to focus on results
+
+- **Debugging**: Inspect workflow control flow
+- **Performance analysis**: Compare event timing and step metrics
+- **Error investigation**: Review events leading to a failure
+- **Persisted run records**: Store selected events when a database is configured
 
 **Configuration Examples**
 ```python
@@ -591,19 +555,20 @@ fast_workflow = Workflow(
 ```
 
 <Tip>
-See this [example](/workflows/usage/store-events-and-events-to-skip-in-a-workflow) for more information.
+[Store workflow events](/workflows/usage/store-events-and-events-to-skip-in-a-workflow).
 </Tip>
 
 ## Agno Telemetry
 
-Agno logs which model a workflow used so we can prioritize updates to the most popular providers. You can disable this by setting `AGNO_TELEMETRY=false` in your environment or by setting `telemetry=False` on the workflow.
+Workflow telemetry includes the workflow ID, database type, whether an input schema is configured, the session and run IDs, the SDK version, and the workflow event type. Disable it with `AGNO_TELEMETRY=false` or `telemetry=False`.
 
 ```bash
 export AGNO_TELEMETRY=false
 ```
-or:
+Or set the option on the workflow:
+
 ```python
-workflow = Workflow(..., telemetry=False)
+workflow = Workflow(steps=[], telemetry=False)
 ```
 
 See the [Workflow class reference](/reference/workflows/workflow) for more details.

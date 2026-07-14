@@ -5,7 +5,7 @@ description: "Put the data agent behind an API so a dashboard, a Slack channel, 
 
 A data agent that only runs in a notebook helps one analyst. Behind an API, it answers questions from a Slack channel, a BI dashboard's natural-language box, or an "explain this metric" widget in your product. `AgentOS` turns the agent into that API.
 
-```python
+```python data_agent.py
 from agno.agent import Agent
 from agno.db.postgres import PostgresDb
 from agno.models.openai import OpenAIResponses
@@ -27,7 +27,7 @@ if __name__ == "__main__":
     agent_os.serve(app="data_agent:app", port=7777)
 ```
 
-Any surface calls the same endpoint:
+Run it with `python data_agent.py`. The `app="data_agent:app"` import string has to match the module name. Every surface then calls the same endpoint:
 
 ```bash
 curl -X POST http://localhost:7777/agents/data-agent/runs \
@@ -46,11 +46,15 @@ curl -X POST http://localhost:7777/agents/data-agent/runs \
 | Scheduled digest | A cron job runs the agent and posts "yesterday's numbers" every morning |
 | Backend check | A pipeline calls the agent to sanity-check a metric before publishing |
 
-The serving model is identical to a [product agent](/use-cases/product-agents/serve-as-an-api). The difference is what the agent does, not how it is served. Sessions still scope per user, so each analyst's thread stays separate.
+The serving model is identical to a [product agent](/use-cases/product-agents/serve-as-an-api). The difference is what the agent does, not how it is served. `user_id` and `session_id` select the conversation history for a run.
 
-## Learnings are shared, sessions are not
+<Warning>
+  This example leaves AgentOS authorization disabled. Callers can supply their own user and session identifiers. Enable AgentOS authorization before network exposure, and connect `SQLTools` with a database role that enforces read-only access.
+</Warning>
 
-A data agent's value compounds when corrections are shared across the team. Conversation threads stay scoped per user with `user_id` and `session_id`. Sharing learnings takes one change to the setup above. `learning=True` keeps learnings per user, so pass a knowledge base to `LearningMachine` instead. That enables the [Learned Knowledge store](/learning/stores/learned-knowledge), whose namespace defaults to `"global"`, so a fix one analyst's question triggered helps everyone.
+## Shared learnings, separate sessions
+
+A data agent's value compounds when corrections are shared across the team. Conversation threads stay scoped by `user_id` and `session_id`. `learning=True` only enables the per-user profile and memory stores, so to share what the agent learns, pass a knowledge base to `LearningMachine` instead. That enables the [Learned Knowledge store](/learning/stores/learned-knowledge), whose namespace defaults to `"global"`, so a fix triggered by one analyst's question helps everyone.
 
 ```python
 from agno.knowledge import Knowledge
@@ -70,6 +74,8 @@ agent = Agent(
     learning=LearningMachine(knowledge=knowledge),
 )
 ```
+
+The store runs in `AGENTIC` mode: the model decides when to call `save_learning` and `search_learnings`. To keep learnings inside one team or tenant, set `namespace` on `LearningMachine`.
 
 | State | Scope |
 |-------|-------|

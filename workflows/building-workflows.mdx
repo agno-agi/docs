@@ -8,16 +8,17 @@ Workflows orchestrate your agents and teams as a series of steps executed in a f
 
 ## Building Blocks
 
-1. The **`Workflow`** class is the top-level orchestrator that manages the entire execution process.
-2. **`Step`** is the fundamental unit of work in the workflow system. Each step encapsulates exactly one executor: an `Agent`, a `Team`, a custom Python function, or a nested `Workflow`. This design ensures clarity and maintainability while preserving the individual characteristics of each executor.
-3. **`Loop`** is a construct that allows you to execute one or more steps multiple times. This is useful when you need to repeat a set of steps until a certain condition is met.
-4. **`Parallel`** is a construct that allows you to execute one or more steps in parallel. This is useful when you need to execute a set of steps concurrently with the outputs joined together.
-5. **`Condition`** makes a step conditional based on criteria you specify.
-6. **`Router`** allows you to specify which step(s) to execute next, effectively creating branching logic in your workflow.
+1. **`Workflow`** manages the run and executes its configured steps.
+2. **`Step`** wraps exactly one executor: an `Agent`, a `Team`, a custom Python function, or a nested `Workflow`.
+3. **`Steps`** groups steps into a named sequential unit.
+4. **`Loop`** repeats one or more steps until an end condition succeeds or the iteration cap is reached.
+5. **`Parallel`** runs independent steps concurrently and aggregates their outputs.
+6. **`Condition`** runs its steps when a boolean evaluator passes and an optional else branch when it fails.
+7. **`Router`** picks which step or steps run next from its choices.
 
 <Note>
   When using a custom Python function as an executor for a step, `StepInput` and
-  `StepOutput` provides standardized interfaces for data flow between steps:
+  `StepOutput` provide standard interfaces for data flow between steps.
 </Note>
 <img 
   className="block dark:hidden" 
@@ -31,29 +32,62 @@ Workflows orchestrate your agents and teams as a series of steps executed in a f
   alt="Workflows step IO flow diagram"
 />
 
-## How to make your first workflow?
+## Your First Workflow
 
-There are different types of patterns you can use to build your workflows.
-For example you can combine agents, teams, and functions to build a workflow.
+You can mix agents, teams, and functions as steps in the same workflow:
 
-```python
-from agno.workflow import Step, Workflow, StepOutput
+```python mixed_workflow.py
+from agno.agent import Agent
+from agno.team import Team
+from agno.workflow import StepInput, StepOutput, Workflow
 
-def data_preprocessor(step_input):
-    # Custom preprocessing logic
+research_team = Team(
+    name="Research Team",
+    members=[
+        Agent(
+            name="Researcher",
+            instructions="Research the requested market and list the main competitors.",
+        )
+    ],
+)
 
-    # Or you can also run any agent/team over here itself
-    # response = some_agent.run(...)
-    return StepOutput(content=f"Processed: {step_input.input}") # <-- Now pass the agent/team response in content here
+content_agent = Agent(
+    name="Writer",
+    instructions="Turn the supplied research into a concise competitive analysis.",
+)
+
+
+def data_preprocessor(step_input: StepInput) -> StepOutput:
+    research = step_input.previous_step_content or "No research was returned."
+    return StepOutput(content=f"Research to analyze:\n{research}")
 
 workflow = Workflow(
     name="Mixed Execution Pipeline",
     steps=[
-        research_team,      # Team
-        data_preprocessor,  # Function
-        content_agent,      # Agent
-    ]
+        research_team,
+        data_preprocessor,
+        content_agent,
+    ],
 )
 
-workflow.print_response("Analyze the competitive landscape for fintech startups", markdown=True)
+workflow.print_response(
+    "Analyze the competitive landscape for fintech startups",
+    markdown=True,
+)
 ```
+
+## Install
+
+```bash
+uv pip install -U agno openai
+```
+
+<Snippet file="set-openai-key.mdx" />
+
+## Next Steps
+
+| Task | Guide |
+|------|-------|
+| Execute a workflow and process events | [Running Workflows](/workflows/running-workflows) |
+| Choose a control-flow primitive | [Workflow Patterns](/workflows/workflow-patterns/overview) |
+| Implement a function executor | [Custom Functions in Workflows](/workflows/workflow-patterns/custom-function-step-workflow) |

@@ -5,7 +5,7 @@ description: "Slack, Telegram, WhatsApp, Discord, plus protocol interfaces for a
 
 An interface is an adapter between AgentOS and a surface where users already are. It receives events from Slack, Telegram, WhatsApp, or other channels, maps them onto AgentOS's run and session model, and routes responses back to the right thread, channel, or user.
 
-The agent doesn't change. The same `Agent` instance answers a Slack DM, a Telegram message, and an AG-UI browser stream. Memory carries across all of them, scoped per `user_id`.
+The agent doesn't change. The same agent definition answers a Slack DM, a Telegram message, and an AG-UI browser stream. Memory follows the user across surfaces when the interfaces resolve to the same `user_id`.
 
 ## Available interfaces
 
@@ -17,7 +17,7 @@ Two categories. Chat surfaces meet humans where they already are. Protocol surfa
 |-----------|----------|-------|
 | **Slack** | Team chat, DMs, channel mentions, thread sessions | [Slack](/agent-os/interfaces/slack/introduction) |
 | **Telegram** | Personal assistants, mobile chat | [Telegram](/agent-os/interfaces/telegram/introduction) |
-| **WhatsApp** | Customer support, mobile chat with E2E encryption support | [WhatsApp](/agent-os/interfaces/whatsapp/introduction) |
+| **WhatsApp** | Customer support and mobile chat | [WhatsApp](/agent-os/interfaces/whatsapp/introduction) |
 | **Discord** | Community servers, gaming, custom commands. Runs in its own process via `agno.integrations.discord`. | [Discord](/agent-os/interfaces/discord/introduction) |
 
 ### Protocol surfaces
@@ -67,22 +67,22 @@ Every interface maps surface state to AgentOS sessions, so a conversation in Sla
 
 | Interface | Session ID | User ID |
 |-----------|-----------|---------|
-| Slack | Thread timestamp | Slack user ID |
-| Telegram | Chat ID | Telegram user ID |
-| WhatsApp | Phone number | Phone number |
+| Slack | `<entity_id>:<thread_ts>` | Slack user ID, or resolved email when enabled |
+| Telegram | `tg:<entity_id>:<chat_id>` with an optional topic suffix | Telegram user ID |
+| WhatsApp | `wa:<entity_id>:<user_id>` | Phone number or encrypted user ID |
 | Discord | Thread ID | Discord user ID |
-| A2A | Caller-supplied | Caller-supplied |
+| A2A | A2A context ID | JWT subject, or request metadata when anonymous |
 | AG-UI | Client thread ID | JWT subject, or client-supplied when anonymous |
 
-### Resolving Slack user IDs to names
+### Resolving Slack user IDs
 
-By default Slack hands you opaque user IDs like `U07ABCXYZ`. If your agent's responses or memory are clearer when grounded in human names, set `resolve_user_identity=True` on the Slack interface:
+By default Slack hands you opaque user IDs like `U07ABCXYZ`. Set `resolve_user_identity=True` to use the member's email as `user_id` when Slack provides one:
 
 ```python
 Slack(agent=agent, token=..., signing_secret=..., resolve_user_identity=True)
 ```
 
-The interface looks up each user ID against `users.info` and passes the resolved name through to the agent. Off by default because it costs an extra Slack API call per message and isn't always wanted.
+The interface calls `users.info`, uses the returned email as `user_id`, and adds the display name to run metadata. It falls back to the Slack user ID when no email is available. This option is off by default and adds a Slack API call per message.
 
 ## One agent, many surfaces
 
@@ -101,7 +101,7 @@ agent_os = AgentOS(
 )
 ```
 
-The same questions the agent answered in Slack last week show up in its memory when the user opens the AG-UI widget on your website. The agent doesn't know which surface a request came from. It just sees a `user_id`, a `session_id`, and a message.
+The questions the agent answered in Slack last week show up in its memory when the user opens the AG-UI widget on your website. Session history stays scoped to each surface's `session_id`, and interfaces pass surface context along with the run, like the Slack channel name.
 
 ## Conditional registration
 
@@ -137,7 +137,3 @@ async def handle_stripe(event: dict):
 ```
 
 A custom interface is for surfaces you'll reuse across agents and OS instances. A direct route is for one-off integrations.
-
-## Next
-
-[Scheduling →](/features/scheduling)

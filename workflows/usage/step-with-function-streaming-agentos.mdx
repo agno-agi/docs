@@ -1,17 +1,9 @@
 ---
-title: Step with custom function streaming on AgentOS
-description: This example demonstrates how to use named steps with custom function executors and streaming on AgentOS.
+title: Stream a function step through AgentOS
+description: "Yield agent events from a custom function step through an AgentOS workflow."
 ---
 
-Use `Step` objects with custom function executors and stream their responses through the [AgentOS](/agent-os/introduction).
-
-The agent and team running inside the custom function step can also stream their results directly to the AgentOS.
-
-Install dependencies:
-
-```shell
-uv pip install "agno[os]" openai yfinance
-```
+An async function executor can yield agent events followed by its final `StepOutput`.
 
 ```python step_with_function_streaming_agentos.py
 from typing import AsyncIterator, Union
@@ -19,122 +11,66 @@ from typing import AsyncIterator, Union
 from agno.agent.agent import Agent
 from agno.db.in_memory import InMemoryDb
 from agno.db.sqlite import SqliteDb
-from agno.models.openai import OpenAIResponses
+from agno.models.openai import OpenAIChat
 from agno.os import AgentOS
-from agno.team import Team
+from agno.run.agent import RunOutputEvent
 from agno.tools.hackernews import HackerNewsTools
-from agno.tools.yfinance import YFinanceTools
-from agno.workflow.step import Step, StepInput, StepOutput, WorkflowRunOutputEvent
+from agno.workflow.step import Step, StepInput, StepOutput
 from agno.workflow.workflow import Workflow
 
-# Define agents
-hackernews_agent = Agent(
-    name="Hackernews Agent",
-    model=OpenAIResponses(id="gpt-5.2"),
+research_agent = Agent(
+    name="Hacker News Researcher",
+    model=OpenAIChat(id="gpt-4o"),
     tools=[HackerNewsTools()],
-    instructions="Extract key insights and content from Hackernews posts",
-)
-
-finance_agent = Agent(
-    name="Finance Agent",
-    model=OpenAIResponses(id="gpt-5.2"),
-    tools=[YFinanceTools()],
-    instructions="Get stock prices and financial data",
-)
-
-# Define research team for complex analysis
-research_team = Team(
-    name="Research Team",
-    members=[hackernews_agent, finance_agent],
-    instructions="Analyze content and create comprehensive social media strategy",
+    instructions="Find relevant Hacker News stories and summarize the key points.",
 )
 
 content_planner = Agent(
     name="Content Planner",
-    model=OpenAIResponses(id="gpt-5.2"),
-    instructions=[
-        "Plan a content schedule over 4 weeks for the provided topic and research content",
-        "Ensure that I have posts for 3 posts per week",
-    ],
+    model=OpenAIChat(id="gpt-4o"),
+    instructions="Create an actionable content plan from the supplied research.",
     db=InMemoryDb(),
 )
 
 
-async def custom_content_planning_function(
+async def stream_content_plan(
     step_input: StepInput,
-) -> AsyncIterator[Union[WorkflowRunOutputEvent, StepOutput]]:
-    """
-    Custom function that does intelligent content planning with context awareness.
-
-    Note: This function calls content_planner.arun() internally, and all events
-    from that agent call will automatically get workflow context injected by
-    the workflow execution system - no manual intervention required!
-    """
+) -> AsyncIterator[Union[RunOutputEvent, StepOutput]]:
+    """Stream planner events, then return the completed content plan."""
     message = step_input.input
     previous_step_content = step_input.previous_step_content
 
-    # Create intelligent planning prompt
     planning_prompt = f"""
-        STRATEGIC CONTENT PLANNING REQUEST:
+    Topic: {message}
+    Research: {previous_step_content or "No research results"}
 
-        Core Topic: {message}
-
-        Research Results: {previous_step_content[:500] if previous_step_content else "No research results"}
-
-        Planning Requirements:
-        1. Create a comprehensive content strategy based on the research
-        2. Leverage the research findings effectively
-        3. Identify content formats and channels
-        4. Provide timeline and priority recommendations
-        5. Include engagement and distribution strategies
-
-        Please create a detailed, actionable content plan.
+    Create a four-week content plan with three posts per week.
     """
 
     try:
-        response_iterator = content_planner.arun(
+        events = content_planner.arun(
             planning_prompt, stream=True, stream_events=True
         )
-        async for event in response_iterator:
+        async for event in events:
             yield event
 
         response = content_planner.get_last_run_output()
-
-        enhanced_content = f"""
-            ## Strategic Content Plan
-
-            **Planning Topic:** {message}
-
-            **Research Integration:** {"Research-based" if previous_step_content else "No research foundation"}
-
-            **Content Strategy:**
-            {response.content}
-
-            **Custom Planning Enhancements:**
-            - Research Integration: {"High" if previous_step_content else "Baseline"}
-            - Strategic Alignment: Optimized for multi-channel distribution
-            - Execution Ready: Detailed action items included
-        """.strip()
-
-        yield StepOutput(content=enhanced_content)
-
-    except Exception as e:
+        yield StepOutput(content=response.content if response else "")
+    except Exception as exc:
         yield StepOutput(
-            content=f"Custom content planning failed: {str(e)}",
+            content=f"Content planning failed: {exc}",
             success=False,
         )
 
 
-# Define steps using different executor types
-
 research_step = Step(
     name="Research Step",
-    team=research_team,
+    agent=research_agent,
 )
 
 content_planning_step = Step(
     name="Content Planning Step",
-    executor=custom_content_planning_function,
+    executor=stream_content_plan,
 )
 
 streaming_content_workflow = Workflow(
@@ -150,10 +86,7 @@ streaming_content_workflow = Workflow(
     ],
 )
 
-
-# Initialize the AgentOS with the workflows
 agent_os = AgentOS(
-    description="Example OS setup",
     workflows=[streaming_content_workflow],
 )
 app = agent_os.get_app()
@@ -161,3 +94,31 @@ app = agent_os.get_app()
 if __name__ == "__main__":
     agent_os.serve(app="step_with_function_streaming_agentos:app", reload=True)
 ```
+
+## Install
+
+```shell
+uv pip install "agno[os]" openai
+```
+
+<Snippet file="set-openai-key.mdx" />
+
+## Run
+
+```shell
+python step_with_function_streaming_agentos.py
+```
+
+## How it works
+
+1. `stream_content_plan` yields each `RunOutputEvent` from `content_planner.arun()`.
+2. The workflow adds its run, session, and step context to those events.
+3. The function yields one `StepOutput` after the planner finishes.
+4. AgentOS exposes the workflow and its event stream through the runtime API.
+
+## Next steps
+
+| Task | Guide |
+|------|-------|
+| Connect the runtime to the control plane | [Connect your AgentOS](/agent-os/connect-your-os) |
+| Run a workflow through the API | [Use the AgentOS API](/agent-os/using-the-api) |
