@@ -1,46 +1,40 @@
 ---
-title: Valkey for Workflow
-sidebarTitle: Workflow
+title: "Valkey Storage for Workflow"
+sidebarTitle: "Valkey Storage for Workflow"
+description: "Use ValkeyDb as the session storage backend for a workflow."
 ---
+Run `uv pip install valkey-glide-sync openai ddgs` to install dependencies.
 
-Agno supports using Valkey as a storage backend for Workflows using the `ValkeyDb` class.
-
-## Usage
-
-### Run Valkey
-
-Install [docker desktop](https://docs.docker.com/desktop/install/mac-install/) and run **Valkey** on port **6379** using:
-
-```bash
-docker run -d \
-  --name my-valkey \
-  -p 6379:6379 \
-  valkey/valkey
-```
-
-```python valkey_for_workflow.py
+```python
 """
-Run: `uv pip install openai agno valkey-glide-sync fastapi` to install the dependencies
+Valkey Storage for Workflow
+===========================
+
+Demonstrates using ValkeyDb as the session storage backend for a workflow.
 """
+
 from agno.agent import Agent
 from agno.db.valkey import ValkeyDb
 from agno.models.openai import OpenAIResponses
 from agno.team import Team
 from agno.tools.hackernews import HackerNewsTools
+from agno.tools.websearch import WebSearchTools
 from agno.workflow.step import Step
 from agno.workflow.workflow import Workflow
 
-# Define agents
+# ---------------------------------------------------------------------------
+# Create Workflow
+# ---------------------------------------------------------------------------
 hackernews_agent = Agent(
     name="Hackernews Agent",
-    model=OpenAIResponses(id="gpt-5.2"),
+    model=OpenAIResponses(id="gpt-5.5"),
     tools=[HackerNewsTools()],
     role="Extract key insights and content from Hackernews posts",
 )
 web_agent = Agent(
     name="Web Agent",
-    model=OpenAIResponses(id="gpt-5.2"),
-    tools=[HackerNewsTools()],
+    model=OpenAIResponses(id="gpt-5.5"),
+    tools=[WebSearchTools()],
     role="Search the web for the latest news and trends",
 )
 
@@ -53,7 +47,7 @@ research_team = Team(
 
 content_planner = Agent(
     name="Content Planner",
-    model=OpenAIResponses(id="gpt-5.2"),
+    model=OpenAIResponses(id="gpt-5.5"),
     instructions=[
         "Plan a content schedule over 4 weeks for the provided topic and research content",
         "Ensure that I have posts for 3 posts per week",
@@ -71,14 +65,15 @@ content_planning_step = Step(
     agent=content_planner,
 )
 
-# Create and use workflow
+# ---------------------------------------------------------------------------
+# Run Workflow
+# ---------------------------------------------------------------------------
 if __name__ == "__main__":
     content_creation_workflow = Workflow(
         name="Content Creation Workflow",
         description="Automated content creation from blog posts to social media",
         db=ValkeyDb(
-            host="localhost",
-            port=6379,
+            session_table="workflow_session",
         ),
         steps=[research_step, content_planning_step],
     )
@@ -86,9 +81,17 @@ if __name__ == "__main__":
         input="AI trends in 2024",
         markdown=True,
     )
-
 ```
 
-## Params
+## Run the Example
+```bash
+# Clone and setup repo
+git clone https://github.com/agno-agi/agno.git
+cd agno/cookbook/06_storage/valkey
 
-<Snippet file="db-valkey-params.mdx" />
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+python valkey_for_workflow.py
+```
