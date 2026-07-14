@@ -1871,10 +1871,26 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         ],
     },
     "91_tools/docling_tools/basic_examples.py": {
+        "package_add": {"openai-whisper"},
+        "pre_run_steps": [
+            (
+                "Install FFmpeg",
+                "Install the FFmpeg system package required for the MP4-to-VTT example and verify it is available:",
+                "ffmpeg -version",
+            )
+        ],
         "run_after": "This entry point runs both the basic and OCR examples.",
         "run_command": "python cookbook/91_tools/docling_tools/run.py",
     },
     "91_tools/docling_tools/ocr_example.py": {
+        "package_add": {"openai-whisper"},
+        "pre_run_steps": [
+            (
+                "Install FFmpeg",
+                "Install the FFmpeg system package required for the MP4-to-VTT example and verify it is available:",
+                "ffmpeg -version",
+            )
+        ],
         "run_after": "This entry point runs both the basic and OCR examples.",
         "run_command": "python cookbook/91_tools/docling_tools/run.py",
     },
@@ -1900,6 +1916,9 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "91_tools/mcp/pipedream_auth.py": {
         "intro_override": "Call an authenticated Pipedream MCP server over streamable HTTP, passing a bearer token plus project and environment headers on behalf of an end user.",
+    },
+    "91_tools/mcp/sequential_thinking.py": {
+        "intro_override": "Combine the sequential-thinking MCP server with YFinanceTools to reason step by step over stock data.",
     },
     "91_tools/redshift_tools.py": {
         "env_add": {"REDSHIFT_DATABASE", "REDSHIFT_HOST"},

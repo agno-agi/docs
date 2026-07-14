@@ -472,6 +472,7 @@ EXPLICIT_ROW_REFRESH = {
     },
     "examples/agent-os/rbac/symmetric/overview": {
         "examples/agent-os/rbac/symmetric/advanced-scopes",
+        "examples/agent-os/rbac/symmetric/with-cookie",
     },
     "examples/agent-os/remote/overview": {
         "examples/agent-os/remote/remote-agent",
@@ -592,6 +593,7 @@ EXPLICIT_ROW_REFRESH = {
         "examples/models/anthropic/image-input-local-file",
         "examples/models/anthropic/knowledge",
         "examples/models/anthropic/memory",
+        "examples/models/anthropic/prompt-caching",
         "examples/models/anthropic/prompt-caching-extended",
         "examples/models/anthropic/tool-use",
     },
@@ -604,12 +606,17 @@ EXPLICIT_ROW_REFRESH = {
         "examples/models/cohere/tool-use",
     },
     "examples/models/deepseek/overview": {"examples/models/deepseek/tool-use"},
-    "examples/models/deepinfra/overview": {"examples/models/deepinfra/tool-use"},
+    "examples/models/deepinfra/overview": {
+        "examples/models/deepinfra/retry",
+        "examples/models/deepinfra/tool-use",
+    },
     "examples/models/groq/overview": {
+        "examples/models/groq/db",
         "examples/models/groq/deep-knowledge",
         "examples/models/groq/knowledge",
         "examples/models/groq/research-agent-exa",
         "examples/models/groq/research-agent-seltz",
+        "examples/models/groq/transcription-agent",
         "examples/models/groq/tool-use",
     },
     "examples/models/groq/reasoning/overview": {
@@ -775,10 +782,12 @@ EXPLICIT_LABEL_REFRESH = {
     "examples/agent-os/advanced-demo/reasoning-model",
     "examples/agent-os/mcp-demo/mcp-server-example",
     "examples/agent-os/rbac/symmetric/basic",
+    "examples/agent-os/rbac/symmetric/with-cookie",
     "examples/agent-os/tracing/basic-agent-tracing",
     "examples/agent-os/tracing/basic-workflow-tracing",
     "examples/agent-os/tracing/tracing-with-multi-db-scenario",
     "examples/models/litellm-openai/audio-input",
+    "examples/models/groq/tool-use",
     "examples/storage/dynamodb/dynamo-for-agent",
     "examples/storage/dynamodb/dynamo-for-team",
     "examples/storage/mongo/mongodb-for-agent",
@@ -1605,9 +1614,19 @@ def main() -> None:
     )
     sub(
         "tools/aws-lambda-tools.mdx",
-        """            enable_list_functions=True,  # Enable listing for reference
+        """# Example 4: Invoke-only agent for testing
+agent_tester = Agent(
+    tools=[
+        AWSLambdaTools(
+            region_name="us-east-1",
+            enable_list_functions=True,  # Enable listing for reference
             enable_invoke_function=True,  # Enable function testing""",
-        """            enable_list_functions=True,
+        """# Example 4: Invoke-only agent for testing
+agent_tester = Agent(
+    tools=[
+        AWSLambdaTools(
+            region_name="us-east-1",
+            enable_list_functions=True,
             enable_invoke_function=True,""",
     )
     sub(
@@ -1663,6 +1682,16 @@ python cookbook/91_tools/bitbucket_tools.py""",
     )
     sub(
         "tools/github-tools.mdx",
+        """## Prerequisites
+
+* Install dependencies: `uv pip install -U agno pygithub openai`.
+* Export your OpenAI API key:""",
+        """## Prerequisites
+
+* Export your OpenAI API key:""",
+    )
+    sub(
+        "tools/github-tools.mdx",
         """source .venvs/demo/bin/activate
 
 python cookbook/91_tools/github_tools.py""",
@@ -1693,7 +1722,7 @@ python cookbook/91_tools/mem0_tools.py""",
 Install dependencies:
 
 ```bash
-uv pip install -U agno openai valkey-glide-sync
+uv pip install -U agno ddgs openai valkey-glide-sync
 ```
 
 ### Run Valkey""",
@@ -1723,7 +1752,7 @@ uv pip install -U agno openai valkey-glide-sync
 Install dependencies:
 
 ```bash
-uv pip install -U agno openai valkey-glide-sync
+uv pip install -U agno ddgs openai valkey-glide-sync
 ```
 
 ### Run Valkey""",
@@ -1738,7 +1767,7 @@ uv pip install -U agno openai valkey-glide-sync
 Install dependencies:
 
 ```bash
-uv pip install -U agno fastapi openai valkey-glide-sync
+uv pip install -U agno ddgs fastapi openai valkey-glide-sync
 ```
 
 ### Run Valkey""",
@@ -1758,11 +1787,151 @@ uv pip install -U agno openai pypdf valkey-glide-sync
 
 Valkey vector search requires""",
     )
+    root_sub(
+        "database/providers/valkey/usage/valkey-for-agent.mdx",
+        "uv pip install -U agno openai valkey-glide-sync",
+        "uv pip install -U agno ddgs openai valkey-glide-sync",
+    )
+    root_sub(
+        "database/providers/valkey/usage/valkey-for-agent.mdx",
+        """from agno.tools.hackernews import HackerNewsTools
+
+# Initialize Valkey db""",
+        """from agno.tools.websearch import WebSearchTools
+
+# Initialize Valkey db""",
+    )
+    root_sub(
+        "database/providers/valkey/usage/valkey-for-agent.mdx",
+        "tools=[HackerNewsTools()]",
+        "tools=[WebSearchTools()]",
+    )
+    root_sub(
+        "database/providers/valkey/usage/valkey-for-team.mdx",
+        "uv pip install -U agno openai valkey-glide-sync",
+        "uv pip install -U agno ddgs openai valkey-glide-sync",
+    )
+    root_sub(
+        "database/providers/valkey/usage/valkey-for-team.mdx",
+        "Run: `uv pip install openai agno valkey-glide-sync` to install the dependencies",
+        "Run: `uv pip install openai agno ddgs valkey-glide-sync` to install the dependencies",
+    )
+    root_sub(
+        "database/providers/valkey/usage/valkey-for-team.mdx",
+        """from agno.tools.hackernews import HackerNewsTools
+from pydantic import BaseModel""",
+        """from agno.tools.hackernews import HackerNewsTools
+from agno.tools.websearch import WebSearchTools
+from pydantic import BaseModel""",
+    )
+    root_sub(
+        "database/providers/valkey/usage/valkey-for-team.mdx",
+        """role="Searches the web for information on a topic",
+    tools=[HackerNewsTools()],""",
+        """role="Searches the web for information on a topic",
+    tools=[WebSearchTools()],""",
+    )
+    root_sub(
+        "database/providers/valkey/usage/valkey-for-workflow.mdx",
+        "uv pip install -U agno fastapi openai valkey-glide-sync",
+        "uv pip install -U agno ddgs fastapi openai valkey-glide-sync",
+    )
+    root_sub(
+        "database/providers/valkey/usage/valkey-for-workflow.mdx",
+        "Run: `uv pip install openai agno valkey-glide-sync fastapi` to install the dependencies",
+        "Run: `uv pip install openai agno ddgs valkey-glide-sync fastapi` to install the dependencies",
+    )
+    root_sub(
+        "database/providers/valkey/usage/valkey-for-workflow.mdx",
+        """from agno.tools.hackernews import HackerNewsTools
+from agno.workflow.step import Step""",
+        """from agno.tools.hackernews import HackerNewsTools
+from agno.tools.websearch import WebSearchTools
+from agno.workflow.step import Step""",
+    )
+    root_sub(
+        "database/providers/valkey/usage/valkey-for-workflow.mdx",
+        """tools=[HackerNewsTools()],
+    role="Search the web for the latest news and trends",""",
+        """tools=[WebSearchTools()],
+    role="Search the web for the latest news and trends",""",
+    )
     sub(
         "storage/valkey/valkey-for-team.mdx",
         "Run `uv pip install ddgs valkey-glide-sync` to install dependencies.",
         "Run `uv pip install ddgs openai valkey-glide-sync` to install dependencies.",
     )
+    valkey_descriptions = {
+        "agent": "Use Valkey as the storage backend for an agent.",
+        "team": "Use Valkey as the storage backend for a team.",
+        "workflow": "Use ValkeyDb as the session storage backend for a workflow.",
+    }
+    for example_type, description in valkey_descriptions.items():
+        sub(
+            f"storage/valkey/valkey-for-{example_type}.mdx",
+            f'description: "{description}"\n---',
+            f'description: "{description}"\nsource: cookbook/06_storage/valkey/valkey_for_{example_type}.py\n---',
+        )
+    for example_type in ("agent", "team", "workflow"):
+        filename = f"valkey_for_{example_type}.py"
+        root_sub(
+            f"examples/storage/valkey/valkey-for-{example_type}.mdx",
+            f"""## Run the Example
+```bash
+# Clone and setup repo
+git clone https://github.com/agno-agi/agno.git
+cd agno/cookbook/06_storage/valkey
+
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+python {filename}
+```""",
+            f"""## Run the Example
+
+<Steps>
+  <Step title="Clone Agno">
+    Clone the repository and run the remaining commands from its root:
+    ```bash
+    git clone https://github.com/agno-agi/agno.git
+    cd agno
+    ```
+  </Step>
+
+  <Step title="Set up the demo environment">
+    ```bash
+    ./scripts/demo_setup.sh
+    source .venvs/demo/bin/activate
+    uv pip install -U ddgs openai valkey-glide-sync
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run Valkey">
+    ```bash
+    docker run -d --name my-valkey -p 6379:6379 valkey/valkey-bundle
+    ```
+  </Step>
+
+  <Step title="Run the example">
+    ```bash
+    python cookbook/06_storage/valkey/{filename}
+    ```
+  </Step>
+</Steps>""",
+        )
     sub(
         "agent-os/dbs/valkey-db.mdx",
         "```python\n",
