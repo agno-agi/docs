@@ -1,20 +1,18 @@
 ---
 title: "Dash"
 sidebarTitle: "Dash"
-description: "Self-learning data agent that grounds answers in 6 layers of context."
+description: "Self-learning data agent that grounds answers in six layers of context and improves with every query."
 ---
 
-**Dash is a self-learning data agent that gets better with every query.**
+**Dash is a self-learning data agent built with systems engineering principles. It grounds answers in six layers of context and improves with every query.**
 
-Traditional Text-to-SQL agents start from scratch on every query. They guess column names, repeat the same mistakes, and never learn from corrections. Your team fixes an error, and the agent makes the same error again tomorrow.
+Ask a question in English and get a correct, meaningful answer. That's the goal. But raw LLMs writing SQL hit a wall fast: schemas lack meaning, types are misleading, tribal knowledge is missing, there's no way to learn from mistakes, and results lack interpretation. The root cause is missing context and missing memory. Dash solves this with six layers of grounded context, a self-learning loop that captures every fix, and a focus on delivering insights you can act on.
 
-Dash solves this with 6 layers of grounded context and a learning loop that captures every fix. The knowledge base functions like manually-editable model weights: update retrieval context, not neural network parameters.
+Chat with Dash in Slack, the terminal, or the [AgentOS UI](https://os.agno.com). The code is public at [agno-agi/dash](https://github.com/agno-agi/dash).
 
-Checkout the [repo](https://github.com/agno-agi/dash) for more details.
+## How it works
 
-## How It Works
-
-Dash is a team of three agents coordinated by a leader:
+Dash runs as an Agno team in coordinate mode, with a leader that routes each request to two specialists:
 
 | Agent | Role |
 |-------|------|
@@ -22,9 +20,9 @@ Dash is a team of three agents coordinated by a leader:
 | **Engineer** | Builds reusable views and summary tables in the `dash` schema |
 | **Leader** | Routes queries, coordinates the team, posts to Slack |
 
-**Schema boundaries:** Company data lives in the `public` schema (read-only). Agent-created views and summary tables live in the `dash` schema. The Analyst's SQL tools enforce read-only at the PostgreSQL level, not just in prompts.
+**Schema boundaries:** Company data lives in the `public` schema; agent-created views and summary tables live in the `dash` schema. The Analyst connects with `default_transaction_read_only=on`, so PostgreSQL rejects any write it attempts. A SQLAlchemy event listener blocks Engineer writes that target `public`. These guardrails live in the infrastructure, so they hold regardless of what the model generates.
 
-### Six Layers of Context
+### Six layers of context
 
 | Layer | Purpose | Source |
 |-------|---------|--------|
@@ -32,33 +30,25 @@ Dash is a team of three agents coordinated by a leader:
 | **Human Annotations** | Metrics, definitions, business rules | `knowledge/business/*.json` |
 | **Query Patterns** | SQL that is known to work | `knowledge/queries/*.sql` |
 | **Institutional Knowledge** | Docs, wikis, external references | MCP (optional) |
-| **Learnings** | Error patterns and discovered fixes | Agno `LearningMachine` |
+| **Learnings** | Error patterns and discovered fixes | Agno `Learning Machine` |
 | **Runtime Context** | Live schema changes | `introspect_schema` tool |
 
-### Self-Learning
+### Self-learning
 
-Two paths run in parallel: the **online path** answers questions using retrieved context, the **offline path** captures learnings for future queries. Dash improves without retraining or fine-tuning:
+Every query retrieves knowledge and learnings before generating SQL. When a query fails, Dash diagnoses the error, fixes it, and saves the fix as a learning. Two complementary systems make this work:
 
-| System | Stores | How It Evolves |
+| System | Stores | How it evolves |
 |--------|--------|----------------|
-| **Knowledge** | Validated queries, table schemas, business rules | Curated by your team and refined by Dash |
-| **Learnings** | Error patterns, column quirks, team conventions | Managed automatically by the Learning Machine |
+| **Knowledge** | Validated queries, table schemas, business rules | Curated by you and refined by Dash |
+| **Learnings** | Error patterns and discovered fixes | Managed automatically by the Learning Machine |
 
-When a query fails because `position` is TEXT and not INTEGER, Dash saves that. Next time, it knows. When your team is focused on IPO prep, Dash learns that "revenue" means ARR, not bookings, and that the board wants cohort retention broken out by enterprise vs SMB.
+When a churn query returns wrong numbers because it filtered on the `status` column instead of `ended_at IS NULL`, Dash saves the fix and doesn't make that mistake again. When your team defines MRR as the sum of active subscriptions excluding trials, that rule lives in `knowledge/business/` and every future query respects it.
 
-### Insights, Not Just Rows
+### Insights you can act on
 
-Dash reasons about what makes an answer useful, not just technically correct.
+Dash reasons about what makes an answer useful. Ask "Which plan has the highest churn rate?" and you get the number, the comparison across plans, the trend behind it, and any caveats from your business rules.
 
-**Question:** Who won the most races in 2019?
-
-| Typical SQL Agent | Dash |
-|-------------------|------|
-| `Hamilton: 11` | Lewis Hamilton dominated 2019 with **11 wins out of 21 races**, more than double Bottas's 4 wins. This performance secured his sixth world championship. |
-
-## Run Locally
-
-See [Setup guide](/tutorials/dash/setup) for detailed instructions.
+## Run locally
 
 ```bash
 git clone https://github.com/agno-agi/dash.git && cd dash
@@ -73,13 +63,13 @@ docker exec -it dash-api python scripts/generate_data.py
 docker exec -it dash-api python scripts/load_knowledge.py
 ```
 
-Confirm Dash is running at `http://localhost:8000/docs`.
+Confirm Dash is running at [http://localhost:8000/docs](http://localhost:8000/docs). The [Dash README](https://github.com/agno-agi/dash#quick-start) walks through this step by step.
 
-### Connect to the Control Plane
+### Connect to the AgentOS UI
 
-1. Open [os.agno.com](https://os.agno.com)
-2. Click **Connect OS** → **Local**
-3. Enter `http://localhost:8000`
+1. Open [os.agno.com](https://os.agno.com) and log in.
+2. Click **Connect OS**, choose **Local**, and enter `http://localhost:8000`.
+3. Click **Connect**.
 
 <Frame>
   <video
@@ -94,15 +84,15 @@ Confirm Dash is running at `http://localhost:8000/docs`.
   </video>
 </Frame>
 
+<Check>Dash is running locally.</Check>
+
 ## Deploy to Railway
 
-See [Deploy to Railway](/tutorials/dash/deploy-to-railway) for JWT setup and production configuration.
-
-Railway deployment uses `.env.production` to keep production credentials separate.
+Railway deployment uses `.env.production` to keep production credentials separate from local dev.
 
 ```bash
 cp example.env .env.production
-# Edit .env.production — set OPENAI_API_KEY
+# Edit .env.production and set OPENAI_API_KEY
 ```
 
 <Steps>
@@ -113,17 +103,19 @@ railway login
 ./scripts/railway_up.sh
 ```
 
-The app will crash-loop until the JWT key is added in the next step. That's expected.
+This creates the Railway project, database, and app service. The app will crash-loop until the JWT key is added in the next step. That's expected.
 
   </Step>
 
   <Step title="Get your JWT key">
 
-1. Copy your Railway domain from the output (e.g. `dash-production-xxxx.up.railway.app`)
-2. Open [os.agno.com](https://os.agno.com) → **Connect OS** → **Live**
-3. Paste your Railway URL
-4. Go to **Settings** and generate a key pair
-5. Add the public key to `.env.production`:
+Production requires a `JWT_VERIFICATION_KEY` from AgentOS. You need the Railway domain from step 1 to set this up.
+
+1. Copy your Railway domain from the output of step 1 (e.g. `dash-production-xxxx.up.railway.app`).
+2. Open [os.agno.com](https://os.agno.com) and log in.
+3. Click **Connect OS**, choose **Live**, and paste your Railway URL.
+4. Go to **Settings** → **OS & Security** and turn on **Token-Based Authorization (JWT)**. The UI generates a key pair and shows you the public key.
+5. Add the public key to `.env.production`, wrapped in single quotes:
 
 ```bash
 JWT_VERIFICATION_KEY='-----BEGIN PUBLIC KEY-----
@@ -140,12 +132,18 @@ MIIBIjANBgkq...
 ./scripts/railway_redeploy.sh
 ```
 
+`railway_env.sh` reads `.env.production` and sets each variable on the Railway service. It handles multiline values like PEM keys and is safe to run repeatedly.
+
   </Step>
 </Steps>
 
-### Production Operations
+<Check>Dash is live on Railway.</Check>
 
-Database scripts must run inside Railway's network:
+The [Dash README](https://github.com/agno-agi/dash#deploy-to-railway) covers this flow in more detail.
+
+### Production operations
+
+Database scripts must run inside Railway's network. The internal hostname `pgvector.railway.internal` is unreachable from your local machine, so SSH into the running container:
 
 ```bash
 railway ssh --service dash
@@ -154,18 +152,25 @@ python scripts/generate_data.py
 python scripts/load_knowledge.py
 ```
 
+Other operations run locally:
+
+```bash
+railway logs --service dash
+railway open
+```
+
 ## Connect to Slack
 
-Dash can receive DMs, @mentions, and thread replies, and can post to channels proactively.
+Dash can receive DMs, @mentions, and thread replies, and can post to channels proactively. Each Slack thread maps to one Dash session.
 
-1. Run Dash with a public URL (ngrok locally, or your Railway domain)
-2. Create the Slack app from the manifest in `docs/SLACK_CONNECT.md`
-3. Set `SLACK_TOKEN` and `SLACK_SIGNING_SECRET` in `.env`
-4. Restart Dash
+1. Run Dash with a public URL (ngrok locally, or your Railway domain).
+2. Create and install the Slack app from the manifest in `docs/SLACK_CONNECT.md`.
+3. Set `SLACK_TOKEN` and `SLACK_SIGNING_SECRET`, then restart Dash.
+4. In Slack, confirm Event Subscriptions shows verified, then send a DM or @mention to test.
 
-See [Slack setup](/tutorials/dash/connect-slack) for details.
+See the [Slack setup guide](/agent-os/interfaces/slack/setup) for the manifest, ngrok commands, permissions, and troubleshooting.
 
-## Example Prompts
+## Example prompts
 
 Try these on the sample SaaS metrics dataset:
 
@@ -174,34 +179,36 @@ Try these on the sample SaaS metrics dataset:
 - Show me revenue trends by plan over the last 6 months
 - Which customers are at risk of churning?
 
-## Adding Your Own Data
+## Add your own data
 
 Dash works best when it understands how your organization talks about data:
 
 | Directory | Content |
 |-----------|---------|
-| `knowledge/tables/` | Table schemas, column meanings, data quality notes |
-| `knowledge/queries/` | Validated SQL patterns that are known to work |
+| `knowledge/tables/` | Table meaning, column notes, data quality caveats |
+| `knowledge/queries/` | Proven SQL patterns |
 | `knowledge/business/` | Metric definitions, business rules, common gotchas |
 
 Load or update knowledge at any time:
 
 ```bash
-python scripts/load_knowledge.py            # Upsert changes
+python scripts/load_knowledge.py             # Upsert changes
 python scripts/load_knowledge.py --recreate  # Fresh start
 ```
 
-## Run Evals
+The [Dash README](https://github.com/agno-agi/dash#load-knowledge) covers loading your own data and scheduled proactive tasks.
+
+## Run evals
 
 Five eval categories using Agno's eval framework:
 
-| Category | What It Tests |
-|----------|---------------|
-| **accuracy** | Correct data and meaningful insights |
-| **routing** | Team routes to correct agent/tools |
-| **security** | No credential or secret leaks |
-| **governance** | Refuses destructive SQL operations |
-| **boundaries** | Schema access boundaries respected |
+| Category | Eval type | What it tests |
+|----------|-----------|---------------|
+| **accuracy** | `AccuracyEval` (1-10) | Correct data and meaningful insights |
+| **routing** | `ReliabilityEval` | Team routes to the correct agent and tools |
+| **security** | `AgentAsJudgeEval` (binary) | No credential or secret leaks |
+| **governance** | `AgentAsJudgeEval` (binary) | Refuses destructive SQL operations |
+| **boundaries** | `AgentAsJudgeEval` (binary) | Schema access boundaries respected |
 
 ```bash
 python -m evals                      # Run all evals
@@ -211,4 +218,4 @@ python -m evals --verbose            # Show response details
 
 ## Source
 
-For architecture details, data model reference, and security configuration, see the [GitHub repo](https://github.com/agno-agi/dash).
+Dash is public at [agno-agi/dash](https://github.com/agno-agi/dash). The README covers the full architecture, the data model, and the security setup.

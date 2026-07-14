@@ -1,0 +1,207 @@
+---
+title: "Azure Container Apps Reference"
+sidebarTitle: "Reference"
+description: "Commands, customization, environment variables, and troubleshooting for the Azure Container Apps template."
+---
+
+The deploy scripts put everything in one resource group, `agentos` by default, and the container app is named `agent-os`. Override the group and region with `AZURE_RESOURCE_GROUP` and `AZURE_LOCATION` (default `eastus`).
+
+## Manage
+
+| Task | Command |
+|------|---------|
+| Deploy code changes | `./scripts/azure/redeploy.sh` |
+| Sync env variables | `./scripts/azure/env-sync.sh` (defaults to `.env.production`; pass `.env` to sync that instead) |
+| Tail logs | `az containerapp logs show -g agentos -n agent-os --follow` |
+| Tear down | `./scripts/azure/down.sh` (add `--yes` to skip the confirmation) |
+
+`env-sync.sh` turns secret-shaped keys (`OPENAI_API_KEY`, `DB_PASS`, `JWT_VERIFICATION_KEY`, `MCP_CONNECT_SECRET`, `AGENTOS_MCP_SIGNING_KEY`, `PARALLEL_API_KEY`, `SLACK_*`) into Container Apps secrets and everything else into plain env vars, then applies it all in one revision roll. It skips `AZURE_*` keys; those configure the scripts, not the app.
+
+The app is pinned to one replica (`--min-replicas 1 --max-replicas 1`). Min 1 keeps the in-process scheduler and MCP streams alive; max 1 stops Azure from running two schedulers. Leave both pins in place.
+
+## Production auth
+
+Token-Based Authorization is on by default. Without a `JWT_VERIFICATION_KEY` or `JWT_JWKS_FILE`, the app refuses to serve traffic in production. The platform's job is to keep your data private, so the safe default is refuse to start.
+
+Token-Based Auth gives you three things:
+
+1. **No public access.** The server rejects requests without a valid token.
+2. **Per-request identity.** Middleware parses the token and extracts the `user_id`, `session_id`, and custom claims. Each request is tied to a user and session, giving you auditability and traceability.
+3. **Granular permissions.** User tokens can run an agent and view their own sessions. Admin tokens read everyone's sessions and test any agent.
+
+To opt out (not recommended), set `authorization=False` in `app/main.py` and redeploy. Use this only inside a private VPC behind another auth layer. Without it, anyone who guesses your Container Apps domain can access your platform.
+
+## Customize
+
+<AccordionGroup>
+  <Accordion title="Add an agent">
+Ask your coding agent to run `/create-new-agent`, or do it by hand. Create `agents/my_agent.py`:
+
+```python
+from agno.agent import Agent
+
+from app.settings import default_model
+from db import get_postgres_db
+
+INSTRUCTIONS = """\
+What the agent does, which tools it uses, the rules to follow when answering.
+"""
+
+my_agent = Agent(
+    id="my-agent",
+    name="My Agent",
+    model=default_model(),
+    db=get_postgres_db(),
+    instructions=INSTRUCTIONS,
+    enable_agentic_memory=True,
+    add_datetime_to_context=True,
+    add_history_to_context=True,
+    num_history_runs=5,
+)
+```
+
+Register it in `app/main.py`:
+
+```python
+from agents.my_agent import my_agent
+
+agent_os = AgentOS(
+    ...
+    agents=[agent_builder, platform_manager, web_search, my_agent],
+)
+```
+
+Local containers hot-reload on save. For production, run `./scripts/azure/redeploy.sh`.
+  </Accordion>
+
+  <Accordion title="Change the model">
+`app/settings.py` defines `default_model()`, used by every agent. Change it in one place:
+
+```python
+from agno.models.anthropic import Claude
+
+def default_model():
+    return Claude(id="claude-sonnet-5")
+```
+
+Add `anthropic` to `pyproject.toml`, set the provider key in your env, and regenerate pins:
+
+```bash
+./scripts/generate_requirements.sh
+```
+
+Rebuild locally with `docker compose up -d --build`. For production:
+
+```bash
+./scripts/azure/env-sync.sh
+./scripts/azure/redeploy.sh
+```
+  </Accordion>
+
+  <Accordion title="Add tools">
+Agno ships 100+ toolkits. See [Toolkits](/tools/toolkits/overview).
+
+```python
+from agno.tools.slack import SlackTools
+
+my_agent = Agent(
+    ...
+    tools=[SlackTools()],
+)
+```
+  </Accordion>
+
+  <Accordion title="Add dependencies">
+1. Edit `pyproject.toml`.
+2. Regenerate pins: `./scripts/generate_requirements.sh` (add `upgrade` to refresh every pin).
+3. Rebuild locally with `docker compose up -d --build`, or redeploy with `./scripts/azure/redeploy.sh`.
+  </Accordion>
+
+  <Accordion title="Enable Slack">
+Set both variables in your env file:
+
+```bash
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_SIGNING_SECRET=...
+```
+
+Sync with `./scripts/azure/env-sync.sh`. The interface activates automatically and routes messages to Agent Builder; change the `agent=` argument in `app/main.py` to point at another agent. See [Slack setup](/agent-os/interfaces/slack/setup).
+  </Accordion>
+
+  <Accordion title="Toggle scheduled workflows">
+The deployment check runs daily by default (`ENABLE_DEPLOY_CHECK=True`); it is deterministic and free. Scheduled evals are off by default (`ENABLE_SCHEDULED_EVALS=False`) because they use model calls. Both workflows stay runnable on demand regardless.
+  </Accordion>
+</AccordionGroup>
+
+## Format, validate, and run evals
+
+The format, validate, and eval scripts run on the host and need a venv. Set it up once:
+
+```bash
+./scripts/venv_setup.sh
+source .venv/bin/activate
+```
+
+| Task | Command |
+|------|---------|
+| Format | `./scripts/format.sh` |
+| Lint and type-check | `./scripts/validate.sh` |
+| Run smoke evals | `python -m evals --tag smoke` |
+
+`./scripts/mcp_check.sh` runs inside the container, so it needs no venv.
+
+## Environment variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `OPENAI_API_KEY` | Yes | - | Models and embeddings. |
+| `RUNTIME_ENV` | No | `prd` | `dev` disables JWT. Compose sets it for local. Never put it in an env file that syncs to Azure, or production deploys unauthenticated. |
+| `JWT_VERIFICATION_KEY` | Production | - | Public key from os.agno.com. Quote the value so the multi-line PEM parses as one variable. |
+| `JWT_JWKS_FILE` | Production | - | Path to a JWKS file. Alternative to `JWT_VERIFICATION_KEY`. |
+| `MCP_CONNECT_SECRET` | No | generated by `up.sh` | OAuth consent secret (16+ chars) for connecting claude.ai and ChatGPT to `/mcp`. `up.sh` generates one on deploy and writes it to `.env.production`. |
+| `AGENTOS_MCP_SIGNING_KEY` | No | generated | Optional high-entropy signing-key material (32+ chars) for OAuth tokens. Unset, a strong key is generated and persisted in the database. Rotating it invalidates outstanding tokens. |
+| `AGENTOS_URL` | No | `http://127.0.0.1:8000` | Scheduler base URL. `up.sh` sets it to your Container Apps URL. Scheduled jobs never fire if it stays at the default in production. Also the public origin OAuth metadata derives from when `MCP_CONNECT_SECRET` is set. |
+| `ENABLE_DEPLOY_CHECK` | No | `True` | Daily deployment-check cron. |
+| `ENABLE_SCHEDULED_EVALS` | No | `False` | Daily run-evals cron. Uses model calls. |
+| `EVALS_TAG` | No | `smoke` | Eval tag the run-evals workflow runs. |
+| `EVALS_CASE_TIMEOUT_SECONDS` | No | `90` | Per-case timeout for run-evals runs. |
+| `EVALS_SUITE_TIMEOUT_SECONDS` | No | `900` | Whole-suite timeout for run-evals runs. |
+| `PARALLEL_API_KEY` | No | - | WebSearch uses the Parallel SDK when set, keyless MCP otherwise. |
+| `SLACK_BOT_TOKEN` | No | - | Set with the signing secret to enable Slack. |
+| `SLACK_SIGNING_SECRET` | No | - | Set with the bot token to enable Slack. |
+| `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASS` / `DB_DATABASE` | No | matches compose | Postgres connection. `up.sh` wires them to the Flexible Server. |
+| `DB_DRIVER` | No | `postgresql+psycopg` | SQLAlchemy driver. |
+| `AGNO_DEBUG` | No | `False` | Verbose Agno logs. Compose sets it for dev. |
+| `WAIT_FOR_DB` | No | `False` | If `True`, the entrypoint blocks on the database before starting. Compose sets it. |
+| `AZURE_RESOURCE_GROUP` | No | `agentos` | Resource group every deploy script targets. Never synced to the app. |
+| `AZURE_LOCATION` | No | `eastus` | Region for the first `up.sh` run. Never synced to the app. |
+| `AZURE_ACR_NAME` | No | generated by `up.sh` | Registry name. Minted once and saved to your env file so re-runs reuse it. |
+| `AZURE_PG_NAME` | No | generated by `up.sh` | Postgres server name. Minted once and saved to your env file so re-runs reuse it. |
+
+`up.sh` also generates `DB_PASS` once and saves it to your env file. Don't regenerate it; the server keeps the first password, and a new one would lock the app out.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="az: command not found">
+Install the [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli), then run `az login`.
+  </Accordion>
+  <Accordion title="up.sh or redeploy.sh says Docker is required">
+The image is built locally and pushed to your registry, so both scripts need Docker running. Start Docker Desktop and retry.
+  </Accordion>
+  <Accordion title="up.sh pauses asking for a JWT key">
+Expected. Mint the key at [os.agno.com](https://os.agno.com): connect your OS (**Connect OS** → **Live**, enter your Container Apps URL), then turn on **Token-Based Authorization (JWT)** under **Settings** → **OS & Security** and paste the full PEM. To do it later, skip the prompt, add `JWT_VERIFICATION_KEY` or `JWT_JWKS_FILE` to `.env.production`, and run `./scripts/azure/env-sync.sh`.
+  </Accordion>
+  <Accordion title="App refuses to serve in production">
+JWT auth is on whenever `RUNTIME_ENV` is not `dev`. Set `JWT_VERIFICATION_KEY` or `JWT_JWKS_FILE` and sync. To opt out inside a private VPC behind another auth layer, set `authorization=False` in `app/main.py`.
+  </Accordion>
+  <Accordion title="Nothing at the app URL right after deploy">
+The revision is still converging. Wait a couple of minutes and check `az containerapp logs show -g agentos -n agent-os --follow`.
+  </Accordion>
+  <Accordion title="up.sh failed partway through">
+Run it again. The generated names (`AZURE_ACR_NAME`, `AZURE_PG_NAME`) and `DB_PASS` persist in your env file, so re-runs reuse the same registry and Postgres server instead of minting new ones.
+  </Accordion>
+  <Accordion title="Scheduled jobs never fire">
+`AGENTOS_URL` is still the localhost default. `up.sh` sets it to your Container Apps URL automatically; for a custom domain or tunnel, set it by hand and run `./scripts/azure/env-sync.sh`.
+  </Accordion>
+</AccordionGroup>

@@ -18,31 +18,31 @@ Use secondary model if you need to refine the response or validate the response 
 Design your agent based on three dimensions: Reasoning (Logic), Presentation (Style), and Structure (Schema).
 
 * Single model (`model`): Select the 'doer' or 'pipeline brain' based on reasoning capability *(for example, GPT-4o for complex tasks, Claude-3 for simple ones)*.
-* Single model with output refinement (`output_model`): In single model pipeline, select the 'formatter' or 'pipeline stylist' based on formatting capability *(for example, Claude Opus 4.5 for prose, GPT-5-mini for cost optimization)*.
-* Multi-model (`parser_model`): Add a secondary model if the primary model is weaker or the output is not structured or needs refinement.*(For example, with OpenAI/Anthropic, use `parser_model` with a smart model (for example, Claude 4.5 or later) to "fix" or "extract" desired output)*.
+* Multi-model with `output_model`: Add a secondary 'formatter' or 'pipeline stylist' selected for formatting capability *(for example, Claude Opus 4.5 for prose, GPT-5-mini for cost optimization)*.
+* Multi-model with `parser_model`: Add a secondary model if the primary model is weaker or the output is not structured or needs refinement. *(For example, with OpenAI/Anthropic, use `parser_model` with a smart model (for example, Claude 4.5 or later) to "fix" or "extract" desired output)*.
 
 Use these parameters to select the desired output model pipeline:
 
 - `model`: Mandatory, specifies the primary model to generate a response
 - `output_schema`: The schema to validate the response against
-- `output_model`: When using single model, if the model does not support structured output, use this to validate the response    
+- `output_model`: The secondary model that regenerates the final response, replacing the primary model's output
 - `output_model_prompt`: Optional, used in conjunction with `output_model` to specify additional custom formatting to refine output
-- `parser_model`: The secondary model used to further refine the intermediary response for better outcomes
+- `parser_model`: The secondary model that parses the primary model's response into `output_schema`
 - `parser_model_prompt`: Optional, used in conjunction with `parser_model` to specify additional instructions to control the `parser_model` output
 
 ## Use cases
 | Model Design | Use Case | Configuration |
 |-------------|----------|----------------|
-| Single Model | Need better prose quality | `output_model` = Claude Opus 4.5 |
-| Single Model | Need to reduce costs | `output_model` = GPT-5-mini |
-| Single Model | Primary model lacks structured output or lacks desired formatting | `parser_model` = GPT-4o, `output_schema` = your desired schema, `output_model` = Claude Opus 4.5 |
-| Single Model | Need custom formatting style | `output_model` = Claude Opus 4.5, `output_model_prompt` = your desired formatting instructions |
+| Single Model | Standard Agent | `model` = OpenAIResponses(id="gpt-5.2") |
 | Single Model | Simple structured data extraction | `output_schema` = your desired schema |
-| Multi Model | Standard Agent | `model` = OpenAIResponses(id="gpt-5.2") |
-| Multi Model | Strict JSON   | `model` = OpenAIResponses(id="gpt-5.2") and `output_schema` = your desired schema |
+| Single Model | Strict JSON | `model` = OpenAIResponses(id="gpt-5.2") and `output_schema` = your desired schema |
+| Multi Model | Need better prose quality | `output_model` = Claude Opus 4.5 |
+| Multi Model | Need to reduce costs | `output_model` = GPT-5-mini |
+| Multi Model | Need custom formatting style | `output_model` = Claude Opus 4.5, `output_model_prompt` = your desired formatting instructions |
 | Multi Model | Strict JSON (Weak Model) | `model` = OpenAIResponses(id="gpt-5.2") and `parser_model` = GPT-4o and `output_schema` = your desired schema |
 | Multi Model | Reasoning + Great Prose | `model` = OpenAIResponses(id="gpt-5.2") and `output_model` = Claude Opus 4.5 |
 | Multi Model | Cost Efficient | `model` = OpenAIResponses(id="gpt-5.2") and `output_model` = GPT-5-mini |
+| Multi Model | Primary model lacks structured output or lacks desired formatting | `parser_model` = GPT-4o, `output_schema` = your desired schema, `output_model` = Claude Opus 4.5 |
 
 ## Custom Output Style 
 
@@ -86,7 +86,7 @@ Use it to set the tone (Write a professional, executive summary), format (Format
 
 ### `parser_model_prompt`
 
-The `parser_model_prompt` is optional. In most cases,the default system prompt works well for secondary model.
+The `parser_model_prompt` is optional. In most cases, the default system prompt works well for the secondary model.
 Use it optionally whenever you use a secondary `parser_model` to set the style, tone, and format for the final output.  
 
 ```python
@@ -107,7 +107,7 @@ agent = Agent(
     model=Ollama(id="llama3.1"),
     description="You are a movie script writer.",
     output_schema=MovieScript,
-    parser_model=OpenAIChat(id="gpt-4o"),
+    parser_model=OpenAIChat(id="gpt-5.4-mini"),
     parser_model_prompt="Extract the movie details from the input. Ensure the JSON is valid and matches the MovieScript schema exactly."
 )
 agent.print_response("New york")
@@ -193,10 +193,11 @@ agent.print_response("Analyze AAPL stock performance", stream=True)
 
 ### Structured Output Support
 
-Some models lack native structured output. Use an output model that supports it:
+Some models lack native structured output. Use a parser model that supports it:
 ```python
 from pydantic import BaseModel, Field
 from agno.agent import Agent
+from agno.models.ollama import Ollama
 from agno.models.openai import OpenAIResponses
 from agno.tools.hackernews import HackerNewsTools
 
@@ -206,8 +207,8 @@ class ArticleSummary(BaseModel):
     sentiment: str = Field(description="positive, negative, or neutral")
 
 agent = Agent(
-    model=OpenAIResponses(id="gpt-5.2"),            # Primary reasoning
-    output_model=OpenAIResponses(id="gpt-5.2"),    # Structured output
+    model=Ollama(id="llama3.1"),                 # No native structured output
+    parser_model=OpenAIResponses(id="gpt-5.2"),  # Parses into the schema
     output_schema=ArticleSummary,
     tools=[HackerNewsTools()],
 )

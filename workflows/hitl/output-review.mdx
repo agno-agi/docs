@@ -58,10 +58,10 @@ Pass these fields inside `HumanReview`. See [HumanReview Config](/workflows/hitl
 |-------|------|---------|-------------|
 | `requires_output_review` | `bool \| Callable[[StepOutput], bool]` | `False` | Pause after execution for review. Pass a callable for [conditional review](#conditional-review) |
 | `output_review_message` | `str` | `None` | Message shown to the reviewer |
-| `on_reject` | `OnReject` | `OnReject.skip` | Action on rejection: `skip`, `cancel`, `retry`, `else_branch` |
+| `on_reject` | `OnReject` | `OnReject.skip` | Action on rejection: `skip`, `cancel`, `retry` |
 | `max_retries` | `int` | `3` | Maximum retry attempts when `on_reject=OnReject.retry` |
 | `timeout` | `int` | `None` | Seconds before auto-resolving. See [Timeout](/workflows/hitl/timeout) |
-| `on_timeout` | `OnTimeout` | `None` | Action when timeout expires. See [Timeout](/workflows/hitl/timeout) |
+| `on_timeout` | `OnTimeout` | `OnTimeout.cancel` | Action when timeout expires. See [Timeout](/workflows/hitl/timeout) |
 
 ## Reviewer Actions
 
@@ -124,7 +124,7 @@ The feedback string is injected into the agent's message as `"Feedback from revi
 |----------|--------|
 | Reject with `on_reject=OnReject.retry` | Step re-executes. Previous output is removed from collected outputs |
 | Reject with feedback | Feedback is passed to the agent. `retry_count` increments |
-| `max_retries` exhausted | Step is skipped (treated as final rejection) |
+| `max_retries` exhausted | Workflow is cancelled with a max-retries message |
 
 ## Edit Output
 
@@ -192,7 +192,7 @@ This avoids the all-or-nothing problem: review every output (expensive) or revie
 |-----------|---------|
 | Output length | `len(str(output.content)) > 200` |
 | Contains sensitive keywords | `"password" in str(output.content).lower()` |
-| Confidence score | `output.metrics.get("confidence", 1.0) < 0.8` |
+| Confidence score | `output.content.confidence < 0.8` (with structured output) |
 | Random sampling | `random.random() < 0.1` for 10% review rate |
 
 ## Full Review Loop

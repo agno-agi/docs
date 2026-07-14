@@ -1,0 +1,111 @@
+---
+title: "StudioTools"
+sidebarTitle: "StudioTools"
+description: "Give an agent tools to create, update, and run Studio components from chat with human-in-the-loop confirmation."
+---
+
+`StudioTools` gives an agent access to Studio component operations. The agent can create, update, run, and manage components from chat, with human-in-the-loop confirmation and actions.
+
+## Example
+
+```python studio_tool.py
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.anthropic import Claude
+from agno.models.openai import OpenAIResponses
+from agno.os import AgentOS
+from agno.registry import Registry
+from agno.tools.calculator import CalculatorTools
+from agno.tools.duckduckgo import DuckDuckGoTools
+from agno.tools.hackernews import HackerNewsTools
+from agno.tools.studio import StudioTools
+from agno.tools.user_control_flow import UserControlFlowTools
+from agno.tools.user_feedback import UserFeedbackTools
+
+db = SqliteDb(id="studio-hitl-db", db_file="tmp/studio_hitl.db")
+
+registry = Registry(
+    name="Studio HITL Registry",
+    tools=[DuckDuckGoTools(), HackerNewsTools(), CalculatorTools()],
+    models=[
+        OpenAIResponses(id="gpt-5.5"),
+        Claude(id="claude-sonnet-4-6"),
+    ],
+    dbs=[db],
+)
+
+tools = [
+    StudioTools(
+        registry=registry,
+        db=db,
+        default_model_id="gpt-5.5",
+        requires_confirmation_tools=["create_agent", "delete_agent"],
+    ),
+    UserFeedbackTools(),
+    UserControlFlowTools(),
+]
+
+studio_agent = Agent(
+    id="studio-hitl-agent",
+    name="Studio HITL",
+    model=OpenAIResponses(id="gpt-5.5"),
+    tools=tools,
+    db=db,
+    instructions=[
+        "Create and update Studio components only after you have the required details.",
+        "Ask for clarification before making destructive changes.",
+        "Return the component id, version, and next action after each Studio change.",
+    ],
+    markdown=True,
+)
+
+agent_os = AgentOS(
+    id="studio-hitl-agent-os",
+    description="Studio agent with human-in-the-loop composition",
+    agents=[studio_agent],
+    registry=registry,
+    db=db,
+)
+
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="studio_tool:app", port=7777, reload=True)
+```
+
+`requires_confirmation_tools` pauses the run before the selected StudioTools functions execute. `UserFeedbackTools` and `UserControlFlowTools` let the agent pause for structured choices or free-text input before it calls StudioTools.
+
+<Frame caption="A HITL StudioTools run pausing before delete_agent calls">
+  <img
+    src="/images/agent-os-studio-tools-confirm-delete.png"
+    alt="Chat UI showing Studio tool calls waiting for confirmation before deleting agents"
+    style={{ borderRadius: "8px" }}
+  />
+</Frame>
+
+<div style={{ marginTop: "2rem" }}>
+<Frame caption="The run continues after confirmation">
+  <img
+    src="/images/agent-os-studio-tools-delete-result.png"
+    alt="Chat UI showing confirmed Studio tool calls and the final result"
+    style={{ borderRadius: "8px" }}
+  />
+</Frame>
+</div>
+
+<div style={{ marginTop: "2rem" }}>
+<Frame caption="The agents page after the deletion">
+  <img
+    src="/images/agent-os-studio-tools-agent-list.png"
+    alt="Agents list page showing the remaining agents after the deletion"
+    style={{ borderRadius: "8px" }}
+  />
+</Frame>
+</div>
+
+## Developer Resources
+
+- [StudioTools toolkit reference](/tools/toolkits/agent-os/studio)
+- [Human-in-the-Loop overview](/hitl/overview)
+- [Studio Registry](/agent-os/studio/registry)
+- [StudioTools cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/05_agent_os/studio_tool)

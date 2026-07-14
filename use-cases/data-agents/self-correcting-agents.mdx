@@ -8,19 +8,28 @@ When an agent gets a query wrong, the fix shouldn't live in your head. Agno's Le
 ```python
 from agno.agent import Agent
 from agno.db.postgres import PostgresDb
+from agno.knowledge.knowledge import Knowledge
+from agno.learn import LearningMachine
 from agno.models.openai import OpenAIResponses
 from agno.tools.sql import SQLTools
+from agno.vectordb.pgvector import PgVector
+
+db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
+
+knowledge = Knowledge(
+    vector_db=PgVector(table_name="agent_learnings", db_url=db_url),
+)
 
 agent = Agent(
     model=OpenAIResponses(id="gpt-5.5"),
-    db=PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai"),
+    db=PostgresDb(db_url=db_url),
     tools=[SQLTools(db_url="postgresql+psycopg://readonly@warehouse/analytics")],
-    learning=True,
+    learning=LearningMachine(knowledge=knowledge, decision_log=True),
     instructions="When a query errors, diagnose the cause and record the correction.",
 )
 ```
 
-`learning=True` enables capture and recall. The agent accumulates corrections across runs and pulls the relevant ones into context on future questions.
+Passing `knowledge` to the `LearningMachine` enables the Learned Knowledge store, where corrections live. `decision_log=True` records the reasoning behind each change. The agent accumulates corrections across runs and pulls the relevant ones into context on future questions.
 
 ## The loop
 
@@ -37,13 +46,14 @@ Each diagnosed error is written down and pulled back before the next similar que
 Each store takes a mode. For a data agent, you usually want errors captured automatically and schema changes proposed for review.
 
 ```python
-from agno.learn import LearningMachine, LearningMode, UserMemoryConfig
+from agno.learn import LearnedKnowledgeConfig, LearningMachine, LearningMode
 
 agent = Agent(
     model=OpenAIResponses(id="gpt-5.5"),
     db=db,
     learning=LearningMachine(
-        user_memory=UserMemoryConfig(mode=LearningMode.ALWAYS),
+        knowledge=knowledge,
+        learned_knowledge=LearnedKnowledgeConfig(mode=LearningMode.ALWAYS),
     ),
 )
 ```

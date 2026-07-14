@@ -1,10 +1,10 @@
 ---
-title: "Streaming: Confirm Team Tool"
-description: "This example demonstrates HITL for tools provided directly to the Team (not to member agents) in streaming mode."
+title: "Team Tool Confirmation Stream"
+description: "Team HITL Streaming: Tool on the team itself requiring confirmation."
+source: cookbook/03_teams/20_human_in_the_loop/team_tool_confirmation_stream.py
 ---
-This example demonstrates HITL for tools provided directly to the Team (not to member agents) in streaming mode. When the team leader decides to use a tool that requires confirmation, the entire team run pauses until the human confirms.
 
-```python
+```python team_tool_confirmation_stream.py
 """Team HITL Streaming: Tool on the team itself requiring confirmation.
 
 This example demonstrates HITL for tools provided directly to the Team
@@ -18,7 +18,7 @@ no member agent pause to confuse it with.
 """
 
 from agno.agent import Agent
-from agno.db.sqlite import SqliteDb
+from agno.db.postgres import PostgresDb
 from agno.models.openai import OpenAIResponses
 from agno.run.team import RunPausedEvent as TeamRunPausedEvent
 from agno.team.team import Team
@@ -28,7 +28,7 @@ from agno.utils import pprint
 # ---------------------------------------------------------------------------
 # Setup
 # ---------------------------------------------------------------------------
-db = SqliteDb(db_file="tmp/team_hitl_stream.db")
+db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
 
 
 # ---------------------------------------------------------------------------
@@ -51,7 +51,7 @@ def approve_deployment(environment: str, service: str) -> str:
 research_agent = Agent(
     name="Research Agent",
     role="Researches deployment readiness",
-    model=OpenAIResponses(id="gpt-5.2-mini"),
+    model=OpenAIResponses(id="gpt-5.2"),
     db=db,
 )
 
@@ -62,8 +62,9 @@ research_agent = Agent(
 team = Team(
     name="Release Team",
     members=[research_agent],
-    model=OpenAIResponses(id="gpt-5.2-mini"),
+    model=OpenAIResponses(id="gpt-5.2"),
     tools=[approve_deployment],
+    instructions="You manage releases. Use the approve_deployment tool to deploy services. Call it immediately when asked to deploy.",
     db=db,
 )
 
@@ -94,14 +95,36 @@ if __name__ == "__main__":
 ```
 
 ## Run the Example
-```bash
-# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/03_teams/human_in_the_loop
 
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
 
-python team_tool_confirmation_stream.py
-```
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai psycopg-binary sqlalchemy
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Snippet file="run-pgvector-step.mdx" />
+
+  <Step title="Run the example">
+    Save the code above as `team_tool_confirmation_stream.py`, then run:
+    ```bash
+    python team_tool_confirmation_stream.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/03_teams/20_human_in_the_loop/team_tool_confirmation_stream.py](https://github.com/agno-agi/agno/blob/main/cookbook/03_teams/20_human_in_the_loop/team_tool_confirmation_stream.py)

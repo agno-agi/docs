@@ -54,6 +54,28 @@ async for event in client.stream_message(message="Tell me a story"):
         print(event.content, end="", flush=True)
 ```
 
+## Authentication
+
+AgentOS instances running with `authorization=True` require a JWT on every A2A request. Pass it via `headers`:
+
+```python
+import os
+
+from agno.client.a2a import A2AClient
+
+client = A2AClient("https://my-agent-os.com/a2a/agents/my-agent")
+headers = {"Authorization": f"Bearer {os.environ['AGENT_OS_JWT']}"}
+
+result = await client.send_message(message="Hello!", headers=headers)
+
+async for event in client.stream_message(message="Hello!", headers=headers):
+    ...
+```
+
+`send_message`, `stream_message`, and `get_agent_card` all accept `headers`. The token needs the target's run scope (`agents:run`, or per-resource `agents:my-agent:run`) for `message:send` and `message:stream`. See [Scopes](/agent-os/security/authorization/scopes) for the full mapping.
+
+The `user_id` parameter sets `userId` in the message metadata. AgentOS honors it for anonymous callers only. When the request carries a JWT, the run is attributed to the token's principal and `user_id` is ignored.
+
 ## Developer Resources
 
 - [A2A Protocol Documentation](https://a2a-protocol.org/)

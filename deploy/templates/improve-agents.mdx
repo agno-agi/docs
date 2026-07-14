@@ -1,94 +1,85 @@
 ---
-title: "Improve Agents"
-sidebarTitle: "Improve Agents"
-description: "Build, improve, and iterate on agents using Claude Code and evals."
+title: "Build with Coding Agents"
+sidebarTitle: "Coding Agents"
+description: "Bundled skills that let Claude Code, Codex, and Cursor create, improve, evaluate, and maintain your agents."
 ---
 
-Your platform is running. Now make it yours.
+Every template is designed for coding agents to drive the full agent-development lifecycle: create, improve, evaluate, maintain.
 
-The templates are designed for coding agents. Claude Code can read traces, run evals, and edit agent code in a tight feedback loop. Three of the five workflows run autonomously with no input from you.
+Everything on this page runs inside a cloned template. If you don't have one running yet, [pick a Starter](/deploy/introduction) first.
 
-## Claude Code Workflows
+The skills live in `.agents/skills/`. Claude Code picks them up on clone through a committed `.claude/skills` symlink; other harnesses like Codex and Cursor can symlink the same folder. Invoke a skill by name (`/create-new-agent`) or describe the task and the coding agent matches it.
 
-The `docs/` directory includes five prompts that cover the agent development lifecycle:
+## Skills
 
-| Prompt | What it does | Autonomous |
-| :--- | :--- | :--- |
-| `create-new-agent.md` | Scaffolds an agent, registers it, smoke-tests via cURL | No |
-| `improve-agent.md` | Derives probes from instructions, runs them, fixes failures | Yes |
-| `extend-agent.md` | Add tools or features. You direct, Claude executes | No |
-| `hill-climb.md` | Runs evals, diagnoses failures, fixes until all pass | Yes |
-| `review-codebase.md` | Finds drift between docs, code, and config | Yes |
+| Skill | What it does | Who drives |
+|-------|--------------|------------|
+| `/create-new-agent` | Scaffolds an agent, registers it in `app/main.py`, smoke-tests it live. | You + the agent |
+| `/extend-agent` | Adds a tool or capability, refines instructions, fixes a known bug. | You |
+| `/improve-agent` | Derives probes from the agent's `INSTRUCTIONS`, judges responses, edits until they pass. | The agent |
+| `/eval-and-improve` | Runs the eval suite, diagnoses failures, fixes in scope until green. | The agent |
+| `/review-and-improve` | Sweeps for drift between docs, code, and config. Auto-fixes mechanical drift. | The agent |
 
-Run any prompt by pasting it into a Claude Code session:
+## Your platform as an MCP tool
 
+Coding agents edit the platform's code and call its live agents over MCP. Register your AgentOS with the MCP clients on your machine:
+
+```bash
+uvx agno connect
 ```
-Run docs/create-new-agent.md
-```
+
+It auto-detects Claude Code, Claude Desktop, Codex, and Cursor and registers `http://localhost:8000/mcp`. To check the connection, open one of those apps and ask: "can you access my agentos mcp?". Your coding agent can then call `run_agent`, `run_team`, and `run_workflow` against the live platform: build an agent with `/create-new-agent`, then test it over MCP in the same session.
+
+For a deployed platform, point the same command at your domain: `uvx agno connect --url https://<your-domain>`. Production is JWT-gated, so the command mints a service-account token (`agno_pat_...`) for the connection.
 
 ## Evals
 
-Lock in agent behavior with the eval suite:
+Lock in agent behavior with the eval suite in `evals/`. The evals run on the host machine, so set up the venv once:
 
 ```bash
-python -m evals                # run the suite
-python -m evals -v             # verbose with rich panels
-python -m evals --case <name>  # run one case
+./scripts/venv_setup.sh
+source .venv/bin/activate
 ```
 
-Evals use [AgentAsJudgeEval](/evals/agent-as-judge) (LLM judge, binary pass/fail) and [ReliabilityEval](/evals/reliability) (tool-call assertions). Results log to Postgres so you can track behavior over time.
+Then run:
 
-The `hill-climb.md` prompt runs evals, diagnoses failures, and fixes what's in scope. Stops when all cases pass.
+```bash
+python -m evals --tag smoke      # fast checks of the self-driving surfaces
+python -m evals --tag release    # broader pre-release confidence
+python -m evals --name <case>    # one case while iterating
+python -m evals -v               # stream the full run with rich panels
+```
 
-## Agent Patterns
+Cases wrap [AgentAsJudgeEval](/evals/agent-as-judge/overview) (LLM judge, binary pass/fail) and [ReliabilityEval](/evals/reliability/overview) (tool-call assertions). Results log to Postgres, so run history shows up at [os.agno.com](https://os.agno.com) next to sessions and traces.
 
-The templates ship with two agents that demonstrate different patterns:
+If a case fails, run `/eval-and-improve`.
 
-| Agent | Pattern | Description |
-| :--- | :--- | :--- |
-| WebSearch | Direct tools | Agent sees each tool individually |
-| CodeSearch | Context provider | Agent sees one `query_<thing>` tool that hands off to a sub-agent |
+## Agent patterns
 
-**Direct tools** work when the agent needs fine-grained control over each tool call. **Context providers** work when you want to encapsulate a capability (like searching a codebase) behind a single interface.
+The bundled agents demonstrate three patterns to copy:
 
-Copy either pattern when building your own agents.
+| Pattern | Example | When to use |
+|---------|---------|-------------|
+| Direct tools | `agents/web_search.py` | The agent needs fine-grained control over each tool call. |
+| Context provider | `agents/platform_manager.py` | You want many tools collapsed into one `query_<thing>` interface that hands off to a sub-agent. |
+| Studio builder | `agents/agent_builder.py` | Users create and refine components from chat; deletes keep a confirmation gate. |
 
-## Teams and Workflows
-
-For most things, one agent is enough. When it isn't:
+## Teams and workflows
 
 | Pattern | When to use |
-| :--- | :--- |
-| [Multi-agent teams](/teams/overview) | Route to specialists, coordinate parallel work, synthesize results |
-| [Agentic workflows](/workflows/overview) | Deterministic pipelines that run the same way every time |
+|---------|-------------|
+| [Teams](/teams/overview) | Route to specialists, coordinate parallel work, synthesize results. |
+| [Workflows](/workflows/overview) | Deterministic pipelines that run the same way every time. |
 
-Rule of thumb: **agents for open questions, teams for routing, workflows for processes.**
+Agents for open questions, teams for routing, workflows for processes.
 
-## Scheduled Tasks
+## Scheduled tasks
 
-`scheduler=True` is on by default. Schedule any agent or workflow on a cron:
+The scheduler is on by default. Two reference workflows are registered out of the box:
 
-- **Maintenance.** Purge sessions older than 90 days. Vacuum tables.
-- **Proactive runs.** Every weekday morning, summarize overnight news and send to Slack.
-- **Periodic re-evaluation.** Run the eval suite on cron to catch behavior drift before users do.
+| Workflow | What it does | Default |
+|----------|--------------|---------|
+| Deployment check | Daily readiness report: database, auth, scheduler, MCP, Slack config. Deterministic, no LLM calls. | On. Disable with `ENABLE_DEPLOY_CHECK=False`. |
+| Run evals | Daily smoke-tag eval run. Uses model calls. | Off. Enable with `ENABLE_SCHEDULED_EVALS=True`. |
 
-See [Scheduler docs](/agent-os/scheduler/overview) for the cron API.
-
-## Interfaces
-
-Agents should live where your users are.
-
-**Slack** is pre-wired in the templates. Set `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET` in your env and the interface activates automatically. See [Slack setup](/deploy/interfaces/slack/overview).
-
-For Discord, Telegram, WhatsApp, or custom UIs, see the [Interfaces guide](/deploy/interfaces).
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="Tools Catalog" icon="wrench" href="/tools/toolkits">
-    100+ integrations ready to add to your agents.
-  </Card>
-  <Card title="AgentOS Features" icon="sparkles" href="/agent-os/overview">
-    Sessions, memory, tracing, and more.
-  </Card>
-</CardGroup>
+See [Scheduler](/agent-os/scheduler/overview) for the cron API.

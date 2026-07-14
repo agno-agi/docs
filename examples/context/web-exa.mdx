@@ -1,0 +1,91 @@
+---
+title: "Web Context Provider with Exa"
+description: "WebContextProvider wraps a `ContextBackend` so the provider interface doesn't know about the search/fetch implementation."
+source: cookbook/12_context/01_web_exa.py
+---
+
+WebContextProvider wraps a `ContextBackend` so the provider interface doesn't know about the search/fetch implementation. Here we use `ExaBackend` (Exa's search + contents API).
+
+```python web_exa.py
+"""
+Web Context Provider with Exa
+=============================
+
+WebContextProvider wraps a `ContextBackend` so the provider interface
+doesn't know about the search/fetch implementation. Here we use
+`ExaBackend` (Exa's search + contents API).
+
+Requires:
+    OPENAI_API_KEY
+    EXA_API_KEY  (https://dashboard.exa.ai/)
+"""
+
+from __future__ import annotations
+
+import asyncio
+
+from agno.agent import Agent
+from agno.context.web import ExaBackend, WebContextProvider
+from agno.models.openai import OpenAIResponses
+
+# ---------------------------------------------------------------------------
+# Create the provider
+# ---------------------------------------------------------------------------
+backend = ExaBackend()  # reads EXA_API_KEY from env
+web = WebContextProvider(backend=backend, model=OpenAIResponses(id="gpt-5.4-mini"))
+
+# ---------------------------------------------------------------------------
+# Create the Agent
+# ---------------------------------------------------------------------------
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.4"),
+    tools=web.get_tools(),
+    instructions=web.instructions() + "\nAlways cite URLs inline.",
+    markdown=True,
+)
+
+
+# ---------------------------------------------------------------------------
+# Run the Agent
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    print(f"\nweb.status() = {web.status()}\n")
+    prompt = "What is the latest stable release of CPython? Cite the source."
+    print(f"> {prompt}\n")
+    asyncio.run(agent.aprint_response(prompt))
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno exa-py openai
+    ```
+  </Step>
+
+  <Step title="Export your API keys">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export EXA_API_KEY="your_exa_api_key_here"
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:EXA_API_KEY="your_exa_api_key_here"
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `web_exa.py`, then run:
+    ```bash
+    python web_exa.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/12_context/01_web_exa.py](https://github.com/agno-agi/agno/blob/main/cookbook/12_context/01_web_exa.py)

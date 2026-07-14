@@ -1,373 +1,169 @@
 ---
-title: "Deploy to AWS"
+title: "AgentOS on AWS"
 sidebarTitle: "Deploy"
-description: "Deploy AgentOS to AWS with ECS Fargate, RDS PostgreSQL, and a public endpoint."
-keywords:
-  [
-    "deploy",
-    "AWS",
-    "ECS",
-    "Fargate",
-    "RDS",
-    "PostgreSQL",
-    "production",
-    "infrastructure",
-  ]
+description: "Run AgentOS locally using Docker and deploy to production on AWS."
 ---
 
-Deploy AgentOS to AWS with ECS Fargate, RDS PostgreSQL, and an Application Load Balancer. Production-grade infrastructure that runs entirely in your cloud.
+AgentOS is a secure, scalable platform for running agents. The [agentos-aws](https://github.com/agno-agi/agentos-aws) codebase runs AgentOS locally using Docker and deploys to production on AWS. It comes with:
 
-The template includes agents you can extend with Claude Code:
+- **2 platform agents** that build and run the platform for you. **Agent Builder** creates agents, teams, and workflows. **Platform Manager** monitors and manages the platform.
+- **5 [skills](/deploy/templates/improve-agents)** that let coding agents build, test, and improve the platform for you.
 
-| Agent | Pattern | Description |
-| :--- | :--- | :--- |
-| WebSearch | Direct tools | Search the web using Parallel SDK or keyless MCP. |
-| CodeSearch | Context provider | Answer questions about this codebase. |
+Because the trace data, agent code, evals, and system logs all live in one place, the platform can inspect and improve itself automatically.
 
-## Architecture
+Production runs in your own AWS account: the deploy scripts use ECS Express Mode for the service and RDS for Postgres.
 
-<img
-  className="block dark:hidden w-full"
-  src="/images/aws-architecture-light.png"
-  alt="AWS Architecture"
-/>
-<img
-  className="hidden dark:block w-full"
-  src="/images/aws-architecture-dark.png"
-  alt="AWS Architecture"
-/>
+## Get started
 
-## Cost
+The fastest way to get started is using a coding agent. Copy the prompt below into Claude Code, Cursor or Codex and it'll take you from zero to a running platform.
 
-| Resource                  | Purpose                        | Monthly Cost |
-| ------------------------- | ------------------------------ | ------------ |
-| ECS Fargate               | Serverless container hosting   | $30-50       |
-| RDS PostgreSQL            | Managed database with pgvector | $25          |
-| Application Load Balancer | HTTP/HTTPS endpoint            | $20-25       |
-| AWS Secrets Manager       | Secure credential storage      | < $1         |
-| Security Groups           | Network access controls        | Free         |
-| **Total**                 |                                | **~$75-100** |
+<Snippet file="setup-prompt-aws.mdx" />
 
-Use the [AWS Pricing Calculator](https://calculator.aws/) for detailed estimates.
+Prefer to drive yourself? Follow the manual steps below.
 
----
+## Manual setup
 
-## Prerequisites
+**Prerequisites:** [Docker](https://www.docker.com/get-started/) installed and running. An [OpenAI API key](https://platform.openai.com).
 
 <Steps>
-<Step title="Install tools">
-
-- Install [Docker Desktop](https://docs.docker.com/desktop/install/mac-install/)
-- Install [uv](https://docs.astral.sh/uv/) (Python package manager)
-- Install and configure the [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
-
-</Step>
-
-<Step title="Create and activate a virtual environment">
+  <Step title="Clone and configure">
 ```bash
-uv venv --python 3.12
-source .venv/bin/activate
+git clone https://github.com/agno-agi/agentos-aws.git agentos
+cd agentos
+
+cp example.env .env
 ```
 
-</Step>
+Edit `.env` and set `OPENAI_API_KEY`.
+  </Step>
 
-<Step title="Install Agno">
+  <Step title="Start the platform">
 ```bash
-uv pip install -U 'agno[infra]'
+docker compose up -d --build
 ```
 
-</Step>
+The first build takes a few minutes. Confirm the API is available at [localhost:8000/docs](http://localhost:8000/docs).
+  </Step>
 
-<Step title="Create your codebase">
+  <Step title="Verify end to end">
 ```bash
-ag infra create --template agentos-aws --name my-agentos
-
-cd my-agentos
+./scripts/mcp_check.sh
 ```
 
-<Tip>
-Or clone directly: `git clone https://github.com/agno-agi/agentos-aws-template.git`
-</Tip>
+Prints `MCP OK` with the tool count and a real agent answer through the MCP endpoint.
+  </Step>
 
-</Step>
+  <Step title="Connect the AgentOS UI">
+1. Open [os.agno.com](https://os.agno.com) and sign in.
+2. Click **Connect OS**, enter `http://localhost:8000`, and name it **Local AgentOS**.
+  </Step>
 
-<Step title="Set your API key">
-```bash
-export OPENAI_API_KEY=sk-***
-```
-
-</Step>
+  <Step title="Build your first agent">
+1. Chat with **Agent Builder**: "Build an agent that tracks AI news and writes a daily brief". Go through the agent development process.
+2. Once created, click **Refresh** on the top right, pick the new agent from the **Agents** dropdown, and ask: "What's new with Anthropic?"
+3. Ask **Platform Manager**: "How healthy is the platform?" It answers from eval history, deployment checks, schedules, and the agent you just built.
+  </Step>
 </Steps>
+
+<Check>At this point, your AgentOS is running locally.</Check>
+
+## Connect your frontends
+
+| Frontend | How |
+|----------|-----|
+| MCP clients on your machine | `uvx agno connect` auto-detects Claude Code, Claude Desktop, Codex, and Cursor and registers `http://localhost:8000/mcp`. Verify from the app: "can you access my agentos mcp?" |
+| AgentOS UI | [os.agno.com](https://os.agno.com) → **Connect OS** → `http://localhost:8000`. |
+| claude.ai and ChatGPT | Hosted sessions can't reach localhost. Deploy to production first, then add `https://<service-url>/mcp` as a custom connector and approve the consent page with the `MCP_CONNECT_SECRET` that `up.sh` generates. |
+| Slack | Set `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET`. See [Slack setup](/agent-os/interfaces/slack/setup). |
+| Your product | Call the AgentOS REST API with 80+ endpoints. Browse them at `/docs`. |
+
+## Deploy to production
+
+**Prerequisites:** [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) recent enough for ECS Express Mode (`aws ecs create-express-gateway-service help` must work), credentials configured (`aws sts get-caller-identity` succeeds), and Docker running. The image is built locally and pushed to ECR.
+
+<Steps>
+  <Step title="Create a production env">
+```bash
+cp .env .env.production
+```
+
+Edit `.env.production` with production values: a different OpenAI key, production-only credentials, a different Slack workspace.
+  </Step>
+
+  <Step title="Deploy">
+```bash
+./scripts/aws/up.sh
+```
+
+Provisions an ECR repo, a private RDS PostgreSQL 17 instance, and Secrets Manager secrets, then makes one `aws ecs create-express-gateway-service` call. That call brings the Fargate service, an ALB with HTTPS, security groups, autoscaling, CloudWatch logs and alarms, and a public URL (`https://ag-<id>.ecs.<region>.on.aws`, generated per service). The script pins scaling to a single always-on task so the in-process scheduler never double-fires, and sets `AGENTOS_URL` to the generated URL so scheduled jobs reach the platform. It also generates `MCP_CONNECT_SECRET` into `.env.production` when it's missing, so chat apps can connect over OAuth from the first deploy.
+
+The first run takes 30-45 minutes end to end. Certificate and DNS provisioning is the long pole, and the script waits until the gateway actually answers before declaring success. Redeploys take minutes. Region comes from `AWS_REGION` (default `us-east-1`).
+
+<Note>This stack idles at roughly $100-110/month: about $70/mo for Fargate (2 vCPU/4 GB), $17-25/mo for the ALB (shared across up to 25 Express services), and $14/mo for the RDS db.t4g.micro. AWS bills idle resources. Tear down what you don't use with `./scripts/aws/down.sh`.</Note>
+  </Step>
+
+  <Step title="Mint your JWT key">
+The script pauses for a `JWT_VERIFICATION_KEY`. Token-Based Authorization is on by default and without a verification key or a `JWT_JWKS_FILE`, the platform refuses to serve production traffic.
+
+1. Open [os.agno.com](https://os.agno.com), click **Connect OS** → **Live**, enter your service URL, and name it **Live AgentOS**.
+2. Go to **Settings** → **OS & Security** and turn on **Token-Based Authorization (JWT)**.
+3. Copy the public key and paste the full PEM into the `up.sh` prompt. The script saves it to your env file, pushes it to Secrets Manager, and rolls a fresh task-definition revision.
+
+If you skip the prompt, add the key to `.env.production` later and run `./scripts/aws/env-sync.sh`. If `.env.production` sets `JWT_JWKS_FILE` instead, the script skips the prompt and delivers the path through the task-definition env.
+
+<Note>Live AgentOS connections are a paid feature. Use code `PLATFORM30` for one month off.</Note>
+  </Step>
+
+  <Step title="Connect your MCP clients">
+Re-run `uvx agno connect`, this time pointed at your deployed domain:
+
+```bash
+uvx agno connect --url https://<service-url>
+```
+
+For claude.ai and ChatGPT on the web: add `https://<service-url>/mcp` as a custom connector in the chat app's connector settings. Leave the form's optional OAuth fields (client ID / client secret) empty. Click **Connect** and, on the consent page, enter the `MCP_CONNECT_SECRET` that `up.sh` generated during deploy (saved in `.env.production`).
+  </Step>
+
+  <Step title="Confirm it's live">
+```bash
+aws logs tail /ecs/agent-os --follow
+```
+
+The app finishes rolling out behind the gateway; first boot pulls the image and waits for the database. Open `https://<service-url>/docs` to confirm the API is serving.
+  </Step>
+</Steps>
+
+<Check>Your AgentOS is live on AWS.</Check>
+
+### Redeploy after code changes
+
+```bash
+./scripts/aws/redeploy.sh
+```
+
+### Sync environment variables
+
+```bash
+./scripts/aws/env-sync.sh
+```
+
+### Tear down
+
+```bash
+./scripts/aws/down.sh
+```
 
 <Warning>
-  [HTTPS](/deploy/templates/aws/go-live/https) is required to connect
-  to os.agno.com. You'll set this up after deployment.
+Deletes the Express service (its ALB wiring, security groups, and autoscaling with it), the RDS instance and all its data with no final snapshot, the ECR repo and its images, the `agentos/*` secrets, and the log group. If no other Express service shares the gateway ALB, the script removes that too, then prints verification commands so you can confirm nothing is left billing.
 </Warning>
 
----
-
-## Deploy
-
-### Step 1: AWS Setup
-
-Choose your preferred method to create the ECR repository and find your subnet IDs:
-
-<Tabs>
-<Tab title="AWS Console">
-
-**Create ECR repository:**
-
-1. Open [Amazon ECR](https://console.aws.amazon.com/ecr/)
-2. Click **Create repository**
-3. Set repository name to `my-agentos`
-4. Keep defaults and click **Create repository**
-5. Copy the repository URI (e.g., `[ACCOUNT_ID].dkr.ecr.us-east-1.amazonaws.com/my-agentos`)
-
-<Frame caption="ECR Create Repository - set the repository name and keep defaults">
-  <img src="/images/create-ecr-image.png" alt="ECR Create Repository page" />
-</Frame>
-
-**Authenticate Docker with ECR:**
-
-Click **View push commands** in the ECR console and run the login command:
-
-```bash
-aws ecr get-login-password --region us-east-1 | \
-  docker login --username AWS --password-stdin \
-  [ACCOUNT_ID].dkr.ecr.us-east-1.amazonaws.com
-```
-
-<Note>
-  ECR tokens expire after 12 hours. Re-run this command if you get
-  authentication errors.
-</Note>
-
-**Find your subnet IDs:**
-
-1. Open [VPC Console](https://console.aws.amazon.com/vpc/) → **Subnets**
-2. Look for subnets with **Auto-assign public IP** = Yes
-3. Note the Subnet IDs for 2+ subnets in different availability zones
-
-<Tip>
-  Public subnets typically have "public" in their name or have a route to an
-  Internet Gateway.
-</Tip>
-
-</Tab>
-
-<Tab title="CLI">
-
-**Create ECR repository:**
-
-```bash
-aws ecr create-repository \
-  --repository-name my-agentos \
-  --region us-east-1
-```
-
-Note your ECR URL from the output:
-
-```
-[ACCOUNT_ID].dkr.ecr.us-east-1.amazonaws.com
-```
-
-**Authenticate Docker with ECR:**
-
-```bash
-aws ecr get-login-password --region us-east-1 | \
-  docker login --username AWS --password-stdin \
-  [ACCOUNT_ID].dkr.ecr.us-east-1.amazonaws.com
-```
-
-<Note>
-  ECR tokens expire after 12 hours. Re-run this command if you get
-  authentication errors.
-</Note>
-
-**Find your subnet IDs:**
-
-```bash
-aws ec2 describe-subnets --query 'Subnets[*].[SubnetId,AvailabilityZone,MapPublicIpOnLaunch]' --output table
-```
-
-<Tip>
-  Choose subnets where `MapPublicIpOnLaunch` is `True`. Select subnets in
-  different availability zones for high availability.
-</Tip>
-
-</Tab>
-</Tabs>
-
-### Step 2: Configure
-
-<Steps>
-<Step title="Update settings">
-
-Edit `infra/settings.py` with your AWS details:
-
-```python
-infra_settings = InfraSettings(
-    infra_name="my-agentos",
-    aws_region="us-east-1",
-    aws_subnet_ids=["subnet-xxx", "subnet-yyy"],  # Your subnet IDs
-    image_repo="[ACCOUNT_ID].dkr.ecr.us-east-1.amazonaws.com",
-    push_images=True,
-)
-```
-
-</Step>
-
-<Step title="Create secrets files">
-
-```bash
-cp infra/secrets/prd_api_secrets.example.yml infra/secrets/prd_api_secrets.yml
-cp infra/secrets/prd_db_secrets.example.yml infra/secrets/prd_db_secrets.yml
-```
-
-Edit both files with your credentials. See [Secrets](/deploy/templates/aws/configure/secrets) for details.
-
-</Step>
-</Steps>
-
-### Step 3: Test & Deploy
-
-<Steps>
-<Step title="Test locally (optional)">
-
-```bash
-ag infra up
-```
-
-Open http://localhost:8000/docs to verify your agents load correctly.
-
-</Step>
-
-<Step title="Deploy to AWS">
-
-```bash
-ag infra up prd:aws
-```
-
-Press Enter to confirm. This creates:
-
-- Docker image pushed to ECR
-- RDS PostgreSQL instance with pgvector
-- ECS Cluster, Service, and Task Definition
-- Application Load Balancer with Target Group
-- Security Groups for network isolation
-
-<Note>
-  RDS takes 5-10 minutes to provision. The deployment will wait for it
-  automatically.
-</Note>
-
-</Step>
-</Steps>
-
-### Step 4: Get Your Endpoint
-
-<Tabs>
-<Tab title="AWS Console">
-
-1. Open [EC2 Console](https://console.aws.amazon.com/ec2/) → **Load Balancers**
-2. Find your load balancer (named `my-agentos-...`)
-3. Copy the **DNS name**
-
-Test your deployment:
-
-```bash
-curl http://[LOAD_BALANCER_DNS]/health
-```
-
-</Tab>
-
-<Tab title="CLI">
-
-```bash
-aws elbv2 describe-load-balancers \
-  --query 'LoadBalancers[?contains(LoadBalancerName, `my-agentos`)].DNSName' \
-  --output text
-```
-
-Test your deployment:
-
-```bash
-curl http://[LOAD_BALANCER_DNS]/health
-```
-
-</Tab>
-</Tabs>
-
-Should return: `{"status": "ok", "instantiated_at": "..."}`
-
----
-
-## Next Steps
+## Next steps
 
 <CardGroup cols={2}>
-  <Card title="Extend" icon="wand-magic-sparkles" href="/deploy/templates/improve-agents">
-    Build and improve agents with Claude Code and evals.
+  <Card title="Build with coding agents" icon="wand-magic-sparkles" href="/deploy/templates/improve-agents">
+    Skills to create → improve → evaluate your platform using coding agents.
   </Card>
-  <Card title="Interfaces" icon="comments" href="/deploy/interfaces">
-    Connect Slack, Discord, WhatsApp, or MCP.
-  </Card>
-</CardGroup>
-
-<CardGroup cols={3}>
-  <Card title="Configure" icon="gear" href="/deploy/templates/aws/configure/infra-settings">
-    Region, subnets, and ECR
-  </Card>
-  <Card title="Connect" icon="key" href="/deploy/templates/aws/go-live/connect">
-    Run your agents in the cloud
-  </Card>
-  <Card title="Verify" icon="check" href="/deploy/templates/aws/go-live/verify">
-    Confirm everything works
+  <Card title="AWS reference" icon="book" href="/deploy/templates/aws/reference">
+    Commands, environment variables, troubleshooting.
   </Card>
 </CardGroup>
-
----
-
-## Troubleshooting
-
-<AccordionGroup>
-  <Accordion title="'No basic auth credentials' error">
-    ECR tokens expire after 12 hours. Re-run the authentication command:
-    ```bash
-    aws ecr get-login-password --region us-east-1 | \
-      docker login --username AWS --password-stdin \
-      [ACCOUNT_ID].dkr.ecr.us-east-1.amazonaws.com
-    ```
-  </Accordion>
-
-<Accordion title="RDS provisioning takes too long">
-  RDS typically takes 5-10 minutes. Check status in [RDS
-  Console](https://console.aws.amazon.com/rds/) → Databases. Look for the
-  database status to change from "Creating" to "Available".
-</Accordion>
-
-<Accordion title="Can't find public subnets">
-  Public subnets have a route to an Internet Gateway. In the VPC Console: 1. Go
-  to **Route Tables** 2. Find tables with a route to `igw-xxx` (Internet
-  Gateway) 3. Check which subnets are associated with those route tables
-</Accordion>
-
-  <Accordion title="Health check returns 502 Bad Gateway">
-    The container may still be starting. Wait 2-3 minutes and retry.
-
-    If it persists, check ECS task logs:
-    1. Open [ECS Console](https://console.aws.amazon.com/ecs/) → Clusters → `my-agentos`
-    2. Click on the running task
-    3. Go to **Logs** tab to see container output
-
-  </Accordion>
-
-  <Accordion title="Task keeps stopping and restarting">
-    This usually indicates the container is crashing. Common causes:
-    - Missing environment variables (check your secrets files)
-    - Invalid API keys
-    - Database connection issues
-
-    Check the **Stopped** tasks in ECS Console for error messages.
-
-  </Accordion>
-</AccordionGroup>

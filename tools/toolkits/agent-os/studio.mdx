@@ -1,0 +1,141 @@
+---
+title: StudioTools
+description: "Let an agent create, edit, run, and version AgentOS Studio components."
+---
+
+`StudioTools` gives an agent access to Studio component operations. The agent can inspect the Registry, create agents, teams, and workflows, edit Studio-created components, run them, delete them, and manage versions when enabled.
+
+Use it for builder agents that turn natural language into AgentOS components.
+
+## Prerequisites
+
+The following example requires the `openai`, `anthropic`, `ddgs`, and `sqlalchemy` libraries.
+
+```shell
+uv pip install openai anthropic ddgs sqlalchemy
+```
+
+## Example
+
+```python cookbook/05_agent_os/studio_tool/studio_tools_agent.py
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.anthropic import Claude
+from agno.models.openai import OpenAIResponses
+from agno.registry import Registry
+from agno.tools.calculator import CalculatorTools
+from agno.tools.duckduckgo import DuckDuckGoTools
+from agno.tools.hackernews import HackerNewsTools
+from agno.tools.studio import StudioTools
+
+db = SqliteDb(id="studio-db", db_file="tmp/studio.db")
+
+registry = Registry(
+    name="Studio Registry",
+    tools=[DuckDuckGoTools(), HackerNewsTools(), CalculatorTools()],
+    models=[
+        OpenAIResponses(id="gpt-5.5"),
+        Claude(id="claude-sonnet-4-6"),
+    ],
+    dbs=[db],
+)
+
+greeter = Agent(
+    id="greeter",
+    name="Greeter",
+    model=OpenAIResponses(id="gpt-5.5"),
+    instructions=["You are a friendly greeter."],
+    db=db,
+)
+
+reporter = Agent(
+    id="reporter",
+    name="Reporter",
+    model=OpenAIResponses(id="gpt-5.5"),
+    instructions=["You summarize news headlines in 2-3 sentences."],
+    db=db,
+)
+
+studio_agent = Agent(
+    id="studio-agent",
+    name="Studio Agent",
+    model=OpenAIResponses(id="gpt-5.5"),
+    tools=[
+        StudioTools(
+            registry=registry,
+            db=db,
+            agents_list=[greeter, reporter],
+            default_model_id="gpt-5.5",
+            versions=True,
+        )
+    ],
+    instructions=[
+        "List available models and tools before creating components.",
+        "Use exact Registry tool names.",
+        "Return the component id, version, next action, and Studio route.",
+    ],
+    db=db,
+    markdown=True,
+)
+
+studio_agent.print_response(
+    "Create an agent named paper-review-assistant that finds research papers."
+)
+```
+
+## Toolkit Params
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `registry` | `Registry` | - | Registry used to resolve models, tools, functions, databases, agents, and teams. |
+| `db` | `Optional[BaseDb]` | first Registry DB | Database used to persist Studio-created components. |
+| `agents_list` | `Optional[list[Agent]]` | `None` | Code-defined agents exposed for discovery and composition. |
+| `teams_list` | `Optional[list[Team]]` | `None` | Code-defined teams exposed for discovery and workflow composition. |
+| `workflows_list` | `Optional[list[Workflow]]` | `None` | Code-defined workflows exposed for discovery. |
+| `default_model_id` | `Optional[str]` | `None` | Model id to use when a create call omits `model_id`. |
+| `agents` | `Optional[bool]` | `True` | Enable agent create/edit/delete/run tools. |
+| `teams` | `Optional[bool]` | `False` | Enable team create/edit/delete/run tools. |
+| `workflows` | `Optional[bool]` | `False` | Enable workflow create/edit/delete/run tools. |
+| `versions` | `bool` | `False` | Enable versioning tools. Edits become drafts when true. |
+
+Passing `agents_list` auto-enables team and workflow tools unless explicitly disabled. Passing `teams_list` auto-enables workflow tools unless explicitly disabled.
+
+## Toolkit Functions
+
+Discovery tools are always available:
+
+| Function | Description |
+| --- | --- |
+| `list_models` | List registered models. |
+| `list_tools` | List registered toolkits, functions, and callables. |
+| `list_functions` | List registered workflow functions. |
+| `list_dbs` | List registered databases. |
+| `list_agents` | List code-defined and DB-backed agents. |
+| `list_teams` | List code-defined and DB-backed teams. |
+| `list_workflows` | List code-defined and DB-backed workflows. |
+
+Create, edit, delete, and run tools are exposed for enabled component types:
+
+| Component | Functions |
+| --- | --- |
+| Agents | `get_agent`, `create_agent`, `edit_agent`, `delete_agent`, `run_agent` |
+| Teams | `get_team`, `create_team`, `edit_team`, `delete_team`, `run_team` |
+| Workflows | `get_workflow`, `create_workflow`, `edit_workflow`, `delete_workflow`, `run_workflow` |
+
+With `versions=True`, the toolkit also exposes `list_versions`, `get_version`, `publish_component`, `set_current_version`, and `delete_version`.
+
+## Notes
+
+- Create operations save a published `v1`.
+- With `versions=True`, edits save as drafts until `publish_component` is called.
+- With `versions=False`, edits publish immediately.
+- `StudioTools` only edits Studio-created DB components. Code-defined components are discoverable and reusable, but not edited in place.
+- Use `requires_confirmation_tools` for destructive or state-changing functions.
+
+## Developer Resources
+
+- [StudioTools with HITL](/agent-os/studio/tools)
+- [AgentOS Studio](/agent-os/studio/introduction)
+- [Source](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/tools/studio.py)
+- [StudioTools cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/05_agent_os/studio_tool)
+- [Components examples](/examples/components/overview)

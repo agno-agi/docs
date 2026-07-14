@@ -1,0 +1,224 @@
+---
+title: "Context"
+sidebarTitle: "Context"
+description: "Self-hosted context manager that organizes your work into a private CRM and knowledge base your AI tools share over MCP."
+---
+
+**@context is a self-hosted context manager. It organizes your work context into a private CRM and knowledge base and helps you stay on top of things.**
+
+It plugs into clients like Claude, ChatGPT, Claude Code, Codex, and Cursor, and gives them a single source of context about your work. Anyone can write to your context. Only you can read it or act through it.
+
+@context is an [App](/deploy/introduction): a complete agent product you fork, run on your own infrastructure, and adapt. See the [repo](https://github.com/agno-agi/context) for the source.
+
+## How it works
+
+@context is one Agno agent that captures, files, and retrieves your working context across many sources. It runs on Agno's AgentOS runtime, so user identity is verified on every request, and tools are assigned by role:
+
+1. **Owner mode.** You get every tool. Capture context (*"met Kyle from Agno, follow up next week"*), retrieve context (*"give me a rundown of my day"*), and prepare context (*"process today"*).
+2. **Guest mode.** Teammates and their agents can leave updates in your queue. You get briefed when you ask for a rundown.
+
+### Five jobs
+
+1. **Maintain a CRM.** Share *"met Kyle from Agno, wants a partnership, follow up next week"*, and @context stores a contact, a note, and a dated reminder without you picking forms or fields.
+2. **Maintain a knowledge base.** @context writes product specs, parses customer interview notes, manages project briefs, and runs deep research, then keeps it all organized in one place.
+3. **Run your day, plan your week, prep ahead.** @context runs repeatable playbooks to make things easier. A few come built in, and you should customize them and add your own.
+4. **Represent you.** A teammate types *"@your-context my claude fixed the auth bug"*, and it lands in your queue and surfaces in your next rundown. It works outbound too. @context can message people and channels on Slack on your behalf, and @-mention a teammate's @context to drop an update in their queue. That's how a team's contexts talk to each other (the [context network](https://github.com/agno-agi/context/blob/main/docs/NETWORK.md)).
+5. **Draft and schedule.** Connect Gmail and Calendar, and @context reads your real inbox and calendar, drafts your follow-ups straight into Gmail for you to send, and sends calendar changes to your approvals queue.
+
+The built-in playbooks:
+
+| Playbook | Ask | What you get |
+|----------|-----|--------------|
+| **Rundown** | "What's on today?" | One digest instead of five apps: the updates teammates left in your queue, reminders that are due, today's meetings, the emails you missed, and the Slack threads worth a look |
+| **Week plan** | "What's my week?" | Priorities for the week. Runs Sunday evening and lands in your Slack DMs |
+| **Prep** | "Prep for my 2pm with Kyle" | A pre-meeting brief: who they are, notes, past threads, what's still open, and public background for contacts you don't know yet |
+
+@context runs these on demand or on a schedule; the daily rundown and weekly plan DM the brief straight to you. Playbooks live in `skills/`, one `SKILL.md` per folder, alongside `process-today`, `research`, and `knowledge-review`.
+
+### Context sources
+
+Most sources are sub-agents behind at most two tools: `query_<id>` to read and `update_<id>` to write. The workspace source is the exception; it exposes its read tools (`list_files`, `search_content`, `read_file`) directly to the agent.
+
+| Source | Access | Enabled by |
+|--------|--------|------------|
+| `crm` | Read and write | Always on |
+| `knowledge` | Read and write | Always on |
+| `workspace` | Read | Always on |
+| `web` | Read | Always on |
+| `slack` | Read and write | `SLACK_BOT_TOKEN` |
+| `gmail` | Read and write; writes are drafts only | `GOOGLE_*` credentials |
+| `calendar` | Read and write; writes pause for approval | `GOOGLE_*` credentials |
+
+The `crm` source is the structured store: contacts, projects, meetings, reminders, notes, and updates in the `crm` Postgres schema. Writes are confined to that schema and every row is scoped to your `user_id`, so a guest can't see this data. The `knowledge` source is the prose store for specs and research notes. It lives on the filesystem locally and in a Git repo in production.
+
+### Security
+
+@context is an alter ego with access to a lot of sensitive information, so the security boundaries need to be airtight. The toolset is chosen in code, from a verified identity, before the model runs. The owner gets the full surface; a guest gets exactly one context tool, `submit_update`, which appends to your queue with no readback. To everyone else, @context is a polite notetaker that only captures. It does remember who it is talking to: each caller gets their own user memory, kept entirely separate from yours.
+
+External actions are double gated. Changing your calendar (`update_calendar`) pauses for your explicit approval before it runs. Email goes a step further: `update_gmail` can only draft, so the follow-up waits in your Gmail drafts for you to review and send. It never sends on its own.
+
+Everything runs locally or in your own cloud. Every byte of data lives in your own database: the CRM, the knowledge base, and the inbox. See [docs/SECURITY.md](https://github.com/agno-agi/context/blob/main/docs/SECURITY.md).
+
+## Run locally
+
+**Prerequisites:** [Docker](https://www.docker.com/get-started/) installed and running. An [OpenAI API key](https://platform.openai.com).
+
+```bash
+git clone https://github.com/agno-agi/context.git
+cd context
+
+cp example.env .env
+# Open .env: set OPENAI_API_KEY, and set OWNER_ID to the email you sign in to os.agno.com with
+
+docker compose up -d --build
+```
+
+Confirm it is live at [localhost:8000/docs](http://localhost:8000/docs).
+
+`OWNER_ID` decides who counts as the owner. Set it to your email; anyone else gets the capture-only guest tools. `OWNER_NAME` is an optional display name.
+
+### Connect the AgentOS UI
+
+AgentOS comes with a web UI for managing and monitoring @context. Use it to chat with @context, view sessions, and approve actions.
+
+1. Open [os.agno.com](https://os.agno.com) and sign in with the email you set as `OWNER_ID`.
+2. Click **Connect AgentOS** → **Local**, enter `http://localhost:8000`, and name it **Local Context**.
+3. Open the chat under Context and try one of the quick prompts.
+
+### Connect MCP clients
+
+The main way to use @context is from an MCP client like Claude Code, Codex, Claude, Cursor, or ChatGPT. The server runs at `http://localhost:8000/mcp` and is owner-only. One command adds @context to every MCP client on your machine:
+
+```bash
+python scripts/connect.py
+```
+
+The script finds Claude Code, Codex, Claude Desktop, and Cursor, and registers @context with each. Use `--dry-run` to preview and `--remove` to undo.
+
+To register the CLI clients by hand:
+
+```bash
+claude mcp add -s user --transport http context http://localhost:8000/mcp
+codex mcp add --url http://localhost:8000/mcp context
+```
+
+Claude Desktop and Cursor take config-file entries. See [docs/MCP.md](https://github.com/agno-agi/context/blob/main/docs/MCP.md) for both.
+
+## Deploy to Railway
+
+@context runs anywhere that runs a Docker container. For a quick deployment, `scripts/railway/up.sh` runs @context and Postgres on the same private network. It reads credentials from `.env.production` and creates the public domain you connect to in the AgentOS UI.
+
+**Prerequisites:** [Railway CLI](https://docs.railway.com/cli#installing-the-cli) installed and `railway login` completed.
+
+<Steps>
+  <Step title="Create a production env">
+```bash
+cp .env .env.production
+```
+
+The deploy scripts read `.env.production` first and fall back to `.env`.
+  </Step>
+
+  <Step title="Deploy">
+```bash
+./scripts/railway/up.sh
+```
+
+The script creates your public domain, then pauses and waits while you mint the JWT verification key.
+  </Step>
+
+  <Step title="Mint your JWT key">
+Token-Based Authorization is on by default. Without a `JWT_VERIFICATION_KEY` in `.env.production`, the AgentOS will not serve traffic. That is the safe default for an agent that holds your work context. You can also [issue and verify your own JWT](/agent-os/security/authorization/self-hosted).
+
+1. Open [os.agno.com](https://os.agno.com), click **Connect AgentOS** → **Live**, and paste the domain the script printed.
+2. Turn on **Token-Based Authorization** and click **Connect**.
+3. Copy the public key into `.env.production` as `JWT_VERIFICATION_KEY`.
+4. Back in the terminal, press Enter. The script reads the key and deploys the service.
+  </Step>
+
+  <Step title="Verify">
+```bash
+railway logs --service agent-os
+```
+
+Open `https://<your-domain>/docs` to confirm the API is serving.
+  </Step>
+</Steps>
+
+If you add or update values in `.env.production`, sync them with `./scripts/railway/env-sync.sh`. After code changes, redeploy with `./scripts/railway/redeploy.sh`, or connect the repo in the Railway dashboard to auto-deploy on push.
+
+### Point MCP clients at production
+
+The deployed server is JWT-gated, so your MCP clients need a bearer token. You self-issue it instead of copying one from os.agno.com. After a one-time venv setup, one command does the whole thing:
+
+```bash
+./scripts/venv_setup.sh          # once; minting needs pyjwt + cryptography
+source .venv/bin/activate
+./scripts/setup_context.sh
+```
+
+`setup_context.sh` mints the token (the private key stays local in the gitignored `secrets/` folder), pushes the public key to Railway, redeploys, and wires Claude Code, Codex, Claude Desktop, and Cursor with the token. @context trusts your key alongside the os.agno.com one, so the AgentOS UI keeps working. Re-run it any time to rotate the token; add `--no-redeploy` to skip the redeploy.
+
+See [docs/MCP.md](https://github.com/agno-agi/context/blob/main/docs/MCP.md#self-issued-production-token) for where the token comes from, per-client specifics, and ChatGPT and Claude on the web.
+
+### Back the knowledge base with Git
+
+Local runs store the knowledge base in a gitignored `knowledge/` folder. In production, back it with a private Git repo: create one, mint a fine-grained token with read and write access to its contents, and add both to `.env.production`:
+
+```bash
+KNOWLEDGE_REPO_URL=https://github.com/you/your-context.git
+KNOWLEDGE_GITHUB_TOKEN=ghp_...
+```
+
+Then sync with `./scripts/railway/env-sync.sh`. Every update commits and pushes, so the git history is your audit trail. See [docs/KNOWLEDGE.md](https://github.com/agno-agi/context/blob/main/docs/KNOWLEDGE.md).
+
+## Connect to Slack
+
+Slack is where @context comes alive. Teammates @-mention it to leave you updates, you DM it for private conversations, and the daily rundown and weekly plan land in your DMs on schedule.
+
+1. Create a Slack app from the manifest in [docs/SLACK.md](https://github.com/agno-agi/context/blob/main/docs/SLACK.md).
+2. Copy the Bot User OAuth Token and Signing Secret.
+3. Set `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET` in `.env` or `.env.production`.
+4. Restart the application.
+
+Local runs need a public URL for Slack's callbacks, so use an ngrok tunnel. Once you deploy, repoint the app's `/slack/events` and `/slack/interactions` request URLs at your Railway domain.
+
+## Connect Gmail and Calendar
+
+Connect Gmail and Calendar to ground the rundown and meeting prep in your real inbox and calendar. Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_PROJECT_ID`, then mint the consent tokens once with `python scripts/google_mint_tokens.py`. See [docs/GOOGLE.md](https://github.com/agno-agi/context/blob/main/docs/GOOGLE.md).
+
+## Example prompts
+
+Try these from the AgentOS UI, Slack, or an MCP client:
+
+- Add Dana Reyes, Head of Platform at Acme, dana@acme.com. Remind me to send her the integration spec next Tuesday.
+- Who do I know at Acme?
+- What's on today?
+- Prep for my 2pm with Kyle
+- Write up a decision: we're standardizing on Agno
+- What in my knowledge base needs attention?
+
+## Run evals
+
+@context comes with an eval suite ([`evals/`](https://github.com/agno-agi/context/tree/main/evals)) for regression testing the security model. It tests the claim that anyone can write and only you can read: deterministic gates check that a guest's toolset stays capture-only and the MCP server stays owner-only, and an adversarial guest arc tries to break the boundary.
+
+```bash
+python -m evals                # run the full suite
+python -m evals -v             # stream the full agent run
+python -m evals --case <name>  # one case
+```
+
+## Source
+
+The [GitHub repo](https://github.com/agno-agi/context) has the full detail:
+
+| Guide | Covers |
+|-------|--------|
+| [`AGENTS.md`](https://github.com/agno-agi/context/blob/main/AGENTS.md) | Architecture, key files, and conventions for coding agents |
+| [`docs/SECURITY.md`](https://github.com/agno-agi/context/blob/main/docs/SECURITY.md) | The owner/guest model, act tools, and the approval gate |
+| [`docs/MCP.md`](https://github.com/agno-agi/context/blob/main/docs/MCP.md) | Per-client MCP setup and the self-issued production token |
+| [`docs/SLACK.md`](https://github.com/agno-agi/context/blob/main/docs/SLACK.md) | The app manifest, identity resolution, and moving to production |
+| [`docs/KNOWLEDGE.md`](https://github.com/agno-agi/context/blob/main/docs/KNOWLEDGE.md) | The knowledge base and Git backing |
+| [`docs/CRM.md`](https://github.com/agno-agi/context/blob/main/docs/CRM.md) | The `crm` schema, filing rules, and the write boundary |
+| [`docs/GOOGLE.md`](https://github.com/agno-agi/context/blob/main/docs/GOOGLE.md) | Gmail and Calendar setup |
+| [`docs/NETWORK.md`](https://github.com/agno-agi/context/blob/main/docs/NETWORK.md) | How a team's contexts talk to each other |

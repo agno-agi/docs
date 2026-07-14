@@ -1,8 +1,10 @@
 ---
 title: "Basic A2A Server"
 description: "Starts a local A2A server backed by an Agno agent executor."
+source: cookbook/05_agent_os/interfaces/a2a/basic_agent/__main__.py
 ---
-```python
+
+```python __main__.py
 """
 Basic A2A Server
 ================
@@ -63,15 +65,100 @@ if __name__ == "__main__":
     uvicorn.run(server.build(), host="0.0.0.0", port=9999, timeout_keep_alive=10)
 ```
 
-## Run the Example
-```bash
-# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/92_integrations/a2a/basic_agent
+The example imports this helper module from the same directory:
 
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
+```python basic_agent.py
+"""
+Basic A2A Agent Executor
+========================
 
-python __main__.py
+Implements an A2A executor that routes incoming text to an Agno agent.
+"""
+
+from a2a.server.agent_execution import AgentExecutor, RequestContext
+from a2a.server.events import EventQueue
+from a2a.types import Part, TextPart
+from a2a.utils import new_agent_text_message
+from agno.agent import Agent, Message, RunOutput
+from agno.models.openai import OpenAIChat
+from typing_extensions import override
+
+# ---------------------------------------------------------------------------
+# Create Agent
+# ---------------------------------------------------------------------------
+agent = Agent(
+    model=OpenAIChat(id="gpt-5.2"),
+)
+
+
+# ---------------------------------------------------------------------------
+# Create Executor
+# ---------------------------------------------------------------------------
+class BasicAgentExecutor(AgentExecutor):
+    """Test AgentProxy implementation."""
+
+    def __init__(self):
+        self.agent = agent
+
+    @override
+    async def execute(
+        self,
+        context: RequestContext,
+        event_queue: EventQueue,
+    ) -> None:
+        message: Message = Message(role="user", content="")
+        for part in context.message.parts:
+            if isinstance(part, Part):
+                if isinstance(part.root, TextPart):
+                    message.content = part.root.text
+                    break
+
+        result: RunOutput = await self.agent.arun(message)
+        event_queue.enqueue_event(new_agent_text_message(result.content))
+
+    @override
+    async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
+        raise Exception("Cancel not supported")
+
+
+# ---------------------------------------------------------------------------
+# Run Example
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    print(
+        "Run `python cookbook/05_agent_os/interfaces/a2a/basic_agent/__main__.py` to start the A2A server."
+    )
 ```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno a2a openai uvicorn
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code blocks above as `__main__.py` and `basic_agent.py` in the same directory, then run:
+    ```bash
+    python __main__.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/05_agent_os/interfaces/a2a/basic_agent/__main__.py](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/interfaces/a2a/basic_agent/__main__.py)

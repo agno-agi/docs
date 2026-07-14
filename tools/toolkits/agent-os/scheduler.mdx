@@ -1,0 +1,82 @@
+---
+title: Scheduler
+description: "Let an agent create and manage AgentOS schedules."
+---
+
+`SchedulerTools` gives an agent natural-language control over the [AgentOS Scheduler](/agent-os/scheduler/overview). It wraps `ScheduleManager` so an agent can create, list, enable, disable, delete, and inspect recurring schedules.
+
+## Prerequisites
+
+Install the scheduler extras and the `openai` library:
+
+```shell
+uv pip install "agno[scheduler]" sqlalchemy "psycopg[binary]" openai
+```
+
+Schedules are stored in the same database used by AgentOS. To execute schedules, run AgentOS with `scheduler=True`.
+
+## Example
+
+```python cookbook/05_agent_os/scheduler/scheduler_tools_agent.py
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIChat
+from agno.tools.scheduler import SchedulerTools
+
+db = PostgresDb(
+    id="scheduler-tools-demo-db",
+    db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
+)
+
+scheduler_agent = Agent(
+    id="scheduler-agent",
+    name="Scheduler Agent",
+    model=OpenAIChat(id="gpt-4o-mini"),
+    tools=[
+        SchedulerTools(
+            db=db,
+            default_endpoint="/agents/scheduler-agent/runs",
+            default_timezone="UTC",
+        )
+    ],
+    instructions=[
+        "When the user asks for recurring work, create a schedule.",
+        "Confirm the cron expression and timezone.",
+    ],
+    db=db,
+    markdown=True,
+)
+```
+
+When targeting an AgentOS `/runs` endpoint, the schedule payload must include a `message` field.
+
+## Toolkit Params
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `db` | `Any` | - | Database adapter implementing scheduler methods. |
+| `default_endpoint` | `Optional[str]` | `None` | Endpoint to call when a schedule fires. |
+| `default_method` | `str` | `"POST"` | HTTP method for scheduled requests. |
+| `default_timezone` | `str` | `"UTC"` | Timezone used for cron expressions. |
+| `default_payload` | `Optional[dict]` | `None` | Default request payload. |
+
+## Toolkit Functions
+
+| Function | Description |
+| --- | --- |
+| `create_schedule` | Create or update a recurring schedule from a cron expression. |
+| `list_schedules` | List schedules. |
+| `get_schedule` | Fetch one schedule by ID. |
+| `delete_schedule` | Permanently remove a schedule. |
+| `enable_schedule` | Enable a paused schedule. |
+| `disable_schedule` | Pause a schedule. |
+| `get_schedule_runs` | Read schedule execution history. |
+
+All functions have sync and async variants.
+
+## Developer Resources
+
+- [Scheduler examples](/examples/agent-os/scheduler/overview)
+- [Scheduler overview](/agent-os/scheduler/overview)
+- [Source](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/tools/scheduler.py)
+

@@ -3,28 +3,84 @@ title: OpenAI Like
 sidebarTitle: OpenAI Like
 ---
 
-The OpenAI Like model works as a wrapper for the OpenAILike models.
+`OpenAILike` connects to any provider that exposes an OpenAI-compatible Chat Completions API. It extends [OpenAIChat](/reference/models/openai) and is the base class for providers such as DeepSeek, Fireworks, Together, and xAI. Provider reference pages document only their own defaults and additions. Every parameter below is available on all of them.
 
 ## Parameters
 
-| Parameter            | Type                               | Default                        | Description                                                                                                      |
-| -------------------- | ---------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| `id`                 | `str`                              | `"not-provided"`               | The id of the model to use                                                                                       |
-| `name`               | `str`                              | `"OpenAILike"`                 | The name of the model                                                                                            |
-| `provider`           | `str`                              | `"OpenAILike"`                 | The provider of the model                                                                                        |
-| `api_key`            | `Optional[str]`                    | `"not-provided"`               | The API key for authentication                                                                                   |
-| `collect_metrics_on_completion` | `bool`                  | `False`                        | Collect token metrics only from the final streaming chunk (for providers with cumulative token counts)           |
-| `base_url`           | `str`                              | `"https://api.openai.com/v1"` | The base URL for the API                                                                                         |
-| `supports_native_structured_outputs` | `Optional[bool]`          | `None`                         | Whether the model supports native structured outputs                                                             |
-| `response_format`    | `Optional[str]`                    | `None`                         | The format of the response                                                                                       |
-| `seed`               | `Optional[int]`                    | `None`                         | Random seed for deterministic sampling                                                                           |
-| `stop`               | `Optional[Union[str, List[str]]]`  | `None`                         | Up to 4 sequences where the API will stop generating further tokens                                             |
-| `stream`             | `bool`                             | `True`                         | Whether to stream the response                                                                                   |
-| `temperature`        | `Optional[float]`                  | `None`                         | Controls randomness in the model's output                                                                       |
-| `top_p`              | `Optional[float]`                  | `None`                         | Controls diversity via nucleus sampling                                                                         |
-| `request_params`     | `Optional[Dict[str, Any]]`         | `None`                         | Additional parameters to include in the request                                                                  |
-| `client_params`      | `Optional[Dict[str, Any]]`         | `None`                         | Additional parameters for client configuration                                                                   |
-| `retries`            | `int`                              | `0`                            | Number of retries to attempt before raising a ModelProviderError                                                 |
-| `delay_between_retries` | `int`                           | `1`                            | Delay between retries, in seconds                                                                                |
-| `exponential_backoff` | `bool`                            | `False`                        | If True, the delay between retries is doubled each time                                                          |
+| Parameter                             | Type                         | Default          | Description                                                                                             |
+| ------------------------------------- | ---------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------- |
+| `id`                                  | `str`                        | `"not-provided"` | The id of the model to use                                                                              |
+| `name`                                | `str`                        | `"OpenAILike"`   | The name of the model                                                                                   |
+| `provider`                            | `str`                        | `"OpenAI"`       | The provider of the model                                                                               |
+| `model_type`                          | `ModelType`                  | `ModelType.MODEL` | Functional role of the model (e.g. `MODEL`, `OUTPUT_MODEL`, `PARSER_MODEL`, `MEMORY_MODEL`). Set by the agent during initialization |
+| `supports_native_structured_outputs`  | `bool`                       | `True`           | Whether the model supports native structured outputs                                                    |
+| `supports_json_schema_outputs`        | `bool`                       | `False`          | Whether the model requires a JSON schema for structured outputs                                         |
+| `system_prompt`                       | `Optional[str]`              | `None`           | System prompt from the model, added to the Agent                                                        |
+| `instructions`                        | `Optional[List[str]]`        | `None`           | Instructions from the model, added to the Agent                                                         |
+| `tool_message_role`                   | `str`                        | `"tool"`         | Role assigned to tool messages                                                                          |
+| `assistant_message_role`              | `str`                        | `"assistant"`    | Role assigned to assistant messages                                                                     |
+| `role_map`                            | `Optional[Dict[str, str]]`   | `None`           | Custom mapping of message roles to provider roles                                                       |
+| `collect_metrics_on_completion`       | `bool`                       | `False`          | Collect token metrics only from the final streaming chunk (for providers with cumulative token counts)  |
 
+### Request parameters
+
+| Parameter               | Type                              | Default | Description                                                                                              |
+| ----------------------- | --------------------------------- | ------- | -------------------------------------------------------------------------------------------------------- |
+| `store`                 | `Optional[bool]`                  | `None`  | Whether to store the output of the request on the provider side                                          |
+| `reasoning_effort`      | `Optional[str]`                   | `None`  | Reasoning effort for reasoning models ("low", "medium", "high")                                          |
+| `verbosity`             | `Optional[Literal["low", "medium", "high"]]` | `None` | Verbosity level of the model response                                                         |
+| `metadata`              | `Optional[Dict[str, Any]]`        | `None`  | Developer-defined metadata to associate with the completion                                              |
+| `frequency_penalty`     | `Optional[float]`                 | `None`  | Penalizes new tokens based on their frequency in the text so far (-2.0 to 2.0)                          |
+| `logit_bias`            | `Optional[Any]`                   | `None`  | Modifies the likelihood of specified tokens appearing in the completion                                  |
+| `logprobs`              | `Optional[bool]`                  | `None`  | Whether to return log probabilities of the output tokens                                                 |
+| `top_logprobs`          | `Optional[int]`                   | `None`  | Number of most likely tokens to return log probabilities for (0 to 20)                                   |
+| `max_tokens`            | `Optional[int]`                   | `None`  | Maximum number of tokens to generate (deprecated, use `max_completion_tokens`)                           |
+| `max_completion_tokens` | `Optional[int]`                   | `None`  | Maximum number of completion tokens to generate, including reasoning tokens                              |
+| `modalities`            | `Optional[List[str]]`             | `None`  | Output modalities: "text" and/or "audio"                                                                 |
+| `audio`                 | `Optional[Dict[str, Any]]`        | `None`  | Audio output configuration (e.g. `{"voice": "alloy", "format": "wav"}`)                                  |
+| `presence_penalty`      | `Optional[float]`                 | `None`  | Penalizes new tokens based on whether they appear in the text so far (-2.0 to 2.0)                       |
+| `seed`                  | `Optional[int]`                   | `None`  | Random seed for deterministic sampling                                                                   |
+| `stop`                  | `Optional[Union[str, List[str]]]` | `None`  | Up to 4 sequences where the API stops generating further tokens                                          |
+| `temperature`           | `Optional[float]`                 | `None`  | Controls randomness in the model's output                                                                |
+| `user`                  | `Optional[str]`                   | `None`  | A unique identifier representing your end-user                                                           |
+| `top_p`                 | `Optional[float]`                 | `None`  | Controls diversity via nucleus sampling                                                                  |
+| `service_tier`          | `Optional[str]`                   | `None`  | Processing tier for the request ("auto", "default", "flex", "priority")                                  |
+| `strict_output`         | `bool`                            | `True`  | Guarantees schema adherence for structured outputs. When `False`, the schema is followed as a guide and output may deviate |
+| `extra_headers`         | `Optional[Any]`                   | `None`  | Additional headers to include in requests                                                                |
+| `extra_query`           | `Optional[Any]`                   | `None`  | Additional query parameters to include in requests                                                       |
+| `extra_body`            | `Optional[Any]`                   | `None`  | Additional body parameters to include in requests                                                        |
+| `request_params`        | `Optional[Dict[str, Any]]`        | `None`  | Additional parameters merged into the request                                                            |
+
+### Client parameters
+
+| Parameter         | Type                                               | Default          | Description                                                              |
+| ----------------- | -------------------------------------------------- | ---------------- | ------------------------------------------------------------------------ |
+| `api_key`         | `Optional[str]`                                    | `"not-provided"` | The API key for authentication                                           |
+| `organization`    | `Optional[str]`                                    | `None`           | The organization ID to use for requests                                  |
+| `base_url`        | `Optional[Union[str, httpx.URL]]`                  | `None`           | The base URL of the OpenAI-compatible endpoint                           |
+| `timeout`         | `Optional[float]`                                  | `None`           | Request timeout in seconds                                               |
+| `max_retries`     | `Optional[int]`                                    | `None`           | Maximum number of client-level retries for failed requests               |
+| `default_headers` | `Optional[Any]`                                    | `None`           | Default headers to include in all requests                               |
+| `default_query`   | `Optional[Any]`                                    | `None`           | Default query parameters to include in all requests                      |
+| `http_client`     | `Optional[Union[httpx.Client, httpx.AsyncClient]]` | `None`           | HTTP client instance for making requests                                 |
+| `client_params`   | `Optional[Dict[str, Any]]`                         | `None`           | Additional parameters for client configuration                           |
+| `client`          | `Optional[OpenAI]`                                 | `None`           | Pre-configured sync OpenAI client, reused across requests                |
+| `async_client`    | `Optional[AsyncOpenAI]`                            | `None`           | Pre-configured async OpenAI client, reused across requests               |
+
+### Caching parameters
+
+| Parameter        | Type            | Default | Description                                                                       |
+| ---------------- | --------------- | ------- | ---------------------------------------------------------------------------------- |
+| `cache_response` | `bool`          | `False` | Cache model responses to avoid redundant API calls during development             |
+| `cache_ttl`      | `Optional[int]` | `None`  | Time-to-live for cached responses, in seconds. `None` keeps cached entries forever |
+| `cache_dir`      | `Optional[str]` | `None`  | Directory for cached responses. Defaults to `~/.agno/cache/model_responses`       |
+
+### Retry parameters
+
+| Parameter                   | Type   | Default | Description                                                          |
+| --------------------------- | ------ | ------- | --------------------------------------------------------------------- |
+| `retries`                   | `int`  | `0`     | Number of retries to attempt before raising a ModelProviderError      |
+| `delay_between_retries`     | `int`  | `1`     | Delay between retries, in seconds                                     |
+| `exponential_backoff`       | `bool` | `False` | If True, the delay between retries is doubled each time               |
+| `retry_with_guidance`       | `bool` | `True`  | Retry a failed invocation with a guidance message appended, for known errors avoidable with extra instructions |
+| `retry_with_guidance_limit` | `int`  | `1`     | Maximum number of retries with guidance                               |

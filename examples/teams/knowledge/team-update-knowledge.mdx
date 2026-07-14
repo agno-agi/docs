@@ -1,0 +1,116 @@
+---
+title: "Team Update Knowledge"
+description: "Demonstrates enabling `update_knowledge` so teams can persist new facts."
+source: cookbook/03_teams/05_knowledge/05_team_update_knowledge.py
+---
+
+```python team_update_knowledge.py
+"""
+Team Update Knowledge
+====================
+
+Demonstrates enabling `update_knowledge` so teams can persist new facts.
+"""
+
+from agno.agent import Agent
+from agno.knowledge.knowledge import Knowledge
+from agno.models.openai import OpenAIResponses
+from agno.team import Team
+from agno.vectordb.lancedb import LanceDb
+
+# ---------------------------------------------------------------------------
+# Setup
+# ---------------------------------------------------------------------------
+team_knowledge = Knowledge(
+    vector_db=LanceDb(
+        table_name="team_update_knowledge",
+        uri="tmp/lancedb",
+    ),
+)
+team_knowledge.insert(
+    text_content=(
+        "Agno teams can coordinate multiple specialist agents for operational tasks "
+        "and can use shared memory utilities to stay aligned."
+    )
+)
+
+
+# ---------------------------------------------------------------------------
+# Create Members
+# ---------------------------------------------------------------------------
+ops_agent = Agent(
+    name="Operations Team Member",
+    model=OpenAIResponses(id="gpt-5-mini"),
+    instructions=[
+        "Store reliable facts when users ask to remember them.",
+        "When asked, retrieve from knowledge first, then answer succinctly.",
+    ],
+)
+
+
+# ---------------------------------------------------------------------------
+# Create Team
+# ---------------------------------------------------------------------------
+operations_team = Team(
+    name="Knowledge Ops Team",
+    model=OpenAIResponses(id="gpt-5-mini"),
+    members=[ops_agent],
+    knowledge=team_knowledge,
+    update_knowledge=True,
+    add_knowledge_to_context=True,
+    instructions=[
+        "You maintain an operations playbook for the team.",
+        "Use knowledge tools to remember and recall short business facts.",
+    ],
+)
+
+
+# ---------------------------------------------------------------------------
+# Run Team
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    operations_team.print_response(
+        "Remember: incident triage runs every weekday at 9:30 local time.",
+        stream=True,
+    )
+
+    operations_team.print_response(
+        "What does our playbook say about incident triage timing?",
+        stream=True,
+    )
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno lancedb openai pyarrow
+    ```
+  </Step>
+
+  <Step title="Export your API keys">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export LANCEDB_API_KEY="your_lancedb_api_key_here"
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:LANCEDB_API_KEY="your_lancedb_api_key_here"
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `team_update_knowledge.py`, then run:
+    ```bash
+    python team_update_knowledge.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/03_teams/05_knowledge/05_team_update_knowledge.py](https://github.com/agno-agi/agno/blob/main/cookbook/03_teams/05_knowledge/05_team_update_knowledge.py)
