@@ -731,6 +731,9 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         # CRASH_DB is an internal parent-to-worker handoff with a default.
         "env_remove": {"CRASH_DB"},
     },
+    "03_teams/25_time_travel/01_continue_from.py": {
+        "intro_override": "Continue a completed team run from a selected message boundary with `acontinue_run()`.",
+    },
     "04_workflows/06_advanced_concepts/run_control/remote_workflow.py": {
         "repo_layout": True,
         "extra_add": {"os"},
