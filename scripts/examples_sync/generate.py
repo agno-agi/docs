@@ -521,7 +521,9 @@ TITLE_OVERRIDES = {
     "examples/tools/mcp/notion-mcp-agent": "Notion MCP Agent",
     "examples/tools/models/gemini-video-generation": "Gemini Video Generation",
     "examples/tools/other/human-in-the-loop": "Human in the Loop",
+    "examples/tools/clickup-tools": "ClickUp Tools",
     "examples/tools/exceptions/retry-tool-call-from-post-hook": "Post-Hook Retry",
+    "examples/tools/trafilatura-tools": "Trafilatura Tools",
     "examples/tools/webbrowser-tools": "WebBrowser Tools",
 }
 
@@ -1078,6 +1080,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         ],
     },
     "91_tools/mcp/graphiti.py": {
+        "intro_override": "Use Agno's MCP integration with Graphiti to build a personal diary assistant that stores and recalls entries from a knowledge graph.",
         "pre_run_steps": [
             (
                 "Start Graphiti MCP",
@@ -1096,6 +1099,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         ],
     },
     "91_tools/mcp/sse_transport/client.py": {
+        "intro_override": "Connect to MCP servers that use SSE transport with MCPTools and MultiMCPTools.",
         "repo_layout": True,
         "pre_run_steps": [
             (
@@ -1263,6 +1267,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "repo_layout": True,
     },
     "08_learning/10_demo/agents.py": {
+        "extra_add": {"os"},
         "repo_layout": True,
         "run_note": "This helper defines `ops_assistant` for the demo. Run `python cookbook/08_learning/10_demo/seed.py`, then `python cookbook/08_learning/10_demo/run.py` from the Agno repository root.",
     },
@@ -1373,6 +1378,8 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "env_remove": {"GOOGLE_API_KEY"},
     },
     "91_tools/mcp/stagehand.py": {
+        "env_add": {"BROWSERBASE_API_KEY", "BROWSERBASE_PROJECT_ID"},
+        "intro_override": "Scrape Hacker News headlines and top comments into a structured reader's digest with the Stagehand MCP server.",
         "pre_run_steps": [
             (
                 "Build the Stagehand MCP server",
@@ -1580,6 +1587,13 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "05_agent_os/rbac/symmetric/user_isolation.py": {
         "intro_override": "Build on [Symmetric RBAC Basic](/examples/agent-os/rbac/symmetric/basic) by adding user-scoped database session isolation.",
+        "pre_run_steps": [
+            (
+                "Configure the optional JWT secret",
+                "Set `JWT_VERIFICATION_KEY` to override the hardcoded demonstration secret used to sign and verify tokens.",
+                None,
+            )
+        ],
     },
     "05_agent_os/remote/05_agent_os_gateway.py": {
         "repo_layout": True,
@@ -1745,6 +1759,154 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "integrations/parallel/05_web_plus_knowledge.py": {
         "intro_override": "Give one agent an Agno Knowledge base backed by local Chroma and Parallel Search for live web results. The agent selects the source for each question.",
     },
+    # Postfix fresh-eyes fixes. These controls preserve pinned source fences
+    # while correcting generated metadata and setup around them.
+    "02_agents/18_checkpointing/02_tool_error_persistence.py": {
+        "intro_override": "Run two failure scenarios to verify that tool exceptions and model errors preserve the conversation for `/continue` retries.",
+    },
+    "03_teams/02_modes/tasks_stream.py": {
+        "suppress_intro": True,
+    },
+    "06_storage/firestore/firestore_for_agent.py": {
+        "pre_run_steps": [
+            (
+                "Configure Firestore",
+                "Enable Firestore in your Google Cloud project and replace `PROJECT_ID` in `firestore_for_agent.py` with your own project ID before running.",
+                None,
+            )
+        ],
+    },
+    "05_agent_os/background_tasks/evals_demo.py": {
+        "intro_override": "This AgentOS app registers a Postgres-backed AccuracyEval for a calculator agent and exposes saved runs through the eval endpoints.",
+    },
+    "05_agent_os/factories/agent/02_input_schema_factory.py": {
+        "intro_override": "The client sends a `factory_input` JSON object in the run request. AgentOS validates it against a Pydantic model and exposes the typed value as `ctx.input`.",
+    },
+    "05_agent_os/rbac/asymmetric/workos_byot.py": {
+        "env_add": {"WORKOS_API_KEY", "WORKOS_CLIENT_ID"},
+        "pre_run_steps": [
+            (
+                "Configure WorkOS",
+                "In the WorkOS dashboard, enable RBAC and Email + Password authentication. Use `WORKOS_API_KEY` and `WORKOS_CLIENT_ID` from the same WorkOS environment.",
+                None,
+            )
+        ],
+    },
+    "05_agent_os/rbac/symmetric/with_cookie.py": {
+        "intro_override": "Read the JWT from an HTTP-only `auth_token` cookie with `TokenSource.COOKIE` instead of the Authorization header.",
+        "pre_run_steps": [
+            (
+                "Configure the optional JWT secret",
+                "Set `JWT_VERIFICATION_KEY` to override the hardcoded demonstration secret used to sign and verify tokens.",
+                None,
+            )
+        ],
+    },
+    "07_knowledge/04_advanced/03_graph_rag.py": {
+        "package_add": {"lightrag-agno"},
+        "pre_run_steps": [
+            (
+                "Start LightRAG",
+                "Start a LightRAG server at `http://localhost:9621` before running the example.",
+                None,
+            )
+        ],
+    },
+    "12_context/00_filesystem.py": {
+        "intro_override": "FilesystemContextProvider wraps a local directory and gives the agent a single `query_<id>` tool. A read-only sub-agent uses FileTools scoped to the root to list, search, and read files.",
+    },
+    "90_models/cerebras/knowledge.py": {
+        "package_remove": {"beautifulsoup4"},
+    },
+    "90_models/cerebras/retry.py": {
+        "suppress_intro": True,
+    },
+    "90_models/cometapi/multi_model.py": {
+        "suppress_intro": True,
+    },
+    "90_models/cometapi/retry.py": {
+        "suppress_intro": True,
+    },
+    "90_models/deepinfra/retry.py": {
+        "suppress_intro": True,
+    },
+    "90_models/ibm/watsonx/image_agent_bytes.py": {
+        "pre_run_steps": [
+            (
+                "Add a sample image",
+                "Place a JPEG named `sample.jpg` in the same directory as `image_agent_bytes.py`.",
+                None,
+            )
+        ],
+    },
+    "90_models/nebius/retry.py": {
+        "suppress_intro": True,
+    },
+    "90_models/vllm/code_generation.py": {
+        "pre_run_steps": [
+            (
+                "Install vLLM",
+                "Install vLLM in the environment that will serve the model:",
+                "uv pip install -U vllm",
+            ),
+            (
+                "Start vLLM",
+                "Serve the model used by this example:",
+                "vllm serve deepseek-ai/deepseek-coder-6.7b-instruct --dtype float32 --tool-call-parser pythonic",
+            ),
+        ],
+    },
+    "90_models/vllm/structured_output.py": {
+        "pre_run_steps": [
+            (
+                "Install vLLM",
+                "Install vLLM in the environment that will serve the model:",
+                "uv pip install -U vllm",
+            ),
+            (
+                "Start vLLM",
+                "Serve the model used by this example:",
+                "vllm serve Qwen/Qwen2.5-7B-Instruct",
+            ),
+        ],
+    },
+    "91_tools/docling_tools/basic_examples.py": {
+        "run_after": "This entry point runs both the basic and OCR examples.",
+        "run_command": "python cookbook/91_tools/docling_tools/run.py",
+    },
+    "91_tools/docling_tools/ocr_example.py": {
+        "run_after": "This entry point runs both the basic and OCR examples.",
+        "run_command": "python cookbook/91_tools/docling_tools/run.py",
+    },
+    "91_tools/docling_tools/run.py": {
+        "package_add": {"openai-whisper"},
+        "pre_run_steps": [
+            (
+                "Install FFmpeg",
+                "Install the FFmpeg system package required for the MP4-to-VTT example and verify it is available:",
+                "ffmpeg -version",
+            )
+        ],
+    },
+    "91_tools/firecrawl_tools.py": {
+        "package_remove": {"firecrawl"},
+    },
+    "91_tools/mcp/cli.py": {
+        "env_add": {"GITHUB_PERSONAL_ACCESS_TOKEN"},
+    },
+    "91_tools/mcp/github.py": {
+        "env_add": {"GITHUB_PERSONAL_ACCESS_TOKEN"},
+        "env_remove": {"GITHUB_TOKEN"},
+    },
+    "91_tools/mcp/pipedream_auth.py": {
+        "intro_override": "Call an authenticated Pipedream MCP server over streamable HTTP, passing a bearer token plus project and environment headers on behalf of an end user.",
+    },
+    "91_tools/redshift_tools.py": {
+        "env_add": {"REDSHIFT_DATABASE", "REDSHIFT_HOST"},
+    },
+    "91_tools/trafilatura_tools.py": {
+        "intro_override": "Configure TrafilaturaTools for txt, markdown, JSON, and XML extraction, precision or recall tuning, metadata-only mode, crawling, and HTML-to-text conversion.",
+    },
     "91_tools/docling_tools/paths.py": {
         "run_note": "This module defines shared paths for the Docling examples and is not run directly.",
     },
@@ -1803,6 +1965,10 @@ SUPPRESS_INTRO_SLUGS = {
     "examples/teams/basics/broadcast-mode",
     "examples/tools/tool-hooks/tool-hook",
     "examples/workflows/advanced-concepts/nested-workflows/deeply-nested-workflow",
+    "examples/workflows/human-in-the-loop/dual-level-hitl/loop-confirmation-and-tool-confirmation",
+    "examples/workflows/human-in-the-loop/dual-level-hitl/multi-step-mixed-hitl",
+    "examples/workflows/human-in-the-loop/dual-level-hitl/output-review-and-tool-confirmation",
+    "examples/workflows/human-in-the-loop/dual-level-hitl/router-confirmation-and-tool-confirmation",
 }
 
 GITHUB_BLOB = "https://github.com/agno-agi/agno/blob/main"

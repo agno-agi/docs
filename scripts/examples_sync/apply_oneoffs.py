@@ -48,7 +48,7 @@ DESCRIPTION_OVERRIDES = {
     "examples/agent-os/rbac/overview": "JWT-based AgentOS RBAC examples for symmetric and asymmetric keys, scope mapping, and user isolation.",
     "examples/agent-os/rbac/asymmetric/overview": "RS256 AgentOS RBAC examples for generated keys, custom scope mappings, and WorkOS-issued tokens.",
     "examples/agent-os/remote/overview": "Connect AgentOS to remote agents, teams, workflows, A2A endpoints, and gateway instances.",
-    "examples/agent-os/skills/overview": "Load local skills into AgentOS agents and teams, including sample system-information scripts.",
+    "examples/agent-os/skills/overview": "Load local skills into an AgentOS agent, including sample system-information scripts.",
     "examples/agent-os/tracing/dbs/overview": "Persist AgentOS traces to ClickHouse, MongoDB, PostgreSQL, and SQLite.",
     "examples/evals/overview": "Evaluate agents and teams for accuracy, model-judged quality, performance, reliability, and reusable suites.",
     "examples/models/aws/bedrock/overview": "Amazon Bedrock examples for basic runs, image and PDF input, structured output, and tool use.",
@@ -102,10 +102,14 @@ DESCRIPTION_OVERRIDES = {
     "examples/models/deepseek/overview": "Run DeepSeek models with reasoning, thinking mode, structured output, retries, and tool use.",
     "examples/models/mistral/overview": "Run Mistral models with image input, memory, structured output, retries, and tool use.",
     "examples/models/ibm/watsonx/overview": "Run IBM watsonx models with basic responses, tools, knowledge, storage, retries, and structured output.",
-    "examples/models/internlm/overview": "Run InternLM models with basic responses, tools, knowledge, storage, retries, and structured output.",
+    "examples/models/internlm/overview": "Retry failed InternLM model requests with exponential backoff.",
     "examples/models/langdb/overview": "Run LangDB models with basic responses, tools, retries, and structured output.",
     "examples/models/lmstudio/overview": "LM Studio examples for local models, images, knowledge, memory, storage, retries, structured output, and tools.",
     "examples/storage/dynamodb/overview": "Store agent and team sessions in DynamoDB.",
+    "examples/models/xiaomi/overview": "Xiaomi MiMo agent examples for basic runs, string model shorthand, web search, structured output, thinking mode, and reasoning.",
+    "examples/tools/slack-tools": "Compare all-tools, selected-function, and read-only SlackTools configurations for messaging, channel listing, history, and file access.",
+    "examples/tools/models/overview": "Model-backed toolkit examples for image and video generation, code editing, and provider-specific tools.",
+    "examples/tools/other/overview": "Tool configuration examples for caching, runtime registration, input schemas, HITL, session state, filtering, and stop-after-call behavior.",
 }
 
 TITLE_OVERRIDES = {
@@ -114,6 +118,8 @@ TITLE_OVERRIDES = {
     "examples/models/vercel/tool-use": "Vercel v0 Tool Use",
     "examples/models/vllm/tool-use": "vLLM Tool Use",
     "examples/models/xai/finance-agent": "Finance Agent",
+    "examples/storage/mongo/mongodb-for-agent": "MongoDB for Agent",
+    "examples/storage/mongo/mongodb-for-team": "MongoDB for Team",
     "examples/teams/state/overview": "State & Session",
     "examples/teams/task-mode/overview": "Advanced",
 }
@@ -255,6 +261,15 @@ EXPLICIT_MISSING_ROWS = {
         "examples/models/openai/responses/background",
         "examples/models/openai/responses/file-input-direct",
         "examples/models/openai/responses/image-agent-file",
+    ],
+    "examples/models/anthropic/overview": [
+        "examples/models/anthropic/adaptive-thinking",
+        "examples/models/anthropic/append-trailing-user-message",
+        "examples/models/anthropic/markdown-input",
+        "examples/models/anthropic/prompt-caching-multi-block",
+        "examples/models/anthropic/prompt-caching-with-dynamic-block",
+        "examples/models/anthropic/pydantic-tool-input",
+        "examples/models/anthropic/server-tools-multi-turn",
     ],
     "examples/models/overview": [
         "examples/models/cloudflare/overview",
@@ -497,6 +512,7 @@ EXPLICIT_ROW_REFRESH = {
     "examples/agents/human-in-the-loop/overview": {
         "examples/agents/human-in-the-loop/agentic-user-input",
         "examples/agents/human-in-the-loop/confirmation-advanced",
+        "examples/agents/human-in-the-loop/confirmation-required",
         "examples/agents/human-in-the-loop/confirmation-required-mcp-toolkit",
         "examples/agents/human-in-the-loop/confirmation-toolkit",
         "examples/agents/human-in-the-loop/external-tool-execution",
@@ -505,11 +521,19 @@ EXPLICIT_ROW_REFRESH = {
         "examples/agents/approvals/audit-approval-overview",
     },
     "examples/agents/input-output/overview": {"examples/agents/input-output/parser-model"},
+    "examples/agents/advanced/overview": {
+        "examples/agents/advanced/reasoning-agent-events",
+    },
     "examples/agents/hooks/overview": {
         "examples/agents/context-management/filter-tool-calls-from-history",
         "examples/agents/context-management/instructions",
     },
-    "examples/agents/multimodal/overview": {"examples/agents/multimodal/audio-streaming"},
+    "examples/agents/multimodal/overview": {
+        "examples/agents/multimodal/audio-input-output",
+        "examples/agents/multimodal/audio-sentiment-analysis",
+        "examples/agents/multimodal/audio-streaming",
+        "examples/agents/multimodal/audio-to-text",
+    },
     "examples/agents/state-and-session/overview": {
         "examples/agents/state-and-session/agentic-session-state",
         "examples/agents/state-and-session/chat-history",
@@ -551,11 +575,43 @@ EXPLICIT_ROW_REFRESH = {
         "examples/models/lmstudio/overview",
     },
     "examples/models/cerebras/overview": {"examples/models/cerebras/db"},
+    "examples/models/cerebras-openai/overview": {
+        "examples/models/cerebras-openai/db",
+    },
+    "examples/models/aimlapi/overview": {
+        "examples/models/aimlapi/basic",
+        "examples/models/aimlapi/image-agent",
+        "examples/models/aimlapi/image-agent-bytes",
+        "examples/models/aimlapi/image-agent-with-memory",
+        "examples/models/aimlapi/structured-output",
+        "examples/models/aimlapi/tool-use",
+    },
+    "examples/models/anthropic/overview": {
+        "examples/models/anthropic/db",
+        "examples/models/anthropic/image-input-file-upload",
+        "examples/models/anthropic/image-input-local-file",
+        "examples/models/anthropic/knowledge",
+        "examples/models/anthropic/memory",
+        "examples/models/anthropic/prompt-caching-extended",
+        "examples/models/anthropic/tool-use",
+    },
+    "examples/models/cometapi/overview": {
+        "examples/models/cometapi/multi-model",
+        "examples/models/cometapi/retry",
+    },
     "examples/models/cohere/overview": {
         "examples/models/cohere/db",
         "examples/models/cohere/tool-use",
     },
     "examples/models/deepseek/overview": {"examples/models/deepseek/tool-use"},
+    "examples/models/deepinfra/overview": {"examples/models/deepinfra/tool-use"},
+    "examples/models/groq/overview": {
+        "examples/models/groq/deep-knowledge",
+        "examples/models/groq/knowledge",
+        "examples/models/groq/research-agent-exa",
+        "examples/models/groq/research-agent-seltz",
+        "examples/models/groq/tool-use",
+    },
     "examples/models/groq/reasoning/overview": {
         "examples/models/groq/reasoning/demo-deepseek-qwen",
     },
@@ -567,11 +623,24 @@ EXPLICIT_ROW_REFRESH = {
         "examples/models/lmstudio/db",
         "examples/models/lmstudio/tool-use",
     },
+    "examples/models/langdb/overview": {
+        "examples/models/langdb/basic",
+        "examples/models/langdb/data-analyst",
+        "examples/models/langdb/finance-agent",
+        "examples/models/langdb/structured-output",
+        "examples/models/langdb/web-search",
+    },
+    "examples/models/litellm-openai/overview": {
+        "examples/models/litellm-openai/tool-use",
+    },
+    "examples/models/llama-cpp/overview": {"examples/models/llama-cpp/tool-use"},
     "examples/models/mistral/overview": {
         "examples/models/mistral/mistral-small",
         "examples/models/mistral/tool-use",
     },
     "examples/models/nvidia/overview": {"examples/models/nvidia/tool-use"},
+    "examples/models/nebius/overview": {"examples/models/nebius/db"},
+    "examples/models/nexus/overview": {"examples/models/nexus/tool-use"},
     "examples/models/ollama/responses/overview": {
         "examples/models/ollama/responses/basic",
         "examples/models/ollama/responses/structured-output",
@@ -583,6 +652,14 @@ EXPLICIT_ROW_REFRESH = {
         "examples/models/openai/responses/zdr-reasoning-agent",
     },
     "examples/models/together/overview": {"examples/models/together/tool-use"},
+    "examples/models/openrouter/chat/overview": {
+        "examples/models/openrouter/chat/tool-use",
+    },
+    "examples/models/portkey/overview": {"examples/models/portkey/retry"},
+    "examples/models/requesty/overview": {"examples/models/requesty/tool-use"},
+    "examples/models/siliconflow/overview": {
+        "examples/models/siliconflow/tool-use",
+    },
     "examples/models/vllm/overview": {
         "examples/models/vllm/code-generation",
         "examples/models/vllm/db",
@@ -592,10 +669,48 @@ EXPLICIT_ROW_REFRESH = {
         "examples/storage/dynamodb/dynamo-for-team",
     },
     "examples/storage/overview": {
+        "examples/storage/in-memory/overview",
         "examples/storage/mongo/overview",
         "examples/storage/dynamodb/overview",
     },
-    "examples/tools/overview": {"examples/tools/searchapi-tools"},
+    "examples/storage/mongo/overview": {
+        "examples/storage/mongo/mongodb-for-agent",
+        "examples/storage/mongo/mongodb-for-team",
+    },
+    "examples/storage/json-db/overview": {
+        "examples/storage/json-db/json-for-agent",
+        "examples/storage/json-db/json-for-team",
+        "examples/storage/json-db/json-for-workflows",
+    },
+    "examples/tools/mcp/sse-transport/overview": {
+        "examples/tools/mcp/sse-transport/client",
+    },
+    "examples/tools/mcp/streamable-http-transport/overview": {
+        "examples/tools/mcp/streamable-http-transport/client",
+    },
+    "examples/tools/overview": {
+        "examples/tools/brandfetch-tools",
+        "examples/tools/bravesearch-tools",
+        "examples/tools/googlesheets-tools",
+        "examples/tools/mem0-tools",
+        "examples/tools/searchapi-tools",
+        "examples/tools/serper-tools",
+        "examples/tools/slack-tools",
+        "examples/tools/webex-tools",
+        "examples/tools/zep-tools",
+        "examples/tools/exceptions/overview",
+        "examples/tools/models/overview",
+        "examples/tools/other/overview",
+        "examples/tools/tool-decorator/overview",
+        "examples/tools/tool-hooks/overview",
+    },
+    "examples/agent-os/dbs/overview": {
+        "examples/agent-os/dbs/agentos-default-db",
+        "examples/agent-os/dbs/dynamo",
+        "examples/agent-os/dbs/neon",
+        "examples/agent-os/dbs/supabase",
+        "examples/agent-os/dbs/surreal-db/overview",
+    },
     "examples/teams/basics/overview": {"examples/teams/basics/basic-coordination"},
     "examples/teams/learning/overview": {"examples/teams/learning/team-learned-knowledge"},
     "examples/teams/modes/tasks/overview": {
@@ -605,7 +720,26 @@ EXPLICIT_ROW_REFRESH = {
     },
     "examples/teams/overview": {
         "examples/teams/basics/overview",
+        "examples/teams/context-compression/overview",
+        "examples/teams/context-management/overview",
+        "examples/teams/dependencies/overview",
+        "examples/teams/distributed-rag/overview",
+        "examples/teams/guardrails/overview",
+        "examples/teams/hooks/overview",
+        "examples/teams/human-in-the-loop/overview",
+        "examples/teams/knowledge/overview",
         "examples/teams/learning/overview",
+        "examples/teams/memory/overview",
+        "examples/teams/metrics/overview",
+        "examples/teams/multimodal/overview",
+        "examples/teams/reasoning/overview",
+        "examples/teams/run-control/overview",
+        "examples/teams/search-coordination/overview",
+        "examples/teams/session/overview",
+        "examples/teams/state/overview",
+        "examples/teams/streaming/overview",
+        "examples/teams/structured-input-output/overview",
+        "examples/teams/tools/overview",
     },
     "examples/teams/task-mode/overview": {
         "examples/teams/task-mode/basic-task-mode",
@@ -647,6 +781,8 @@ EXPLICIT_LABEL_REFRESH = {
     "examples/models/litellm-openai/audio-input",
     "examples/storage/dynamodb/dynamo-for-agent",
     "examples/storage/dynamodb/dynamo-for-team",
+    "examples/storage/mongo/mongodb-for-agent",
+    "examples/storage/mongo/mongodb-for-team",
     "examples/models/vercel/tool-use",
     "examples/models/vllm/tool-use",
     "examples/tools/bitbucket-tools",
@@ -692,6 +828,139 @@ ROW_TARGET_REWRITES = {
         "examples/integrations/rag/agentic-rag-with-lightrag": "examples/knowledge/integrations/rag/agentic-rag-with-lightrag",
         "examples/integrations/rag/local-rag-langchain-qdrant": "examples/knowledge/integrations/rag/local-rag-langchain-qdrant",
     },
+}
+
+# Post-tag toolkit pages that are live in docs.json but missing from the
+# hand-maintained toolkit index. Cards are rendered without icons so the page
+# does not invent visual metadata absent from the target frontmatter.
+TOOLKIT_INDEX_CARDS = {
+    "Search": [
+        (
+            "Parallel",
+            "/tools/toolkits/search/parallel",
+            "Use Parallel with Agno for AI-optimized web search and content extraction.",
+        ),
+        (
+            "Scavio",
+            "/tools/toolkits/search/scavio",
+            "Search Google, YouTube, marketplaces, and social platforms through the Scavio API.",
+        ),
+        (
+            "Seltz",
+            "/tools/toolkits/search/seltz",
+            "Run AI-powered semantic search against the Seltz gRPC API with SeltzTools.",
+        ),
+        (
+            "You.com",
+            "/tools/toolkits/search/youcom",
+            "Search the web with YouTools using domain filters and livecrawl.",
+        ),
+        (
+            "Brave Search",
+            "/tools/toolkits/search/bravesearch",
+            "Search the web with BraveSearchTools using the Brave Search API.",
+        ),
+    ],
+    "Web Scraping": [
+        (
+            "ScrapeGraph",
+            "/tools/toolkits/web-scrape/scrapegraph",
+            "Extract structured data, Markdown, and raw HTML from webpages with ScrapeGraphTools.",
+        ),
+        (
+            "Oxylabs",
+            "/tools/toolkits/web-scrape/oxylabs",
+            "Access Oxylabs SERP, Amazon product, and universal web scraping APIs.",
+        ),
+    ],
+    "Local": [
+        (
+            "Coding",
+            "/tools/toolkits/local/coding",
+            "Give an agent scoped file and shell tools for coding tasks.",
+        ),
+        (
+            "Workspace",
+            "/tools/toolkits/local/workspace",
+            "Give an agent read, write, edit, search, and shell access to a directory with destructive operations gated by default.",
+        ),
+    ],
+    "File Generation": [
+        (
+            "File Generation",
+            "/tools/toolkits/file-generation/file-generation",
+            "Generate files in multiple formats from agents and teams with FileGenerationTools.",
+        ),
+    ],
+    "Native Model Toolkit": [
+        (
+            "Gemini",
+            "/tools/toolkits/models/gemini",
+            "Generate images and videos using the Gemini API and Vertex AI models.",
+        ),
+        (
+            "OpenAI",
+            "/tools/toolkits/models/openai",
+            "Give an agent OpenAI audio transcription, image generation, and text-to-speech tools.",
+        ),
+    ],
+    "Additional Toolkits": [
+        (
+            "Antigravity",
+            "/tools/toolkits/others/antigravity",
+            "Delegate subtasks to Google's Managed Agents sandbox from an Agno agent.",
+        ),
+        (
+            "Daytona",
+            "/tools/toolkits/others/daytona",
+            "Run agent-generated code in a remote sandbox with Daytona.",
+        ),
+        (
+            "GitLab",
+            "/tools/toolkits/others/gitlab",
+            "Read GitLab projects, merge requests, and issues with GitlabTools.",
+        ),
+        (
+            "Google Drive",
+            "/tools/toolkits/others/google-drive",
+            "List, search, read, upload, and download Google Drive files.",
+        ),
+        (
+            "LLMs.txt",
+            "/tools/toolkits/others/llms-txt",
+            "Discover and read documentation from an llms.txt index.",
+        ),
+        (
+            "MoviePy Video Tools",
+            "/tools/toolkits/others/moviepy",
+            "Process videos, extract audio, and generate or embed captions with MoviePyVideoTools.",
+        ),
+        (
+            "Salesforce",
+            "/tools/toolkits/others/salesforce",
+            "Query and manage Salesforce CRM records with SOQL, SOSL, and the REST API.",
+        ),
+        (
+            "Trello",
+            "/tools/toolkits/others/trello",
+            "Create and manage Trello boards, lists, and cards.",
+        ),
+        (
+            "TwelveLabs",
+            "/tools/toolkits/others/twelvelabs",
+            "Analyze videos and generate multimodal text embeddings with TwelveLabs.",
+        ),
+        (
+            "User Feedback",
+            "/tools/toolkits/others/user-feedback",
+            "Pause an agent to ask the user structured questions with predefined options.",
+        ),
+        (
+            "Web Browser Tools",
+            "/tools/toolkits/others/web-browser",
+            "Open a URL in a web browser with WebBrowserTools.",
+        ),
+    ],
 }
 
 # Overview tables whose reported defects were confirmed. Restricting the pass
@@ -818,9 +1087,9 @@ ROW_REPAIR_OVERVIEWS = {
 }
 
 
-def sub(path: str, old: str, new: str, required: bool = True) -> None:
+def sub_file(p: Path, old: str, new: str, required: bool = True) -> None:
     global would_apply
-    p = DOCS / path
+    path = str(p.relative_to(ROOT))
     text = p.read_text(encoding="utf-8")
     # `new` may contain `old` as a substring (insertion-style fixes), so the
     # already-applied test must run first or re-runs would apply twice.
@@ -837,6 +1106,14 @@ def sub(path: str, old: str, new: str, required: bool = True) -> None:
         return
     p.write_text(text.replace(old, new, 1), encoding="utf-8")
     print(f"  applied: {path}")
+
+
+def sub(path: str, old: str, new: str, required: bool = True) -> None:
+    sub_file(DOCS / path, old, new, required)
+
+
+def root_sub(path: str, old: str, new: str, required: bool = True) -> None:
+    sub_file(ROOT / path, old, new, required)
 
 
 def docs_path(slug: str) -> Path:
@@ -1097,6 +1374,7 @@ def repaired_row(overview: str, row: dict[str, str], *, force_description: bool 
         changed = description != row["description"] or changed
         row = {**row, "description": description}
     if label != row["label"]:
+        changed = True
         row = {**row, "label": label}
     if changed:
         row = {**row, "raw": render_row(row)}
@@ -1210,6 +1488,66 @@ def repair_overview_tables() -> None:
             print(f"  repaired overview: {overview}")
 
 
+def render_toolkit_card(title: str, href: str, description: str) -> str:
+    assert all(value.strip() == value and "\n" not in value for value in (title, href, description))
+    assert title and href.startswith("/tools/toolkits/") and description.endswith((".", "!", "?"))
+    assert '"' not in title and '"' not in href
+    return (
+        f'  <Card\n    title="{title}"\n    href="{href}"\n  >\n'
+        f"    {description}\n"
+        "  </Card>\n"
+    )
+
+
+def repair_toolkit_index() -> None:
+    """Add reviewed post-tag toolkit cards without duplicating upstream additions."""
+    global would_apply
+    p = ROOT / "tools/toolkits/overview.mdx"
+    text = p.read_text(encoding="utf-8")
+    changed = False
+
+    file_heading = "## File Generation\n\n<CardGroup cols={3}>"
+    if file_heading not in text:
+        anchor = "## Native Model Toolkit\n\n<CardGroup cols={3}>"
+        assert anchor in text, "toolkit index: Native Model Toolkit anchor is missing"
+        text = text.replace(
+            anchor,
+            file_heading + "\n</CardGroup>\n\n" + anchor,
+            1,
+        )
+        changed = True
+
+    for heading, cards in TOOLKIT_INDEX_CARDS.items():
+        marker = f"## {heading}\n\n<CardGroup cols={{3}}>"
+        start = text.find(marker)
+        assert start >= 0, f"toolkit index: missing section {heading}"
+        end = text.find("</CardGroup>", start)
+        assert end >= 0, f"toolkit index: unclosed CardGroup for {heading}"
+        for title, href, description in cards:
+            href_token = f'href="{href}"'
+            occurrences = text.count(href_token)
+            assert occurrences <= 1, f"toolkit index: duplicate href {href}"
+            if occurrences == 1:
+                continue
+            card = render_toolkit_card(title, href, description)
+            text = text[:end] + card + text[end:]
+            end += len(card)
+            changed = True
+
+    for cards in TOOLKIT_INDEX_CARDS.values():
+        for _, href, _ in cards:
+            assert text.count(f'href="{href}"') == 1, f"toolkit index: missing href {href}"
+
+    if not changed:
+        return
+    would_apply += 1
+    if CHECK:
+        print("  would repair toolkit index")
+    else:
+        p.write_text(text, encoding="utf-8")
+        print("  repaired toolkit index")
+
+
 def main() -> None:
     global CHECK
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -1249,10 +1587,213 @@ def main() -> None:
         required=False,
     )
 
-    # 5. Reviewed frontmatter overrides consumed by the overview row pass.
+    # 5. Reviewed fixes for preserved curated pages.
+    sub(
+        "tools/brandfetch-tools.mdx",
+        "export BRANDFETCH_CLIENT_KEY=your_client_id",
+        "export BRANDFETCH_CLIENT_ID=your_client_id",
+    )
+    sub(
+        "tools/googlecalendar-tools.mdx",
+        'Enable Agno agents the "executive assistance" capability to move beyond just reading emails or chat to actively managing your time, coordinating with teams, and resolving scheduling conflicts autonomously with Google Calendar.',
+        "Enable Agno agents to list, create, update, and delete Google Calendar events and find free time slots.",
+    )
+    sub(
+        "tools/googlecalendar-tools.mdx",
+        "Make Sure you've enabled Google calender API otherwise scopes wont be visible",
+        "Make sure you've enabled Google Calendar API. Otherwise, the scopes will not be visible",
+    )
+    sub(
+        "tools/aws-lambda-tools.mdx",
+        """            enable_list_functions=True,  # Enable listing for reference
+            enable_invoke_function=True,  # Enable function testing""",
+        """            enable_list_functions=True,
+            enable_invoke_function=True,""",
+    )
+    sub(
+        "tools/aws-lambda-tools.mdx",
+        """cd agno/cookbook/91_tools
+
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+python aws_lambda_tools.py""",
+        """cd agno
+
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+python cookbook/91_tools/aws_lambda_tools.py""",
+    )
+    sub(
+        "tools/aws-ses-tools.mdx",
+        """cd agno/cookbook/91_tools
+
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+python aws_ses_tools.py""",
+        """cd agno
+
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+python cookbook/91_tools/aws_ses_tools.py""",
+    )
+    sub(
+        "tools/bitbucket-tools.mdx",
+        """cd agno/cookbook/91_tools
+
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+python bitbucket_tools.py""",
+        """cd agno
+
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+python cookbook/91_tools/bitbucket_tools.py""",
+    )
+    sub(
+        "tools/github-tools.mdx",
+        """source .venvs/demo/bin/activate
+
+python cookbook/91_tools/github_tools.py""",
+        """source .venvs/demo/bin/activate
+uv pip install -U pygithub
+
+python cookbook/91_tools/github_tools.py""",
+    )
+    sub(
+        "tools/mem0-tools.mdx",
+        """source .venvs/demo/bin/activate
+
+python cookbook/91_tools/mem0_tools.py""",
+        """source .venvs/demo/bin/activate
+uv pip install -U mem0ai
+
+python cookbook/91_tools/mem0_tools.py""",
+    )
+
+    # 6. Post-tag static pages that are outside the pinned cookbook generator.
+    root_sub(
+        "database/providers/valkey/usage/valkey-for-agent.mdx",
+        """## Usage
+
+### Run Valkey""",
+        """## Usage
+
+Install dependencies:
+
+```bash
+uv pip install -U agno openai valkey-glide-sync
+```
+
+### Run Valkey""",
+    )
+    root_sub(
+        "database/providers/valkey/overview.mdx",
+        """## Usage
+
+### Run Valkey""",
+        """## Usage
+
+Install dependencies:
+
+```bash
+uv pip install -U agno openai valkey-glide-sync
+```
+
+### Run Valkey""",
+    )
+    sub(
+        "storage/valkey/valkey-for-team.mdx",
+        "Run `uv pip install ddgs valkey-glide-sync` to install dependencies.",
+        "Run `uv pip install ddgs openai valkey-glide-sync` to install dependencies.",
+    )
+    sub(
+        "agent-os/dbs/valkey-db.mdx",
+        "```python\n",
+        "```python valkey_db.py\n",
+    )
+    sub(
+        "agent-os/dbs/valkey-db.mdx",
+        'description: "Setup the Valkey database."\n---',
+        'description: "Setup the Valkey database."\nsource: cookbook/05_agent_os/dbs/valkey_db.py\n---',
+    )
+    sub(
+        "agent-os/dbs/valkey-db.mdx",
+        """## Run the Example
+```bash
+# Clone and setup repo
+git clone https://github.com/agno-agi/agno.git
+cd agno/cookbook/05_agent_os/dbs
+
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+python valkey_db.py
+```""",
+        """## Run the Example
+
+<Steps>
+  <Step title="Clone Agno">
+    Clone the repository and run the remaining commands from its root:
+    ```bash
+    git clone https://github.com/agno-agi/agno.git
+    cd agno
+    ```
+  </Step>
+
+  <Step title="Set up the demo environment">
+    ```bash
+    ./scripts/demo_setup.sh
+    source .venvs/demo/bin/activate
+    uv pip install -U valkey-glide-sync
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run Valkey">
+    ```bash
+    docker run -d --name my-valkey -p 6379:6379 valkey/valkey-bundle
+    ```
+  </Step>
+
+  <Step title="Run the example">
+    Run the example from the repository root:
+    ```bash
+    python cookbook/05_agent_os/dbs/valkey_db.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/05_agent_os/dbs/valkey_db.py](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/dbs/valkey_db.py)""",
+    )
+
+    # 7. Reviewed frontmatter overrides consumed by the overview row pass.
     apply_frontmatter_overrides()
 
-    # 6. Title-casing pass over every page (fixes curated overview stubs:
+    # 8. Title-casing pass over every page (fixes curated overview stubs:
     #    Openai -> OpenAI, Vertexai -> Vertex AI, Mcp Demo -> MCP Demo, ...).
     count = 0
     for p in sorted(DOCS.rglob("*.mdx")):
@@ -1267,9 +1808,13 @@ def main() -> None:
                 p.write_text(text.replace(f'title: "{old_t}"', f'title: "{new_t}"', 1), encoding="utf-8")
             count += 1
 
-    # 7. Refresh only malformed or explicitly stale overview rows, then add
+    # 9. Refresh only malformed or explicitly stale overview rows, then add
     #    only the navigation-backed omissions approved by the audit.
     repair_overview_tables()
+
+    # 10. Restore post-tag toolkit cards that shipped in navigation without
+    #     corresponding entries in the hand-maintained complete index.
+    repair_toolkit_index()
 
     if CHECK:
         print(f"check: {would_apply} fixes would apply; title-casing would change {count} pages")
