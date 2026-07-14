@@ -1,87 +1,102 @@
 ---
 title: Docling Reader
+description: Convert Docling-supported documents, images, audio, and video into knowledge documents.
 ---
 
-The **Docling Reader** processes multiple document formats using IBM's [Docling library](https://github.com/docling-project/docling). It handles PDFs, documents, presentations, spreadsheets, images, audio, video and markup files.
-
-## Code
+Pass `DoclingReader` to `Knowledge.insert()` to parse supported formats with Docling.
 
 ```python docling_reader.py
 from agno.agent import Agent
 from agno.knowledge.knowledge import Knowledge
 from agno.knowledge.reader.docling_reader import DoclingReader
+from agno.models.openai import OpenAIResponses
 from agno.vectordb.pgvector import PgVector
 
 db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
 
-# Create a knowledge base with docling reader
 knowledge = Knowledge(
     vector_db=PgVector(
         table_name="docling_documents",
         db_url=db_url,
-    )
+    ),
 )
 
-# Add documents using DoclingReader
-knowledge.insert(
-    path="documents/report.pdf",
-    reader=DoclingReader(),
-)
-
-# Create an agent with the knowledge base
 agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
     knowledge=knowledge,
     search_knowledge=True,
 )
 
-# Query the knowledge base
-agent.print_response(
-    "Summarize the key findings from the report",
-    markdown=True,
-)
+if __name__ == "__main__":
+    knowledge.insert(
+        name="Thai Recipes",
+        url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
+        reader=DoclingReader(output_format="markdown"),
+    )
+    agent.print_response(
+        "How do I make chicken and galangal in coconut milk soup?",
+        markdown=True,
+    )
 ```
 
-## Usage
+## Supported Input Groups
+
+| Group | Examples |
+|-------|----------|
+| Documents | PDF, DOCX, PPTX, Markdown, HTML, AsciiDoc, and LaTeX |
+| Data | CSV, XLSX, XML, and Docling JSON |
+| Images | PNG, JPEG, TIFF, BMP, and WebP |
+| Audio | WAV, MP3, M4A, AAC, OGG, and FLAC |
+| Video | MP4, AVI, and MOV |
+
+## Run the Agent
 
 <Steps>
   <Snippet file="create-venv-step.mdx" />
 
   <Step title="Install dependencies">
     ```bash
-    # Base dependencies
-    uv pip install -U docling sqlalchemy psycopg pgvector agno openai
+    uv pip install -U "agno[docling]" openai pgvector psycopg sqlalchemy
+    ```
 
-    # For audio/video processing
+    Audio and video conversion also require:
+
+    ```bash
     uv pip install -U openai-whisper
     ```
 
-    **Install ffmpeg** (required for audio/video processing):
-    - **macOS**: `brew install ffmpeg`
-    - **Ubuntu**: `sudo apt-get install ffmpeg`
-    - **Windows**: Download from https://ffmpeg.org/download.html
+    Install `ffmpeg` with your operating system's package manager. See [FFmpeg downloads](https://ffmpeg.org/download.html) for platform packages.
   </Step>
 
-  <Step title="Set environment variables">
+  <Step title="Export the API key">
     ```bash
-    export OPENAI_API_KEY=xxx
+    export OPENAI_API_KEY=your_openai_api_key_here
     ```
   </Step>
 
   <Snippet file="run-pgvector-step.mdx" />
 
-  <Step title="Run Agent">
-    <CodeGroup>
-    ```bash Mac
+  <Step title="Run the agent">
+    ```bash
     python docling_reader.py
     ```
-
-    ```bash Windows
-    python docling_reader.py
-    ```
-    </CodeGroup>
   </Step>
 </Steps>
 
-## Params
+## Reader Parameters
 
 <Snippet file="docling-reader-reference.mdx" />
+
+<Warning>
+In v2.7.2, `Knowledge.insert(url=..., reader=DoclingReader(allowed_hosts=...))` downloads extension-bearing URLs before calling the reader. Validate the URL before ingestion because the reader's allowlist does not guard this path.
+</Warning>
+
+`DoclingReader.async_read()` runs the synchronous conversion in a worker thread.
+
+## Next Steps
+
+| Task | Guide |
+|------|-------|
+| Compare available readers | [Readers Overview](/knowledge/concepts/readers/overview) |
+| Configure chunking | [Chunking](/knowledge/concepts/chunking/overview) |
+| Parse PDFs with pypdf | [PDF Reader](/knowledge/concepts/readers/pdf-reader) |

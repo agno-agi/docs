@@ -1,73 +1,60 @@
 ---
 title: LangDB Embedder
+description: "Generate embeddings through a LangDB project endpoint."
 ---
 
-## Code
+`LangDBEmbedder` routes OpenAI-compatible embedding requests through the project selected by `LANGDB_PROJECT_ID`.
 
-```python
+```python langdb_embedder.py
+from os import environ
 
 from agno.knowledge.embedder.langdb import LangDBEmbedder
-from agno.knowledge.knowledge import Knowledge
-from agno.vectordb.pgvector import PgVector
 
-embeddings = LangDBEmbedder().get_embedding("Embed me")
-
-# Print the embeddings and their dimensions
-print(f"Embeddings: {embeddings[:5]}")
-print(f"Dimensions: {len(embeddings)}")
-
-# Example usage:
-knowledge = Knowledge(
-    vector_db=PgVector(
-        db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
-        table_name="langdb_embeddings",
-        embedder=LangDBEmbedder(),
-    ),
-    max_results=2,
+project_id = environ["LANGDB_PROJECT_ID"]
+embedder = LangDBEmbedder(
+    base_url=f"https://api.langdb.ai/{project_id}/v1",
 )
+embedding = embedder.get_embedding(
+    "The quick brown fox jumps over the lazy dog."
+)
+
+print(f"First values: {embedding[:5]}")
+print(f"Dimensions: {len(embedding)}")
 ```
 
-## Usage
+The default model is `text-embedding-ada-002` with 1536 dimensions. Pass `id` and `dimensions` together when selecting another model.
+
+<Warning>
+Agno v2.7.2 constructs the legacy `api.us-east-1.langdb.ai` host when `base_url` is omitted. LangDB's current API guide uses `api.langdb.ai`. Pass `base_url` as shown above.
+</Warning>
+
+## Run the Example
 
 <Steps>
   <Snippet file="create-venv-step.mdx" />
 
-  <Step title="Set your API key">
+  <Step title="Configure the project">
     ```bash
-    export LANGDB_API_KEY=xxx
-    export LANGDB_PROJECT_ID=xxx
+    export LANGDB_API_KEY=your_langdb_api_key_here
+    export LANGDB_PROJECT_ID=your_langdb_project_id_here
     ```
   </Step>
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U sqlalchemy psycopg pgvector openai agno
+    uv pip install -U agno openai
     ```
   </Step>
 
-  <Step title="Run PgVector">
+  <Step title="Run the example">
     ```bash
-    docker run -d \
-      -e POSTGRES_DB=ai \
-      -e POSTGRES_USER=ai \
-      -e POSTGRES_PASSWORD=ai \
-      -e PGDATA=/var/lib/postgresql/data/pgdata \
-      -v pgvolume:/var/lib/postgresql/data \
-      -p 5532:5432 \
-      --name pgvector \
-      agnohq/pgvector:18
+    python langdb_embedder.py
     ```
-  </Step>
-
-  <Step title="Run Agent">
-    <CodeGroup>
-    ```bash Mac
-    python cookbook/07_knowledge/09_archive/embedders/langdb_embedder.py
-    ```
-
-    ```bash Windows
-    python cookbook/07_knowledge/09_archive/embedders/langdb_embedder.py
-    ```
-    </CodeGroup>
   </Step>
 </Steps>
+
+## Developer Resources
+
+- [Embedders overview](/knowledge/concepts/embedder/overview)
+- [LangDB API setup](https://docs.langdb.ai/getting-started/working-with-api/)
+- [LangDB embeddings endpoint](https://docs.langdb.ai/api-reference/generate-embeddings/)

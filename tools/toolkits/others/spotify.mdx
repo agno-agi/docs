@@ -1,29 +1,64 @@
 ---
 title: Spotify
+description: "Enable an Agent to search Spotify for tracks, artists, and albums, and create and manage playlists."
 ---
 
 **SpotifyTools** enable an Agent to search for songs and manage playlists on Spotify.
 
 ## Prerequisites
 
-The following example requires a Spotify access token from [Spotify](https://developer.spotify.com/). No extra library is needed; the toolkit uses `httpx`, which is already a dependency of Agno.
+The following example requires a Spotify access token from [Spotify](https://developer.spotify.com/). The toolkit itself uses `httpx`, which is already a dependency of Agno. The example uses an Anthropic model, so install the `anthropic` library.
+
+```shell
+uv pip install anthropic
+```
 
 ```shell
 export SPOTIFY_TOKEN=***
+export ANTHROPIC_API_KEY=***
 ```
 
 ## Example
 
-The following agent will search for songs using Spotify API.
+The following agent will search for tracks and create a playlist on Spotify.
 
 ```python cookbook/91_tools/spotify_tools.py
 from os import getenv
 
 from agno.agent import Agent
+from agno.models.anthropic import Claude
 from agno.tools.spotify import SpotifyTools
 
-agent = Agent(tools=[SpotifyTools(access_token=getenv("SPOTIFY_TOKEN"))])
-agent.print_response("Search for songs by 'Taylor Swift'")
+# Your Spotify access token (get one from https://developer.spotify.com)
+SPOTIFY_TOKEN = getenv("SPOTIFY_TOKEN")
+
+# Initialize the Spotify toolkit
+spotify = SpotifyTools(
+    access_token=SPOTIFY_TOKEN,
+    default_market="US",
+)
+
+# Create an agent with the Spotify toolkit
+agent = Agent(
+    name="Spotify DJ",
+    model=Claude(id="claude-sonnet-5"),
+    tools=[spotify],
+    instructions=[
+        "You are a helpful music assistant that can search for songs and manage Spotify playlists.",
+        "When asked to create a playlist:",
+        "1. First search for relevant tracks based on the user's criteria (mood, artist, genre)",
+        "2. Collect the track URIs from the search results",
+        "3. Create the playlist with those tracks",
+        "When updating a playlist, use the playlist ID from a previous creation or ask the user for it.",
+        "Always confirm what you've done and provide the playlist URL when created.",
+    ],
+    markdown=True,
+)
+
+response = agent.run(
+    "Create a Good Vibes playlist, add 5 upbeat songs by The Weeknd and Coldplay in it."
+)
+print(response.content)
 ```
 
 ## Toolkit Params

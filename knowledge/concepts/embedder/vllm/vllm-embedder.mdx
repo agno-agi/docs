@@ -1,119 +1,59 @@
 ---
 title: vLLM Embedder
+description: "Generate embeddings with vLLM, either in-process or against a vLLM server."
 ---
 
-## Code
+`VLLMEmbedder` runs in two modes. Local mode loads the model in-process with no server or API key. Remote mode connects to a running vLLM server through its OpenAI-compatible API, selected by setting `base_url`.
 
 ```python vllm_embedder.py
-import asyncio
-
 from agno.knowledge.embedder.vllm import VLLMEmbedder
-from agno.knowledge.knowledge import Knowledge
-from agno.vectordb.pgvector import PgVector
 
+# Local mode: vLLM loads the model in-process
+embedder = VLLMEmbedder(
+    id="sentence-transformers/all-MiniLM-L6-v2",
+    dimensions=384,
+    enforce_eager=True,
+    vllm_kwargs={
+        "disable_sliding_window": True,
+        "max_model_len": 256,
+    },
+)
+embedding = embedder.get_embedding("The quick brown fox jumps over the lazy dog.")
 
-def main():
-    # Basic usage - get embeddings directly
-    embeddings = VLLMEmbedder(
-        id="intfloat/e5-mistral-7b-instruct",
-        dimensions=4096,
-        enforce_eager=True,
-        vllm_kwargs={
-            "disable_sliding_window": True,
-            "max_model_len": 4096,
-        },
-    ).get_embedding("The quick brown fox jumps over the lazy dog.")
+print(embedding[:5])
+print(len(embedding))
 
-    # Print the embeddings and their dimensions
-    print(f"Embeddings: {embeddings[:5]}")
-    print(f"Dimensions: {len(embeddings)}")
-
-    # Local Mode with Knowledge
-    knowledge = Knowledge(
-        vector_db=PgVector(
-            db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
-            table_name="vllm_embeddings",
-            embedder=VLLMEmbedder(
-                id="intfloat/e5-mistral-7b-instruct",
-                dimensions=4096,
-                enforce_eager=True,
-                vllm_kwargs={
-                    "disable_sliding_window": True,
-                    "max_model_len": 4096,
-                },
-            ),
-        ),
-        max_results=2,
-    )
-
-    # Remote mode with Knowledge
-    knowledge_remote = Knowledge(
-        vector_db=PgVector(
-            db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
-            table_name="vllm_embeddings_remote",
-            embedder=VLLMEmbedder(
-                id="intfloat/e5-mistral-7b-instruct",
-                dimensions=4096,
-                base_url="http://localhost:8000/v1",
-                api_key="your-api-key",  # Optional
-            ),
-        ),
-        max_results=2,
-    )
-
-    asyncio.run(
-        knowledge.ainsert(
-            path="cookbook/07_knowledge/testing_resources/cv_1.pdf",
-        )
-    )
-
-
-if __name__ == "__main__":
-    main()
+# Remote mode: connect to a running vLLM server
+remote_embedder = VLLMEmbedder(
+    id="sentence-transformers/all-MiniLM-L6-v2",
+    dimensions=384,
+    base_url="http://localhost:8000/v1",
+    api_key="your-api-key",  # optional, also read from VLLM_API_KEY
+)
 ```
 
-## Usage
+Local mode downloads the model from Hugging Face on first use. Larger models need matching GPU memory; `intfloat/e5-mistral-7b-instruct` (4096 dimensions) needs roughly 14GB of VRAM.
+
+## Run the Example
 
 <Steps>
   <Snippet file="create-venv-step.mdx" />
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U agno vllm openai sqlalchemy psycopg[binary] pgvector pypdf
-    ```
-  </Step>
-
-  <Step title="Run PgVector">
-    ```bash
-    docker run -d \
-      -e POSTGRES_DB=ai \
-      -e POSTGRES_USER=ai \
-      -e POSTGRES_PASSWORD=ai \
-      -e PGDATA=/var/lib/postgresql/data/pgdata \
-      -v pgvolume:/var/lib/postgresql/data \
-      -p 5532:5432 \
-      --name pgvector \
-      agnohq/pgvector:18
+    uv pip install -U agno vllm openai
     ```
   </Step>
 
   <Step title="Run the example">
-    <CodeGroup>
-    ```bash Mac
+    ```bash
     python vllm_embedder.py
     ```
-
-    ```bash Windows
-    python vllm_embedder.py
-    ```
-    </CodeGroup>
   </Step>
 </Steps>
 
-## Notes
+## Developer Resources
 
-- This example uses **local mode** where vLLM loads the model directly (no server needed)
-- For **remote mode**, the code includes `knowledge_remote` example with `base_url` parameter
-- GPU with ~14GB VRAM required for e5-mistral-7b-instruct model
-- For CPU-only or lower memory, use smaller models like `BAAI/bge-small-en-v1.5`
-- Models are automatically downloaded from HuggingFace on first use
+- [VLLMEmbedder reference](/reference/knowledge/embedder/vllm)
+- [vLLM OpenAI-compatible server](https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html)
+- [Embedders overview](/knowledge/concepts/embedder/overview)

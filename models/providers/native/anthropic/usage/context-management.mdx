@@ -1,25 +1,16 @@
 ---
 title: Context Editing
-description: Automatically manage context size with Anthropic's context editing.
+description: Clear older tool results from Claude's server-side context with Anthropic context editing.
 ---
 
-With Anthropic's [context editing capabilities](https://docs.anthropic.com/en/docs/build-with-claude/context-editing), you can automatically manage your context size.
-
-When your context grows larger, previous tool results and thinking blocks will be removed.
-
-This is useful to reduce costs, improve performance, and reduce the chances of hitting context limits.
-
-## Working example
-
-```python cookbook/90_models/anthropic/context_management.py
+```python context_management.py
 from agno.agent import Agent
 from agno.models.anthropic import Claude
 from agno.tools.websearch import WebSearchTools
 
 agent = Agent(
     model=Claude(
-        id="claude-sonnet-4-5",
-        # Activate and configure the context management feature
+        id="claude-sonnet-4-5-20250929",
         betas=["context-management-2025-06-27"],
         context_management={
             "edits": [
@@ -31,60 +22,76 @@ agent = Agent(
             ]
         },
     ),
-    instructions="You are a helpful assistant with access to the web.",
+    instructions="Use web search to answer with current, sourced information.",
     tools=[WebSearchTools()],
     session_id="context-editing",
     add_history_to_context=True,
     markdown=True,
 )
 
-agent.print_response(
-    "Search for AI regulation in US. Make multiple searches to find the latest information."
-)
+if __name__ == "__main__":
+    agent.print_response(
+        "Search for AI regulation in the US. Make at least three searches, then summarize the latest developments."
+    )
 
-# Display context management metrics
-print("\n" + "=" * 60)
-print("CONTEXT MANAGEMENT SUMMARY")
-print("=" * 60)
-response = agent.get_last_run_output()
-if response and response.metrics:
-    print(f"\nInput tokens: {response.metrics.input_tokens:,}")
+    run = agent.get_last_run_output()
+    if run and run.metrics:
+        print(f"Input tokens: {run.metrics.input_tokens:,}")
 
-# Print context management stats from the last message
-if response and response.messages:
-    for message in reversed(response.messages):
-        if message.provider_data and "context_management" in message.provider_data:
-            edits = message.provider_data["context_management"].get("applied_edits", [])
-            if edits:
-                print(
-                    f"\n✅ Saved: {edits[-1].get('cleared_input_tokens', 0):,} tokens"
-                )
-                print(f"   Cleared: {edits[-1].get('cleared_tool_uses', 0)} tool uses")
-                break
-
-print("\n" + "=" * 60)
+    if run and run.messages:
+        for message in reversed(run.messages):
+            context_data = (message.provider_data or {}).get("context_management")
+            if context_data:
+                edits = context_data.get("applied_edits", [])
+                if edits:
+                    latest_edit = edits[-1]
+                    print(
+                        f"Cleared tool uses: {latest_edit.get('cleared_tool_uses', 0)}"
+                    )
+                    print(
+                        f"Cleared input tokens: {latest_edit.get('cleared_input_tokens', 0):,}"
+                    )
+                    break
 ```
 
-## Usage
+The `clear_tool_uses_20250919` edit activates after two tool use/result pairs and keeps the newest pair. By default, Anthropic clears old tool results but keeps the original tool-call inputs. Set `clear_tool_inputs=True` in the edit only when those inputs can also be removed.
+
+Context editing runs on Anthropic's server before the request reaches Claude. Agno retains the full local message and session history. Clearing content can invalidate the affected prompt-cache prefix.
+
+Thinking blocks require a separate `clear_thinking_20251015` edit. When both strategies are used, list the thinking edit first. Context-edit metrics are finalized at the end of a response, including a streamed response.
+
+See Anthropic's [context-editing documentation](https://platform.claude.com/docs/en/build-with-claude/context-editing) for strategy defaults and additional fields.
+
+## Run the Example
 
 <Steps>
   <Snippet file="create-venv-step.mdx" />
 
-  <Step title="Set your API key">
-    ```bash
-    export ANTHROPIC_API_KEY=xxx
-    ```
-  </Step>
-
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U anthropic agno ddgs
+    uv pip install -U "agno[anthropic,ddg]"
     ```
   </Step>
 
-  <Step title="Run Agent">
+  <Step title="Set your API key">
+    <CodeGroup>
+
+    ```bash Mac/Linux
+    export ANTHROPIC_API_KEY="your_anthropic_api_key"
+    ```
+
+    ```powershell Windows
+    $Env:ANTHROPIC_API_KEY="your_anthropic_api_key"
+    ```
+
+    </CodeGroup>
+  </Step>
+
+  <Step title="Save and run">
+    Save the example as `context_management.py`, then run:
+
     ```bash
-    python cookbook/90_models/anthropic/context_management.py
+    python context_management.py
     ```
   </Step>
 </Steps>

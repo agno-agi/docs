@@ -1,8 +1,9 @@
 ---
 title: Agent with Structured Outputs and Strict Tools
+description: Validate both Claude tool-call inputs and the agent's final Pydantic response.
 ---
 
-Strict tool use ensures tool parameters follow the input schema exactly, which adds validation when you use tools alongside structured outputs.
+Set `strict=True` on a function and `output_schema` on the agent to constrain the tool call and final response separately.
 
 ## Code
 
@@ -12,19 +13,20 @@ from agno.models.anthropic import Claude
 from agno.tools import Function
 from pydantic import BaseModel
 
-class WeatherInfo(BaseModel):
-    """Structured output schema for weather information."""
 
+class WeatherInfo(BaseModel):
     location: str
     temperature: float
     unit: str
     condition: str
 
-def get_weather(location: str, unit: str = "celsius") -> str:
-    temp = 72 if unit == "fahrenheit" else 22
-    return f"Weather in {location}: {temp}°{unit}, Sunny"
 
-# Create function with strict mode enabled
+def get_weather(location: str, unit: str) -> str:
+    temp = 72 if unit == "fahrenheit" else 22
+    symbol = "F" if unit == "fahrenheit" else "C"
+    return f"Weather in {location}: {temp} degrees {symbol}, sunny"
+
+
 weather_tool = Function(
     name="get_weather",
     description="Get current weather information for a location",
@@ -41,46 +43,66 @@ weather_tool = Function(
                 "description": "Temperature unit",
             },
         },
-        "required": ["location"],
+        "required": ["location", "unit"],
         "additionalProperties": False,
     },
-    strict=True,  # Enable strict mode for validated tool parameters
+    strict=True,
     entrypoint=get_weather,
 )
 
-# Agent with both structured outputs and strict tool
 agent = Agent(
-    model=Claude(id="claude-sonnet-4-5-20250929"),
+    model=Claude(id="claude-sonnet-4-6"),
     tools=[weather_tool],
     output_schema=WeatherInfo,
     description="You help users get weather information.",
 )
 
-# The agent will use strict tool validation and return structured output
-agent.print_response("What's the weather like in San Francisco?")
+if __name__ == "__main__":
+    agent.print_response("What's the weather like in San Francisco?")
 ```
+
+| Contract | Agno setting | Anthropic request shape |
+| --- | --- | --- |
+| Tool name and arguments | `Function(strict=True)` | Top-level `strict: true` beside `name`, `description`, and `input_schema` |
+| Final response | `Agent(output_schema=WeatherInfo)` | JSON output schema |
+
+Both schemas must use Anthropic's supported JSON Schema subset. Agno adds `additionalProperties: false` and makes every strict function parameter required when it formats the tool schema. In Agno 2.7.2, defaulted and `Optional` function parameters remain required when `strict=True` because `Function` rewrites the schema's `required` list. This example therefore requires `unit` in both the function signature and the explicit schema.
 
 ## Usage
 
 <Steps>
   <Snippet file="create-venv-step.mdx" />
 
-  <Step title="Set your API key">
-    ```bash
-    export ANTHROPIC_API_KEY=xxx
-    ```
-  </Step>
-
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U anthropic agno
+    uv pip install -U "agno[anthropic]"
     ```
   </Step>
 
-  <Step title="Run Agent">
+  <Step title="Export your Anthropic API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export ANTHROPIC_API_KEY="your_anthropic_api_key_here"
+    ```
+
+    ```powershell Windows
+    $Env:ANTHROPIC_API_KEY="your_anthropic_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the agent">
+    Save the code above as `structured_output_strict_tools.py`, then run:
+
     ```bash
     python structured_output_strict_tools.py
     ```
   </Step>
 </Steps>
 
+## Developer Resources
+
+- [Structured outputs](/models/providers/native/anthropic/usage/structured-output)
+- [Tool overview](/tools/overview)
+- [Anthropic strict tool use](https://platform.claude.com/docs/en/agents-and-tools/tool-use/strict-tool-use)
+- [Anthropic structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs)

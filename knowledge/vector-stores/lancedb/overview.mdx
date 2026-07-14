@@ -1,103 +1,79 @@
 ---
-title: LanceDB Vector Database
+title: LanceDB
 sidebarTitle: Overview
-description: Use LanceDB as a vector database for your Knowledge Base.
+description: "Store and search Knowledge embeddings in a local or remote LanceDB table."
 ---
 
-## Setup
+`LanceDb` supports vector, full-text, and hybrid search. A filesystem path creates a local database. A `db://` URI connects to LanceDB Cloud and requires `api_key=` or `LANCEDB_API_KEY`.
 
-```shell
-uv pip install lancedb typer pypdf openai agno
-```
-
-## Example
+<Warning>
+In Agno v2.7.2, dictionary filters are applied after LanceDB returns the limited candidates, and filter-expression lists are ignored. Filtered searches can return fewer documents than requested. Search results also omit the stored LanceDB row ID.
+</Warning>
 
 ```python agent_with_knowledge.py
-import typer
-from typing import Optional
-from rich.prompt import Prompt
-
 from agno.agent import Agent
 from agno.knowledge.knowledge import Knowledge
 from agno.vectordb.lancedb import LanceDb
-from agno.vectordb.search import SearchType
 
-# LanceDB Vector DB
-vector_db = LanceDb(
-    table_name="recipes",
-    uri="/tmp/lancedb",
-    search_type=SearchType.keyword,
-)
-
-# Knowledge Base
-knowledge_base = Knowledge(
-    vector_db=vector_db,
-)
-
-def lancedb_agent(user: str = "user"):
-    agent = Agent(
-        knowledge=knowledge_base,
-        debug_mode=True,
+knowledge = Knowledge(
+    vector_db=LanceDb(
+        table_name="recipes",
+        uri="tmp/lancedb",
     )
-
-    while True:
-        message = Prompt.ask(f"[bold] :sunglasses: {user} [/bold]")
-        if message in ("exit", "bye"):
-            break
-        agent.print_response(message, session_id=f"{user}_session")
+)
+agent = Agent(knowledge=knowledge, search_knowledge=True)
 
 if __name__ == "__main__":
-    # Comment out after first run
-    knowledge_base.insert(
+    knowledge.insert(
         url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf"
     )
-
-    typer.run(lancedb_agent)
+    agent.print_response("How do I make pad thai?", markdown=True)
 ```
 
-<Card title="Async Support ⚡">
-  <div className="mt-2">
-    <p>
-      LanceDB also supports asynchronous operations, enabling concurrency and leading to better performance.
-    </p>
+## Run the Example
 
-    ```python async_lance_db.py
-    # install lancedb - `pip install lancedb`
-    import asyncio
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
 
-    from agno.agent import Agent
-    from agno.knowledge.knowledge import Knowledge
-    from agno.vectordb.lancedb import LanceDb
-
-    # Initialize LanceDB
-    vector_db = LanceDb(
-        table_name="recipes",
-        uri="tmp/lancedb",  # You can change this path to store data elsewhere
-    )
-
-    # Create knowledge base
-    knowledge_base = Knowledge(
-        vector_db=vector_db,
-    )
-    agent = Agent(knowledge=knowledge_base, debug_mode=True)
-
-    if __name__ == "__main__":
-        # Load knowledge base asynchronously
-        asyncio.run(knowledge_base.ainsert(
-                url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf"
-            )
-        )
-
-        # Create and use the agent asynchronously
-        asyncio.run(agent.aprint_response("How to make Tom Kha Gai", markdown=True))
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno lancedb openai pypdf
     ```
+  </Step>
 
-    <Tip className="mt-4">
-      Use <code>ainsert()</code> and <code>aprint_response()</code> methods with <code>asyncio.run()</code> for non-blocking operations in high-throughput applications.
-    </Tip>
-  </div>
-</Card>
+  <Step title="Export the API key">
+    ```bash
+    export OPENAI_API_KEY=your_openai_api_key_here
+    ```
+  </Step>
 
-## LanceDb Params
+  <Step title="Run the example">
+    ```bash
+    python agent_with_knowledge.py
+    ```
+  </Step>
+</Steps>
+
+## Search Modes
+
+| `search_type` | Behavior |
+|---------------|----------|
+| `SearchType.vector` | Searches by embedding similarity |
+| `SearchType.keyword` | Uses LanceDB native full-text search |
+| `SearchType.hybrid` | Runs LanceDB hybrid vector and full-text search |
+
+## Parameters
 
 <Snippet file="vectordb_lancedb_params.mdx" />
+
+## Next Steps
+
+| Task | Guide |
+|------|-------|
+| Insert, search, and delete content | [LanceDB usage](/knowledge/vector-stores/lancedb/usage/lance-db) |
+| Call async Agno methods | [Async LanceDB usage](/knowledge/vector-stores/lancedb/usage/async-lance-db) |
+| Configure hybrid search | [LanceDB hybrid search](/knowledge/vector-stores/lancedb/usage/lance-db-hybrid-search) |
+
+## Developer Resources
+
+- [LanceDB Python SDK](https://lancedb.github.io/lancedb/python/python/)

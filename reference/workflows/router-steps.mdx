@@ -1,13 +1,14 @@
 ---
 title: Router Steps
 sidebarTitle: Router Steps
+description: "Constructor parameters for the workflow Router class, which dynamically selects steps to execute."
 ---
 
 ## Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `selector` | `Callable[[StepInput], ...] \| Callable[[StepInput, list], ...]` | `None` | Function to select steps dynamically. Can optionally accept `step_choices` as second parameter |
+| `selector` | `Callable[[StepInput], ...] \| Callable[[StepInput, list], ...] \| str` | `None` | Function or CEL expression string to select steps dynamically. Functions can optionally accept `step_choices` as second parameter |
 | `choices` | `WorkflowSteps` | Required | Available steps for selection. Supports nested lists (becomes Steps container) |
 | `name` | `Optional[str]` | `None` | Name of the router step |
 | `description` | `Optional[str]` | `None` | Description of the router step |
@@ -21,7 +22,7 @@ sidebarTitle: Router Steps
 | `requires_output_review` | `bool` | `False` | Pause after the selected route completes to review its output. See [Output Review](/workflows/hitl/output-review). |
 | `output_review_message` | `Optional[str]` | `None` | Message shown to user during output review |
 | `hitl_max_retries` | `int` | `3` | Max re-executions when an output review is rejected with `OnReject.retry` |
-| `on_reject` | `OnReject` | `OnReject.skip` | Action when rejected: `skip`, `cancel`, `retry` |
+| `on_reject` | `Union[OnReject, str]` | `OnReject.skip` | Action when rejected: `skip`, `cancel`, `retry` |
 
 ## Selector Return Types
 
@@ -32,6 +33,8 @@ The selector function can return any of the following:
 | `str` | Step name as string - Router resolves it from choices |
 | `Step` | Step object directly |
 | `List[Step]` | List of steps for chaining execution |
+
+`selector` also accepts a [CEL expression](/examples/workflows/cel-expressions/router/cel-ternary) string in place of a function. The expression must evaluate to a step name from `choices`.
 
 ## Selector Function Signatures
 
@@ -51,9 +54,18 @@ def selector(step_input: StepInput, step_choices: list) -> Union[str, Step, List
 
 The `step_choices` parameter provides access to the prepared Step objects from `Router.choices`, enabling dynamic selection based on available options.
 
+### Extended Signature (with session_state)
+
+```python
+def selector(step_input: StepInput, session_state: dict) -> Union[str, Step, List[Step]]:
+    ...
+```
+
+If the selector accepts a `session_state` parameter, the workflow's session state is passed to it at call time.
+
 ### Async Support
 
-Both signatures support async functions:
+All selector signatures support async functions:
 
 ```python
 async def selector(step_input: StepInput, step_choices: list) -> Union[str, Step, List[Step]]:

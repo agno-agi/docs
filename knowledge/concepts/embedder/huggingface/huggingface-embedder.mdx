@@ -1,62 +1,57 @@
 ---
-title: Huggingface Embedder
+title: Hugging Face Embedder
+description: "Call a Hugging Face feature-extraction endpoint with HuggingfaceCustomEmbedder."
 ---
 
-## Code
+`HuggingfaceCustomEmbedder` defaults to `intfloat/multilingual-e5-large`. Set `dimensions=1024` so Agno records that model's expected vector width.
 
-```python
+```python huggingface_embedder.py
 from agno.knowledge.embedder.huggingface import HuggingfaceCustomEmbedder
-from agno.knowledge.knowledge import Knowledge
-from agno.vectordb.pgvector import PgVector
 
-embeddings = HuggingfaceCustomEmbedder().get_embedding(
-    "The quick brown fox jumps over the lazy dog."
+embedder = HuggingfaceCustomEmbedder(dimensions=1024)
+
+passage_vector = embedder.get_embedding(
+    "passage: The quick brown fox jumps over the lazy dog."
 )
+query_vector = embedder.get_embedding("query: Which animal jumps?")
 
-# Print the embeddings and their dimensions
-print(f"Embeddings: {embeddings[:5]}")
-print(f"Dimensions: {len(embeddings)}")
-
-# Example usage:
-knowledge = Knowledge(
-    vector_db=PgVector(
-        db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
-        table_name="huggingface_embeddings",
-        embedder=HuggingfaceCustomEmbedder(dimensions=1024),
-    ),
-    max_results=2,
-)
-
+print(f"Passage output length: {len(passage_vector)}")
+print(f"Query output length: {len(query_vector)}")
 ```
 
-## Usage
+<Warning>
+The default E5 model expects `passage: ` for indexed passages and `query: ` for retrieval queries. `HuggingfaceCustomEmbedder` does not add these prefixes. Add them before calling the embedder. The adapter also returns the feature-extraction response without pooling or flattening it. Confirm that your endpoint returns one flat vector before using it with a vector database.
+</Warning>
+
+The `dimensions` field does not request pooling or a specific output size from Hugging Face. It configures the expected width used by Agno's vector database integrations.
+
+## Run the Example
 
 <Steps>
   <Snippet file="create-venv-step.mdx" />
 
-  <Step title="Set your API key">
+  <Step title="Export the API key">
     ```bash
-    export HUGGINGFACE_API_KEY=xxx
+    export HUGGINGFACE_API_KEY=your_hugging_face_api_key_here
     ```
   </Step>
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U sqlalchemy psycopg pgvector huggingface-hub agno
+    uv pip install -U agno huggingface-hub
     ```
   </Step>
 
-  <Snippet file="run-pgvector-step.mdx" />
-
-  <Step title="Run Agent">
-    <CodeGroup>
-    ```bash Mac
-    python cookbook/07_knowledge/09_archive/embedders/huggingface_embedder.py
+  <Step title="Run the example">
+    ```bash
+    python huggingface_embedder.py
     ```
-
-    ```bash Windows
-    python cookbook/07_knowledge/09_archive/embedders/huggingface_embedder.py
-    ```
-    </CodeGroup>
   </Step>
 </Steps>
+
+## Developer Resources
+
+- [HuggingfaceCustomEmbedder reference](/reference/knowledge/embedder/huggingface)
+- [Embedders overview](/knowledge/concepts/embedder/overview)
+- [Hugging Face InferenceClient](https://huggingface.co/docs/huggingface_hub/en/package_reference/inference_client)
+- [Multilingual E5 model card](https://huggingface.co/intfloat/multilingual-e5-large)

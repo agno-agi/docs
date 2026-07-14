@@ -1,7 +1,7 @@
 ---
 title: Shopify
 sidebarTitle: Shopify
-description: Tools to interact with Shopify.
+description: Analyze sales, products, inventory, and customers with the Shopify Admin GraphQL API.
 keywords: [shopify, toolkit, tools]
 ---
 
@@ -9,11 +9,16 @@ keywords: [shopify, toolkit, tools]
 
 ## Prerequisites
 
-The following example requires a Shopify Admin API access token with appropriate scopes.
+The following example requires the `openai` library and a Shopify Admin API access token with appropriate scopes.
+
+```shell
+uv pip install openai
+```
 
 Set the following environment variables:
 - `SHOPIFY_SHOP_NAME`: Your Shopify shop name (e.g., "my-store" from my-store.myshopify.com)
 - `SHOPIFY_ACCESS_TOKEN`: Your Shopify Admin API access token
+- `OPENAI_API_KEY`: Your OpenAI API key
 
 You can get your access token from: Shopify Admin > Settings > Apps and sales channels > Develop apps
 
@@ -29,22 +34,32 @@ The following agent will analyze sales data and provide insights.
 
 ```python cookbook/91_tools/shopify_tools.py
 from agno.agent import Agent
-from agno.models.openai import OpenAIResponses
+from agno.models.openai import OpenAIChat
 from agno.tools.shopify import ShopifyTools
 
 sales_agent = Agent(
     name="Sales Analyst",
-    model=OpenAIResponses(id="gpt-5.2"),
+    model=OpenAIChat(id="gpt-4o"),
     tools=[ShopifyTools()],
     instructions=[
         "You are a sales analyst for an e-commerce store using Shopify.",
         "Help the user understand their sales performance, product trends, and customer behavior.",
+        "When analyzing data:",
+        "1. Start by getting the relevant data using the available tools",
+        "2. Summarize key insights in a clear, actionable format",
+        "3. Highlight notable patterns or concerns",
+        "4. Suggest next steps when appropriate",
+        "Always present numbers clearly and use comparisons to add context.",
+        "If you need to get information about the store, like currency, call the `get_shop_info` tool.",
     ],
+    add_datetime_to_context=True,
     markdown=True,
-    add_datetime_to_context=True,  # This is important to get the current date and time in the context
 )
 
-sales_agent.print_response("What are my top 5 selling products this month?")
+sales_agent.print_response(
+    "What are my top 5 selling products in the last 30 days? "
+    "Show me quantity sold and revenue for each.",
+)
 ```
 
 ## Toolkit Params

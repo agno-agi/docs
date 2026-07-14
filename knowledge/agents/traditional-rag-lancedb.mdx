@@ -1,17 +1,11 @@
 ---
 title: Traditional RAG with LanceDB
+description: Retrieve from LanceDB for a string input and append references before the first model call.
 ---
 
-This example implements traditional RAG using the LanceDB vector database. Knowledge is added to context up front rather than searched dynamically by the agent.
-
-## Code
+For a string-input run, set `add_knowledge_to_context=True` to retrieve before the first model call.
 
 ```python traditional_rag_lancedb.py
-"""
-1. Run: `pip install openai lancedb tantivy pypdf sqlalchemy agno` to install the dependencies
-2. Run: `python traditional_rag_lancedb.py` to run the agent
-"""
-
 from agno.agent import Agent
 from agno.knowledge.embedder.openai import OpenAIEmbedder
 from agno.knowledge.knowledge import Knowledge
@@ -19,7 +13,6 @@ from agno.models.openai import OpenAIResponses
 from agno.vectordb.lancedb import LanceDb, SearchType
 
 knowledge = Knowledge(
-    # Use LanceDB as the vector database and store embeddings in the `recipes` table
     vector_db=LanceDb(
         table_name="recipes",
         uri="tmp/lancedb",
@@ -28,46 +21,59 @@ knowledge = Knowledge(
     ),
 )
 
-knowledge.insert(
-    name="Recipes",
-    url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
-)
-
 agent = Agent(
     model=OpenAIResponses(id="gpt-5.2"),
     knowledge=knowledge,
-    # Enable RAG by adding references from Knowledge to the user prompt.
     add_knowledge_to_context=True,
-    # Set as False because Agents default to `search_knowledge=True`
     search_knowledge=False,
     markdown=True,
 )
-agent.print_response(
-    "How do I make chicken and galangal in coconut milk soup", stream=True
-)
+
+if __name__ == "__main__":
+    knowledge.insert(
+        name="Thai Recipes",
+        url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
+    )
+    agent.print_response(
+        "How do I make chicken and galangal in coconut milk soup?",
+        stream=True,
+    )
 ```
 
-## Usage
+## Run the Agent
 
 <Steps>
   <Snippet file="create-venv-step.mdx" />
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U agno openai lancedb tantivy pypdf sqlalchemy
+    uv pip install -U agno lancedb openai pypdf
     ```
   </Step>
 
-  <Step title="Export your OpenAI API key">
+  <Step title="Export the API key">
     ```bash
     export OPENAI_API_KEY=your_openai_api_key_here
     ```
   </Step>
 
-  <Step title="Run Agent">
+  <Step title="Run the agent">
     ```bash
     python traditional_rag_lancedb.py
     ```
   </Step>
 </Steps>
 
+## How It Works
+
+1. `add_knowledge_to_context=True` searches with the run's string input.
+2. Returned documents are appended to the user message inside a `<references>` block.
+3. `search_knowledge=False` removes the model-callable search tool.
+
+## Next Steps
+
+| Task | Guide |
+|------|-------|
+| Let the model choose when to search | [Agentic RAG with LanceDB](/knowledge/agents/agentic-rag-lancedb) |
+| Change the retrieval signal | [Search and Retrieval](/knowledge/concepts/search-and-retrieval/overview) |
+| Apply metadata filters | [Filtering](/knowledge/concepts/filters/overview) |

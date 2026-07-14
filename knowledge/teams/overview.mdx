@@ -1,31 +1,28 @@
 ---
 title: Teams with Knowledge
 sidebarTitle: Overview
-description: Use knowledge bases with teams.
+description: Attach a knowledge base the team coordinator can search.
 mode: wide
 keywords: [knowledge, team, agentic rag, agentic search]
 ---
 
-Teams can use a knowledge base to store and retrieve information, just like agents:
-Use `isolate_vector_search` to scope retrieval when sharing a vector database across teams or tenants.
+Pass `knowledge` to a team to register its `search_knowledge_base` tool.
 
 ```python
 from pathlib import Path
 
 from agno.agent import Agent
 from agno.knowledge.embedder.openai import OpenAIEmbedder
-from agno.knowledge import Knowledge
+from agno.knowledge.knowledge import Knowledge
 from agno.models.openai import OpenAIResponses
 from agno.team import Team
 from agno.tools.hackernews import HackerNewsTools
 from agno.vectordb.lancedb import LanceDb
 
-# Setup paths
 cwd = Path(__file__).parent
 tmp_dir = cwd.joinpath("tmp")
 tmp_dir.mkdir(parents=True, exist_ok=True)
 
-# Initialize knowledge base
 agno_docs_knowledge = Knowledge(
     vector_db=LanceDb(
         uri=str(tmp_dir.joinpath("lancedb")),
@@ -33,8 +30,6 @@ agno_docs_knowledge = Knowledge(
         embedder=OpenAIEmbedder(id="text-embedding-3-small"),
     ),
 )
-
-agno_docs_knowledge.insert(url="https://docs.agno.com/llms-full.txt")
 
 hackernews_agent = Agent(
     name="HackerNews Agent",
@@ -54,7 +49,22 @@ team_with_knowledge = Team(
 )
 
 if __name__ == "__main__":
+    agno_docs_knowledge.insert(url="https://docs.agno.com/llms-full.txt")
     team_with_knowledge.print_response("Tell me about the Agno framework", stream=True)
 ```
 
-See more in the [Knowledge](/knowledge/overview) section.
+```bash
+uv pip install -U agno lancedb openai
+```
+
+The team coordinator can search the attached knowledge base and delegate other work to members. `Team.search_knowledge` defaults to `True`.
+
+When multiple `Knowledge` instances share one vector database, set `isolate_vector_search=True` (and give each instance a `name`) to keep retrieval scoped to each instance's own content.
+
+## Next Steps
+
+| Task | Guide |
+|------|-------|
+| Add web search to a team | [Team with Knowledge Base](/knowledge/teams/team-with-knowledge) |
+| Give members separate knowledge bases | [Distributed RAG with LanceDB](/knowledge/teams/distributed-rag-lancedb) |
+| Configure ingestion and retrieval | [Knowledge Overview](/knowledge/overview) |

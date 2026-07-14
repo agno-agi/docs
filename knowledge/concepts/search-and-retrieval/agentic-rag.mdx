@@ -4,7 +4,7 @@ description: Combine agentic search, hybrid retrieval, and reranking for high-qu
 keywords: [agentic rag, hybrid search, reranking, cohere, lancedb]
 ---
 
-This example combines three techniques for optimal retrieval:
+This example combines three retrieval techniques:
 
 1. **Agentic RAG**: Agent decides when to search the knowledge base
 2. **Hybrid search**: Combines vector similarity with keyword matching
@@ -53,7 +53,7 @@ After hybrid search returns initial results, the reranker:
 2. Scores each document for relevance using a cross-encoder model
 3. Reorders results so the most relevant appear first
 
-Cohere's `rerank-v3.5` is trained specifically for this task and significantly improves result quality.
+Cohere's `rerank-v3.5` is trained specifically for this task.
 
 ## Example
 
@@ -80,12 +80,12 @@ knowledge = Knowledge(
 
 # Load content
 asyncio.run(
-    knowledge.ainsert(url="https://docs.agno.com/introduction/agents.md")
+    knowledge.ainsert(url="https://docs.agno.com/agents/overview.md")
 )
 
 # Create agent with knowledge
 agent = Agent(
-    model=Claude(id="claude-sonnet-4-20250514"),
+    model=Claude(id="claude-sonnet-4-5"),
     knowledge=knowledge,
     search_knowledge=True,
     instructions=[
@@ -127,9 +127,17 @@ agent.print_response("What are Agents?", stream=True)
 
 ### Different Rerankers
 ```python
-# Cohere
+# Cohere (hosted)
 from agno.knowledge.reranker.cohere import CohereReranker
 reranker = CohereReranker(model="rerank-v3.5")
+
+# Sentence Transformers (local): uv pip install sentence-transformers
+from agno.knowledge.reranker.sentence_transformer import SentenceTransformerReranker
+reranker = SentenceTransformerReranker(model="BAAI/bge-reranker-v2-m3")
+
+# Infinity (self-hosted server): uv pip install infinity_client
+from agno.knowledge.reranker.infinity import InfinityReranker
+reranker = InfinityReranker(model="BAAI/bge-reranker-base", host="localhost", port=7997)
 
 # Add to vector database
 vector_db = LanceDb(
@@ -145,7 +153,7 @@ vector_db = LanceDb(
 ```python
 knowledge = Knowledge(
     vector_db=vector_db,
-    max_results=10,  # Number of results to return after reranking
+    max_results=5,  # Number of results to return after reranking (default: 10)
 )
 ```
 
@@ -153,7 +161,7 @@ knowledge = Knowledge(
 
 <CardGroup cols={2}>
   <Card title="Hybrid Search" icon="magnifying-glass" href="/knowledge/concepts/search-and-retrieval/hybrid-search">
-    Learn more about combining search types
+    Combine vector and keyword search
   </Card>
   <Card title="Embedders" icon="code" href="/knowledge/concepts/embedder/overview">
     Choose the right embedding model

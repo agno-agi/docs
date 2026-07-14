@@ -1,71 +1,57 @@
 ---
 title: AWS Bedrock Embedder
+description: "Generate Cohere Embed v3 or v4 embeddings through AWS Bedrock."
 ---
 
+`AwsBedrockEmbedder` defaults to `cohere.embed-multilingual-v3` with 1024 dimensions. Set `input_type` for the text being embedded.
 
-## Code
-
-```python cookbook/07_knowledge/09_archive/embedders/aws_bedrock_embedder.py
-from agno.knowledge.chunking.fixed import FixedSizeChunking
+```python aws_bedrock_embedder.py
 from agno.knowledge.embedder.aws_bedrock import AwsBedrockEmbedder
-from agno.knowledge.knowledge import Knowledge
-from agno.knowledge.reader.pdf_reader import PDFReader
-from agno.vectordb.pgvector import PgVector
 
-embeddings = AwsBedrockEmbedder().get_embedding(
+document_embedder = AwsBedrockEmbedder(input_type="search_document")
+query_embedder = AwsBedrockEmbedder(input_type="search_query")
+
+document_vector = document_embedder.get_embedding(
     "The quick brown fox jumps over the lazy dog."
 )
-# Print the embeddings and their dimensions
-print(f"Embeddings: {embeddings[:5]}")
-print(f"Dimensions: {len(embeddings)}")
+query_vector = query_embedder.get_embedding("Which animal jumps?")
 
-# Example usage:
-knowledge = Knowledge(
-    vector_db=PgVector(
-        table_name="recipes",
-        db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
-        embedder=AwsBedrockEmbedder(input_type="search_document"),
-    ),
-)
-
-knowledge.insert(
-    url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
-    reader=PDFReader(chunking_strategy=FixedSizeChunking(chunk_size=1500)),
-)
+print(len(document_vector), len(query_vector))
 ```
 
-## Usage
+<Warning>
+`AwsBedrockEmbedder` applies one configured `input_type` to every call. A single instance used by a vector database therefore applies the same input type to document insertion and query search. Cohere retrieval models distinguish `search_document` from `search_query`.
+</Warning>
+
+For Cohere Embed v4, set `id="cohere.embed-v4:0"`. The embedder changes its default vector dimension to 1536. Set `output_dimension` to use 256, 512, 1024, or 1536 dimensions.
+
+## Run the Example
 
 <Steps>
   <Snippet file="create-venv-step.mdx" />
 
-  <Step title="Set your API key">
+  <Step title="Configure AWS credentials">
+    Authenticate with the AWS SDK credential chain, then set the region:
+
     ```bash
-    export AWS_ACCESS_KEY_ID=xxx
-    export AWS_SECRET_ACCESS_KEY=xxx
-    export AWS_REGION=xxx
+    export AWS_REGION=us-east-1
     ```
   </Step>
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U sqlalchemy psycopg pgvector pypdf boto3 agno
+    uv pip install -U agno boto3
     ```
   </Step>
 
-
-    <Snippet file="run-pgvector-step.mdx" />
-
-
-  <Step title="Run Agent">
-    <CodeGroup>
-    ```bash Mac
-    python cookbook/07_knowledge/09_archive/embedders/aws_bedrock_embedder.py
+  <Step title="Run the example">
+    ```bash
+    python aws_bedrock_embedder.py
     ```
-
-    ```bash Windows
-    python cookbook/07_knowledge/09_archive/embedders/aws_bedrock_embedder.py
-    ```
-    </CodeGroup>
   </Step>
 </Steps>
+
+## Developer Resources
+
+- [Cohere Embed v4 on Amazon Bedrock](https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-embed-v4.html)
+- [Embedders overview](/knowledge/concepts/embedder/overview)

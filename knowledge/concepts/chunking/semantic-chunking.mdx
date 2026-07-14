@@ -1,16 +1,17 @@
 ---
 title: Semantic Chunking
+description: Group sentences into chunks using embedding similarity and configurable boundary controls.
 ---
 
-Semantic chunking is a method of splitting documents into smaller chunks by analyzing semantic similarity between text segments using embeddings. It uses the Chonkie library to identify natural breakpoints where the semantic meaning changes significantly, based on a configurable similarity threshold. Learn more about [semantic chunking](https://docs.chonkie.ai/oss/chunkers/semantic-chunker). This helps preserve context and meaning better than fixed-size chunking by ensuring semantically related content stays together in the same chunk, while splitting occurs at meaningful topic transitions.
-
-Semantic chunking supports three embedder configurations: **Agno Embeddings** uses an Agno Embedder, **Chonkie Embeddings** uses Chonkie's built-in embeddings handlers, and **AutoEmbeddings** uses Chonkie's AutoEmbeddings for automatic selection based on the model string. Learn more about [Chonkie embeddings](https://docs.chonkie.ai/oss/embeddings/overview).
+`SemanticChunking` wraps Chonkie's semantic chunker and groups sentences using embedding similarity. See [Chonkie Semantic Chunker](https://docs.chonkie.ai/oss/chunkers/semantic-chunker).
 
 <Steps>
 
   <Step title="Create a Python file">
+    Save one of these variants as `semantic_chunking.py`:
+
     <CodeGroup>
-    ```python Agno Embeddings
+    ```python Agno Embedder
     from agno.agent import Agent
     from agno.knowledge.chunking.semantic import SemanticChunking
     from agno.knowledge.embedder.openai import OpenAIEmbedder
@@ -31,19 +32,10 @@ Semantic chunking supports three embedder configurations: **Agno Embeddings** us
         url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
         reader=PDFReader(
             name="Semantic Chunking Reader",
+            split_on_pages=False,
             chunking_strategy=SemanticChunking(
-                embedder=embedder,  # Use same Agno embedder for chunking
+                embedder=embedder,
                 chunk_size=500,
-                similarity_threshold=0.5,
-                similarity_window=3,
-                min_sentences_per_chunk=1,
-                min_characters_per_sentence=24,
-                delimiters=[". ", "! ", "? ", "\n"],
-                include_delimiters="prev",
-                skip_window=0,
-                filter_window=5,
-                filter_polyorder=3,
-                filter_tolerance=0.2,
             ),
         ),
     )
@@ -53,24 +45,22 @@ Semantic chunking supports three embedder configurations: **Agno Embeddings** us
         search_knowledge=True,
     )
 
-    agent.print_response("How to make Thai curry?", markdown=True)
+    agent.print_response("How do I make Thai curry?", markdown=True)
     ```
 
-    ```python Chonkie Embeddings
+    ```python Chonkie Embedder
     from agno.agent import Agent
     from agno.knowledge.chunking.semantic import SemanticChunking
     from agno.knowledge.embedder.openai import OpenAIEmbedder
     from agno.knowledge.knowledge import Knowledge
     from agno.knowledge.reader.pdf_reader import PDFReader
     from agno.vectordb.pgvector import PgVector
-    from chonkie.embeddings import OpenAIEmbeddings
+    from chonkie.embeddings import Model2VecEmbeddings
 
     db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
 
-    agno_embedder = OpenAIEmbedder(id="text-embedding-3-small")  # For vector database
-    chonkie_embedder = OpenAIEmbeddings(
-        model="text-embedding-3-small"
-    )  # For semantic chunking
+    agno_embedder = OpenAIEmbedder(id="text-embedding-3-small")
+    chonkie_embedder = Model2VecEmbeddings(model="minishlab/potion-base-32M")
 
     knowledge = Knowledge(
         vector_db=PgVector(
@@ -81,19 +71,10 @@ Semantic chunking supports three embedder configurations: **Agno Embeddings** us
         url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
         reader=PDFReader(
             name="Semantic Chunking Reader",
+            split_on_pages=False,
             chunking_strategy=SemanticChunking(
-                embedder=chonkie_embedder,  # Use Chonkie embedder for chunking
+                embedder=chonkie_embedder,
                 chunk_size=500,
-                similarity_threshold=0.5,
-                similarity_window=3,
-                min_sentences_per_chunk=1,
-                min_characters_per_sentence=24,
-                delimiters=[". ", "! ", "? ", "\n"],
-                include_delimiters="prev",
-                skip_window=0,
-                filter_window=5,
-                filter_polyorder=3,
-                filter_tolerance=0.2,
             ),
         ),
     )
@@ -103,38 +84,34 @@ Semantic chunking supports three embedder configurations: **Agno Embeddings** us
         search_knowledge=True,
     )
 
-    agent.print_response("How to make Thai curry?", markdown=True)
+    agent.print_response("How do I make Thai curry?", markdown=True)
     ```
 
-    ```python AutoEmbeddings
+    ```python String Model ID
     from agno.agent import Agent
     from agno.knowledge.chunking.semantic import SemanticChunking
+    from agno.knowledge.embedder.openai import OpenAIEmbedder
     from agno.knowledge.knowledge import Knowledge
     from agno.knowledge.reader.pdf_reader import PDFReader
     from agno.vectordb.pgvector import PgVector
 
     db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
 
+    agno_embedder = OpenAIEmbedder(id="text-embedding-3-small")
+
     knowledge = Knowledge(
-        vector_db=PgVector(table_name="recipes_semantic_chunking", db_url=db_url),
+        vector_db=PgVector(
+            table_name="recipes_semantic_chunking", db_url=db_url, embedder=agno_embedder
+        ),
     )
     knowledge.insert(
         url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
         reader=PDFReader(
             name="Semantic Chunking Reader",
+            split_on_pages=False,
             chunking_strategy=SemanticChunking(
-                embedder="text-embedding-3-small",  # String model ID uses Chonkie's AutoEmbeddings
+                embedder="minishlab/potion-base-32M",
                 chunk_size=500,
-                similarity_threshold=0.5,
-                similarity_window=3,
-                min_sentences_per_chunk=1,
-                min_characters_per_sentence=24,
-                delimiters=[". ", "! ", "? ", "\n"],
-                include_delimiters="prev",
-                skip_window=0,
-                filter_window=5,
-                filter_polyorder=3,
-                filter_tolerance=0.2,
             ),
         ),
     )
@@ -144,7 +121,7 @@ Semantic chunking supports three embedder configurations: **Agno Embeddings** us
         search_knowledge=True,
     )
 
-    agent.print_response("How to make Thai curry?", markdown=True)
+    agent.print_response("How do I make Thai curry?", markdown=True)
     ```
     </CodeGroup>
   </Step>
@@ -153,11 +130,13 @@ Semantic chunking supports three embedder configurations: **Agno Embeddings** us
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U agno sqlalchemy psycopg pgvector pypdf "chonkie[semantic,catsu]" openai
+    uv pip install -U agno "chonkie[semantic]" openai pgvector psycopg pypdf sqlalchemy
     ```
   </Step>
 
-  <Snippet file="set-openai-key.mdx" />
+  <Step title="Export your OpenAI API key">
+    <Snippet file="set-openai-key.mdx" />
+  </Step>
 
   <Snippet file="run-pgvector-step.mdx" />
 
@@ -169,8 +148,24 @@ Semantic chunking supports three embedder configurations: **Agno Embeddings** us
 
 </Steps>
 
+The example sets `split_on_pages=False` so `PDFReader` combines the pages before applying `SemanticChunking`. Keep the default value of `True` to chunk each page independently.
 
+## Choose an Embedder
+
+The `embedder` parameter accepts an Agno `Embedder`, a Chonkie `BaseEmbeddings` instance, or a string model identifier resolved by Chonkie. See [Chonkie Embeddings](https://docs.chonkie.ai/oss/embeddings/overview).
+
+| Embedder Value | Chunk Size Measurement |
+|----------------|------------------------|
+| Agno `Embedder` | Whitespace-separated words |
+| Chonkie `BaseEmbeddings` | Tokens from the embedder's tokenizer |
+| String model identifier | Tokens from the tokenizer selected by Chonkie |
 
 ## Semantic Chunking Params
 
 <Snippet file="chunking-semantic.mdx" />
+
+## Developer Resources
+
+- [Chunking overview](/knowledge/concepts/chunking/overview)
+- [Chunking strategies examples](/examples/knowledge/building-blocks/chunking-strategies)
+- [PDF reader](/knowledge/concepts/readers/pdf-reader)
