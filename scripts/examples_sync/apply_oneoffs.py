@@ -89,7 +89,7 @@ DESCRIPTION_OVERRIDES = {
     "examples/teams/task-mode/overview": "Advanced team examples for task mode, run control, context management, multimodal input, metrics, reasoning, and dependencies.",
     "examples/teams/tools/overview": "Configure team and member tools, tool hooks, tool choice, and call limits.",
     "examples/workflows/basic-workflows/overview": "Workflow examples for function executors, step sequences, nested steps, files, and session metrics.",
-    "examples/workflows/conditional-execution/overview": "Condition workflow examples for branching on input, state, and previous-step output.",
+    "examples/workflows/conditional-execution/overview": "Condition workflow examples for branching on input and previous-step output.",
     "examples/workflows/loop-execution/overview": "Loop workflows for iterative processing, parallel branches, and accumulated outputs.",
     "examples/workflows/parallel-execution/overview": "Parallel workflows for concurrent agents, teams, conditions, and synthesis steps.",
     "examples/workflows/conditional-branching/overview": "Router and conditional workflow examples for dynamic branch selection.",
@@ -1680,6 +1680,26 @@ def main() -> None:
         "tools/googlecalendar-tools.mdx",
         "Make Sure you've enabled Google calender API otherwise scopes wont be visible",
         "Make sure you've enabled Google Calendar API. Otherwise, the scopes will not be visible",
+    )
+    sub(
+        "tools/openweather-tools.mdx",
+        "Enable Agno agents to fetch real-time weather conditions, multi-day forecasts, and environmental data like air quality directly from the OpenWeather API to make context-aware decisions.",
+        "Use OpenWeatherTools to fetch current weather, forecasts, air-quality data, and geocoding results.",
+    )
+    sub(
+        "tools/openweather-tools.mdx",
+        """## Prerequisites:
+1. Get an API key from https://openweathermap.org/api
+2. Set the OPENWEATHER_API_KEY environment variable or pass it directly to the tool""",
+        """## Prerequisites
+
+1. [Create an OpenWeather API key](https://openweathermap.org/api).
+2. Export `OPENWEATHER_API_KEY` and `OPENAI_API_KEY`.""",
+    )
+    sub(
+        "tools/openweather-tools.mdx",
+        'export OPENWEATHER_API_KEY="***"',
+        'export OPENAI_API_KEY="your_openai_api_key_here"\nexport OPENWEATHER_API_KEY="your_openweather_api_key_here"',
     )
     sub(
         "tools/aws-lambda-tools.mdx",

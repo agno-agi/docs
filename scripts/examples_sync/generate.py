@@ -476,6 +476,7 @@ ACRONYMS = {
     "mongodb": "MongoDB", "mysql": "MySQL", "nvidia": "NVIDIA",
     "ocr": "OCR", "openai": "OpenAI", "openrouter": "OpenRouter",
     "os": "OS", "oss": "OSS", "pdf": "PDF", "pgvector": "PgVector",
+    "pii": "PII",
     "postgres": "Postgres", "qdrant": "Qdrant", "rag": "RAG", "rbac": "RBAC",
     "singlestore": "SingleStore", "sql": "SQL", "sqlite": "SQLite",
     "sse": "SSE", "ssrf": "SSRF", "surrealdb": "SurrealDB", "ui": "UI",
@@ -515,6 +516,7 @@ TITLE_OVERRIDES = {
     "examples/models/openrouter/responses/tool-use": "Tools",
     "examples/models/openrouter/chat/tool-use": "Tools",
     "examples/reasoning/models/groq/deepseek-plus-claude": "Qwen3 Plus Claude",
+    "examples/storage/in-memory/in-memory-storage-for-team": "In-Memory Storage for Team",
     "examples/tools/mcp/cli": "MCP CLI",
     "examples/tools/mcp/gibsonai": "GibsonAI MCP Server",
     "examples/tools/mcp/supabase": "Supabase MCP Agent",
@@ -1876,8 +1878,26 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     # Postfix fresh-eyes fixes. These controls preserve pinned source fences
     # while correcting generated metadata and setup around them.
+    "02_agents/03_context_management/instructions_with_state.py": {
+        "intro_override": "Build run-specific agent instructions from `RunContext.session_state` with an instructions callable.",
+    },
+    "02_agents/08_guardrails/pii_detection.py": {
+        "intro_override": "Use `PIIDetectionGuardrail` to reject requests containing PII or replace detected values with masked placeholders.",
+    },
     "02_agents/18_checkpointing/02_tool_error_persistence.py": {
-        "intro_override": "Run two failure scenarios to verify that tool exceptions and model errors preserve the conversation for `/continue` retries.",
+        "intro_override": "Run two failure scenarios, then retry the failed agent run in place with `Agent.acontinue_run()`.",
+    },
+    "03_teams/23_checkpointing/02_tool_error_persistence.py": {
+        "intro_override": "Run two failure scenarios, then retry the failed team run in place with `Team.acontinue_run()`.",
+    },
+    "04_workflows/06_advanced_concepts/session_state/rename_session.py": {
+        "intro_override": "Call `Workflow.set_session_name(autogenerate=True)` after a run to generate a session name.",
+    },
+    "08_learning/04_entity_memory/02_entity_relationships.py": {
+        "intro_override": "Use entity memory in AGENTIC mode to create and query typed relationships between organizations, people, teams, and services.",
+    },
+    "90_models/google/gemini_interactions/tool_use.py": {
+        "intro_override": "Give a `GeminiInteractions` agent `WebSearchTools`, then invoke it with synchronous, streaming, and asynchronous response calls.",
     },
     "03_teams/02_modes/tasks_stream.py": {
         "suppress_intro": True,
