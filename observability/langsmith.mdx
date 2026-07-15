@@ -1,11 +1,9 @@
 ---
 title: LangSmith
-description: Integrate Agno with LangSmith to send traces and gain insights into your agent's performance.
+description: Send Agno traces to a LangSmith project with OpenInference and OpenTelemetry.
 ---
 
-## Integrating Agno with LangSmith
-
-LangSmith offers a comprehensive platform for tracing and monitoring AI model calls. By integrating Agno with LangSmith, you can utilize OpenInference to send traces and gain insights into your agent's performance.
+Send Agno agent traces to LangSmith through its OpenTelemetry endpoint.
 
 ## Prerequisites
 
@@ -16,28 +14,22 @@ LangSmith offers a comprehensive platform for tracing and monitoring AI model ca
 
 2. **Set Environment Variables**
 
-   Configure your environment with the LangSmith API key and other necessary settings:
-
    ```bash
    export LANGSMITH_API_KEY=<your-key>
-   export LANGSMITH_TRACING=true
    export LANGSMITH_ENDPOINT=https://eu.api.smith.langchain.com  # or https://api.smith.langchain.com for US
    export LANGSMITH_PROJECT=<your-project-name>
+   export OPENAI_API_KEY=<your-openai-key>
    ```
 
 3. **Install Dependencies**
 
-   Ensure you have the necessary packages installed:
-
    ```bash
-   uv pip install agno openai openinference-instrumentation-agno opentelemetry-sdk opentelemetry-exporter-otlp
+   uv pip install -U agno openai openinference-instrumentation-agno opentelemetry-sdk opentelemetry-exporter-otlp
    ```
 
 ## Sending Traces to LangSmith
 
-Instrument your Agno agent with OpenInference and send traces to LangSmith.
-
-```python
+```python langsmith_tracing.py
 import os
 
 from agno.agent import Agent
@@ -49,24 +41,21 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExport
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 
-# Set the endpoint and headers for LangSmith
-endpoint = "https://eu.api.smith.langchain.com/otel/v1/traces"
+langsmith_endpoint = os.environ["LANGSMITH_ENDPOINT"].rstrip("/")
+endpoint = f"{langsmith_endpoint}/otel/v1/traces"
 headers = {
-    "x-api-key": os.getenv("LANGSMITH_API_KEY"),
-    "Langsmith-Project": os.getenv("LANGSMITH_PROJECT"),
+    "x-api-key": os.environ["LANGSMITH_API_KEY"],
+    "Langsmith-Project": os.environ["LANGSMITH_PROJECT"],
 }
 
-# Configure the tracer provider
 tracer_provider = TracerProvider()
 tracer_provider.add_span_processor(
     SimpleSpanProcessor(OTLPSpanExporter(endpoint=endpoint, headers=headers))
 )
 trace_api.set_tracer_provider(tracer_provider=tracer_provider)
 
-# Start instrumenting agno
 AgnoInstrumentor().instrument()
 
-# Create and configure the agent
 agent = Agent(
     name="Stock Market Agent",
     model=OpenAIResponses(id="gpt-5.2"),
@@ -75,11 +64,17 @@ agent = Agent(
     debug_mode=True,
 )
 
-# Use the agent
 agent.print_response("What is news on the stock market?")
 ```
 
-## Notes
+## Run the Example
 
-- **Environment Variables**: Ensure your environment variables are correctly set for the API key, endpoint, and project name.
-- **Data Regions**: Choose the appropriate `LANGSMITH_ENDPOINT` based on your data region.
+Save the code as `langsmith_tracing.py`, then run:
+
+```bash
+python langsmith_tracing.py
+```
+
+## Data Region
+
+Set `LANGSMITH_ENDPOINT` to the endpoint for your LangSmith data region. The code appends `/otel/v1/traces` to that value.
