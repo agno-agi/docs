@@ -1,6 +1,6 @@
 ---
 title: Agentic RAG with Reranking
-description: Combine agentic search, hybrid retrieval, and reranking for high-quality responses.
+description: Combine agent-directed search, hybrid retrieval, and Cohere reranking over the Agno documentation.
 keywords: [agentic rag, hybrid search, reranking, cohere, lancedb]
 ---
 
@@ -13,7 +13,7 @@ This example combines three retrieval techniques:
 ```python
 from agno.agent import Agent
 from agno.knowledge.knowledge import Knowledge
-from agno.knowledge.embedder.cohere import CohereEmbedder
+from agno.knowledge.embedder.openai import OpenAIEmbedder
 from agno.knowledge.reranker.cohere import CohereReranker
 from agno.models.anthropic import Claude
 from agno.vectordb.lancedb import LanceDb, SearchType
@@ -23,7 +23,7 @@ knowledge = Knowledge(
         uri="tmp/lancedb",
         table_name="docs",
         search_type=SearchType.hybrid,
-        embedder=CohereEmbedder(id="embed-v4.0"),
+        embedder=OpenAIEmbedder(id="text-embedding-3-small"),
         reranker=CohereReranker(model="rerank-v3.5"),
     ),
 )
@@ -39,11 +39,11 @@ agent = Agent(
 
 | Technique | What It Does |
 |-----------|--------------|
-| Agentic RAG | Agent searches only when needed, can reformulate queries |
+| Agentic RAG | The agent searches when needed and can reformulate queries |
 | Hybrid search | Catches both semantic matches and exact terms |
 | Reranking | Uses a dedicated model to reorder results by relevance |
 
-Together, these provide better retrieval accuracy than any single technique alone.
+The three techniques cover complementary retrieval and ranking stages.
 
 ## How Reranking Works
 
@@ -61,7 +61,7 @@ Cohere's `rerank-v3.5` is trained specifically for this task.
 import asyncio
 
 from agno.agent import Agent
-from agno.knowledge.embedder.cohere import CohereEmbedder
+from agno.knowledge.embedder.openai import OpenAIEmbedder
 from agno.knowledge.knowledge import Knowledge
 from agno.knowledge.reranker.cohere import CohereReranker
 from agno.models.anthropic import Claude
@@ -73,7 +73,7 @@ knowledge = Knowledge(
         uri="tmp/lancedb",
         table_name="agno_docs",
         search_type=SearchType.hybrid,
-        embedder=CohereEmbedder(id="embed-v4.0"),
+        embedder=OpenAIEmbedder(id="text-embedding-3-small"),
         reranker=CohereReranker(model="rerank-v3.5"),
     ),
 )
@@ -105,7 +105,7 @@ agent.print_response("What are Agents?", stream=True)
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U agno anthropic cohere lancedb sqlalchemy
+    uv pip install -U agno anthropic beautifulsoup4 cohere lancedb openai sqlalchemy
     ```
   </Step>
 
@@ -113,6 +113,7 @@ agent.print_response("What are Agents?", stream=True)
     ```bash
     export ANTHROPIC_API_KEY=your_anthropic_api_key_here
     export CO_API_KEY=your_cohere_api_key_here
+    export OPENAI_API_KEY=your_openai_api_key_here
     ```
   </Step>
 
@@ -126,25 +127,48 @@ agent.print_response("What are Agents?", stream=True)
 ## Configuration Options
 
 ### Different Rerankers
-```python
-# Cohere (hosted)
+
+Choose one reranker:
+
+<CodeGroup>
+```python Cohere
 from agno.knowledge.reranker.cohere import CohereReranker
+
 reranker = CohereReranker(model="rerank-v3.5")
+```
 
-# Sentence Transformers (local): uv pip install sentence-transformers
+```python Sentence Transformers
+# uv pip install -U sentence-transformers
 from agno.knowledge.reranker.sentence_transformer import SentenceTransformerReranker
+
 reranker = SentenceTransformerReranker(model="BAAI/bge-reranker-v2-m3")
+```
 
-# Infinity (self-hosted server): uv pip install infinity_client
+```python Infinity
 from agno.knowledge.reranker.infinity import InfinityReranker
-reranker = InfinityReranker(model="BAAI/bge-reranker-base", host="localhost", port=7997)
 
-# Add to vector database
+reranker = InfinityReranker(model="BAAI/bge-reranker-base", host="localhost", port=7997)
+```
+</CodeGroup>
+
+For the Infinity option, start the reranker server in a separate terminal:
+
+```bash
+uv pip install -U "infinity-emb[all]"
+infinity_emb v2 --model-id BAAI/bge-reranker-base --port 7997
+```
+
+Use the selected reranker in LanceDB:
+
+```python
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.vectordb.lancedb import LanceDb, SearchType
+
 vector_db = LanceDb(
     uri="tmp/lancedb",
     table_name="docs",
     search_type=SearchType.hybrid,
-    embedder=CohereEmbedder(id="embed-v4.0"),
+    embedder=OpenAIEmbedder(id="text-embedding-3-small"),
     reranker=reranker,
 )
 ```
