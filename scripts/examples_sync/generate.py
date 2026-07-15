@@ -36,6 +36,7 @@ import ast
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -715,6 +716,9 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         # CRASH_DB is an internal parent-to-worker handoff with a default.
         "env_remove": {"CRASH_DB"},
     },
+    "02_agents/20_time_travel/02_fork_run.py": {
+        "suppress_intro": True,
+    },
     "02_agents/12_multimodal/media_input_for_tool.py": {
         "package_remove": {"openai"},
         "env_remove": {"OPENAI_API_KEY"},
@@ -799,6 +803,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "03_teams/23_checkpointing/01_crash_recovery.py": {
         # CRASH_DB is an internal parent-to-worker handoff with a default.
         "env_remove": {"CRASH_DB"},
+        "suppress_intro": True,
     },
     "03_teams/25_time_travel/01_continue_from.py": {
         "intro_override": "Continue a completed team run from a selected message boundary with `acontinue_run()`.",
@@ -823,6 +828,9 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "04_workflows/06_advanced_concepts/run_control/executor_events.py": {
         "intro_override": "Setting `stream_executor_events=False` suppresses intermediate executor events. Terminal executor events still propagate.",
+    },
+    "04_workflows/06_advanced_concepts/run_control/event_storage.py": {
+        "package_remove": {"fastapi"},
     },
     "04_workflows/06_advanced_concepts/long_running/disruption_catchup.py": {
         "repo_layout": True,
@@ -1825,6 +1833,9 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
             )
         ],
     },
+    "05_agent_os/interfaces/agui/reasoning_agent.py": {
+        "source_link_ref": "pinned-tag",
+    },
     "05_agent_os/interfaces/telegram/reasoning_agent.py": {
         "intro_override": "Run a Telegram bot with structured reasoning, DuckDuckGo web search, and SQLite session persistence.",
     },
@@ -2124,6 +2135,10 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "pre_code_warning": GEMINI_31_PRO_WARNING,
         "pre_run_steps": [GEMINI_31_PRO_MIGRATION_STEP],
     },
+    "90_models/google/gemini/gcs_file_input.py": {
+        "suppress_intro": True,
+        "pre_code_warning": "For `gemini-3.5-flash` on Vertex AI, current limits are 50 MB for PDF input through the API or Cloud Storage, 7 MB for `text/plain`, and 30 MB for Cloud Storage image input. See [Gemini 3.5 Flash model limits](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/3-5-flash). The pinned source's blanket 2 GB limit and additional MIME-type claims are stale.",
+    },
     "observability/langtrace_op.py": {
         "pre_code_warning": "The pinned source initializes Langtrace after importing Agno model modules, so automatic instrumentation may not attach.",
         "pre_run_steps": [
@@ -2287,6 +2302,14 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "91_tools/firecrawl_tools.py": {
         "package_remove": {"firecrawl"},
     },
+    "91_tools/fal_tools.py": {
+        # FalTools checks FAL_API_KEY, while fal-client authenticates with FAL_KEY.
+        "env_add": {"FAL_KEY"},
+        "env_values": {
+            "FAL_API_KEY": "your_fal_key_here",
+            "FAL_KEY": "your_fal_key_here",
+        },
+    },
     "91_tools/mcp/cli.py": {
         "env_add": {"GITHUB_PERSONAL_ACCESS_TOKEN"},
     },
@@ -2369,8 +2392,6 @@ SUPPRESS_INTRO_SLUGS = {
     "examples/workflows/human-in-the-loop/dual-level-hitl/output-review-and-tool-confirmation",
     "examples/workflows/human-in-the-loop/dual-level-hitl/router-confirmation-and-tool-confirmation",
 }
-
-GITHUB_BLOB = "https://github.com/agno-agi/agno/blob/main"
 
 # Keep dependency inference stable across Python versions. Agno still probes
 # this removed stdlib module before falling back to `filetype`.
@@ -3857,6 +3878,27 @@ def apply_source_render_override(
     return override
 
 
+def source_link(cookbook_rel: str, render_override: dict[str, object], agno_root: Path) -> str:
+    """Build a source link, optionally pinned to the exact Agno source tag."""
+    ref = render_override.get("source_link_ref", "main")
+    assert isinstance(ref, str), f"{cookbook_rel}: source_link_ref must be a string"
+    if ref == "pinned-tag":
+        result = subprocess.run(
+            ["git", "-C", str(agno_root), "describe", "--tags", "--exact-match", "HEAD"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, (
+            f"{cookbook_rel}: source_link_ref requires the Agno source HEAD to have an exact tag"
+        )
+        ref = result.stdout.strip()
+    assert re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", ref), (
+        f"{cookbook_rel}: invalid source link ref {ref!r}"
+    )
+    return f"https://github.com/agno-agi/agno/blob/{ref}/{cookbook_rel}"
+
+
 def render(
     source_path: Path, cookbook_rel: str, src: str, agno_root: Path, slug: str | None = None
 ) -> str:
@@ -3880,6 +3922,7 @@ def render(
     all_srcs = [src] + [s for _, s in sibling_srcs]
     req = derive_requirements(all_srcs, agno_root, skip_modules)
     render_override = apply_source_render_override(req, cookbook_rel, all_srcs)
+    full_source_url = source_link(cookbook_rel, render_override, agno_root)
     if "intro_override" in render_override:
         intro_override = render_override["intro_override"]
         assert isinstance(intro_override, str) and intro_override.strip(), (
@@ -3983,7 +4026,7 @@ def render(
         parts.append("")
         parts.append(run_replacement)
         parts.append("")
-        parts.append(f"Full source: [{cookbook_rel}]({GITHUB_BLOB}/{cookbook_rel})")
+        parts.append(f"Full source: [{cookbook_rel}]({full_source_url})")
         parts.append("")
         return "\n".join(parts)
 
@@ -4123,7 +4166,7 @@ def render(
     parts.append("  </Step>")
     parts.append("</Steps>")
     parts.append("")
-    parts.append(f"Full source: [{cookbook_rel}]({GITHUB_BLOB}/{cookbook_rel})")
+    parts.append(f"Full source: [{cookbook_rel}]({full_source_url})")
     parts.append("")
     return "\n".join(parts)
 
