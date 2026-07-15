@@ -40,15 +40,36 @@ result = agent.run("Classify this image.", images=[Image(url=url)]).content
 | Video | `from agno.media import Video` | `videos=[Video(content=..., format="mp4")]` |
 | PDF | `from agno.media import File` | `files=[File(url=...)]` |
 
-All four classes accept `url`, `filepath`, or raw bytes via `content`. The cookbook fetches audio and video bytes first. `httpx` is installed with agno.
+All four classes accept `url`, `filepath`, or raw bytes via `content`. The cookbook examples fetch audio and video bytes first. Agno installs `httpx`.
 
 ```python
 import httpx
 
+from agno.agent import Agent
 from agno.media import Audio
+from agno.models.google import Gemini
+from pydantic import BaseModel, Field
 
-audio_bytes = httpx.get("https://example.com/clip.mp3").content
-agent.run("Transcribe this.", audio=[Audio(content=audio_bytes)])
+
+class Transcript(BaseModel):
+    text: str = Field(..., description="Verbatim transcript of all spoken audio")
+
+
+transcription_agent = Agent(
+    model=Gemini(id="gemini-3.5-flash"),
+    instructions="Transcribe all spoken audio. Return only the transcript.",
+    output_schema=Transcript,
+)
+
+url = "https://agno-public.s3.us-east-1.amazonaws.com/demo_data/QA-01.mp3"
+response = httpx.get(url, timeout=30.0)
+response.raise_for_status()
+
+result = transcription_agent.run(
+    "Transcribe this audio.",
+    audio=[Audio(content=response.content)],
+).content
+# Transcript(text='...')
 ```
 
 ## Bounding boxes
