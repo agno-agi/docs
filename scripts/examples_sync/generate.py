@@ -46,6 +46,21 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # Curated tables
 # ---------------------------------------------------------------------------
 
+INVALID_MODEL_RETRY_DESCRIPTION = (
+    "Review retry settings and why invalid model IDs cannot reliably exercise "
+    "the retry path."
+)
+INVALID_MODEL_RETRY_WARNING = (
+    "The pinned source assumes an invalid model ID triggers the configured retries. "
+    "Invalid-model responses commonly use terminal 400 or 404 statuses, which Agno "
+    "does not retry. Do not run this source as a retry test."
+)
+INVALID_MODEL_RETRY_REPLACEMENT = (
+    "Configure `retries`, `delay_between_retries`, and `exponential_backoff` as shown "
+    "in [Retry Model Requests](/models/overview#retry-model-requests). Test the retry "
+    "path with a controlled transient 429, connection failure, or 5xx response."
+)
+
 # Model providers: agno.models.<segment> -> (display name, pip packages, env keys)
 # Packages/keys verified against libs/agno/pyproject.toml extras and each
 # provider's getenv() calls. OpenAI-compatible providers use the openai SDK.
@@ -1109,6 +1124,14 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "observability/traceloop_op.py": {"env_add": {"TRACELOOP_API_KEY"}},
     "09_evals/agent_as_judge/agent_as_judge_batch.py": {
         "env_add": {"OPENAI_API_KEY"},
+        "pre_code_warning": "The pinned source reads `eval_runs[-1]`, but `SqliteDb.get_eval_runs()` returns the newest evaluation first. Replace the index before running so the reported ID belongs to the evaluation that just completed.",
+        "pre_run_steps": [
+            (
+                "Read the latest evaluation",
+                "Replace `latest = eval_runs[-1]` with `latest = eval_runs[0]` in the saved file.",
+                None,
+            )
+        ],
     },
     "09_evals/performance/comparison/autogen_instantiation.py": {
         "env_add": {"OPENAI_API_KEY"},
@@ -1428,9 +1451,6 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "90_models/xai/finance_agent.py": {
         "intro_override": "Use YFinanceTools with Grok to report stock prices, analyst recommendations, company data, and news.",
-    },
-    "90_models/xai/retry.py": {
-        "intro_override": "Retry a deliberately invalid Grok model request three times with a one-second initial delay and exponential backoff.",
     },
     "91_tools/mcp/pipedream_linkedin.py": {
         "intro_override": "The pinned source uses a retired Pipedream per-app SSE URL and cannot connect to the current service without code and authentication changes. See [Pipedream MCP](https://pipedream.com/docs/connect/mcp) for the current connection flows.",
@@ -2582,6 +2602,150 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "91_tools/docling_tools/paths.py": {
         "run_note": "This module defines shared paths for the Docling examples and is not run directly.",
+    },
+    # Randomized convergence sample 24. Preserve the v2.7.2 source fences and
+    # put current migrations plus runnable prerequisites around them.
+    "90_models/google/gemini/parallel_grounding.py": {
+        "intro_override": "Ground Gemini 3.5 Flash responses with Parallel web search on Vertex AI after configuring a Marketplace subscription or Parallel API key.",
+        "pre_code_warning": "Google retired the pinned `gemini-2.0-flash` model on Vertex AI. Replace it with a model that currently supports Parallel grounding, such as `gemini-3.5-flash`, before running. Parallel access also requires either a Google Cloud Marketplace subscription or `PARALLEL_API_KEY`. See [Grounding with Parallel](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/grounding/grounding-with-parallel).",
+        "pre_run_steps": [
+            (
+                "Configure Parallel access",
+                "Subscribe to Parallel through Google Cloud Marketplace, or create a Parallel API key and export it as `PARALLEL_API_KEY` in the shell that runs the example.",
+                None,
+            ),
+            (
+                "Use a supported Gemini model",
+                "Replace `id=\"gemini-2.0-flash\"` with `id=\"gemini-3.5-flash\"` in the saved file.",
+                None,
+            ),
+        ],
+    },
+    "90_models/deepinfra/basic.py": {
+        "intro_override": "Run DeepSeek V3 through DeepInfra with synchronous, asynchronous, and streaming agent responses.",
+        "pre_code_warning": "DeepInfra marks the pinned `meta-llama/Llama-2-70b-chat-hf` model as deprecated, and its model page is unavailable. Replace it with the current `deepseek-ai/DeepSeek-V3` model before running.",
+        "pre_run_steps": [
+            (
+                "Use a current DeepInfra model",
+                "Replace `meta-llama/Llama-2-70b-chat-hf` with `deepseek-ai/DeepSeek-V3` in the saved file.",
+                None,
+            )
+        ],
+    },
+    "90_models/deepinfra/tool_use.py": {
+        "intro_override": "Give a DeepSeek V3 agent on DeepInfra web search tools, then stream synchronous and asynchronous responses.",
+        "pre_code_warning": "DeepInfra marks the pinned `meta-llama/Llama-2-70b-chat-hf` model as deprecated, and its model page is unavailable. Replace it with `deepseek-ai/DeepSeek-V3`, which supports tool calling, before running. See [DeepInfra tool calling](https://docs.deepinfra.com/chat/tool-calling).",
+        "pre_run_steps": [
+            (
+                "Use a tool-capable DeepInfra model",
+                "Replace `meta-llama/Llama-2-70b-chat-hf` with `deepseek-ai/DeepSeek-V3` in the saved file.",
+                None,
+            )
+        ],
+    },
+    "05_agent_os/mcp_demo/mcp_tools_advanced_example.py": {
+        "pre_code_warning": "The pinned source uses the deprecated `@modelcontextprotocol/server-brave-search` package in its active and commented MCP configurations. Replace both occurrences with Brave's maintained MCP server before running. See [Brave Search MCP Server](https://github.com/brave/brave-search-mcp-server).",
+        "node_prepare_text": "The maintained Brave MCP server requires Node.js 22 or later. Install it, then confirm `node --version` reports v22 or later and `npx` is available:",
+        "pre_run_steps": [
+            (
+                "Update both Brave MCP commands",
+                "Replace both occurrences of `npx -y @modelcontextprotocol/server-brave-search` with `npx -y @brave/brave-search-mcp-server --transport stdio` in the saved file.",
+                None,
+            )
+        ],
+    },
+    "10_reasoning/tools/azure_openai_reasoning_tools.py": {
+        "pre_code_warning": "Microsoft schedules the pinned `gpt-4o-mini` model for retirement on October 1, 2026 and lists `gpt-4.1-mini` as its replacement. Azure OpenAI's `id` identifies your deployment, so deploy the replacement and use that deployment name before running. See the [Azure model retirement schedule](https://learn.microsoft.com/en-us/azure/foundry-classic/openai/concepts/model-retirement-schedule?view=foundry-classic).",
+        "pre_run_steps": [
+            (
+                "Configure the Azure deployment",
+                "Deploy `gpt-4.1-mini`. Name the deployment `gpt-4.1-mini`, or replace `AzureOpenAI(id=\"gpt-4o-mini\")` with `AzureOpenAI(id=\"<your-deployment-name>\")` in the saved file.",
+                None,
+            )
+        ],
+    },
+    "91_tools/google/workspace/service_account.py": {
+        "intro_override": "Authenticate Gmail, Calendar, Drive, and Sheets toolkits with a delegated Google Workspace service account.",
+        "pre_code_warning": "The pinned setup omits required API enablement and Workspace scope authorization. Its run path is stale, and its environment guard checks only the service-account file even though Gmail requires `GOOGLE_DELEGATED_USER`. Complete the generated setup and use the generated run command below.",
+        "pre_run_steps": [
+            (
+                "Create the delegated service account",
+                "Enable the Gmail, Google Calendar, Google Drive, and Google Sheets APIs in the Google Cloud project. Create a service account, enable domain-wide delegation, and download its JSON key. See [Delegating domain-wide authority](https://developers.google.com/identity/protocols/oauth2/service-account#delegatingauthority).",
+                None,
+            ),
+            (
+                "Authorize the Workspace scopes",
+                "As a Workspace super admin, add the service account's numeric client ID under Security > Access and data control > API Controls > Manage Domain Wide Delegation. Authorize `https://www.googleapis.com/auth/gmail.readonly`, `https://www.googleapis.com/auth/gmail.modify`, `https://www.googleapis.com/auth/gmail.compose`, `https://www.googleapis.com/auth/calendar.readonly`, `https://www.googleapis.com/auth/calendar`, `https://www.googleapis.com/auth/drive.readonly`, and `https://www.googleapis.com/auth/spreadsheets.readonly`.",
+                None,
+            ),
+            (
+                "Require the delegated user",
+                "Replace `if not getenv(\"GOOGLE_SERVICE_ACCOUNT_FILE\"):` with `if not getenv(\"GOOGLE_SERVICE_ACCOUNT_FILE\") or not getenv(\"GOOGLE_DELEGATED_USER\"):` in the saved file.",
+                None,
+            ),
+        ],
+    },
+    "05_agent_os/interfaces/slack/agent_with_user_memory.py": {
+        "pre_code_warning": "Anthropic retired the pinned `claude-sonnet-4-20250514` model on June 15, 2026. Replace it with `claude-sonnet-4-6` before running. See [Anthropic model deprecations](https://platform.claude.com/docs/en/about-claude/model-deprecations).",
+        "pre_run_steps": [
+            (
+                "Update the Claude model",
+                "Replace `Claude(id=\"claude-sonnet-4-20250514\")` with `Claude(id=\"claude-sonnet-4-6\")` in the saved file.",
+                None,
+            )
+        ],
+    },
+    "90_models/fireworks/basic.py": {
+        "intro_override": "Run Fireworks' current GPT OSS 120B model with synchronous, asynchronous, and streaming agent responses.",
+        "pre_code_warning": "The pinned source uses a Llama 3.1 405B model that requires an on-demand deployment. Replace it with the serverless `accounts/fireworks/models/gpt-oss-120b` model before running. See [Fireworks GPT OSS 120B](https://fireworks.ai/models/fireworks/gpt-oss-120b).",
+        "pre_run_steps": [
+            (
+                "Use the current Fireworks model",
+                "Replace `accounts/fireworks/models/llama-v3p1-405b-instruct` with `accounts/fireworks/models/gpt-oss-120b` in the saved file.",
+                None,
+            )
+        ],
+    },
+    "90_models/fireworks/structured_output.py": {
+        "pre_code_warning": "The pinned source uses a Llama 3.1 405B model that requires an on-demand deployment. Replace it with the serverless `accounts/fireworks/models/gpt-oss-120b` model before running. See [Fireworks GPT OSS 120B](https://fireworks.ai/models/fireworks/gpt-oss-120b).",
+        "pre_run_steps": [
+            (
+                "Use the current Fireworks model",
+                "Replace `accounts/fireworks/models/llama-v3p1-405b-instruct` with `accounts/fireworks/models/gpt-oss-120b` in the saved file.",
+                None,
+            )
+        ],
+    },
+    "90_models/fireworks/tool_use.py": {
+        "pre_code_warning": "The pinned source uses a Llama 3.1 405B model that requires an on-demand deployment. Replace it with the serverless `accounts/fireworks/models/gpt-oss-120b` model before running. See [Fireworks GPT OSS 120B](https://fireworks.ai/models/fireworks/gpt-oss-120b).",
+        "pre_run_steps": [
+            (
+                "Use the current Fireworks model",
+                "Replace `accounts/fireworks/models/llama-v3p1-405b-instruct` with `accounts/fireworks/models/gpt-oss-120b` in the saved file.",
+                None,
+            )
+        ],
+    },
+    "90_models/xai/reasoning_agent.py": {
+        "intro_override": "Use ReasoningTools and YFinance with an explicit Grok 4.3 model to produce a TSLA report.",
+        "pre_code_warning": "xAI now resolves the pinned `grok-3-beta` alias to `grok-4.3`, so its pricing and behavior follow Grok 4.3 rather than the original beta. Use the explicit current model ID before running. See [Grok 4.3](https://docs.x.ai/developers/models/grok-4.3).",
+        "pre_run_steps": [
+            (
+                "Use the explicit Grok model",
+                "Replace `xAI(id=\"grok-3-beta\")` with `xAI(id=\"grok-4.3\")` in the saved file.",
+                None,
+            )
+        ],
+    },
+    "90_models/azure/ai_foundry/structured_output.py": {
+        "intro_override": "Use Azure OpenAI for the supported Pydantic structured-output pattern. The v2.7.2 Azure AI Foundry source below fails before sending a request.",
+        "pre_code_warning": "Agno v2.7.2's `AzureAIFoundry.get_request_params()` constructs `response_format` as a tuple, so both agents fail before sending a request. The adapter also depends on Microsoft's retired `azure-ai-inference` SDK. Do not run this source as written.",
+        "replacement_only": True,
+        "replacement_heading": "Current Alternative",
+        "run_replacement": "Use [Azure OpenAI Structured Output](/models/providers/cloud/azure-openai/usage/structured-output) for a supported Pydantic output-schema example.",
+    },
+    "90_models/deepseek/thinking_mode.py": {
+        "intro_override": "DeepSeek V4 returns `reasoning_content` with thinking mode enabled by default. Set `use_thinking=False` for a faster response.",
     },
 }
 
@@ -4135,6 +4299,22 @@ def apply_source_render_override(
             "intro_override",
             "The source-fidelity code uses the older `grok-2-vision-latest` model. Replace it with `grok-4.5` before running the example.",
         )
+    source = srcs[0]
+    invalid_model_retry_example = (
+        rel.startswith("90_models/")
+        and (rel.endswith("/retry.py") or rel.endswith("/with_retries.py"))
+        and (
+            "wrong_model_id" in source
+            or re.search(r'id\s*=\s*["\'][^"\']*(?:wrong|invalid)[^"\']*["\']', source, re.I)
+        )
+    )
+    if invalid_model_retry_example:
+        override["description_override"] = INVALID_MODEL_RETRY_DESCRIPTION
+        override["intro_override"] = INVALID_MODEL_RETRY_DESCRIPTION
+        override["pre_code_warning"] = INVALID_MODEL_RETRY_WARNING
+        override["replacement_only"] = True
+        override["replacement_heading"] = "Current Alternative"
+        override["run_replacement"] = INVALID_MODEL_RETRY_REPLACEMENT
     package_remove = {
         requirement_key(str(package)) for package in override.get("package_remove", set())
     }
@@ -4232,6 +4412,15 @@ def render(
             file=sys.stderr,
         )
         description = f"Runnable cookbook example: {title}."
+    description_override = render_override.get("description_override")
+    if description_override is not None:
+        assert isinstance(description_override, str) and description_override.strip(), (
+            f"{cookbook_rel}: description_override must be a non-empty string"
+        )
+        assert "\n" not in description_override and "—" not in description_override, (
+            f"{cookbook_rel}: description_override must be one docs-style line"
+        )
+        description = description_override
 
     if req.needs_agno and req.extras:
         # Brackets are shell glob characters (zsh errors on unquoted agno[mcp]);

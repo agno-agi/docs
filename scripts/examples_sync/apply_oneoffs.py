@@ -452,6 +452,51 @@ EXPLICIT_ROW_OVERRIDES = {
     },
 }
 
+# Invalid-model requests are not deterministic retry tests. These generated
+# pages use one shared replacement-only description, and every parent overview
+# must consume that generated frontmatter instead of an older manual override.
+INVALID_MODEL_RETRY_SLUGS = {
+    "examples/models/aimlapi/retry",
+    "examples/models/anthropic/retry",
+    "examples/models/aws/retry",
+    "examples/models/azure/retry",
+    "examples/models/cerebras/retry",
+    "examples/models/cohere/retry",
+    "examples/models/cometapi/retry",
+    "examples/models/dashscope/retry",
+    "examples/models/deepinfra/retry",
+    "examples/models/deepseek/retry",
+    "examples/models/fireworks/retry",
+    "examples/models/google/gemini/retry",
+    "examples/models/groq/retry",
+    "examples/models/huggingface/retry",
+    "examples/models/ibm/retry",
+    "examples/models/internlm/retry",
+    "examples/models/langdb/retry",
+    "examples/models/litellm/retry",
+    "examples/models/llama-cpp/retry",
+    "examples/models/lmstudio/retry",
+    "examples/models/meta/retry",
+    "examples/models/mistral/retry",
+    "examples/models/nebius/retry",
+    "examples/models/nexus/retry",
+    "examples/models/nvidia/retry",
+    "examples/models/ollama/chat/retry",
+    "examples/models/openai/chat/retry",
+    "examples/models/openai/chat/with-retries",
+    "examples/models/openrouter/chat/retry",
+    "examples/models/perplexity/retry",
+    "examples/models/portkey/retry",
+    "examples/models/requesty/retry",
+    "examples/models/sambanova/retry",
+    "examples/models/siliconflow/retry",
+    "examples/models/together/retry",
+    "examples/models/vercel/retry",
+    "examples/models/vertexai/retry",
+    "examples/models/vllm/retry",
+    "examples/models/xai/retry",
+}
+
 # These pages have a reviewed, factual mismatch that is grammatical enough not
 # to be caught by the fail-closed malformed-row detector.
 EXPLICIT_ROW_REFRESH = {
@@ -665,8 +710,20 @@ EXPLICIT_ROW_REFRESH = {
     },
     "examples/models/deepseek/overview": {"examples/models/deepseek/tool-use"},
     "examples/models/deepinfra/overview": {
+        "examples/models/deepinfra/basic",
         "examples/models/deepinfra/retry",
         "examples/models/deepinfra/tool-use",
+    },
+    "examples/models/azure/ai-foundry/overview": {
+        "examples/models/azure/ai-foundry/db",
+        "examples/models/azure/ai-foundry/structured-output",
+        "examples/models/azure/ai-foundry/tool-use",
+    },
+    "examples/models/fireworks/overview": {
+        "examples/models/fireworks/basic",
+        "examples/models/fireworks/retry",
+        "examples/models/fireworks/structured-output",
+        "examples/models/fireworks/tool-use",
     },
     "examples/models/groq/overview": {
         "examples/models/groq/db",
@@ -839,6 +896,10 @@ EXPLICIT_ROW_REFRESH = {
     },
 }
 
+for _retry_slug in INVALID_MODEL_RETRY_SLUGS:
+    _retry_overview = f"{_retry_slug.rsplit('/', 1)[0]}/overview"
+    EXPLICIT_ROW_REFRESH.setdefault(_retry_overview, set()).add(_retry_slug)
+
 # These reviewed indexes must mirror every target page's current title and
 # description. New rows are covered automatically because the refresh set is
 # derived from the table rather than maintained target by target.
@@ -877,6 +938,9 @@ EXPLICIT_LABEL_REFRESH = {
     "examples/agent-os/tracing/basic-agent-tracing",
     "examples/agent-os/tracing/basic-workflow-tracing",
     "examples/agent-os/tracing/tracing-with-multi-db-scenario",
+    "examples/models/azure/ai-foundry/db",
+    "examples/models/azure/ai-foundry/structured-output",
+    "examples/models/azure/ai-foundry/tool-use",
     "examples/models/litellm-openai/audio-input",
     "examples/models/groq/tool-use",
     "examples/storage/dynamodb/dynamo-for-agent",
@@ -1262,10 +1326,14 @@ def desired_frontmatter(slug: str) -> tuple[str, str]:
     assert p.is_file(), f"missing target page: {slug}"
     text = p.read_text(encoding="utf-8")
     title = TITLE_OVERRIDES.get(slug, gen.fix_title_casing(frontmatter_value(text, "title", slug)))
-    description = DESCRIPTION_OVERRIDES.get(
-        slug,
-        GENERATED_DESCRIPTION_OVERRIDES.get(slug, frontmatter_value(text, "description", slug)),
-    )
+    current_description = frontmatter_value(text, "description", slug)
+    if slug in INVALID_MODEL_RETRY_SLUGS:
+        description = current_description
+    else:
+        description = DESCRIPTION_OVERRIDES.get(
+            slug,
+            GENERATED_DESCRIPTION_OVERRIDES.get(slug, current_description),
+        )
     return title, description
 
 
