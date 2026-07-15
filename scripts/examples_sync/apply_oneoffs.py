@@ -1209,8 +1209,33 @@ def sub_file(p: Path, old: str, new: str, required: bool = True) -> None:
     print(f"  applied: {path}")
 
 
+def sub_all_file(p: Path, old: str, new: str, expected: int) -> None:
+    global would_apply
+    path = str(p.relative_to(ROOT))
+    text = p.read_text(encoding="utf-8")
+    old_count = text.count(old)
+    new_count = text.count(new)
+    if old_count == 0 and new_count == expected:
+        print(f"  already applied: {path}")
+        return
+    assert old_count == expected and new_count == 0, (
+        f"{path}: expected {expected} old and 0 new patterns, "
+        f"found {old_count} old and {new_count} new"
+    )
+    if CHECK:
+        print(f"  would apply: {path}")
+        would_apply += 1
+        return
+    p.write_text(text.replace(old, new), encoding="utf-8")
+    print(f"  applied: {path}")
+
+
 def sub(path: str, old: str, new: str, required: bool = True) -> None:
     sub_file(DOCS / path, old, new, required)
+
+
+def sub_all(path: str, old: str, new: str, expected: int) -> None:
+    sub_all_file(DOCS / path, old, new, expected)
 
 
 def root_sub(path: str, old: str, new: str, required: bool = True) -> None:
@@ -1679,6 +1704,121 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--check", action="store_true", help="report fix state without writing")
     CHECK = ap.parse_args().check
+
+    # Source-backed corrections identified by the generated-example review.
+    sub(
+        "reasoning/models/vertex-ai/basic-reasoning-stream.mdx",
+        'title: "Basic Reasoning Stream"',
+        'title: "Vertex AI Basic Reasoning Stream"',
+    )
+    sub(
+        "reasoning/models/vertex-ai/basic-reasoning-stream.mdx",
+        "thinking_budget=1024,  # Required to enable thinking mode",
+        "thinking_budget=1024,  # Set a fixed 1,024-token thinking budget",
+    )
+    sub(
+        "reasoning/models/vertex-ai/basic-reasoning-stream.mdx",
+        """  <Step title="Authenticate with Google Cloud">
+    Sign in with Application Default Credentials:
+    ```bash
+    gcloud auth application-default login
+    ```
+  </Step>""",
+        """  <Step title="Authenticate with Google Cloud">
+    Install the [Google Cloud CLI](https://cloud.google.com/sdk/docs/install), then sign in with Application Default Credentials:
+    ```bash
+    gcloud auth application-default login
+    ```
+  </Step>""",
+    )
+    sub(
+        "tools/mcp/cli.mdx",
+        'async with MCPTools("npx -y @modelcontextprotocol/server-github") as mcp_tools:',
+        """async with MCPTools(
+        "docker run -i --rm -e GITHUB_PERSONAL_ACCESS_TOKEN "
+        "ghcr.io/github/github-mcp-server"
+    ) as mcp_tools:""",
+    )
+    sub(
+        "tools/mcp/cli.mdx",
+        "Github repo: https://github.com/agno-agi/agno",
+        "GitHub repo: https://github.com/agno-agi/agno",
+    )
+    sub(
+        "tools/mcp/cli.mdx",
+        """  <Step title="Prepare Node.js">
+    The MCP server runs with `npx`. Install Node.js, then verify the commands:
+    ```bash
+    node --version
+    npx --version
+    ```
+  </Step>""",
+        """  <Step title="Prepare Docker">
+    Install and start [Docker](https://docs.docker.com/get-started/get-docker/), then verify the command:
+    ```bash
+    docker --version
+    ```
+  </Step>""",
+    )
+    sub_all(
+        "teams/distributed-rag/distributed-rag-with-reranking.mdx",
+        'url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf"',
+        'urls=["https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf"]',
+        expected=6,
+    )
+    sub(
+        "workflows/conditional-execution/condition-with-parallel.mdx",
+        """    return any(keyword in topic.lower() for keyword in general_keywords)
+
+
+def check_if_we_should_search_x(step_input: StepInput) -> bool:
+    topic = step_input.input or step_input.previous_step_content or ""
+    social_keywords = [
+        "trending",
+        "viral",
+        "social",
+        "discussion",
+        "opinion",
+        "twitter",
+        "x",
+    ]
+    return any(keyword in topic.lower() for keyword in social_keywords)
+
+
+def check_if_we_should_search_exa(step_input: StepInput) -> bool:""",
+        """    return any(keyword in topic.lower() for keyword in general_keywords)
+
+
+def check_if_we_should_search_exa(step_input: StepInput) -> bool:""",
+    )
+    sub_all(
+        "workflows/conditional-execution/condition-with-parallel.mdx",
+        'input="Latest AI developments in machine learning"',
+        'input="AI research news"',
+        expected=4,
+    )
+    sub(
+        "models/google/gemini/url-context.mdx",
+        "uv pip install google-generativeai",
+        "uv pip install google-genai",
+    )
+    sub(
+        "knowledge/advanced/knowledge-protocol.mdx",
+        """KnowledgeProtocol is an interface for building custom knowledge sources
+that don't use the standard Knowledge class.
+
+Implement this when you need:
+- Knowledge from a non-standard source (file system, API, database)
+- Custom search logic that doesn't fit the vector DB model
+- Integration with existing retrieval systems""",
+        """KnowledgeProtocol defines the methods a custom knowledge source implements
+to build agent context, expose tools, and retrieve documents.
+
+Implement it for:
+- Knowledge from a file system, API, or database
+- Custom vector database, keyword, graph, or hybrid search logic
+- Integration with an existing retrieval system""",
+    )
 
     # 1. Docstring title is the generic mode name; page is the structured-debate example.
     sub(

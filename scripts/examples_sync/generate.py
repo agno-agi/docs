@@ -667,6 +667,15 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         # whose URL insert selects WebsiteReader at runtime.
         "package_add": {"beautifulsoup4"},
     },
+    "02_agents/01_quickstart/agent_with_tools.py": {
+        "suppress_intro": True,
+    },
+    "04_workflows/02_conditional_execution/condition_with_parallel.py": {
+        "suppress_intro": True,
+    },
+    "07_knowledge/04_advanced/05_knowledge_protocol.py": {
+        "suppress_intro": True,
+    },
     "02_agents/12_multimodal/image_to_text.py": {
         "pre_run_steps": [
             (
