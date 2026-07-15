@@ -20,7 +20,9 @@ Use advanced RBAC scope patterns including global scopes, per-resource scopes, a
     from agno.os.config import AuthorizationConfig
     from agno.tools.websearch import WebSearchTools
 
-    JWT_SECRET = os.getenv("JWT_VERIFICATION_KEY", "your-secret-key-at-least-256-bits-long")
+    JWT_SECRET = os.getenv("JWT_VERIFICATION_KEY")
+    if not JWT_SECRET:
+        raise RuntimeError("Set JWT_VERIFICATION_KEY before starting AgentOS")
 
     db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
 
@@ -53,7 +55,7 @@ Use advanced RBAC scope patterns including global scopes, per-resource scopes, a
     # Create AgentOS with RBAC
     agent_os = AgentOS(
         id="my-agent-os",
-        name="Production AgentOS",
+        name="RBAC Scope Demo",
         agents=[web_search_agent, analyst_agent, admin_agent],
         authorization=True,
         authorization_config=AuthorizationConfig(
@@ -112,11 +114,12 @@ Use advanced RBAC scope patterns including global scopes, per-resource scopes, a
             ["agents:read", "agents:*:run"],
         )
 
-        print("1. ADMIN (full access):", admin_token[:50] + "...")
-        print("2. POWER USER (global access):", power_user_token[:50] + "...")
-        print("3. LIMITED USER (specific agents):", limited_user_token[:50] + "...")
-        print("4. READ-ONLY USER (view only):", readonly_user_token[:50] + "...")
-        print("5. WILDCARD USER (run any):", wildcard_user_token[:50] + "...")
+        # These are local test tokens. Do not print production credentials.
+        print("1. ADMIN (full access):", admin_token)
+        print("2. POWER USER (global access):", power_user_token)
+        print("3. LIMITED USER (specific agents):", limited_user_token)
+        print("4. READ-ONLY USER (view only):", readonly_user_token)
+        print("5. WILDCARD USER (run any):", wildcard_user_token)
 
         agent_os.serve(app="advanced_scopes:app", port=7777, reload=True)
     ```
@@ -130,14 +133,16 @@ Use advanced RBAC scope patterns including global scopes, per-resource scopes, a
     ```
   </Step>
 
-  <Step title="Export your OpenAI API key">
+  <Step title="Export API and JWT keys">
     <CodeGroup>
     ```bash Mac/Linux
     export OPENAI_API_KEY="your_openai_api_key_here"
+    export JWT_VERIFICATION_KEY="$(python -c 'import secrets; print(secrets.token_hex(32))')"
     ```
 
     ```bash Windows
     $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    $Env:JWT_VERIFICATION_KEY = python -c "import secrets; print(secrets.token_hex(32))"
     ```
     </CodeGroup>
   </Step>
@@ -161,6 +166,8 @@ Use advanced RBAC scope patterns including global scopes, per-resource scopes, a
   </Step>
 
   <Step title="Test Different Access Levels">
+    Copy the complete local test tokens printed by the server into the variables below.
+
     ```bash
     # Limited user sees only 2 agents (not admin-agent)
     export LIMITED_TOKEN="<limited_user_token>"

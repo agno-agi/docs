@@ -90,12 +90,12 @@ curl -X POST http://localhost:7777/learnings \
     "learning_type": "user_profile",
     "namespace": "global",
     "user_id": "demo-user",
-    "content": {"user_id": "demo-user", "name": "Yash", "preferences": {"language": "Python"}},
+    "content": {"user_id": "demo-user", "name": "Yash", "preferred_name": "Yash"},
     "metadata": {"source": "rest-api-demo"}
   }'
 ```
 
-The learning stores key records by a deterministic ID derived from their identity fields, not a random UUID. `POST` computes the **same** ID for the identity-keyed types, so a record created through the API reconciles with what the agent reads and writes. No orphan, no duplicate.
+The learning stores key records by a deterministic ID derived from their identity fields, not a random UUID. `POST` computes the **same** ID for the identity-keyed types, so a record created through the API reconciles with what the agent reads and writes without creating orphaned or duplicate rows.
 
 | `learning_type` | Derived ID | Required identity fields |
 |-----------------|------------|--------------------------|
@@ -116,7 +116,7 @@ The learning stores key records by a deterministic ID derived from their identit
 ```bash
 curl -X PATCH http://localhost:7777/learnings/user_profile_demo-user \
   -H "Content-Type: application/json" \
-  -d '{"content": {"name": "Yash", "preferences": {"language": "Python", "tone": "concise"}}}'
+  -d '{"content": {"user_id": "demo-user", "name": "Yash", "preferred_name": "Yash P."}}'
 ```
 
 ## Deleting records
@@ -133,7 +133,7 @@ Both return `204`. The user-level delete never touches records with no owner.
 
 ## Authorization and isolation
 
-Scoping follows the framework's opt-in [user isolation](/agent-os/security/authorization/user-isolation) contract (`AuthorizationConfig(user_isolation=True)`). Admins, requests with isolation disabled, and requests without a JWT are unscoped and have full access. For a scoped (non-admin) caller:
+Scoping follows the framework's opt-in [user isolation](/agent-os/security/authorization/user-isolation) contract (`AuthorizationConfig(user_isolation=True)`). Admins and requests with isolation disabled are unscoped. Anonymous requests are unscoped only on an open instance. JWT-enabled instances reject missing tokens with `401`, static security-key callers are unscoped, and service-account PATs always self-scope unless they carry the admin scope. For a scoped non-admin caller:
 
 | Operation | Behavior |
 |-----------|----------|
