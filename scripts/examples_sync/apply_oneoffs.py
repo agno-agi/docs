@@ -3190,7 +3190,7 @@ $Env:OPENAI_API_KEY="your_openai_api_key_here"
     root_sub(
         "reference/models/azure-open-ai.mdx",
         '| `id`                      | `str`             | `"not-provided"` | The id of the Azure OpenAI model to use. Set this to your model or deployment name   |',
-        "| `id`                      | `str`             | Required         | The Azure deployment name passed as the model ID                                    |",
+        '| `id`                      | `str`             | `"not-provided"` | The Azure deployment name passed as the model ID. Set this to your deployment name  |',
     )
 
     root_sub(
