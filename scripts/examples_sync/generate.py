@@ -1453,6 +1453,24 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
             )
         ],
     },
+    "05_agent_os/interfaces/whatsapp/agent_with_media.py": {
+        "pre_run_steps": [
+            (
+                "Expose the server",
+                "Start ngrok for port 7777 and copy its public HTTPS URL. Keep ngrok running:",
+                "ngrok http 7777",
+            )
+        ],
+        "run_title": "Start AgentOS",
+        "run_after": "Keep the server running while you configure and verify the webhook.",
+        "post_run_steps": [
+            (
+                "Configure the webhook",
+                "Follow [WhatsApp setup](/agent-os/usage/interfaces/whatsapp/setup). In Meta, set the callback URL to `https://<your-ngrok-url>/whatsapp/webhook`, use the same verify token as `WHATSAPP_VERIFY_TOKEN`, and subscribe to the `messages` field. Verify the webhook while AgentOS and ngrok are running.",
+                None,
+            )
+        ],
+    },
     "90_models/xai/finance_agent.py": {
         "intro_override": "Use YFinanceTools with Grok to report stock prices, analyst recommendations, company data, and news.",
     },
@@ -2654,12 +2672,12 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         ],
     },
     "07_knowledge/04_advanced/03_graph_rag.py": {
-        "package_add": {"lightrag-agno"},
+        "package_add": {"lightrag-hku[api]"},
         "pre_run_steps": [
             (
                 "Start LightRAG",
-                "Start a LightRAG server at `http://localhost:9621` before running the example.",
-                None,
+                "Configure LightRAG's LLM and embedding settings in `.env`, then start the API server on port 9621. See the [LightRAG API server guide](https://github.com/HKUDS/LightRAG/blob/main/docs/LightRAG-API-Server.md). Keep the server running:",
+                "lightrag-server --port 9621",
             )
         ],
     },
