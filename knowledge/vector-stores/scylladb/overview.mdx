@@ -1,0 +1,158 @@
+---
+title: ScyllaDB Vector Database
+sidebarTitle: Overview
+description: Use ScyllaDB as a vector database for your Knowledge Base.
+---
+
+ScyllaDB is a high-performance, real-time distributed database with low-latency
+reads/writes and vector similarity search. It is compatible with Apache Cassandra,
+so Agno's `Cassandra` integration works with ScyllaDB out of the box.
+
+## Setup
+
+Install the driver
+
+```shell
+uv pip install scylla-driver cassio
+```
+
+Run ScyllaDB
+
+```shell
+docker run -d \
+  --name scylla \
+  -p 9042:9042 \
+  scylladb/scylla:latest \
+  --developer-mode=1 \
+  --enable-cassio-compatibility=1
+```
+
+<Note>
+  `--enable-cassio-compatibility=1` is required for self-hosted ScyllaDB.
+</Note>
+
+## Example
+
+```python agent_with_knowledge.py
+import os
+
+from cassandra.cluster import Cluster
+
+from agno.agent import Agent
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.knowledge.knowledge import Knowledge
+from agno.models.openai import OpenAIResponses
+from agno.vectordb.cassandra import Cassandra
+
+SCYLLA_HOST = "127.0.0.1"
+SCYLLA_PORT = 9042
+KEYSPACE = "agno_knowledge"
+
+cluster = Cluster([SCYLLA_HOST], port=SCYLLA_PORT)
+session = cluster.connect()
+session.execute(
+    f"""
+    CREATE KEYSPACE IF NOT EXISTS {KEYSPACE};
+    """
+)
+
+embedder = OpenAIEmbedder(id="text-embedding-3-small", dimensions=1024)
+
+knowledge_base = Knowledge(
+    vector_db=Cassandra(
+        table_name="recipes",
+        keyspace=KEYSPACE,
+        session=session,
+        embedder=embedder,
+    ),
+)
+
+knowledge_base.insert(
+    url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf"
+)
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-4o"),
+    knowledge=knowledge_base,
+    search_knowledge=True,
+    markdown=True,
+)
+
+agent.print_response("What Thai recipes do you know?", stream=True)
+```
+
+<Card title="Async Support ⚡">
+  <div className="mt-2">
+    <p>
+      ScyllaDB also supports asynchronous operations, enabling concurrency and leading to better performance.
+    </p>
+
+    ```python async_scylladb.py
+    import asyncio
+    import os
+
+    from agno.agent import Agent
+    from agno.knowledge.embedder.openai import OpenAIEmbedder
+    from agno.knowledge.knowledge import Knowledge
+    from agno.models.openai import OpenAIResponses
+    from agno.vectordb.cassandra import Cassandra
+
+    try:
+        from cassandra.cluster import Cluster  # type: ignore
+    except (ImportError, ModuleNotFoundError):
+        raise ImportError(
+            "Could not import scylla-driver. Install it with: uv pip install scylla-driver cassio"
+        )
+
+    SCYLLA_HOST = "127.0.0.1"
+    SCYLLA_PORT = 9042
+    KEYSPACE = "agno_knowledge"
+
+    cluster = Cluster([SCYLLA_HOST], port=SCYLLA_PORT)
+    session = cluster.connect()
+    session.execute(
+        f"""
+        CREATE KEYSPACE IF NOT EXISTS {KEYSPACE}
+        WITH REPLICATION = {{ 'class': 'SimpleStrategy', 'replication_factor': 1 }}
+        AND tablets = {{ 'enabled': false }}
+        """
+    )
+
+    embedder = OpenAIEmbedder(id="text-embedding-3-small", dimensions=1024)
+
+    knowledge_base = Knowledge(
+        vector_db=Cassandra(
+            table_name="recipes",
+            keyspace=KEYSPACE,
+            session=session,
+            embedder=embedder,
+        ),
+    )
+
+    agent = Agent(
+        model=OpenAIResponses(id="gpt-4o"),
+        knowledge=knowledge_base,
+    )
+
+    if __name__ == "__main__":
+        asyncio.run(
+            knowledge_base.ainsert(
+                url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf"
+            )
+        )
+
+        asyncio.run(
+            agent.aprint_response("What Thai recipes do you know?", markdown=True)
+        )
+    ```
+
+    <Tip className="mt-4">
+      Use <code>ainsert()</code> and <code>aprint_response()</code> with <code>asyncio.run()</code> for
+      non-blocking operations in high-throughput applications.
+    </Tip>
+  </div>
+</Card>
+
+## ScyllaDB Params
+
+<Snippet file="vectordb_scylladb_params.mdx" />
