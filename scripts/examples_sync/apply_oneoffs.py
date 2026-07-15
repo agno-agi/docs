@@ -1736,8 +1736,19 @@ def main() -> None:
         'async with MCPTools("npx -y @modelcontextprotocol/server-github") as mcp_tools:',
         """async with MCPTools(
         "docker run -i --rm -e GITHUB_PERSONAL_ACCESS_TOKEN "
+        "-e GITHUB_READ_ONLY=1 "
         "ghcr.io/github/github-mcp-server"
     ) as mcp_tools:""",
+    )
+    sub(
+        "context/google-workspace.mdx",
+        "gdrive = GoogleDriveContextProvider(model=sub_model)",
+        '''gdrive = GoogleDriveContextProvider(
+    model=sub_model,
+    instructions="""You answer questions by searching and reading Google Drive as the delegated Workspace user.
+Use search_files or list_files to find relevant files, then read_file for selected content.
+Cite webViewLink values and keep access read-only.""",
+)''',
     )
     sub(
         "tools/mcp/cli.mdx",

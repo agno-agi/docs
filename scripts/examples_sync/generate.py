@@ -507,6 +507,7 @@ TITLE_OVERRIDES = {
     "examples/models/azure/ai-foundry/basic": "Azure AI Foundry Basic",
     "examples/models/azure/openai/basic": "Azure OpenAI Basic",
     "examples/models/anthropic/betas": "Betas",
+    "examples/models/cometapi/structured-output": "CometAPI Structured Output",
     "examples/models/dashscope/tool-use": "DashScope Tool Use",
     "examples/models/google/gemini/external-url-input": "External URL Input",
     "examples/models/groq/reasoning/demo-qwen-2-5-32b": "Demo Qwen 2.5 32B",
@@ -2269,8 +2270,40 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "08_learning/04_entity_memory/02_entity_relationships.py": {
         "intro_override": "Use entity memory in AGENTIC mode to create and query typed relationships between organizations, people, teams, and services.",
     },
+    "10_reasoning/agents/analyse_treaty_of_versailles.py": {
+        "pre_code_warning": "DeepSeek will retire the source's `deepseek-reasoner` alias after July 24, 2026 at 15:59 UTC. Replace it with `deepseek-v4-flash` before running. See the [DeepSeek V4 migration notice](https://api-docs.deepseek.com/news/news260424/).",
+        "pre_run_steps": [
+            (
+                "Update the DeepSeek model",
+                "Replace `DeepSeek(id=\"deepseek-reasoner\")` with `DeepSeek(id=\"deepseek-v4-flash\")` in the saved file.",
+                None,
+            )
+        ],
+    },
+    "12_context/20_google_workspace.py": {
+        "intro_override": "Combine Google Drive, Gmail, and Calendar context providers in one agent for cross-service workflows.",
+        "pre_code_warning": "The pinned source uses Google Drive's default service-account instructions. Because this page sets `GOOGLE_DELEGATED_USER` for Gmail, Drive also impersonates that Workspace user. The rendered fence intentionally replaces the Drive instructions with delegated-user guidance.",
+        "env_add": {"GOOGLE_SERVICE_ACCOUNT_FILE", "GOOGLE_DELEGATED_USER"},
+        "env_remove": {"GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_PROJECT_ID"},
+    },
+    "90_models/google/gemini/agent_with_thinking_budget.py": {
+        "pre_code_warning": "Google has scheduled `gemini-2.5-pro` for shutdown on October 16, 2026 and recommends `gemini-3.1-pro-preview`. Gemini 3 models use `thinking_level` instead of a token `thinking_budget`. See [Gemini deprecations](https://ai.google.dev/gemini-api/docs/deprecations) and [Gemini thinking](https://ai.google.dev/gemini-api/docs/thinking).",
+        "pre_run_steps": [
+            (
+                "Migrate the Gemini thinking configuration",
+                "Replace `Gemini(id=\"gemini-2.5-pro\", thinking_budget=1280, include_thoughts=True)` with `Gemini(id=\"gemini-3.1-pro-preview\", thinking_level=\"low\", include_thoughts=True)` in the saved file.",
+                None,
+            )
+        ],
+    },
     "90_models/google/gemini_interactions/tool_use.py": {
         "intro_override": "Give a `GeminiInteractions` agent `WebSearchTools`, then invoke it with synchronous, streaming, and asynchronous response calls.",
+    },
+    "90_models/meta/llama/async_knowledge.py": {
+        "pre_code_warning": "The pinned source's install docstring lists unused `ddgs` and omits `openai` plus `psycopg[binary]`, which its default embedder and PostgreSQL URL require. Use the generated installation step below.",
+    },
+    "90_models/openai/chat/memory.py": {
+        "pre_code_warning": "The pinned source docstring points to the nonexistent `cookbook/agents/personalized_memories_and_summaries.py` path. Save this fence as `memory.py` and use the generated run step below.",
     },
     "90_models/anthropic/prompt_caching_extended.py": {
         "pre_code_warning": "Anthropic retired the source's `claude-sonnet-4-20250514` model on June 15, 2026. Replace it with `claude-sonnet-4-6` before running. See [Anthropic model deprecations](https://platform.claude.com/docs/en/about-claude/model-deprecations).",
@@ -2525,6 +2558,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "91_tools/mcp/cli.py": {
         "env_add": {"GITHUB_PERSONAL_ACCESS_TOKEN"},
+        "pre_code_warning": "The pinned v2.7.2 source starts an older npm GitHub MCP server. This page intentionally substitutes [GitHub's official MCP server](https://github.com/github/github-mcp-server) Docker image and adds the matching Docker setup.",
     },
     "91_tools/mcp/github.py": {
         "env_add": {"GITHUB_PERSONAL_ACCESS_TOKEN"},
