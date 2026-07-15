@@ -117,6 +117,7 @@ TITLE_OVERRIDES = {
     "examples/agent-os/rbac/asymmetric/workos-byot": "WorkOS BYOT",
     "examples/agents/tools/tools-with-literal-type-param": "Tools with Literal Type Parameters",
     "examples/integrations/parallel/research-workflow": "Research Workflow",
+    "examples/models/dashscope/tool-use": "DashScope Tool Use",
     "examples/models/openai/chat/text-to-speech-agent": "Text-to-Speech Agent",
     "examples/models/openai/responses/image-generation-agent": "Image Generation Agent",
     "examples/models/vercel/tool-use": "Vercel v0 Tool Use",
@@ -125,6 +126,7 @@ TITLE_OVERRIDES = {
     "examples/reasoning/models/groq/deepseek-plus-claude": "Qwen3 Plus Claude",
     "examples/storage/mongo/mongodb-for-agent": "MongoDB for Agent",
     "examples/storage/mongo/mongodb-for-team": "MongoDB for Team",
+    "examples/tools/mlx-transcribe-tools": "MLX Transcribe Tools",
     "examples/teams/state/overview": "State & Session",
     "examples/teams/task-mode/overview": "Advanced",
 }
@@ -886,6 +888,7 @@ EXPLICIT_LABEL_REFRESH = {
     "examples/tools/bitbucket-tools",
     "examples/tools/desi-vocal-tools",
     "examples/tools/elevenlabs-tools",
+    "examples/tools/mlx-transcribe-tools",
     "examples/tools/reddit-tools",
     "examples/tools/slack-tools",
 }

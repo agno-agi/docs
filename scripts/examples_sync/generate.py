@@ -506,6 +506,7 @@ TITLE_OVERRIDES = {
     "examples/models/azure/ai-foundry/basic": "Azure AI Foundry Basic",
     "examples/models/azure/openai/basic": "Azure OpenAI Basic",
     "examples/models/anthropic/betas": "Betas",
+    "examples/models/dashscope/tool-use": "DashScope Tool Use",
     "examples/models/google/gemini/external-url-input": "External URL Input",
     "examples/models/groq/reasoning/demo-qwen-2-5-32b": "Demo Qwen 2.5 32B",
     "examples/models/vertexai/claude/betas": "Betas",
@@ -522,6 +523,7 @@ TITLE_OVERRIDES = {
     "examples/tools/mcp/supabase": "Supabase MCP Agent",
     "examples/tools/mcp/local-server/server": "FastMCP Local Server",
     "examples/tools/mcp/notion-mcp-agent": "Notion MCP Agent",
+    "examples/tools/mlx-transcribe-tools": "MLX Transcribe Tools",
     "examples/tools/models/gemini-image-generation": "Gemini Image Generation",
     "examples/tools/models/gemini-video-generation": "Gemini Video Generation",
     "examples/tools/other/human-in-the-loop": "Human in the Loop",
@@ -1091,6 +1093,23 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "pre_run_steps": [LLAMA_CPP_INSTALL_STEP, LLAMA_CPP_STEP]
     },
     "91_tools/moviepy_video_tools.py": {"pre_run_steps": [VIDEO_PATH_STEP]},
+    "91_tools/mlx_transcribe_tools.py": {
+        "pre_run_steps": [
+            (
+                "Install ffmpeg",
+                "Install `ffmpeg` using the command for your operating system in the source header.",
+                None,
+            ),
+            (
+                "Add an audio file",
+                "For a standalone file, replace the `agno_root_dir` assignment with "
+                "`agno_root_dir = Path(__file__).parent.resolve()`. Save the code as "
+                "`mlx_transcribe_tools.py`, then add the audio file to `storage/audio` "
+                "beside the script.",
+                None,
+            ),
+        ],
+    },
     "91_tools/discord_tools.py": {
         "pre_run_steps": [
             (
@@ -2009,6 +2028,10 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "09_evals/performance/comparison/pydantic_ai_instantiation.py": {
         "env_add": {"OPENAI_API_KEY"},
+    },
+    "09_evals/performance/comparison/smolagents_instantiation.py": {
+        "package_remove": {"memory-profiler"},
+        "suppress_intro": True,
     },
     "09_evals/performance/instantiate_agent_with_tool.py": {
         "env_remove": {"OPENAI_API_KEY"},
