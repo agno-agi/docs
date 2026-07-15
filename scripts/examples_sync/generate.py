@@ -1640,7 +1640,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "pre_run_steps": [
             (
                 "Configure Slack",
-                "Complete [Slack setup](/agent-os/interfaces/slack/setup): create the app, expose the local server through public HTTPS, and set the event request URL to `<public-url>/slack/events`.",
+                "Complete [Slack setup](/agent-os/interfaces/slack/setup): create the app, expose the local server through public HTTPS, and set the event request URL to `<public-url>/slack/events`. Add `search:read` under User Token Scopes, reinstall the app, and export its `xoxp-` User OAuth Token as `SLACK_USER_TOKEN`.",
                 None,
             )
         ],
