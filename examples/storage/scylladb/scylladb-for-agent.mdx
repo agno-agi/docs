@@ -1,0 +1,103 @@
+---
+title: "Use ScyllaDB as the database for an agent"
+description: "Store agent sessions and runs in ScyllaDB."
+source: cookbook/06_storage/scylladb/scylladb_for_agent.py
+---
+
+```python scylladb_for_agent.py
+"""Use ScyllaDB as the database for an agent.
+
+ScyllaDB exposes a DynamoDB-compatible API (Alternator), so Agno's DynamoDb class
+works with it by pointing a boto3 client at the Alternator endpoint.
+
+Run ScyllaDB with Alternator enabled:
+    docker run -d --name scylla \
+        -p 9042:9042 -p 8000:8000 \
+        scylladb/scylla:latest \
+        --alternator-port 8000 \
+        --alternator-write-isolation=only_rmw_uses_lwt \
+        --smp 1
+
+Run `uv pip install boto3` to install dependencies."""
+
+import boto3
+
+from agno.agent import Agent
+from agno.db.dynamo import DynamoDb
+
+# ---------------------------------------------------------------------------
+# Setup
+# ---------------------------------------------------------------------------
+# boto3 client pointed at ScyllaDB Alternator instead of AWS DynamoDB
+client = boto3.client(
+    "dynamodb",
+    endpoint_url="http://localhost:8000",
+    region_name="us-east-1",
+    aws_access_key_id="alternator",
+    aws_secret_access_key="alternator",
+)
+
+db = DynamoDb(db_client=client)
+
+# ---------------------------------------------------------------------------
+# Create Agent
+# ---------------------------------------------------------------------------
+agent = Agent(
+    db=db,
+    name="ScyllaDB Agent",
+    description="An agent that uses ScyllaDB (Alternator) as a database",
+    add_history_to_context=True,
+)
+
+# ---------------------------------------------------------------------------
+# Run Agent
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    # The Agent sessions and runs will now be stored in ScyllaDB
+    agent.print_response("How many people live in Canada?")
+    agent.print_response("What is their national anthem called?")
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Start ScyllaDB with Alternator">
+    ```bash
+    docker run -d --name scylla \
+      -p 9042:9042 -p 8000:8000 \
+      scylladb/scylla:latest \
+      --alternator-port 8000 \
+      --alternator-write-isolation=only_rmw_uses_lwt \
+      --smp 1
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno boto3 openai
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `scylladb_for_agent.py`, then run:
+    ```bash
+    python scylladb_for_agent.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/06_storage/scylladb/scylladb_for_agent.py](https://github.com/agno-agi/agno/blob/main/cookbook/06_storage/scylladb/scylladb_for_agent.py)

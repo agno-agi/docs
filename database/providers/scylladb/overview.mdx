@@ -1,0 +1,66 @@
+---
+title: ScyllaDB
+description: Use ScyllaDB for agent session storage and persistence.
+sidebarTitle: Overview
+---
+
+[ScyllaDB](https://www.scylladb.com/) exposes a DynamoDB-compatible API called
+[Alternator](https://docs.scylladb.com/manual/stable/alternator/alternator.html). 
+Because of this, Agno's `DynamoDb` class works with ScyllaDB out of the box.
+
+## Setup
+
+Install the `boto3` and `openai` packages:
+
+```shell
+uv pip install boto3 openai
+```
+
+Run ScyllaDB with Alternator enabled:
+
+```shell
+docker run -d --name scylla \
+  -p 9042:9042 -p 8000:8000 \
+  scylladb/scylla:latest \
+  --alternator-port 8000 \
+  --alternator-write-isolation=only_rmw_uses_lwt \
+  --smp 1
+```
+
+<Warning>
+  Run Alternator with a safe write-isolation mode. Use
+  `--alternator-write-isolation=only_rmw_uses_lwt` (used throughout these docs) or
+  `always`.
+</Warning>
+
+## Usage
+
+Build a `boto3` client whose `endpoint_url` points at the Alternator port, then pass it to
+`DynamoDb`. Alternator ignores credentials by default, but `boto3` requires some non-empty
+values, so any region and keys work.
+
+```python scylladb_for_agent.py
+import boto3
+
+from agno.agent import Agent
+from agno.db.dynamo import DynamoDb
+
+# boto3 client pointed at ScyllaDB Alternator (instead of AWS DynamoDB)
+client = boto3.client(
+    "dynamodb",
+    endpoint_url="http://localhost:8000",
+    region_name="us-east-1",
+    aws_access_key_id="alternator",
+    aws_secret_access_key="alternator",
+)
+
+# Setup your Database using the ScyllaDB Alternator client
+db = DynamoDb(db_client=client)
+
+# Setup your Agent with the Database
+agent = Agent(db=db)
+```
+
+## Params
+
+<Snippet file="db-scylladb-params.mdx" />

@@ -1,0 +1,51 @@
+---
+title: ScyllaDB for Agent
+sidebarTitle: Agent
+---
+
+Agno supports using ScyllaDB as a storage backend for Agents using the `DynamoDb` class
+through ScyllaDB's DynamoDB-compatible [Alternator](https://docs.scylladb.com/manual/stable/alternator/alternator.html)
+API.
+
+## Usage
+
+Install dependencies:
+
+```shell
+uv pip install agno boto3 openai
+```
+
+Run ScyllaDB with Alternator enabled (`--alternator-port 8000 --alternator-write-isolation=only_rmw_uses_lwt`),
+then build a `boto3` client pointed at the Alternator endpoint and pass it to `DynamoDb` via
+`db_client`.
+
+<Warning>
+  Run Alternator with a safe write-isolation mode. Use
+  `--alternator-write-isolation=only_rmw_uses_lwt` (used throughout these docs) or
+  `always`.
+</Warning>
+
+```python scylladb_for_agent.py
+import boto3
+
+from agno.agent import Agent
+from agno.db.dynamo import DynamoDb
+
+# boto3 client pointed at ScyllaDB Alternator
+client = boto3.client(
+    "dynamodb",
+    endpoint_url="http://localhost:8000",
+    region_name="us-east-1",
+    aws_access_key_id="alternator",
+    aws_secret_access_key="alternator",
+)
+
+db = DynamoDb(db_client=client)
+
+# Add storage to the Agent
+agent = Agent(db=db)
+```
+
+## Params
+
+<Snippet file="db-scylladb-params.mdx" />

@@ -1,0 +1,93 @@
+---
+title: ScyllaDB for Team
+sidebarTitle: Team
+---
+
+Agno supports using ScyllaDB as a storage backend for Teams using the `DynamoDb` class
+through ScyllaDB's DynamoDB-compatible [Alternator](https://docs.scylladb.com/manual/stable/alternator/alternator.html)
+API.
+
+## Usage
+
+Run ScyllaDB with Alternator enabled (`--alternator-port 8000 --alternator-write-isolation=only_rmw_uses_lwt`),
+then build a `boto3` client pointed at the Alternator endpoint and pass it to `DynamoDb` via
+`db_client`.
+
+<Warning>
+  Run Alternator with a safe write-isolation mode. Use
+  `--alternator-write-isolation=only_rmw_uses_lwt` (used throughout these docs) or
+  `always`.
+</Warning>
+
+Install dependencies:
+
+```shell
+uv pip install agno boto3 openai ddgs
+```
+
+```python scylladb_for_team.py
+from typing import List
+
+import boto3
+
+from agno.agent import Agent
+from agno.db.dynamo import DynamoDb
+from agno.models.openai import OpenAIResponses
+from agno.team import Team
+from agno.tools.hackernews import HackerNewsTools
+from agno.tools.websearch import WebSearchTools
+from pydantic import BaseModel
+
+# boto3 client pointed at ScyllaDB Alternator
+client = boto3.client(
+    "dynamodb",
+    endpoint_url="http://localhost:8000",
+    region_name="us-east-1",
+    aws_access_key_id="alternator",
+    aws_secret_access_key="alternator",
+)
+
+# Setup the ScyllaDB database
+db = DynamoDb(db_client=client)
+
+class Article(BaseModel):
+    title: str
+    summary: str
+    reference_links: List[str]
+
+hn_researcher = Agent(
+    name="HackerNews Researcher",
+    model=OpenAIResponses(id="gpt-5.2"),
+    role="Gets top stories from hackernews.",
+    tools=[HackerNewsTools()],
+)
+
+web_searcher = Agent(
+    name="Web Searcher",
+    model=OpenAIResponses(id="gpt-5.2"),
+    role="Searches the web for information on a topic",
+    tools=[WebSearchTools()],
+    add_datetime_to_context=True,
+)
+
+hn_team = Team(
+    name="HackerNews Team",
+    model=OpenAIResponses(id="gpt-5.2"),
+    members=[hn_researcher, web_searcher],
+    db=db,
+    instructions=[
+        "First, search hackernews for what the user is asking about.",
+        "Then, ask the web searcher to search for each story to get more information.",
+        "Finally, provide a thoughtful and engaging summary.",
+    ],
+    output_schema=Article,
+    markdown=True,
+    show_members_responses=True,
+)
+
+hn_team.print_response("Write an article about the top 2 stories on hackernews")
+```
+
+## Params
+
+<Snippet file="db-scylladb-params.mdx" />
