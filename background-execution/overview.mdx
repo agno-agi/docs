@@ -172,7 +172,9 @@ asyncio.run(main())
 
 ## Resumable Streaming (SSE)
 
-Combine `background=True` with `stream=True` for resumable SSE streaming. The run executes in a detached `asyncio.Task` that survives client disconnects. Events are buffered with sequential `event_index` values so clients can reconnect without losing events.
+Combine `background=True` with `stream=True` for resumable SSE streaming. The run executes in a detached `asyncio.Task` that survives client disconnects. Events are buffered with sequential `event_index` values so clients can reconnect and replay retained events.
+
+Each AgentOS process retains the latest 10,000 events per run. Reconnect before the events you need are trimmed. A client that falls behind the retained window receives the remaining buffered events, but cannot recover the trimmed events from that in-memory buffer.
 
 ### How It Works
 
@@ -186,7 +188,7 @@ Client reconnects   → /resume reads from subscriber queue ← Background task 
 2. A detached `asyncio.Task` executes and publishes events to an in-memory buffer
 3. The client receives SSE events, each containing an `event_index` and `run_id`
 4. On disconnect, the client records `last_event_index`
-5. On reconnect, the client calls `/resume` with `last_event_index` to catch up on missed events
+5. On reconnect, the client calls `/resume` with `last_event_index` to replay retained events after that index
 
 ### Starting a Resumable Stream
 
@@ -298,26 +300,28 @@ Resume behavior depends on run state:
 
 | Scenario | Condition | Behavior |
 |----------|-----------|----------|
-| Catch up + live | Run still active in buffer | Replays missed events, then streams live events |
-| Replay | Run completed, still in buffer | Replays all missed events |
-| DB fallback | Buffer expired (30 min) | Falls back to database |
+| Catch up + live | Run still active in this process's buffer | Replays retained events after `last_event_index`, then streams live events |
+| Replay | Run completed, errored, cancelled, or paused and remains in this process's buffer | Replays retained events after `last_event_index` |
+| DB fallback | Run absent from this process's buffer and `session_id` is provided | Replays all persisted database events |
+
+If a run is absent from the buffer and `session_id` is missing, `/resume` returns an error. Completed, errored, and cancelled buffers become eligible for cleanup 30 minutes after finalization. An opportunistic cleanup check evicts eligible buffers when another run status is finalized, so eviction can occur later than 30 minutes.
 
 ### Meta Events
 
-The `/resume` stream includes meta events before data events:
+The `/resume` stream can include these meta events:
 
 | Event | Meaning |
 |-------|---------|
-| `catch_up` | Run still active. Missed events follow, then live events. |
-| `replay` | Run already completed. All missed events follow. |
-| `subscribed` | Catch-up complete. Now receiving live events. |
+| `catch_up` | Run still active. Retained buffered events follow, then live events. |
+| `replay` | Run is no longer live in this process. Retained buffer events or persisted database events follow. |
+| `subscribed` | Agent and team catch-up is complete. The client is now receiving live events. Workflow resumes do not emit this event in Agno v2.7.2. |
 | `error` | Run not found or other issue. |
 
 ## Multi-Container Deployments
 
-The detached task and event buffer live in-process on the instance that started the run. In a multi-replica setup, a `/resume` request that lands on a different instance misses the buffer and falls back to the database (no live tail until the run completes).
+The detached task and event buffer live in-process on the instance that started the run. The default cancellation manager is also in-memory. In a multi-replica setup, a `/resume` request that lands on a different instance can replay persisted events for a local entity when `session_id` is provided, then closes. It cannot tail the live task on the originating instance. A `/cancel` request on the wrong instance does not stop the task on the origin.
 
-Route `/resume` requests by `run_id` from the URL path (sticky session / consistent hashing at the load balancer) so they reach the originating instance. Only `/resume` needs affinity. The initial run-start request can hit any instance.
+Configure session affinity on the initial run-start request, then route that client's `/resume` and `/cancel` requests to the same instance. An explicit `run_id`-to-instance mapping can provide the same guarantee. Hashing only the generated `run_id` on reconnect is insufficient because the initial request was routed before that ID existed. A shared cancellation manager such as `RedisRunCancellationManager` removes the affinity requirement for `/cancel`, but live `/resume` still needs the originating instance.
 
 ## Developer Resources
 
