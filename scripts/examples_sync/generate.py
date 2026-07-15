@@ -589,6 +589,17 @@ LLAMA_CPP_STEP = (
     "Serve `ggml-org/gpt-oss-20b-GGUF` at `http://127.0.0.1:8080/v1`:",
     "llama-server -hf ggml-org/gpt-oss-20b-GGUF --ctx-size 0 --jinja -ub 2048 -b 2048",
 )
+LLAMA_CPP_INSTALL_STEP = (
+    "Install llama.cpp",
+    "Install the `llama-server` binary. This command supports macOS and Linux with Homebrew; see the [llama.cpp installation guide](https://github.com/ggml-org/llama.cpp/blob/master/docs/install.md) for other platforms:",
+    "brew install llama.cpp",
+)
+GEMINI_31_PRO_WARNING = "Google shut down Gemini 3 Pro Preview on March 9, 2026. The pinned `gemini-3-pro-preview` ID currently aliases to `gemini-3.1-pro-preview`; replace it explicitly before running."
+GEMINI_31_PRO_MIGRATION_STEP = (
+    "Use Gemini 3.1 Pro Preview",
+    "Replace `gemini-3-pro-preview` with `gemini-3.1-pro-preview` in the saved Python file before running.",
+    None,
+)
 LITELLM_STEP = (
     "Start LiteLLM",
     "Start the local OpenAI-compatible proxy on port 4000:",
@@ -1054,9 +1065,15 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "90_models/lmstudio/retry.py": {"pre_run_steps": [LMSTUDIO_RETRY_STEP]},
     "90_models/lmstudio/structured_output.py": {"pre_run_steps": [LMSTUDIO_STEP]},
     "90_models/lmstudio/tool_use.py": {"pre_run_steps": [LMSTUDIO_STEP]},
-    "90_models/llama_cpp/basic.py": {"pre_run_steps": [LLAMA_CPP_STEP]},
-    "90_models/llama_cpp/structured_output.py": {"pre_run_steps": [LLAMA_CPP_STEP]},
-    "90_models/llama_cpp/tool_use.py": {"pre_run_steps": [LLAMA_CPP_STEP]},
+    "90_models/llama_cpp/basic.py": {
+        "pre_run_steps": [LLAMA_CPP_INSTALL_STEP, LLAMA_CPP_STEP]
+    },
+    "90_models/llama_cpp/structured_output.py": {
+        "pre_run_steps": [LLAMA_CPP_INSTALL_STEP, LLAMA_CPP_STEP]
+    },
+    "90_models/llama_cpp/tool_use.py": {
+        "pre_run_steps": [LLAMA_CPP_INSTALL_STEP, LLAMA_CPP_STEP]
+    },
     "91_tools/moviepy_video_tools.py": {"pre_run_steps": [VIDEO_PATH_STEP]},
     "90_models/ollama/chat/demo_gemma.py": {
         "pre_run_steps": [
@@ -1512,6 +1529,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     # Fresh-eyes batch D.
     "90_models/llama_cpp/retry.py": {
         "pre_run_steps": [
+            LLAMA_CPP_INSTALL_STEP,
             (
                 "Start llama.cpp",
                 "Serve `ggml-org/gpt-oss-20b-GGUF` at `http://127.0.0.1:8080/v1` so the deliberately invalid model ID exercises retries:",
@@ -2025,6 +2043,28 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "90_models/google/gemini_interactions/tool_use.py": {
         "intro_override": "Give a `GeminiInteractions` agent `WebSearchTools`, then invoke it with synchronous, streaming, and asynchronous response calls.",
+    },
+    "90_models/google/gemini/gemini_2_to_3.py": {
+        "pre_code_warning": GEMINI_31_PRO_WARNING,
+        "pre_run_steps": [GEMINI_31_PRO_MIGRATION_STEP],
+    },
+    "90_models/google/gemini/gemini_3_pro.py": {
+        "pre_code_warning": GEMINI_31_PRO_WARNING,
+        "pre_run_steps": [GEMINI_31_PRO_MIGRATION_STEP],
+    },
+    "90_models/google/gemini/gemini_3_pro_thinking_level.py": {
+        "pre_code_warning": GEMINI_31_PRO_WARNING,
+        "pre_run_steps": [GEMINI_31_PRO_MIGRATION_STEP],
+    },
+    "observability/langtrace_op.py": {
+        "pre_code_warning": "The pinned source initializes Langtrace after importing Agno model modules, so automatic instrumentation may not attach.",
+        "pre_run_steps": [
+            (
+                "Fix the initialization order",
+                "Move the `langtrace_python_sdk` import and `langtrace.init()` before every Agno and OpenAI import in the saved file.",
+                None,
+            )
+        ],
     },
     "03_teams/02_modes/tasks_stream.py": {
         "suppress_intro": True,
