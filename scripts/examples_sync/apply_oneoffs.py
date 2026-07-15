@@ -708,6 +708,12 @@ EXPLICIT_ROW_REFRESH = {
         "examples/models/cohere/db",
         "examples/models/cohere/tool-use",
     },
+    "examples/models/dashscope/overview": {
+        "examples/models/dashscope/image-agent",
+    },
+    "examples/reasoning/models/gemini/overview": {
+        "examples/reasoning/models/gemini/basic-reasoning",
+    },
     "examples/models/deepseek/overview": {"examples/models/deepseek/tool-use"},
     "examples/models/deepinfra/overview": {
         "examples/models/deepinfra/basic",
@@ -906,6 +912,7 @@ for _retry_slug in INVALID_MODEL_RETRY_SLUGS:
 FULL_ROW_REFRESH_OVERVIEWS = {
     "examples/models/google/gemini/overview",
     "examples/models/openai/chat/overview",
+    "examples/models/together/overview",
     "examples/models/xai/overview",
 }
 
@@ -956,6 +963,7 @@ EXPLICIT_LABEL_REFRESH = {
     "examples/tools/bitbucket-tools",
     "examples/tools/desi-vocal-tools",
     "examples/tools/elevenlabs-tools",
+    "examples/tools/googlesheets-tools",
     "examples/tools/mlx-transcribe-tools",
     "examples/tools/reddit-tools",
     "examples/tools/slack-tools",
@@ -4033,6 +4041,346 @@ Select a text-generation model with [JSON mode support](https://docs.tokenfactor
 Select a text-generation model with [function-calling support](https://docs.tokenfactory.nebius.com/ai-models-inference/function-calling) for this example.
 
 ## Usage""",
+    )
+
+    # Randomized convergence sample 30: keep provider examples runnable as
+    # external model catalogs and APIs change independently of the pinned tag.
+    root_sub(
+        "examples/models/together/overview.mdx",
+        "---\n| Example | Description |",
+        """---
+
+<Warning>
+Together retires serverless model IDs on a rolling schedule. The Agno 2.7.2 cookbook examples may reference retired IDs. Before running an example, choose a current model from the [serverless catalog](https://docs.together.ai/docs/serverless/models) and verify the capabilities required by that example.
+</Warning>
+
+| Example | Description |""",
+    )
+
+    together_usage_pages = (
+        "models/providers/gateways/together/usage/basic-stream.mdx",
+        "models/providers/gateways/together/usage/basic.mdx",
+        "models/providers/gateways/together/usage/image-agent-bytes.mdx",
+        "models/providers/gateways/together/usage/image-agent-memory.mdx",
+        "models/providers/gateways/together/usage/image-agent.mdx",
+        "models/providers/gateways/together/usage/structured-output.mdx",
+        "models/providers/gateways/together/usage/tool-use.mdx",
+    )
+    for path in (
+        "models/providers/gateways/together/usage/basic.mdx",
+        "models/providers/gateways/together/usage/image-agent-memory.mdx",
+        "models/providers/gateways/together/usage/image-agent.mdx",
+        "models/providers/gateways/together/usage/tool-use.mdx",
+    ):
+        root_sub(path, "from agno.agent import", "import os\n\nfrom agno.agent import")
+    root_sub(
+        "models/providers/gateways/together/usage/basic-stream.mdx",
+        "from typing import Iterator  # noqa\nimport os\n\nfrom agno.agent import",
+        "import os\nfrom typing import Iterator  # noqa\n\nfrom agno.agent import",
+        required=False,
+    )
+    root_sub(
+        "models/providers/gateways/together/usage/basic-stream.mdx",
+        "from typing import Iterator  # noqa\nfrom agno.agent import",
+        "import os\nfrom typing import Iterator  # noqa\n\nfrom agno.agent import",
+    )
+    root_sub(
+        "models/providers/gateways/together/usage/image-agent-bytes.mdx",
+        "from pathlib import Path\n\nfrom agno.agent import",
+        "import os\nfrom pathlib import Path\n\nfrom agno.agent import",
+    )
+    root_sub(
+        "models/providers/gateways/together/usage/structured-output.mdx",
+        "from typing import List\n\nfrom agno.agent import",
+        "import os\nfrom typing import List\n\nfrom agno.agent import",
+    )
+    for path in together_usage_pages:
+        root_sub(
+            path,
+            "    export TOGETHER_API_KEY=xxx",
+            "    export TOGETHER_API_KEY=xxx\n    export TOGETHER_MODEL_ID=your-model-id",
+        )
+    for path in (
+        "models/providers/gateways/together/usage/basic-stream.mdx",
+        "models/providers/gateways/together/usage/basic.mdx",
+        "models/providers/gateways/together/usage/structured-output.mdx",
+        "models/providers/gateways/together/usage/tool-use.mdx",
+    ):
+        root_sub(
+            path,
+            'model=Together(id="meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo")',
+            'model=Together(id=os.environ["TOGETHER_MODEL_ID"])',
+        )
+    for path in (
+        "models/providers/gateways/together/usage/image-agent-bytes.mdx",
+        "models/providers/gateways/together/usage/image-agent-memory.mdx",
+        "models/providers/gateways/together/usage/image-agent.mdx",
+    ):
+        root_sub(
+            path,
+            'model=Together(id="meta-llama/Llama-Vision-Free")',
+            'model=Together(id=os.environ["TOGETHER_MODEL_ID"])',
+        )
+    for path in (
+        "models/providers/gateways/together/usage/basic-stream.mdx",
+        "models/providers/gateways/together/usage/basic.mdx",
+    ):
+        root_sub(
+            path,
+            "```\n\n## Usage",
+            """```
+
+Set `TOGETHER_MODEL_ID` to a current chat model from the [Together serverless catalog](https://docs.together.ai/docs/serverless/models).
+
+## Usage""",
+        )
+    for path in (
+        "models/providers/gateways/together/usage/image-agent-bytes.mdx",
+        "models/providers/gateways/together/usage/image-agent-memory.mdx",
+        "models/providers/gateways/together/usage/image-agent.mdx",
+    ):
+        root_sub(
+            path,
+            "```\n\n## Usage",
+            """```
+
+Set `TOGETHER_MODEL_ID` to a current model that accepts image input. See the [Together vision guide](https://docs.together.ai/docs/inference/vision/overview) and [serverless catalog](https://docs.together.ai/docs/serverless/models).
+
+## Usage""",
+        )
+    root_sub(
+        "models/providers/gateways/together/usage/structured-output.mdx",
+        "```\n\n## Usage",
+        """```
+
+Set `TOGETHER_MODEL_ID` to a current model with [structured-output support](https://docs.together.ai/docs/inference/chat/structured-outputs).
+
+## Usage""",
+    )
+    root_sub(
+        "models/providers/gateways/together/usage/tool-use.mdx",
+        "```\n\n## Usage",
+        """```
+
+Set `TOGETHER_MODEL_ID` to a current model with [function-calling support](https://docs.together.ai/docs/inference/function-calling/overview).
+
+## Usage""",
+    )
+
+    root_sub(
+        "models/providers/gateways/together/overview.mdx",
+        "See their library of models [here](https://www.together.ai/models).",
+        "See the current [serverless model catalog](https://docs.together.ai/docs/serverless/models). Together retires model IDs on a rolling schedule, so verify availability and required capabilities before deployment.",
+    )
+    root_sub(
+        "models/providers/gateways/together/overview.mdx",
+        "export TOGETHER_API_KEY=***",
+        "export TOGETHER_API_KEY=***\nexport TOGETHER_MODEL_ID=your-model-id",
+    )
+    root_sub(
+        "models/providers/gateways/together/overview.mdx",
+        "```bash Windows\nsetx TOGETHER_API_KEY ***\nsetx TOGETHER_MODEL_ID your-model-id\n```",
+        "```powershell Windows\n$Env:TOGETHER_API_KEY=\"your_api_key\"\n$Env:TOGETHER_MODEL_ID=\"your_model_id\"\n```",
+        required=False,
+    )
+    root_sub(
+        "models/providers/gateways/together/overview.mdx",
+        "```bash Windows\nsetx TOGETHER_API_KEY ***\n```",
+        "```powershell Windows\n$Env:TOGETHER_API_KEY=\"your_api_key\"\n$Env:TOGETHER_MODEL_ID=\"your_model_id\"\n```",
+    )
+    root_sub(
+        "models/providers/gateways/together/overview.mdx",
+        "from agno.agent import Agent",
+        "import os\n\nfrom agno.agent import Agent",
+    )
+    root_sub(
+        "models/providers/gateways/together/overview.mdx",
+        'model=Together(id="meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo")',
+        'model=Together(id=os.environ["TOGETHER_MODEL_ID"])',
+    )
+
+    root_sub(
+        "context-providers/providers/web.mdx",
+        """<Note>
+WebContextProvider is **read-only**. There is no `update_web` tool.
+</Note>
+
+## Backends""",
+        """<Note>
+WebContextProvider is **read-only**. There is no `update_web` tool.
+</Note>
+
+## Installation
+
+Install the optional dependency for the selected backend.
+
+| Backend | Install command |
+|---------|-----------------|
+| `ExaBackend` | `uv pip install \"agno[exa]\"` |
+| `ParallelBackend` | `uv pip install \"agno[parallel]\"` |
+| `ExaMCPBackend` or `ParallelMCPBackend` | `uv pip install \"agno[mcp]\"` |
+
+## Backends""",
+    )
+
+    root_sub(
+        "reference/models/n1n.mdx",
+        """Access [n1n.ai](https://n1n.ai) models through an OpenAI-compatible interface.
+
+## Authentication""",
+        """Access [n1n.ai](https://n1n.ai) models through an OpenAI-compatible interface.
+
+## Installation
+
+```bash
+uv pip install -U agno ddgs openai
+```
+
+## Authentication""",
+    )
+
+    spotify_page = "tools/toolkits/others/spotify.mdx"
+    root_sub(
+        spotify_page,
+        "| `get_user_playlists`          | Get playlists for a specific user                   |",
+        "| `get_user_playlists`          | Unavailable to Development Mode apps in Agno 2.7.2 because it expects the earlier response fields |",
+    )
+    root_sub(
+        spotify_page,
+        'description: "Enable an Agent to search Spotify for tracks, artists, and albums, and create and manage playlists."',
+        'description: "Enable an Agent to search Spotify for tracks, artists, and albums with a read-only toolkit configuration."',
+    )
+    root_sub(
+        spotify_page,
+        "**SpotifyTools** enable an Agent to search for songs and manage playlists on Spotify.",
+        "**SpotifyTools** enable an Agent to search Spotify's catalog and access authenticated-user playback data.",
+    )
+    root_sub(
+        spotify_page,
+        """The following example requires a Spotify access token from [Spotify](https://developer.spotify.com/). The toolkit itself uses `httpx`, which is already a dependency of Agno. The example uses an Anthropic model, so install the `anthropic` library.
+
+```shell
+uv pip install anthropic
+```""",
+        """The example requires a Spotify access token from [Spotify](https://developer.spotify.com/) and an Anthropic API key. It enables only catalog search, so the Spotify token does not need playlist modification scopes.
+
+```shell
+uv pip install -U agno anthropic
+```""",
+    )
+    root_sub(
+        spotify_page,
+        """export SPOTIFY_TOKEN=***
+export ANTHROPIC_API_KEY=***
+```
+
+## Example""",
+        """export SPOTIFY_TOKEN=***
+export ANTHROPIC_API_KEY=***
+```
+
+<Warning>
+Spotify changed several endpoints and response fields for Development Mode apps in February 2026. Extended Quota Mode apps are unaffected. Agno 2.7.2 still uses the earlier paths and fields, so the affected methods below are unavailable to Development Mode apps. Use the read-only example until `SpotifyTools` is updated. See Spotify's [February 2026 migration guide](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide).
+</Warning>
+
+## Example""",
+    )
+    root_sub(
+        spotify_page,
+        "The following agent will search for tracks and create a playlist on Spotify.",
+        "The following agent searches Spotify for tracks and returns their names and URIs.",
+    )
+    root_sub(
+        spotify_page,
+        """    access_token=SPOTIFY_TOKEN,
+    default_market="US",
+)""",
+        """    access_token=SPOTIFY_TOKEN,
+    default_market="US",
+    include_tools=["search_tracks"],
+)""",
+    )
+    root_sub(
+        spotify_page,
+        """    instructions=[
+        "You are a helpful music assistant that can search for songs and manage Spotify playlists.",
+        "When asked to create a playlist:",
+        "1. First search for relevant tracks based on the user's criteria (mood, artist, genre)",
+        "2. Collect the track URIs from the search results",
+        "3. Create the playlist with those tracks",
+        "When updating a playlist, use the playlist ID from a previous creation or ask the user for it.",
+        "Always confirm what you've done and provide the playlist URL when created.",
+    ],""",
+        """    instructions=[
+        "Search Spotify for tracks that match the request.",
+        "Return each track's name, artists, and Spotify URI.",
+    ],""",
+    )
+    root_sub(
+        spotify_page,
+        """response = agent.run(
+    "Create a Good Vibes playlist, add 5 upbeat songs by The Weeknd and Coldplay in it."
+)""",
+        'response = agent.run("Find five tracks by The Weeknd.")',
+    )
+    root_sub(
+        spotify_page,
+        "| `search_playlists`            | Search for playlists on Spotify                     |",
+        "| `search_playlists`            | Unavailable to Development Mode apps in Agno 2.7.2 because it expects the earlier playlist response fields |",
+    )
+    root_sub(
+        spotify_page,
+        "| `get_artist_top_tracks`       | Get top tracks for a specific artist                |",
+        "| `get_artist_top_tracks`       | Unavailable to Development Mode apps because Spotify removed the endpoint |",
+    )
+    root_sub(
+        spotify_page,
+        "| `create_playlist`             | Create a new playlist for the user                  |",
+        "| `create_playlist`             | Unavailable to Development Mode apps in Agno 2.7.2 because it calls the removed user-specific endpoint |",
+    )
+    root_sub(
+        spotify_page,
+        "| `add_tracks_to_playlist`      | Add tracks to an existing playlist                  |",
+        "| `add_tracks_to_playlist`      | Unavailable to Development Mode apps in Agno 2.7.2 because it calls the removed `/tracks` endpoint |",
+    )
+    root_sub(
+        spotify_page,
+        "| `get_playlist`                | Get details of a specific playlist                  |",
+        "| `get_playlist`                | For Development Mode apps, use `include_tracks=False`; item parsing expects the earlier field names |",
+    )
+    root_sub(
+        spotify_page,
+        "| `remove_tracks_from_playlist` | Remove tracks from an existing playlist             |",
+        "| `remove_tracks_from_playlist` | Unavailable to Development Mode apps in Agno 2.7.2 because it calls the removed `/tracks` endpoint |",
+    )
+
+    root_sub(
+        "models/providers/native/google/usage/imagen-tool-advanced.mdx",
+        "```\n\n## Usage",
+        """```
+
+<Warning>
+The source uses the retired `imagen-4.0-generate-preview-05-20` model, the removed `Agent.run_response` accessor, and raw image bytes where `save_base64_data` expects base64. Apply all three edits below before running. Google will shut down Imagen 4 on August 17, 2026. Migrate to the [Gemini image-generation API](https://ai.google.dev/gemini-api/docs/generate-content/image-generation), which uses `generate_content`, before that date.
+</Warning>
+
+## Usage""",
+    )
+    root_sub(
+        "models/providers/native/google/usage/imagen-tool-advanced.mdx",
+        '  <Step title="Run Agent">',
+        """  <Step title="Update the Imagen model">
+    Replace `imagen-4.0-generate-preview-05-20` with `imagen-4.0-generate-001` in the saved file.
+  </Step>
+
+  <Step title="Use the v2 run output accessor">
+    Replace `response = agent.run_response` with `response = agent.get_last_run_output()` in the saved file.
+  </Step>
+
+  <Step title="Encode the image bytes">
+    Add `import base64`, then replace `save_base64_data(str(response.images[0].content), "tmp/baleen_whale.png")` with `save_base64_data(base64.b64encode(response.images[0].content).decode("ascii"), "tmp/baleen_whale.png")` in the saved file.
+  </Step>
+
+  <Step title="Run Agent">""",
     )
 
     # 9. Reviewed frontmatter overrides consumed by the overview row pass.

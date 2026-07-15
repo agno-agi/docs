@@ -524,6 +524,7 @@ TITLE_OVERRIDES = {
     "examples/models/azure/openai/basic": "Azure OpenAI Basic",
     "examples/models/anthropic/betas": "Betas",
     "examples/models/cometapi/structured-output": "CometAPI Structured Output",
+    "examples/models/dashscope/image-agent": "DashScope Image Agent",
     "examples/models/dashscope/tool-use": "DashScope Tool Use",
     "examples/models/google/gemini/external-url-input": "External URL Input",
     "examples/models/groq/reasoning/demo-qwen-2-5-32b": "Demo Qwen 2.5 32B",
@@ -553,6 +554,7 @@ TITLE_OVERRIDES = {
     "examples/tools/clickup-tools": "ClickUp Tools",
     "examples/tools/spotify-tools": "Spotify Tools",
     "examples/tools/exceptions/retry-tool-call-from-post-hook": "Post-Hook Retry",
+    "examples/tools/googlesheets-tools": "Google Sheets Tools",
     "examples/tools/trafilatura-tools": "Trafilatura Tools",
     "examples/tools/webbrowser-tools": "WebBrowser Tools",
 }
@@ -2350,6 +2352,162 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
                 "Migrate the Gemini thinking configuration",
                 "Replace `Gemini(id=\"gemini-2.5-pro\", thinking_budget=1280, include_thoughts=True)` with `Gemini(id=\"gemini-3.1-pro-preview\", thinking_level=\"low\", include_thoughts=True)` in the saved file.",
                 None,
+            )
+        ],
+    },
+    "10_reasoning/models/gemini/basic_reasoning.py": {
+        "intro_override": "Compare Gemini 2.5 Flash with thinking disabled against a fixed 1,024-token reasoning model, then inspect the captured reasoning content.",
+        "pre_code_warning": "The source labels its first agent \"No Reasoning,\" but `gemini-2.5-flash` uses dynamic thinking when `thinking_budget` is unset. Set `thinking_budget=0` on that model to disable thinking for the comparison. See [Gemini thinking](https://ai.google.dev/gemini-api/docs/generate-content/thinking).",
+        "pre_run_steps": [
+            (
+                "Disable thinking on the regular agent",
+                "Replace `Gemini(id=\"gemini-2.5-flash\")` in `regular_agent` with `Gemini(id=\"gemini-2.5-flash\", thinking_budget=0)` in the saved file.",
+                None,
+            )
+        ],
+    },
+    "90_models/google/gemini/imagen_tool_advanced.py": {
+        "pre_code_warning": "Google discontinued the source's `imagen-4.0-generate-preview-05-20` endpoint. The source also uses the removed `Agent.run_response` attribute and passes raw image bytes to a base64 decoder. Apply all three edits below before running. See the [Vertex AI release notes](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/release-notes#February_17_2026).",
+        "pre_run_steps": [
+            (
+                "Update the Imagen model",
+                "Replace `imagen-4.0-generate-preview-05-20` with `imagen-4.0-generate-001` in the saved file.",
+                None,
+            ),
+            (
+                "Use the v2 run output accessor",
+                "Replace `response = agent.run_response` with `response = agent.get_last_run_output()` in the saved file.",
+                None,
+            ),
+            (
+                "Encode the image bytes",
+                "Add `import base64`, then replace `save_base64_data(str(response.images[0].content), \"tmp/baleen_whale.png\")` with `save_base64_data(base64.b64encode(response.images[0].content).decode(\"ascii\"), \"tmp/baleen_whale.png\")` in the saved file.",
+                None,
+            ),
+        ],
+    },
+    "90_models/together/basic.py": {
+        "pre_code_warning": "Together retired the source's `meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo` serverless model. Select a current chat model from the [Together serverless catalog](https://docs.together.ai/docs/serverless/models) before running. See [Together deprecations](https://docs.together.ai/docs/deprecations).",
+        "env_add": {"TOGETHER_CHAT_MODEL_ID"},
+        "env_values": {"TOGETHER_CHAT_MODEL_ID": "your_current_together_chat_model_id_here"},
+        "pre_run_steps": [
+            (
+                "Use the selected chat model",
+                "Add `import os`, then replace `Together(id=\"meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo\")` with `Together(id=os.environ[\"TOGETHER_CHAT_MODEL_ID\"])` in the saved file.",
+                None,
+            )
+        ],
+    },
+    "90_models/together/structured_output.py": {
+        "pre_code_warning": "Together retired the source's `meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo` serverless model. Select a current chat model marked for structured outputs in the [Together serverless catalog](https://docs.together.ai/docs/serverless/models) before running. See [Together structured outputs](https://docs.together.ai/docs/inference/chat/structured-outputs).",
+        "env_add": {"TOGETHER_STRUCTURED_MODEL_ID"},
+        "env_values": {"TOGETHER_STRUCTURED_MODEL_ID": "your_current_together_structured_model_id_here"},
+        "pre_run_steps": [
+            (
+                "Use a structured-output model",
+                "Add `import os`, then replace `Together(id=\"meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo\")` with `Together(id=os.environ[\"TOGETHER_STRUCTURED_MODEL_ID\"])` in the saved file.",
+                None,
+            )
+        ],
+    },
+    "90_models/together/tool_use.py": {
+        "pre_code_warning": "Together retired the source's `meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo` serverless model. Select a current chat model marked for function calling in the [Together serverless catalog](https://docs.together.ai/docs/serverless/models) before running. See [Together function calling](https://docs.together.ai/docs/inference/function-calling/overview).",
+        "env_add": {"TOGETHER_TOOL_MODEL_ID"},
+        "env_values": {"TOGETHER_TOOL_MODEL_ID": "your_current_together_tool_model_id_here"},
+        "pre_run_steps": [
+            (
+                "Use a function-calling model",
+                "Add `import os`, then replace `Together(id=\"meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo\")` with `Together(id=os.environ[\"TOGETHER_TOOL_MODEL_ID\"])` in the saved file.",
+                None,
+            )
+        ],
+    },
+    "90_models/together/image_agent.py": {
+        "pre_code_warning": "Together retired the source's `meta-llama/Llama-Vision-Free` serverless model. Select a current vision model from the [Together serverless catalog](https://docs.together.ai/docs/serverless/models) before running. See [Together vision inputs](https://docs.together.ai/docs/inference/vision/overview).",
+        "env_add": {"TOGETHER_VISION_MODEL_ID"},
+        "env_values": {"TOGETHER_VISION_MODEL_ID": "your_current_together_vision_model_id_here"},
+        "pre_run_steps": [
+            (
+                "Use the selected vision model",
+                "Add `import os`, then replace `Together(id=\"meta-llama/Llama-Vision-Free\")` with `Together(id=os.environ[\"TOGETHER_VISION_MODEL_ID\"])` in the saved file.",
+                None,
+            )
+        ],
+    },
+    "90_models/together/image_agent_bytes.py": {
+        "pre_code_warning": "Together retired the source's `meta-llama/Llama-Vision-Free` serverless model. Select a current vision model from the [Together serverless catalog](https://docs.together.ai/docs/serverless/models) before running. See [Together vision inputs](https://docs.together.ai/docs/inference/vision/overview).",
+        "env_add": {"TOGETHER_VISION_MODEL_ID"},
+        "env_values": {"TOGETHER_VISION_MODEL_ID": "your_current_together_vision_model_id_here"},
+        "pre_run_steps": [
+            (
+                "Use the selected vision model",
+                "Add `import os`, then replace `Together(id=\"meta-llama/Llama-Vision-Free\")` with `Together(id=os.environ[\"TOGETHER_VISION_MODEL_ID\"])` in the saved file.",
+                None,
+            ),
+            (
+                "Add the sample image",
+                "Place a JPEG named `sample.jpg` in the same directory as `image_agent_bytes.py`.",
+                None,
+            ),
+        ],
+    },
+    "90_models/together/image_agent_with_memory.py": {
+        "pre_code_warning": "Together retired the source's `meta-llama/Llama-Vision-Free` serverless model. Select a current vision model from the [Together serverless catalog](https://docs.together.ai/docs/serverless/models) before running. See [Together vision inputs](https://docs.together.ai/docs/inference/vision/overview).",
+        "env_add": {"TOGETHER_VISION_MODEL_ID"},
+        "env_values": {"TOGETHER_VISION_MODEL_ID": "your_current_together_vision_model_id_here"},
+        "pre_run_steps": [
+            (
+                "Use the selected vision model",
+                "Add `import os`, then replace `Together(id=\"meta-llama/Llama-Vision-Free\")` with `Together(id=os.environ[\"TOGETHER_VISION_MODEL_ID\"])` in the saved file.",
+                None,
+            )
+        ],
+    },
+    "90_models/together/reasoning_agent.py": {
+        "pre_code_warning": "Together retired the source's `Qwen/Qwen3-235B-A22B-Thinking-2507` serverless model. Select a current model from the [Together reasoning model list](https://docs.together.ai/docs/inference/chat/reasoning) before running. See [Together deprecations](https://docs.together.ai/docs/deprecations).",
+        "env_add": {"TOGETHER_REASONING_MODEL_ID"},
+        "env_values": {"TOGETHER_REASONING_MODEL_ID": "your_current_together_reasoning_model_id_here"},
+        "pre_run_steps": [
+            (
+                "Use the selected reasoning model",
+                "Add `import os`, then replace `\"Qwen/Qwen3-235B-A22B-Thinking-2507\"` with `os.environ[\"TOGETHER_REASONING_MODEL_ID\"]` in the saved file.",
+                None,
+            )
+        ],
+    },
+    "90_models/dashscope/image_agent.py": {
+        "intro_override": "Analyze two image URLs with a tool-capable Qwen3-VL model and enrich both responses with web search.",
+        "pre_code_warning": "The source combines `WebSearchTools` with `qwen-vl-plus`, while Alibaba documents function calling for the Qwen3-VL families. Its second Wikimedia thumbnail URL also returns HTTP 400. Apply both migrations before running. See [Alibaba's function-calling model list](https://www.alibabacloud.com/help/en/model-studio/qwen-function-calling).",
+        "pre_run_steps": [
+            (
+                "Use a tool-capable vision model",
+                "Replace `DashScope(id=\"qwen-vl-plus\")` with `DashScope(id=\"qwen3-vl-plus\")` in the saved file.",
+                None,
+            ),
+            (
+                "Replace the unavailable image",
+                "Replace `https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cat03.jpg/1200px-Cat03.jpg` with `https://agno-public.s3.amazonaws.com/images/krakow_mariacki.jpg` in the saved file.",
+                None,
+            ),
+        ],
+    },
+    "91_tools/googlesheets_tools.py": {
+        "intro_override": "Read a Google Sheet with `GoogleSheetsTools` after configuring service-account or OAuth credentials.",
+        "pre_code_warning": "Fresh setups must enable the Google Sheets API and configure Google credentials. The source's OAuth redirect path is stale: `InstalledAppFlow.run_local_server(port=8080)` uses `http://localhost:8080/`, not `http://localhost:8080/flowName=GeneralOAuthFlow`. See the [Google Sheets Python quickstart](https://developers.google.com/workspace/sheets/api/quickstart/python).",
+        "pre_run_steps": [
+            (
+                "Configure Google Sheets authentication",
+                "Enable the Google Sheets API. Then choose one credential flow: set `GOOGLE_SERVICE_ACCOUNT_FILE` to a service-account JSON key and share the target sheet with that account's email; or create an OAuth desktop client, save its JSON as `credentials.json` beside the script, and authorize in the browser. With `oauth_port=8080`, use `http://localhost:8080/` as the local redirect URI. If your OAuth client requires registered redirect URIs, register that exact URL.",
+                None,
+            )
+        ],
+    },
+    "06_storage/mysql/async_mysql/async_mysql_for_workflow.py": {
+        "pre_run_steps": [
+            (
+                "Wait for MySQL",
+                "Wait until the container accepts connections before starting the workflow:",
+                "docker exec mysql sh -c 'until mysqladmin ping -h 127.0.0.1 -uai -pai --silent; do sleep 1; done'",
             )
         ],
     },
