@@ -310,6 +310,20 @@ EXPLICIT_MISSING_ROWS = {
 # covers subgroup links without an overview page and factual corrections to
 # existing rows.
 EXPLICIT_ROW_OVERRIDES = {
+    "examples/workflows/cel-expressions/router/overview": {
+        "examples/workflows/cel-expressions/router/cel-previous-step-route": (
+            "CEL Previous Step Route",
+            "Use previous_step_outputs to read a named classifier result and route to the matching handler.",
+        ),
+        "examples/workflows/cel-expressions/router/cel-ternary": (
+            "CEL Ternary",
+            "Use a CEL ternary expression to choose between two steps based on the input content.",
+        ),
+        "examples/workflows/cel-expressions/router/cel-using-step-choices": (
+            "CEL Using Step Choices",
+            "Use step_choices indexes to reference route targets without hardcoding step names.",
+        ),
+    },
     "examples/reasoning/models/groq/overview": {
         "examples/reasoning/models/groq/deepseek-plus-claude": (
             "Qwen3 Plus Claude",

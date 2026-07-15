@@ -1460,8 +1460,25 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "91_tools/mcp/airbnb.py": {
         "intro_override": "Connect an OpenAI `gpt-4o` agent to the Airbnb MCP server over stdio and search property listings.",
     },
+    "91_tools/google/gmail/daily_digest.py": {
+        "intro_override": "Group recent emails by category and record a priority for each message in a structured daily digest.",
+    },
     "91_tools/mcp/multiple_servers_allow_partial_failure.py": {
         "env_remove": {"ACCUWEATHER_API_KEY"},
+    },
+    "91_tools/mcp/include_exclude_tools.py": {
+        "pre_run_steps": [
+            (
+                "Review the source limitation",
+                'The pinned source does not pass `GOOGLE_MAPS_API_KEY` to the Google Maps MCP server, and `include_tools=["airbnb_search"]` filters out every Maps tool. Correct both settings before running the restaurant query.',
+                None,
+            ),
+            (
+                "Update the sample times",
+                "Replace the August 2025 Airbnb dates with future dates and replace `right now` with an explicit local date and time.",
+                None,
+            ),
+        ],
     },
     "91_tools/mcp/oxylabs.py": {
         "env_remove": {"GOOGLE_API_KEY"},
@@ -1618,6 +1635,15 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "05_agent_os/interfaces/slack/hitl_user_input.py": {
         "intro_override": "Open engineering tickets from Slack conversations. The agent extracts `title` and `description`, then Slack collects `priority` and `component` before the tool runs.",
+    },
+    "05_agent_os/interfaces/slack/support_team.py": {
+        "pre_run_steps": [
+            (
+                "Configure Slack",
+                "Complete [Slack setup](/agent-os/interfaces/slack/setup): create the app, expose the local server through public HTTPS, and set the event request URL to `<public-url>/slack/events`.",
+                None,
+            )
+        ],
     },
     "05_agent_os/interfaces/telegram/reasoning_agent.py": {
         "intro_override": "Run a Telegram bot with structured reasoning, DuckDuckGo web search, and SQLite session persistence.",
@@ -1932,17 +1958,27 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "suppress_intro": True,
     },
     "90_models/vllm/code_generation.py": {
+        "intro_override": "Generate Python code with DeepSeek Coder served by vLLM.",
         "pre_run_steps": [
             (
                 "Install vLLM",
-                "Install vLLM in the environment that will serve the model:",
+                "Install vLLM on a [supported platform](https://docs.vllm.ai/en/latest/getting_started/installation/) with a compatible accelerator:",
                 "uv pip install -U vllm",
             ),
             (
                 "Start vLLM",
-                "Serve the model used by this example:",
+                "In a separate terminal with the virtual environment active, serve the model used by this example:",
                 "vllm serve deepseek-ai/deepseek-coder-6.7b-instruct --dtype float32 --tool-call-parser pythonic",
             ),
+        ],
+    },
+    "observability/logfire_via_openinference.py": {
+        "pre_run_steps": [
+            (
+                "Choose the Logfire region",
+                "Set `OTEL_EXPORTER_OTLP_ENDPOINT` in the code to the endpoint for your Logfire project's US or EU region. The source enables the EU endpoint by default.",
+                None,
+            )
         ],
     },
     "90_models/vllm/structured_output.py": {
