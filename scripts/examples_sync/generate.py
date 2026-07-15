@@ -510,6 +510,8 @@ TITLE_OVERRIDES = {
     "examples/models/dashscope/tool-use": "DashScope Tool Use",
     "examples/models/google/gemini/external-url-input": "External URL Input",
     "examples/models/groq/reasoning/demo-qwen-2-5-32b": "Demo Qwen 2.5 32B",
+    "examples/models/langdb/basic": "LangDB Basic",
+    "examples/models/langdb/structured-output": "LangDB Structured Output",
     "examples/models/vertexai/claude/betas": "Betas",
     "examples/storage/postgres/async-postgres/async-postgres-for-agent": "Async Postgres for Agent",
     "examples/models/openrouter/responses/basic": "Basic Usage",
@@ -631,6 +633,54 @@ COHERE_VISION_MIGRATION_STEP = (
     "Replace `c4ai-aya-vision-8b` with `command-a-vision-07-2025` in the saved Python file before running.",
     None,
 )
+GROQ_MODEL_MIGRATIONS: dict[str, tuple[str, str, str]] = {
+    "llama-3.3-70b-versatile": (
+        "For free and developer tiers, Groq will shut down `llama-3.3-70b-versatile` on August 16, 2026. Replace it with `openai/gpt-oss-120b` before that date.",
+        "Replace Llama 3.3",
+        "Replace `llama-3.3-70b-versatile` with `openai/gpt-oss-120b` in the saved file.",
+    ),
+    "qwen/qwen3-32b": (
+        "For free and developer tiers, Groq will shut down `qwen/qwen3-32b` on July 17, 2026. Replace it with `qwen/qwen3.6-27b` before that date.",
+        "Replace Qwen3 32B",
+        "Replace `qwen/qwen3-32b` with `qwen/qwen3.6-27b` in the saved file.",
+    ),
+    "meta-llama/llama-4-scout-17b-16e-instruct": (
+        "For free and developer tiers, Groq will shut down `meta-llama/llama-4-scout-17b-16e-instruct` on July 17, 2026. Replace it with the vision-capable `qwen/qwen3.6-27b` before that date.",
+        "Replace Llama 4 Scout",
+        "Replace `meta-llama/llama-4-scout-17b-16e-instruct` with `qwen/qwen3.6-27b` in the saved file.",
+    ),
+    "deepseek-r1-distill-llama-70b": (
+        "Groq retired `deepseek-r1-distill-llama-70b` on October 2, 2025. Replace it with `openai/gpt-oss-120b`.",
+        "Replace DeepSeek R1 Distill",
+        "Replace `deepseek-r1-distill-llama-70b` with `openai/gpt-oss-120b` in the saved file.",
+    ),
+    "deepseek-r1-distill-llama-70b-specdec": (
+        "Groq retired `deepseek-r1-distill-llama-70b-specdec` on March 24, 2025. Replace it with `openai/gpt-oss-120b`.",
+        "Replace DeepSeek R1 SpecDec",
+        "Replace `deepseek-r1-distill-llama-70b-specdec` with `openai/gpt-oss-120b` in the saved file.",
+    ),
+    "Qwen-2.5-32b": (
+        "Groq retired the source's `Qwen-2.5-32b` model in April 2025. Replace it with `qwen/qwen3.6-27b`.",
+        "Replace Qwen 2.5 32B",
+        "Replace `Qwen-2.5-32b` with `qwen/qwen3.6-27b` in the saved file.",
+    ),
+    "Deepseek-r1-distill-qwen-32b": (
+        "Groq retired the source's `Deepseek-r1-distill-qwen-32b` model in April 2025. Replace it with `qwen/qwen3.6-27b`.",
+        "Replace DeepSeek Qwen Distill",
+        "Replace `Deepseek-r1-distill-qwen-32b` with `qwen/qwen3.6-27b` in the saved file.",
+    ),
+}
+AZURE_FOUNDRY_RETIRED_VISION_WARNING = (
+    "Microsoft retired `Llama-3.2-11B-Vision-Instruct` on June 13, 2026. Deploy "
+    "`Llama-4-Scout-17B-16E-Instruct`, point `AZURE_ENDPOINT` at that deployment, "
+    "and replace the model ID before running. See the "
+    "[Azure model retirement schedule](https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/model-retirement-schedule?view=foundry-classic)."
+)
+AZURE_FOUNDRY_VISION_MIGRATION_STEP = (
+    "Use Llama 4 Scout",
+    "Deploy `Llama-4-Scout-17B-16E-Instruct`, update `AZURE_ENDPOINT`, and replace `Llama-3.2-11B-Vision-Instruct` in the saved file.",
+    None,
+)
 LITELLM_STEP = (
     "Start LiteLLM",
     "Start the local OpenAI-compatible proxy on port 4000:",
@@ -682,6 +732,21 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "02_agents/01_quickstart/agent_with_tools.py": {
         "suppress_intro": True,
+    },
+    "05_agent_os/scheduler/scheduler_tools_agent.py": {
+        "intro_override": "Serve an AgentOS scheduler agent, then use a separate chat process to create and manage recurring schedules.",
+        "pre_run_steps": [
+            (
+                "Start AgentOS",
+                "Save the code above as `scheduler_tools_agent.py`, then start the server in one terminal:",
+                "python scheduler_tools_agent.py serve",
+            )
+        ],
+        "run_title": "Start the chat process",
+        "run_replacement": "In a second terminal in the same directory, run `python scheduler_tools_agent.py chat`. Keep the server running while you use the chat process.",
+    },
+    "11_memory/memory_manager/03_custom_memory_instructions.py": {
+        "intro_override": "Run one custom memory-capture scenario for academic interests, then a separate default scenario over multi-turn messages.",
     },
     "04_workflows/02_conditional_execution/condition_with_parallel.py": {
         "suppress_intro": True,
@@ -1559,6 +1624,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "repo_layout": True,
     },
     "07_knowledge/05_integrations/readers/docling/docling_xlsx.py": {
+        "intro_override": "Load one XLSX spreadsheet with DoclingReader in HTML output mode, then query its product and price data with an agent.",
         "repo_layout": True,
     },
     "08_learning/10_demo/agents.py": {
@@ -2430,6 +2496,10 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "91_tools/redshift_tools.py": {
         "env_add": {"REDSHIFT_DATABASE", "REDSHIFT_HOST"},
+    },
+    "91_tools/scheduler_tools.py": {
+        "intro_override": "Use a standalone agent to create and manage schedule records in PostgreSQL. This page covers record operations only.",
+        "pre_code_warning": "This standalone example creates schedule records but does not run an AgentOS scheduler. Its `scheduler-demo` endpoint is absent from the linked AgentOS example, which serves `scheduler-agent`. Use [Scheduler Tools Agent](/examples/agent-os/scheduler/scheduler-tools-agent) as a separate end-to-end setup instead of mixing the two examples.",
     },
     "91_tools/trafilatura_tools.py": {
         "intro_override": "Configure TrafilaturaTools for txt, markdown, JSON, and XML extraction, precision or recall tuning, metadata-only mode, crawling, and HTML-to-text conversion.",
@@ -3909,6 +3979,37 @@ def apply_source_render_override(
         pre_run_steps = list(override.get("pre_run_steps", []))
         if CEREBRAS_RETIRED_MODEL_MIGRATION_STEP not in pre_run_steps:
             pre_run_steps.append(CEREBRAS_RETIRED_MODEL_MIGRATION_STEP)
+        override["pre_run_steps"] = pre_run_steps
+    groq_migrations = [
+        (model_id, migration)
+        for model_id, migration in GROQ_MODEL_MIGRATIONS.items()
+        if any_call_has_string_keyword_value(srcs, "Groq", "id", model_id)
+    ]
+    if groq_migrations:
+        groq_warning = " ".join(migration[0] for _, migration in groq_migrations)
+        groq_warning += " See [Groq deprecations](https://console.groq.com/docs/deprecations)."
+        existing_warning = override.get("pre_code_warning")
+        if existing_warning:
+            assert isinstance(existing_warning, str)
+            groq_warning = f"{existing_warning} {groq_warning}"
+        override["pre_code_warning"] = groq_warning
+        pre_run_steps = list(override.get("pre_run_steps", []))
+        for _, (_, step_title, step_text) in groq_migrations:
+            step = (step_title, step_text, None)
+            if step not in pre_run_steps:
+                pre_run_steps.append(step)
+        override["pre_run_steps"] = pre_run_steps
+    if any_call_has_string_keyword_value(
+        srcs, "AzureAIFoundry", "id", "Llama-3.2-11B-Vision-Instruct"
+    ):
+        override.setdefault("pre_code_warning", AZURE_FOUNDRY_RETIRED_VISION_WARNING)
+        override.setdefault(
+            "intro_override",
+            "The source-fidelity code uses a retired Azure AI Foundry model. Replace it with Llama 4 Scout before running the example.",
+        )
+        pre_run_steps = list(override.get("pre_run_steps", []))
+        if AZURE_FOUNDRY_VISION_MIGRATION_STEP not in pre_run_steps:
+            pre_run_steps.append(AZURE_FOUNDRY_VISION_MIGRATION_STEP)
         override["pre_run_steps"] = pre_run_steps
     if any_call_has_string_keyword_value(
         srcs, "OpenAITools", "image_model", "gpt-image-1"
