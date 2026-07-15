@@ -5,33 +5,38 @@ description: "Use the LinkedIn Pipedream MCP server with Agno Agents."
 
 ## Code
 
-```python
-"""
-💻 Pipedream LinkedIn MCP
-
-This example shows how to use Pipedream MCP servers (in this case the LinkedIn one) with Agno Agents.
-
-1. Connect your Pipedream and LinkedIn accounts: https://mcp.pipedream.com/app/linkedin
-2. Get your Pipedream MCP server url: https://mcp.pipedream.com/app/linkedin
-3. Set the MCP_SERVER_URL environment variable to the MCP server url you got above
-4. Install dependencies: uv pip install "agno[mcp]" openai
-"""
-
+```python pipedream_linkedin.py
 import asyncio
 import os
 
 from agno.agent import Agent
 from agno.models.openai import OpenAIResponses
-from agno.tools.mcp import MCPTools
+from agno.tools.mcp import MCPTools, StreamableHTTPClientParams
 from agno.utils.log import log_exception
 
-mcp_server_url = os.getenv("MCP_SERVER_URL")
+mcp_access_token = os.environ["MCP_ACCESS_TOKEN"]
+pipedream_project_id = os.environ["PIPEDREAM_PROJECT_ID"]
+pipedream_environment = os.environ["PIPEDREAM_ENVIRONMENT"]
+pipedream_external_user_id = os.environ["PIPEDREAM_EXTERNAL_USER_ID"]
+
+server_params = StreamableHTTPClientParams(
+    url="https://remote.mcp.pipedream.net/v3",
+    headers={
+        "Authorization": f"Bearer {mcp_access_token}",
+        "x-pd-project-id": pipedream_project_id,
+        "x-pd-environment": pipedream_environment,
+        "x-pd-external-user-id": pipedream_external_user_id,
+        "x-pd-app-slug": "linkedin",
+    },
+)
 
 
 async def run_agent(task: str) -> None:
     try:
         async with MCPTools(
-            url=mcp_server_url, transport="sse", timeout_seconds=20
+            server_params=server_params,
+            transport="streamable-http",
+            timeout_seconds=20,
         ) as mcp:
             agent = Agent(
                 model=OpenAIResponses(id="gpt-5.2"),
@@ -54,11 +59,24 @@ if __name__ == "__main__":
 
 ## Prerequisites
 
+Create a Pipedream Connect project and obtain an MCP access token by following the [Pipedream developer setup](https://pipedream.com/docs/connect/mcp/developers). Use a stable ID from your application for `PIPEDREAM_EXTERNAL_USER_ID`. If the first tool call returns a connection link, open it to authorize the LinkedIn account, then run the example again.
+
 ```shell
 uv pip install "agno[mcp]" openai
 ```
 
 ```shell
-export MCP_SERVER_URL=***
+export MCP_ACCESS_TOKEN=***
 export OPENAI_API_KEY=***
+export PIPEDREAM_PROJECT_ID=proj_***
+export PIPEDREAM_ENVIRONMENT=development
+export PIPEDREAM_EXTERNAL_USER_ID=user_***
+```
+
+## Run the Example
+
+Save the code above as `pipedream_linkedin.py`, then run:
+
+```bash
+python pipedream_linkedin.py
 ```
