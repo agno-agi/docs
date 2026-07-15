@@ -616,6 +616,15 @@ VIDEO_PATH_STEP = (
     "Replace `{video with location}` in the prompt with the path to a local video file.",
     None,
 )
+SLACK_INTERFACE_STEP = (
+    "Configure Slack",
+    "Complete [Slack setup](/agent-os/interfaces/slack/setup): create and install the app, "
+    "expose the server through public HTTPS, and add the scopes listed in the example. "
+    "The default event request URL is `<public-url>/slack/events`; HITL examples also use "
+    "`<public-url>/slack/interactions` for interactivity. Use any custom prefix shown in "
+    "the example instead of `/slack`.",
+    None,
+)
 
 SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "00_quickstart/agent_search_over_knowledge.py": {
@@ -1377,6 +1386,15 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "90_models/openai/responses/image_generation_agent.py": {
         "intro_override": "The agent uses `OpenAITools` with `gpt-image-1` to generate an image.",
+    },
+    "90_models/google/gemini_interactions/deep_research_file_search.py": {
+        "pre_run_steps": [
+            (
+                "Plan the File Search store lifecycle",
+                "Each run creates a persistent File Search store. Reuse a populated store for repeated queries, and delete demo stores you no longer need in Google AI Studio or with the [File Search API](https://ai.google.dev/gemini-api/docs/file-search).",
+                None,
+            )
+        ],
     },
     "12_context/02_web_exa_mcp.py": {
         "intro_override": "Use Exa's keyless MCP endpoint for web research. For direct SDK access, see [Exa Web Context](/examples/context/web-exa).",
@@ -3492,7 +3510,12 @@ def render_env_step(
 def apply_source_render_override(req: Requirements, cookbook_rel: str) -> dict[str, object]:
     """Apply reviewed source-specific metadata and return rendering controls."""
     rel = cookbook_rel.removeprefix("cookbook/")
-    override = SOURCE_RENDER_OVERRIDES.get(rel, {})
+    override = dict(SOURCE_RENDER_OVERRIDES.get(rel, {}))
+    if rel.startswith("05_agent_os/interfaces/slack/"):
+        pre_run_steps = list(override.get("pre_run_steps", []))
+        if not any(step[0] == "Configure Slack" for step in pre_run_steps):
+            pre_run_steps.append(SLACK_INTERFACE_STEP)
+        override["pre_run_steps"] = pre_run_steps
     package_remove = {
         requirement_key(str(package)) for package in override.get("package_remove", set())
     }
