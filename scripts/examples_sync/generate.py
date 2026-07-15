@@ -510,6 +510,7 @@ TITLE_OVERRIDES = {
     "examples/models/dashscope/tool-use": "DashScope Tool Use",
     "examples/models/google/gemini/external-url-input": "External URL Input",
     "examples/models/groq/reasoning/demo-qwen-2-5-32b": "Demo Qwen 2.5 32B",
+    "examples/models/huggingface/llama-essay-writer": "Hugging Face GPT-OSS Essay Writer",
     "examples/models/langdb/basic": "LangDB Basic",
     "examples/models/langdb/structured-output": "LangDB Structured Output",
     "examples/models/vertexai/claude/betas": "Betas",
@@ -735,15 +736,28 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "05_agent_os/scheduler/scheduler_tools_agent.py": {
         "intro_override": "Serve an AgentOS scheduler agent, then use a separate chat process to create and manage recurring schedules.",
-        "pre_run_steps": [
+        "run_title": "Start AgentOS",
+        "run_command": "python scheduler_tools_agent.py serve",
+        "run_after": "Keep the server running while you use the chat process.",
+        "post_run_steps": [
             (
-                "Start AgentOS",
-                "Save the code above as `scheduler_tools_agent.py`, then start the server in one terminal:",
-                "python scheduler_tools_agent.py serve",
+                "Start the chat process",
+                "In a second terminal in the same directory, start the chat client:",
+                "python scheduler_tools_agent.py chat",
             )
         ],
-        "run_title": "Start the chat process",
-        "run_replacement": "In a second terminal in the same directory, run `python scheduler_tools_agent.py chat`. Keep the server running while you use the chat process.",
+    },
+    "05_agent_os/team_tasks/team_tasks_streaming.py": {
+        "pre_code_warning": "The pinned source docstring contains a stale file path and an invalid JSON request to a removed `/v1/.../runs/stream` route. Use the generated run and streaming steps below instead.",
+        "run_title": "Start AgentOS",
+        "run_after": "Keep the server running while you send the streaming request.",
+        "post_run_steps": [
+            (
+                "Test task streaming",
+                "In a second terminal, send form fields to the v2.7.2 team run endpoint:",
+                "curl -N -X POST http://localhost:7777/teams/research-team/runs \\\n  -H \"Accept: text/event-stream\" \\\n  -F \"message=What are the key benefits of microservices architecture?\" \\\n  -F \"stream=true\"",
+            )
+        ],
     },
     "11_memory/memory_manager/03_custom_memory_instructions.py": {
         "intro_override": "Run one custom memory-capture scenario for academic interests, then a separate default scenario over multi-turn messages.",
@@ -2234,6 +2248,14 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "02_agents/08_guardrails/pii_detection.py": {
         "intro_override": "Use `PIIDetectionGuardrail` to reject requests containing PII or replace detected values with masked placeholders.",
+        "pre_code_warning": "The pinned source catches `InputCheckError` around `print_response()`, but Agno v2.7.2 converts that guardrail exception into a run with `RunStatus.error`. The source therefore prints false success messages for blocked inputs. Use the status-checking pattern in the [PII Detection guide](/guardrails/usage/agent/pii-detection) instead.",
+        "pre_run_steps": [
+            (
+                "Use run status checks",
+                "Add `from agno.run import RunStatus`. Replace each `try`/`except InputCheckError` block with `response = agent.run(...)`, then treat `response.status == RunStatus.error` as blocked.",
+                None,
+            )
+        ],
     },
     "02_agents/18_checkpointing/02_tool_error_persistence.py": {
         "intro_override": "Run two failure scenarios, then retry the failed agent run in place with `Agent.acontinue_run()`.",
@@ -2249,6 +2271,26 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "90_models/google/gemini_interactions/tool_use.py": {
         "intro_override": "Give a `GeminiInteractions` agent `WebSearchTools`, then invoke it with synchronous, streaming, and asynchronous response calls.",
+    },
+    "90_models/anthropic/prompt_caching_extended.py": {
+        "pre_code_warning": "Anthropic retired the source's `claude-sonnet-4-20250514` model on June 15, 2026. Replace it with `claude-sonnet-4-6` before running. See [Anthropic model deprecations](https://platform.claude.com/docs/en/about-claude/model-deprecations).",
+        "pre_run_steps": [
+            (
+                "Update the Claude model",
+                "Replace `Claude(id=\"claude-sonnet-4-20250514\")` with `Claude(id=\"claude-sonnet-4-6\")` in the saved file.",
+                None,
+            )
+        ],
+    },
+    "90_models/azure/openai/knowledge.py": {
+        "env_add": {"AZURE_OPENAI_DEPLOYMENT", "AZURE_EMBEDDER_DEPLOYMENT"},
+        "pre_run_steps": [
+            (
+                "Configure Azure deployments",
+                "Confirm that `AZURE_OPENAI_DEPLOYMENT` and `AZURE_EMBEDDER_DEPLOYMENT` refer to deployed `gpt-5.2` and `text-embedding-3-small` resources. Azure API calls use deployment names rather than model names. See [Azure OpenAI deployment setup](https://learn.microsoft.com/en-us/azure/foundry-classic/openai/how-to/create-resource?view=foundry-classic#deploy-a-model).",
+                None,
+            )
+        ],
     },
     "90_models/google/gemini_interactions/antigravity_environment_config.py": {
         "intro_override": "Reuse an existing Antigravity sandbox by ID, or create a new one from repository sources and documented network rules.",
@@ -4377,6 +4419,17 @@ def render(
         if run_after:
             parts.append(f"    {run_after}")
     parts.append("  </Step>")
+    for step_title, step_text, command in render_override.get("post_run_steps", []):
+        parts.append("")
+        parts.append(f'  <Step title="{step_title}">')
+        if step_text:
+            parts.append(f"    {step_text}")
+        if command:
+            parts.append("    ```bash")
+            for command_line in str(command).splitlines():
+                parts.append(f"    {command_line}")
+            parts.append("    ```")
+        parts.append("  </Step>")
     parts.append("</Steps>")
     parts.append("")
     parts.append(f"Full source: [{cookbook_rel}]({full_source_url})")
