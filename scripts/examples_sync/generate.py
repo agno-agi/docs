@@ -519,6 +519,7 @@ TITLE_OVERRIDES = {
     "examples/agent-os/rbac/symmetric/basic": "Symmetric RBAC Basic",
     "examples/agent-os/rbac/symmetric/with-cookie": "Symmetric RBAC with Cookie Tokens",
     "examples/agent-os/scheduler/team-workflow-schedules": "Scheduling Teams and Workflows",
+    "examples/agents/multimodal/audio-to-text": "Audio to Text",
     "examples/models/azure/ai-foundry/basic": "Azure AI Foundry Basic",
     "examples/models/azure/openai/basic": "Azure OpenAI Basic",
     "examples/models/anthropic/betas": "Betas",
@@ -2807,6 +2808,67 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "90_models/deepseek/thinking_mode.py": {
         "intro_override": "DeepSeek V4 returns `reasoning_content` with thinking mode enabled by default. Set `use_thinking=False` for a faster response.",
+    },
+    # Randomized convergence sample 29. Preserve the source fences while
+    # correcting metadata, runtime semantics, and setup around them.
+    "02_agents/09_hooks/pre_hook_input.py": {
+        "intro_override": "A pre-hook checks relevance, detail, and safety before model execution. Blocked calls return a run output with `RunStatus.error`.",
+        "pre_code_warning": "The source catches `InputCheckError` around blocked `Agent.run()` calls. Agno v2.7.2 converts the pre-hook exception into a run output with `RunStatus.error`, so those `except` blocks are bypassed. Check each blocked response's status instead.",
+        "pre_run_steps": [
+            (
+                "Check blocked run statuses",
+                "Add `from agno.run import RunStatus`. For tests 2 through 4, replace each complete `try`/`except InputCheckError` block with `response = agent.run(...)` followed by a branch that handles `response.status == RunStatus.error` as a blocked call.",
+                None,
+            )
+        ],
+    },
+    "02_agents/12_multimodal/audio_to_text.py": {
+        "intro_override": "Download an MP3, transcribe it with Gemini, and label each speaker in the streamed response.",
+    },
+    "02_agents/14_advanced/custom_logging.py": {
+        "intro_override": "Configure the default `agno.utils.log` logger with a custom Python logger by calling `configure_agno_logging()`.",
+        "pre_code_warning": "The source passes only `custom_default_logger`, which configures the default `agno.utils.log` logger. Agent, team, and workflow operations use separate loggers. Pass the custom logger to all four parameters to route those operation logs through it too.",
+        "pre_run_steps": [
+            (
+                "Configure every Agno logger",
+                "Replace `configure_agno_logging(custom_default_logger=custom_logger)` with `configure_agno_logging(custom_default_logger=custom_logger, custom_agent_logger=custom_logger, custom_team_logger=custom_logger, custom_workflow_logger=custom_logger)` in the saved file.",
+                None,
+            )
+        ],
+    },
+    "12_context/10_custom_provider.py": {
+        "pre_code_warning": "The source omits the keyword-only `run_context` parameter accepted by `ContextProvider.query()` and `ContextProvider.aquery()`. The generated `query_faq` tool calls `aquery(..., run_context=...)`, so it returns a serialized `TypeError` instead of the FAQ answer. Update both signatures before running.",
+        "pre_run_steps": [
+            (
+                "Accept the run context",
+                "Add `from agno.run import RunContext`. Change `query` to `def query(self, question: str, *, run_context: RunContext | None = None) -> Answer:` and `aquery` to `async def aquery(self, question: str, *, run_context: RunContext | None = None) -> Answer:`. In `aquery`, return `self.query(question, run_context=run_context)`.",
+                None,
+            )
+        ],
+    },
+    "90_models/langdb/agent.py": {
+        "env_add": {"LANGDB_API_BASE_URL"},
+        "env_values": {"LANGDB_API_BASE_URL": "https://api.langdb.ai"},
+        "pre_code_warning": "Agno v2.7.2 defaults LangDB requests to the legacy regional host `https://api.us-east-1.langdb.ai`. Export `LANGDB_API_BASE_URL=https://api.langdb.ai` to use LangDB's current API host.",
+    },
+    "91_tools/tool_hooks/tool_hook_in_toolkit_with_state.py": {
+        "intro_override": "Resolve a customer profile from `session_state`, rewrite the tool argument, and then invoke the toolkit function.",
+    },
+    "91_tools/websearch_tools_advanced.py": {
+        "suppress_intro": True,
+        "pre_code_warning": "`WebSearchTools` forwards `backend` and `timelimit` to separate DDGS text and news methods, whose supported values differ. The source leaves news enabled on its text-search toolkits, although some configured backends and `timelimit=\"y\"` are text-only. Its regional comparison also executes only the US agent. Apply the corrections below before running.",
+        "pre_run_steps": [
+            (
+                "Keep text-search settings on the text tool",
+                "Add `enable_news=False` to every `WebSearchTools(...)` configuration except the one used by `news_agent`. That keeps each configured text backend and time limit away from DDGS news search.",
+                None,
+            ),
+            (
+                "Run every regional comparison",
+                "After the existing `us_regional.print_response(...)` call, add matching `uk_regional.print_response(...)` and `de_regional.print_response(...)` calls with the same prompt and `markdown=True`.",
+                None,
+            ),
+        ],
     },
     # Randomized convergence sample 28. Preserve the v2.7.2 source fences and
     # put current migrations plus runnable prerequisites around them.
