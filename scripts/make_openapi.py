@@ -194,6 +194,24 @@ def build_app():
     return agent_os.get_app()
 
 
+def apply_runtime_description_enrichments(spec: dict) -> dict:
+    """Document runtime branches that the pinned route metadata omits."""
+    delete_component = spec["paths"]["/components/{component_id}"]["delete"]
+    assert delete_component["description"] == "Delete a component by ID."
+    delete_component["description"] = (
+        "Soft-delete a component by ID. Component configs and links remain stored."
+    )
+
+    resume_workflow = spec["paths"]["/workflows/{workflow_id}/runs/{run_id}/resume"]["post"]
+    bad_request = resume_workflow["responses"]["400"]
+    assert bad_request["description"] == "Not supported for remote workflows"
+    bad_request["description"] = (
+        "Stream resumption is unavailable for remote and factory workflows. "
+        "Non-admin callers must provide `session_id`."
+    )
+    return spec
+
+
 # --- YAML dumping shaped like the existing reference-api/openapi.yaml ----------
 
 
@@ -364,7 +382,7 @@ def diff_specs(old: dict, new: dict) -> str:
 def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     app = build_app()
-    spec = app.openapi()
+    spec = apply_runtime_description_enrichments(app.openapi())
 
     NEW_JSON.write_text(json.dumps(spec, indent=2) + "\n")
     dump_yaml(spec, NEW_YAML)
