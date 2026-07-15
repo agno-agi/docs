@@ -776,6 +776,9 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "04_workflows/02_conditional_execution/condition_with_parallel.py": {
         "suppress_intro": True,
     },
+    "04_workflows/08_human_in_the_loop/executor_hitl/08_agent_user_input_step.py": {
+        "pre_code_warning": "The pinned source docstring points to `libs/agno/agno/test.py`, which does not exist. Use the generated run command below.",
+    },
     "07_knowledge/04_advanced/05_knowledge_protocol.py": {
         "suppress_intro": True,
     },
@@ -1449,6 +1452,22 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "91_tools/mcp/pipedream_linkedin.py": {
         "intro_override": "The pinned source uses a retired Pipedream per-app SSE URL and cannot connect to the current service without code and authentication changes. See [Pipedream MCP](https://pipedream.com/docs/connect/mcp) for the current connection flows.",
+    },
+    "91_tools/mcp/pipedream_slack.py": {
+        "intro_override": "The source-fidelity example uses Pipedream's retired per-app SSE URL and cannot connect to the current service without code and authentication changes.",
+        "replacement_only": True,
+        "replacement_heading": "Current Status",
+        "run_replacement": "<Warning>\n  This v2.7.2 example cannot connect to the current Pipedream MCP service as written. End users should use Pipedream's OAuth-authenticated v2 setup. Application developers should use the authenticated v3 endpoint. See [Pipedream MCP for end users](https://pipedream.com/docs/connect/mcp/users) and [Develop with Pipedream MCP](https://pipedream.com/docs/connect/mcp/developers).\n</Warning>",
+    },
+    "91_tools/async_generator_tool_with_pydantic_args.py": {
+        "pre_code_warning": "The pinned source omits `stream_events=True`, so Agno discards the yielded custom progress events and both final assertions fail. Add the option before running.",
+        "pre_run_steps": [
+            (
+                "Enable custom events",
+                "In the saved file, add `stream_events=True` next to `stream=True` in the `agent.arun()` call.",
+                None,
+            )
+        ],
     },
     "91_tools/mcp/graphiti.py": {
         "intro_override": "Use Agno's MCP integration with Graphiti to build a personal diary assistant that stores and recalls entries from a knowledge graph.",

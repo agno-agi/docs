@@ -180,7 +180,8 @@ def parse_page(text: str) -> dict:
     # source ref, in priority order:
     # 1. `curated_source: cookbook/...` binds one curated code fence to source
     # 2. `source: cookbook/...` marks a fully generated page
-    # 3. legacy run-block heuristic: cd + python inside the same bash block
+    # 3. run-block heuristic: a root-relative cookbook command, or cd + python
+    #    inside the same bash block. Mintlify Steps indent their code fences.
     page["src_field"] = False
     page["curated_source"] = False
     cm = re.search(r"^curated_source: cookbook/(\S+)\s*$", page["frontmatter"], re.M)
@@ -192,11 +193,21 @@ def parse_page(text: str) -> dict:
         page["ref"] = sm.group(1)
         page["src_field"] = True
     import posixpath
-    for block in re.findall(r"^```bash\s*\n(.*?)^```\s*$", body, re.M | re.S):
+    for block in re.findall(
+        r"^[ \t]*```bash[^\n]*\n(.*?)^[ \t]*```[ \t]*$", body, re.M | re.S
+    ):
         if page["ref"]:
             break
-        cd = re.search(r"^cd agno/cookbook/(\S+)", block, re.M)
-        py = re.search(r"^(?:python|python3)\s+(\S+\.py)\s*$", block, re.M)
+        root_py = None
+        if page["code"] is None:
+            root_py = re.search(
+                r"^[ \t]*(?:python|python3)\s+cookbook/(\S+\.py)\s*$", block, re.M
+            )
+        if root_py:
+            page["ref"] = root_py.group(1)
+            break
+        cd = re.search(r"^[ \t]*cd agno/cookbook/(\S+)", block, re.M)
+        py = re.search(r"^[ \t]*(?:python|python3)\s+(\S+\.py)\s*$", block, re.M)
         if cd and py:
             arg = py.group(1)
             if arg.startswith("cookbook/"):

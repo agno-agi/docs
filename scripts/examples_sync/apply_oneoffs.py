@@ -909,6 +909,10 @@ FULL_ROW_REFRESH_OVERVIEWS = {
     "examples/models/xai/overview",
 }
 
+ACRONYM_LABEL_REFRESH_OVERVIEWS = {
+    "examples/models/openai/responses/overview",
+}
+
 EXPLICIT_LABEL_REFRESH = {
     "examples/agent-os/advanced-demo/reasoning-model",
     "examples/agent-os/client-a2a/servers/agno-server",
@@ -1306,6 +1310,24 @@ def root_sub(path: str, old: str, new: str, required: bool = True) -> None:
     sub_file(ROOT / path, old, new, required)
 
 
+def normalize_terminal_newlines(path: str, count: int = 1) -> None:
+    global would_apply
+    assert count >= 0, "terminal newline count must be non-negative"
+    p = ROOT / path
+    data = p.read_bytes()
+    assert b"\r\n" not in data, f"{path}: CRLF is not supported"
+    normalized = data.rstrip(b"\n") + (b"\n" * count)
+    if data == normalized:
+        print(f"  terminal newlines already normalized: {path}")
+        return
+    if CHECK:
+        print(f"  would normalize terminal newlines: {path}")
+        would_apply += 1
+        return
+    p.write_bytes(normalized)
+    print(f"  normalized terminal newlines: {path}")
+
+
 def docs_path(slug: str) -> Path:
     assert slug.startswith("examples/"), f"not an example slug: {slug}"
     return ROOT / f"{slug}.mdx"
@@ -1547,8 +1569,10 @@ def repaired_row(
         if not force_description and not obvious_bad_label and not obvious_bad_description:
             return row, False
     title, description, explicit_row = desired_row(overview, target)
-    changed = False
     label = row["label"]
+    if overview in ACRONYM_LABEL_REFRESH_OVERVIEWS:
+        label = gen.fix_title_casing(label)
+    changed = label != row["label"]
     bad_label = bool(
         force_label
         or explicit_row
@@ -1624,6 +1648,7 @@ def repair_overview_tables() -> None:
         | set(EXPLICIT_ROW_OVERRIDES)
         | set(EXPLICIT_ROW_REFRESH)
         | FULL_ROW_REFRESH_OVERVIEWS
+        | ACRONYM_LABEL_REFRESH_OVERVIEWS
         | set(EXPLICIT_TABLE_ORDER)
     )
     for overview in sorted(overview_slugs):
@@ -2625,6 +2650,228 @@ The agent writes 24 kHz, mono, 16-bit PCM audio to `tmp/response_stream.wav`. Th
 </Warning>""",
     )
 
+    # Final convergence repairs for static and preserved pages.
+    root_sub(
+        "sessions/session-management.mdx",
+        "Session management in Agno gives you control over how sessions are identified, named, and cached for optimal performance. Runs can pause for human-in-the-loop requirements and continue after those requirements are resolved.",
+        "Session management controls how sessions are identified, named, read, and cached.",
+    )
+    root_sub(
+        "sessions/session-management.mdx",
+        "This gives you all messages for all runs in the session, including tool calls and system messages.",
+        "By default, `get_messages()` skips paused, cancelled, and error runs plus messages already tagged as history. Agent sessions also skip regenerated runs. Team sessions skip member messages. Pass `skip_statuses=[]`, `skip_history_messages=False`, and, for teams, `skip_member_messages=False` to include those records.",
+    )
+    root_sub(
+        "sessions/session-management.mdx",
+        """<Warning>
+This is only for development and testing purposes. It is not recommended for production use.
+</Warning>""",
+        """<Warning>
+The cache belongs to one Agent or Team instance. Other workers and processes do not share it, and external session updates are not visible through the cached object. Use `cache_session` only when one long-lived instance owns the session. Leave it disabled for horizontally scaled or shared-session deployments.
+</Warning>""",
+    )
+    sub(
+        "tools/parallel-tools.mdx",
+        "Deep research that takes a plain-language input and returns comprehensive, cited results. Use for multi-hop research that needs minutes (not seconds) and synthesis across many sources.",
+        "Deep research that takes a plain-language input and returns comprehensive, cited results. Choose the processor by complexity and latency. `base` typically completes in 15 to 100 seconds, while higher tiers can take minutes.",
+    )
+    sub(
+        "tools/parallel-tools.mdx",
+        """  <Step title="Export the required API key">
+    ```bash
+    export PARALLEL_API_KEY=***
+    ```
+  </Step>""",
+        """  <Step title="Export the required API keys">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export PARALLEL_API_KEY="your_parallel_api_key_here"
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:PARALLEL_API_KEY="your_parallel_api_key_here"
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>""",
+    )
+    root_sub(
+        "tools/toolkits/others/mem0.mdx",
+        """Set the `MEM0_API_KEY` environment variable to use the Mem0 Platform. You can get your API key from the [Mem0 dashboard](https://app.mem0.ai/dashboard/api-keys).
+
+```shell
+export MEM0_API_KEY=****
+```""",
+        """Set `MEM0_API_KEY` to use the Mem0 Platform. The example Agent uses Agno's default OpenAI model, so it also requires `OPENAI_API_KEY`. Get the Mem0 key from the [Mem0 dashboard](https://app.mem0.ai/dashboard/api-keys).
+
+<CodeGroup>
+```bash Mac/Linux
+export MEM0_API_KEY="your_mem0_api_key_here"
+export OPENAI_API_KEY="your_openai_api_key_here"
+```
+
+```bash Windows
+$Env:MEM0_API_KEY="your_mem0_api_key_here"
+$Env:OPENAI_API_KEY="your_openai_api_key_here"
+```
+</CodeGroup>""",
+    )
+    root_sub(
+        "tools/toolkits/others/mem0.mdx",
+        "Without an API key, the toolkit runs a local Mem0 `Memory` instance. Configure it with the `config` parameter.",
+        "Without a Mem0 API key, the toolkit runs a local Mem0 `Memory` instance. Configure it with the `config` parameter.",
+    )
+    sub_all(
+        "storage/mongo/mongodb-for-team.mdx",
+        'model=OpenAIChat("gpt-5.4-mini"),',
+        'model=OpenAIChat("gpt-4o"),',
+        expected=3,
+    )
+    sub(
+        "storage/mongo/mongodb-for-team.mdx",
+        """~~~
+
+## Run the Example""",
+        """~~~
+
+<Warning>
+  The v2.7.2 cookbook uses the deprecated `gpt-4o` model. The source-fidelity fence above preserves those three model IDs. Replace all three with `gpt-5.4-mini` before running. See [GPT-4o](https://developers.openai.com/api/docs/models/gpt-4o) and [GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini).
+</Warning>
+
+## Run the Example""",
+    )
+    sub(
+        "storage/mongo/mongodb-for-team.mdx",
+        """## Run the Example
+```bash
+# Clone and setup repo
+git clone https://github.com/agno-agi/agno.git
+cd agno/cookbook/06_storage/mongo
+
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+python mongodb_for_team.py
+```""",
+        """## Run the Example
+
+<Steps>
+  <Step title="Clone Agno">
+    Clone the repository and run the remaining commands from its root:
+    ```bash
+    git clone https://github.com/agno-agi/agno.git
+    cd agno
+    ```
+  </Step>
+
+  <Step title="Set up the demo environment">
+    ```bash
+    ./scripts/demo_setup.sh
+    source .venvs/demo/bin/activate
+    uv pip install -U "pymongo[srv]"
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Start MongoDB">
+    ```bash
+    ./cookbook/scripts/run_mongodb.sh
+    ```
+  </Step>
+
+  <Step title="Run the example">
+    ```bash
+    python cookbook/06_storage/mongo/mongodb_for_team.py
+    ```
+  </Step>
+</Steps>""",
+    )
+    root_sub(
+        "deploy/templates/scout/overview.mdx",
+        "| **Slack** | `SLACK_BOT_TOKEN` | `query_slack`. Read-only access to messages, channel history, threads, and users. |",
+        "| **Slack** | `SLACK_BOT_TOKEN` | Intended to expose `query_slack` for read-only access. The pinned template also exposes `update_slack`; see the warning below. |",
+    )
+    root_sub(
+        "deploy/templates/scout/overview.mdx",
+        """| **MCP** | Registered in `scout/contexts.py` | One `query_mcp_<slug>` per server. |
+
+Setup for each provider""",
+        """| **MCP** | Registered in `scout/contexts.py` | One `query_mcp_<slug>` per server. |
+
+<Warning>
+  Scout intends Slack access to be read-only, but the pinned template does not pass `write=False` when it creates `SlackContextProvider`. Configuring Slack currently exposes `update_slack`. Leave write scopes ungranted until the template enforces its intended boundary.
+</Warning>
+
+Setup for each provider""",
+    )
+    root_sub(
+        "deploy/templates/scout/overview.mdx",
+        "Create the Slack app from the manifest in the README's [Chat with Scout in Slack](https://github.com/agno-agi/scout#chat-with-scout-in-slack) section.",
+        "Create the Slack app from the manifest in Scout's [Slack setup guide](https://github.com/agno-agi/scout/blob/main/docs/SLACK_CONNECT.md).",
+    )
+    root_sub(
+        "deploy/templates/scout/overview.mdx",
+        "Setting `SLACK_BOT_TOKEN` on its own activates the read-only Slack context provider. Add `SLACK_SIGNING_SECRET` and the Slack interface lights up too, so Scout can reply in your workspace.",
+        "Setting `SLACK_BOT_TOKEN` activates the Slack context provider. The pinned template also exposes `update_slack` as described above. Adding `SLACK_SIGNING_SECRET` enables the Slack interface so Scout can reply in your workspace.",
+    )
+    root_sub(
+        "models/providers/gateways/groq/usage/translation-agent.mdx",
+        """---
+
+## Code""",
+        """---
+
+<Warning>
+  This v2.7.2 source cannot run as written. It references an input file that is not provided, uses Groq's retired `playai-tts` default, asks for music even though the tool generates speech, and saves WAV bytes with an `.mp3` extension. Provide a real input file, select a current TTS model and voice, change the prompt to request speech, and save the output as `.wav`. See [Groq model deprecations](https://console.groq.com/docs/deprecations) and [Groq text to speech](https://console.groq.com/docs/text-to-speech/).
+</Warning>
+
+## Code""",
+    )
+    root_sub(
+        "models/providers/gateways/groq/usage/translation-agent.mdx",
+        """## Usage
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Set your API key">
+    ```bash
+    export GROQ_API_KEY=xxx
+    export OPENAI_API_KEY=xxx
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U groq openai agno
+    ```
+  </Step>
+
+  <Step title="Run Agent">
+    Save the code above as `translation_agent.py`, then run:
+    ```bash
+    python translation_agent.py
+    ```
+  </Step>
+</Steps>""",
+        """## Current Status
+
+The source fence is preserved for v2.7.2 fidelity. Apply every change in the warning above before running it.""",
+    )
+
     # 7. The pinned Dakera client predates the current container authentication,
     #    routes, and recall response shape. Preserve the source but do not offer
     #    runnable instructions for an incompatible client.
@@ -2692,6 +2939,11 @@ The agent writes 24 kHz, mono, 16-bit PCM audio to `tmp/response_stream.wav`. Th
     # 11. Restore post-tag toolkit cards that shipped in navigation without
     #     corresponding entries in the hand-maintained complete index.
     repair_toolkit_index()
+
+    # 12. Preserve the reviewed byte-level terminal-newline convention after
+    #     deterministic reconstruction.
+    normalize_terminal_newlines("tracing/db-functions.mdx")
+    normalize_terminal_newlines("reference-api/schema/approvals/get-approval-count.mdx")
 
     if CHECK:
         print(f"check: {would_apply} fixes would apply; title-casing would change {count} pages")
