@@ -21,12 +21,55 @@ agent = Agent(
     enable_agentic_memory=True,
 )
 
-agent_os = AgentOS(agents=[agent], db=db)
+agent_os = AgentOS(
+    agents=[agent],
+    db=db,
+    cors_allowed_origins=[
+        "http://localhost:3000",
+        "https://app.yourproduct.com",
+        "https://os.agno.com",
+    ],
+)
 app = agent_os.get_app()
 
 if __name__ == "__main__":
     agent_os.serve(app="copilot:app", port=7777)
 ```
+
+Supplying `cors_allowed_origins` replaces the AgentOS defaults. Include every browser and AgentOS UI origin that needs to call the backend.
+
+## Run the API
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U "agno[os]" openai sqlalchemy "psycopg[binary]"
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash macOS / Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```powershell Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Snippet file="run-pgvector-step.mdx" />
+
+  <Step title="Start AgentOS">
+    Save the code as `copilot.py`, then run:
+    ```bash
+    python copilot.py
+    ```
+  </Step>
+</Steps>
 
 ## Calling it from a surface
 
@@ -54,7 +97,7 @@ curl -X POST http://localhost:7777/agents/copilot/runs \
 After enabling authorization, a browser widget can stream with a JWT:
 
 ```javascript
-async function askCopilot(message, threadId) {
+async function askCopilot(message, threadId, jwt) {
   const body = new FormData();
   body.append("message", message);
   body.append("session_id", threadId);
@@ -73,7 +116,7 @@ async function askCopilot(message, threadId) {
 |------|------|
 | Token stream for a live UI | `stream=true` (Server-Sent Events, the default) |
 | A single JSON response | `stream=false` |
-| Long job, poll later | `background=true` |
+| Long job, poll later | `background=true` and `stream=false` |
 | User and thread attribution | `user_id` and a per-thread `session_id` |
 
 ## What you get without building it
@@ -91,15 +134,9 @@ Browse the live OpenAPI spec at the `/docs` endpoint of your running AgentOS.
 
 `AgentOS` is a FastAPI app. Add routes for webhooks, dashboards, or product-specific endpoints. The agent is a regular Python object you can call from anywhere.
 
-```python
-app = agent_os.get_app()
-
-
-@app.post("/webhooks/stripe")
-async def handle_stripe(event: dict):
-    response = await agent.arun(f"Process Stripe event: {event}", user_id="system")
-    return {"ok": True, "response": response.content}
-```
+<Warning>
+  A public Stripe webhook must read the raw request body and verify its `Stripe-Signature` with the endpoint secret before parsing or passing an event to the agent. Never accept an unverified decoded dictionary. See [Stripe's webhook signature guide](https://docs.stripe.com/webhooks/signature).
+</Warning>
 
 ## Auth
 
@@ -113,6 +150,11 @@ agent_os = AgentOS(
     db=db,
     authorization=True,
     authorization_config=AuthorizationConfig(user_isolation=True),
+    cors_allowed_origins=[
+        "http://localhost:3000",
+        "https://app.yourproduct.com",
+        "https://os.agno.com",
+    ],
 )
 ```
 

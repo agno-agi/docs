@@ -1708,13 +1708,19 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "provider_remove": {"OpenAI"},
     },
     "90_models/openai/chat/pdf_input_file_upload.py": {
-        "intro_override": "Pass a local PDF to an OpenAI Chat agent as a file input.",
+        "intro_override": "Pass a local PDF as base64-inlined file input to an OpenAI Chat agent.",
+        "pre_code_warning": "The source docstring incorrectly refers to Google GenAI. `OpenAIChat` base64-inlines a local file path, contrary to the source comment's automatic large-file upload claim. The source also uses deprecated `gpt-4o`. Replace the model before running.",
         "pre_run_steps": [
             (
                 "Download the sample PDF",
                 "Download `ThaiRecipes.pdf` next to the saved script:",
                 "python -c \"from urllib.request import urlretrieve; urlretrieve('https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf', 'ThaiRecipes.pdf')\"",
-            )
+            ),
+            (
+                "Update the model",
+                "Replace `OpenAIChat(id=\"gpt-4o\")` with `OpenAIChat(id=\"gpt-5.4-mini\")` in the saved file.",
+                None,
+            ),
         ],
     },
     "90_models/openai/responses/image_generation_agent.py": {
@@ -2801,6 +2807,49 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "90_models/deepseek/thinking_mode.py": {
         "intro_override": "DeepSeek V4 returns `reasoning_content` with thinking mode enabled by default. Set `use_thinking=False` for a faster response.",
+    },
+    # Randomized convergence sample 28. Preserve the v2.7.2 source fences and
+    # put current migrations plus runnable prerequisites around them.
+    "09_evals/performance/response_with_storage.py": {
+        "description_override": "PerformanceEval invokes the benchmark function separately for runtime and memory measurement, producing four model requests total.",
+        "intro_override": "`run_agent()` sends two model requests. `PerformanceEval` invokes it once for runtime and once for memory, so the evaluation sends four requests total.",
+        "package_remove": {"memory-profiler"},
+    },
+    "05_agent_os/interfaces/agui/agent_with_tools.py": {
+        "post_run_steps": [
+            (
+                "Run Dojo",
+                "Follow the [AG-UI frontend setup](/agent-os/interfaces/ag-ui/introduction) to clone, build, and start Dojo. Configure its Agno endpoint for port `9001`, then use Dojo to execute the `generate_haiku` frontend tool.",
+                None,
+            )
+        ],
+    },
+    "04_workflows/06_advanced_concepts/structured_io/input_schema.py": {
+        "pre_code_warning": "The source uses deprecated `gpt-4o` for the content planner. Replace that model ID before running.",
+        "pre_run_steps": [
+            (
+                "Update the content planner model",
+                "Replace `OpenAIChat(id=\"gpt-4o\")` with `OpenAIChat(id=\"gpt-5.4-mini\")` in the saved file.",
+                None,
+            )
+        ],
+    },
+    "91_tools/crawl4ai_tools.py": {
+        "description_override": "Define three Crawl4aiTools configurations and execute the two pruning configurations.",
+        "intro_override": "The source defines three Crawl4aiTools agents. It runs the default pruning agent and the explicit `enable_crawl` agent; the raw no-pruning agent is configured but not executed.",
+        "pre_code_warning": "The source uses deprecated `gpt-4o` in all three agent configurations and defines `agent_raw` without executing it. Update the model IDs before running.",
+        "pre_run_steps": [
+            (
+                "Set up Crawl4AI",
+                "Install the browser dependencies required by Crawl4AI:",
+                "crawl4ai-setup",
+            ),
+            (
+                "Update the models",
+                "Replace all three `OpenAIChat(id=\"gpt-4o\")` constructors with `OpenAIChat(id=\"gpt-5.4-mini\")` in the saved file.",
+                None,
+            ),
+        ],
     },
 }
 

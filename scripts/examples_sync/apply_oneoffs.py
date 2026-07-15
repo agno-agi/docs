@@ -2919,10 +2919,429 @@ The source fence is preserved for v2.7.2 fidelity. Apply every change in the war
 </Warning>""",
     )
 
-    # 8. Reviewed frontmatter overrides consumed by the overview row pass.
+    # 8. Static-page corrections identified by the final randomized samples.
+    sub(
+        "tools/seltz-tools.mdx",
+        'description: "Give an agent SeltzTools for fast, clean web data retrieval with results shown inline."',
+        'description: "Search the web with SeltzTools and log raw tool results for debugging."',
+    )
+    sub(
+        "tools/seltz-tools.mdx",
+        "Enable Agno agents with Seltz to get fast, high-quality web data. It delivers clean context for better reasoning with enterprise-grade security and reliable speed.",
+        "`SeltzTools` gives an agent Seltz web search. `show_results=True` logs each search query and raw result for debugging.",
+    )
+    sub(
+        "tools/seltz-tools.mdx",
+        """## Prerequisites
+
+- Install dependencies: `pip install seltz agno openai python-dotenv`
+- Set required environment variables: `export SELTZ_API_KEY=your_seltz_api_key` and `export OPENAI_API_KEY=your_openai_api_key`.""",
+        """## Prerequisites
+
+- Set required environment variables: `export SELTZ_API_KEY=your_seltz_api_key` and `export OPENAI_API_KEY=your_openai_api_key`.""",
+    )
+    sub(
+        "tools/seltz-tools.mdx",
+        """```python
+
+
+from agno.agent import Agent""",
+        '''```python
+"""Seltz Tools Example.
+
+Run `pip install seltz agno openai python-dotenv` to install dependencies.
+"""
+
+from agno.agent import Agent''',
+    )
+    sub(
+        "tools/seltz-tools.mdx",
+        """./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+python cookbook/91_tools/seltz_tools.py""",
+        """./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+uv pip install -U seltz
+
+python cookbook/91_tools/seltz_tools.py""",
+    )
+
+    sub(
+        "agents/approvals/approval-team.mdx",
+        """| Both | Team and member | Two pauses, two separate admin approvals. |
+
+<Tabs>""",
+        """| Both | Team and member | Two pauses, two separate admin approvals. |
+
+After starting an example, [connect the AgentOS UI](/agent-os/connect-your-os) to `http://localhost:7777` and start a team run. When the run pauses, open **Approvals**, complete any requested fields, approve the request, return to the run, and select **Continue Run**. Case 3 repeats the approval and continuation flow twice.
+
+<Tabs>""",
+    )
+    sub(
+        "agents/approvals/approval-team.mdx",
+        """# Clone and setup repo
+git clone https://github.com/agno-agi/agno.git
+cd agno/cookbook/02_agents/11_approvals
+
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+python team_level_approval.py""",
+        """# Clone and set up the repo
+git clone https://github.com/agno-agi/agno.git
+cd agno
+
+# Create and activate the demo virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+export OPENAI_API_KEY="your_openai_api_key_here"
+
+python cookbook/05_agent_os/approvals/team/team_level_approval.py""",
+    )
+    sub(
+        "agents/approvals/approval-team.mdx",
+        """# Clone and setup repo
+git clone https://github.com/agno-agi/agno.git
+cd agno/cookbook/02_agents/11_approvals
+
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+python member_agent_level_approval.py""",
+        """# Clone and set up the repo
+git clone https://github.com/agno-agi/agno.git
+cd agno
+
+# Create and activate the demo virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+export OPENAI_API_KEY="your_openai_api_key_here"
+
+python cookbook/05_agent_os/approvals/team/member_agent_level_approval.py""",
+    )
+    sub(
+        "agents/approvals/approval-team.mdx",
+        """# Clone and setup repo
+git clone https://github.com/agno-agi/agno.git
+cd agno/cookbook/02_agents/11_approvals
+
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+python team_and_member_agent_both_level_approval.py""",
+        """# Clone and set up the repo
+git clone https://github.com/agno-agi/agno.git
+cd agno
+
+# Create and activate the demo virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+export OPENAI_API_KEY="your_openai_api_key_here"
+
+python cookbook/05_agent_os/approvals/team/team_and_member_agent_both_level_approval.py""",
+    )
+    sub(
+        "agents/approvals/approval-team.mdx",
+        "</Tabs>",
+        """</Tabs>
+
+## Developer Resources
+
+- [Team-level approval source](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/approvals/team/team_level_approval.py)
+- [Member-level approval source](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/approvals/team/member_agent_level_approval.py)
+- [Team and member approval source](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/approvals/team/team_and_member_agent_both_level_approval.py)""",
+    )
+
+    sub(
+        "models/huggingface/overview.mdx",
+        "[Hugging Face Llama Essay Writer](/examples/models/huggingface/llama-essay-writer)",
+        "[Hugging Face GPT-OSS Essay Writer](/examples/models/huggingface/llama-essay-writer)",
+    )
+
+    root_sub(
+        "state/agent/last-n-session-messages.mdx",
+        '''title: Last N Messages
+sidebarTitle: Last N Messages
+mode: wide
+description: "Limit an agent's session search to the last N past sessions to keep context length manageable."''',
+        '''title: Limit Past Session Search
+sidebarTitle: Limit Past Session Search
+mode: wide
+description: "Limit the number of prior session previews returned by search_past_sessions."''',
+    )
+    root_sub(
+        "state/agent/last-n-session-messages.mdx",
+        "Let the agent search through previous sessions and limit how many are included in context. This keeps context length manageable while preserving relevant conversation history.",
+        "Register the `search_past_sessions` tool and limit how many prior session previews it returns. The previews are tool results that the agent can inspect when it chooses to search past sessions.",
+    )
+    root_sub(
+        "state/agent/last-n-session-messages.mdx",
+        """        add_history_to_context=True,
+        num_history_runs=3,
+        search_past_sessions=True,  # allow searching previous sessions
+        num_past_sessions_to_search=2,  # only include the last 2 sessions in the search to avoid context length issues""",
+        """        search_past_sessions=True,  # register the prior-session search tool
+        num_past_sessions_to_search=2,  # return at most two prior session previews""",
+    )
+    root_sub(
+        "state/agent/last-n-session-messages.mdx",
+        """    )  # It should only include the last 2 sessions""",
+        """    )  # The search tool can return at most two prior session previews.""",
+    )
+
+    root_sub(
+        "database/providers/singlestore/usage/singlestore-for-agent.mdx",
+        "Get your SingleStore credentials from the [SingleStore portal](https://portal.singlestore.com/).",
+        """Get your SingleStore credentials from the [SingleStore portal](https://portal.singlestore.com/), then set the connection values and OpenAI API key:
+
+<CodeGroup>
+```bash macOS / Linux
+export SINGLESTORE_USERNAME="your_singlestore_username"
+export SINGLESTORE_PASSWORD="your_singlestore_password"
+export SINGLESTORE_HOST="your_singlestore_host"
+export SINGLESTORE_PORT="your_singlestore_port"
+export SINGLESTORE_DATABASE="your_singlestore_database"
+export OPENAI_API_KEY="your_openai_api_key_here"
+```
+
+```powershell Windows
+$Env:SINGLESTORE_USERNAME="your_singlestore_username"
+$Env:SINGLESTORE_PASSWORD="your_singlestore_password"
+$Env:SINGLESTORE_HOST="your_singlestore_host"
+$Env:SINGLESTORE_PORT="your_singlestore_port"
+$Env:SINGLESTORE_DATABASE="your_singlestore_database"
+$Env:OPENAI_API_KEY="your_openai_api_key_here"
+```
+</CodeGroup>""",
+    )
+
+    root_sub(
+        "faq/rbac-auth-failed.mdx",
+        "| AgentOS platform | `algorithm=\"RS256\"` or omit it (RS256 is the default). Platform-issued public keys are always RS256, so any other value fails verification. |",
+        "| AgentOS Control Plane | `algorithm=\"RS256\"` or omit it (RS256 is the default). Control Plane-issued public keys are always RS256, so any other value fails verification. |",
+    )
+    root_sub(
+        "faq/rbac-auth-failed.mdx",
+        "Supported algorithms: `RS256` and `ES256` (asymmetric, public key), `HS256` (symmetric, shared secret).",
+        "Supported algorithms: `RS256`, `RS384`, `RS512`, `HS256`, `HS384`, `HS512`, `ES256`, `ES384`, and `ES512`.",
+    )
+    root_sub(
+        "faq/rbac-auth-failed.mdx",
+        "A few scopes act as gates in the platform and a token missing any of them fails before finer-grained checks run.",
+        "A few scopes act as gates in the AgentOS backend, and a token missing any of them fails before finer-grained checks run.",
+    )
+    root_sub(
+        "faq/rbac-auth-failed.mdx",
+        "The platform only supports security key authentication on these versions.",
+        "The AgentOS Control Plane only supports security key authentication on these versions.",
+    )
+
+    root_sub(
+        "reference/models/xai.mdx",
+        """| `search_parameters` | `Optional[Dict[str, Any]]` | `None`          | Search configuration for xAI live search, sent in the request body    |
+
+`xAI` extends""",
+        """| `search_parameters` | `Optional[Dict[str, Any]]` | `None`          | Search configuration for xAI live search, sent in the request body    |
+
+<Warning>
+  `grok-4-1-fast-non-reasoning-latest` is retained here because it is the class default in the pinned source. xAI has retired this alias and redirects it to Grok 4.3. Use `xAI(id="grok-4.3", reasoning_effort="none")` for the equivalent current configuration.
+</Warning>
+
+`xAI` extends""",
+    )
+    root_sub(
+        "reference/models/azure-open-ai.mdx",
+        '| `id`                      | `str`             | `"not-provided"` | The id of the Azure OpenAI model to use. Set this to your model or deployment name   |',
+        "| `id`                      | `str`             | Required         | The Azure deployment name passed as the model ID                                    |",
+    )
+
+    root_sub(
+        "deploy/templates/modal/reference.mdx",
+        "| Tail logs | `modal app logs agentos` |",
+        "| Tail logs | `modal app logs agentos --follow` |",
+    )
+    root_sub(
+        "deploy/templates/modal/reference.mdx",
+        """| Tear down | `./scripts/modal/down.sh` (add `--yes` to skip the confirmation) |
+
+<Note>""",
+        """| Tear down | `./scripts/modal/down.sh` |
+
+<Warning>
+  `down.sh --yes` skips only the wrapper script's confirmation. It does not pass `--yes` to `modal app stop`, so Modal may still prompt while stopping the app.
+</Warning>
+
+<Note>""",
+    )
+    root_sub(
+        "deploy/templates/modal/reference.mdx",
+        "anyone who guesses your modal.run URL can access your platform.",
+        "anyone who guesses your modal.run URL can access your AgentOS backend.",
+    )
+
+    root_sub(
+        "models/providers/cloud/vertexai-claude/usage/basic.mdx",
+        'Claude(id="claude-sonnet-4@20250514")',
+        'Claude(id="claude-sonnet-4-6")',
+    )
+    root_sub(
+        "models/providers/cloud/vertexai-claude/usage/basic.mdx",
+        """    ```bash Windows
+    setx CLOUD_ML_REGION xxx
+    setx GOOGLE_CLOUD_PROJECT xxx
+    ```""",
+        """    ```powershell Windows
+    $Env:CLOUD_ML_REGION="xxx"
+    $Env:GOOGLE_CLOUD_PROJECT="xxx"
+    ```""",
+    )
+
+    root_sub(
+        "use-cases/document-processing/forms-and-intake.mdx",
+        """Forms and intake documents bring a different shape: a person's identity at the top, then several parallel lists (employment, education, skills, references). The agent fills out the nested structure in one pass.
+
+```python""",
+        """Forms and intake documents bring a different shape: a person's identity at the top, then several parallel lists (employment, education, skills, references). The agent fills out the nested structure in one pass.
+
+Place the resume to extract at `resume.pdf` in the directory where you run this code.
+
+```python""",
+    )
+    root_sub(
+        "use-cases/document-processing/forms-and-intake.mdx",
+        'files=[File(url="https://example.com/resume-sjohnson.pdf")]',
+        'files=[File(filepath="resume.pdf")]',
+    )
+    root_sub(
+        "use-cases/document-processing/forms-and-intake.mdx",
+        "# Resume(full_name='Sarah Johnson', email='sarah@example.com',",
+        "# Illustrative output. Your values depend on resume.pdf:\n# Resume(full_name='Sarah Johnson', email='sarah@example.com',",
+    )
+
+    root_sub(
+        "tools/creating-tools/overview.mdx",
+        """There are two main ways to create tools in Agno:
+1. Create a python function""",
+        """There are two main ways to create tools in Agno:
+
+1. Create a Python function""",
+    )
+
+    root_sub(
+        "use-cases/product-agents/serve-as-an-api.mdx",
+        "agent_os = AgentOS(agents=[agent], db=db)",
+        """agent_os = AgentOS(
+    agents=[agent],
+    db=db,
+    cors_allowed_origins=[
+        "http://localhost:3000",
+        "https://app.yourproduct.com",
+        "https://os.agno.com",
+    ],
+)""",
+    )
+    root_sub(
+        "use-cases/product-agents/serve-as-an-api.mdx",
+        """if __name__ == "__main__":
+    agent_os.serve(app="copilot:app", port=7777)
+```
+
+## Calling it from a surface""",
+        """if __name__ == "__main__":
+    agent_os.serve(app="copilot:app", port=7777)
+```
+
+Supplying `cors_allowed_origins` replaces the AgentOS defaults. Include every browser and AgentOS UI origin that needs to call the backend.
+
+## Run the API
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U "agno[os]" openai sqlalchemy "psycopg[binary]"
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash macOS / Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```powershell Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Snippet file="run-pgvector-step.mdx" />
+
+  <Step title="Start AgentOS">
+    Save the code as `copilot.py`, then run:
+    ```bash
+    python copilot.py
+    ```
+  </Step>
+</Steps>
+
+## Calling it from a surface""",
+    )
+    root_sub(
+        "use-cases/product-agents/serve-as-an-api.mdx",
+        "async function askCopilot(message, threadId) {",
+        "async function askCopilot(message, threadId, jwt) {",
+    )
+    root_sub(
+        "use-cases/product-agents/serve-as-an-api.mdx",
+        "| Long job, poll later | `background=true` |",
+        "| Long job, poll later | `background=true` and `stream=false` |",
+    )
+    root_sub(
+        "use-cases/product-agents/serve-as-an-api.mdx",
+        """`AgentOS` is a FastAPI app. Add routes for webhooks, dashboards, or product-specific endpoints. The agent is a regular Python object you can call from anywhere.
+
+```python
+app = agent_os.get_app()
+
+
+@app.post("/webhooks/stripe")
+async def handle_stripe(event: dict):
+    response = await agent.arun(f"Process Stripe event: {event}", user_id="system")
+    return {"ok": True, "response": response.content}
+```""",
+        """`AgentOS` is a FastAPI app. Add routes for webhooks, dashboards, or product-specific endpoints. The agent is a regular Python object you can call from anywhere.
+
+<Warning>
+  A public Stripe webhook must read the raw request body and verify its `Stripe-Signature` with the endpoint secret before parsing or passing an event to the agent. Never accept an unverified decoded dictionary. See [Stripe's webhook signature guide](https://docs.stripe.com/webhooks/signature).
+</Warning>""",
+    )
+    root_sub(
+        "use-cases/product-agents/serve-as-an-api.mdx",
+        """    authorization=True,
+    authorization_config=AuthorizationConfig(user_isolation=True),""",
+        """    authorization=True,
+    authorization_config=AuthorizationConfig(user_isolation=True),
+    cors_allowed_origins=[
+        "http://localhost:3000",
+        "https://app.yourproduct.com",
+        "https://os.agno.com",
+    ],""",
+    )
+
+    # 9. Reviewed frontmatter overrides consumed by the overview row pass.
     apply_frontmatter_overrides()
 
-    # 9. Title-casing pass over every page (fixes curated overview stubs:
+    # 10. Title-casing pass over every page (fixes curated overview stubs:
     #    Openai -> OpenAI, Vertexai -> Vertex AI, Mcp Demo -> MCP Demo, ...).
     count = 0
     for p in sorted(DOCS.rglob("*.mdx")):
@@ -2937,15 +3356,15 @@ The source fence is preserved for v2.7.2 fidelity. Apply every change in the war
                 p.write_text(text.replace(f'title: "{old_t}"', f'title: "{new_t}"', 1), encoding="utf-8")
             count += 1
 
-    # 10. Refresh only malformed or explicitly stale overview rows, then add
+    # 11. Refresh only malformed or explicitly stale overview rows, then add
     #    only the navigation-backed omissions approved by the audit.
     repair_overview_tables()
 
-    # 11. Restore post-tag toolkit cards that shipped in navigation without
+    # 12. Restore post-tag toolkit cards that shipped in navigation without
     #     corresponding entries in the hand-maintained complete index.
     repair_toolkit_index()
 
-    # 12. Preserve the reviewed byte-level terminal-newline convention after
+    # 13. Preserve the reviewed byte-level terminal-newline convention after
     #     deterministic reconstruction.
     normalize_terminal_newlines("tracing/db-functions.mdx")
     normalize_terminal_newlines("reference-api/schema/approvals/get-approval-count.mdx")

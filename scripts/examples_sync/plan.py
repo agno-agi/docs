@@ -569,9 +569,20 @@ def main() -> None:
             h = content_hash(code) if code else None
             if h and h in cb_hash:
                 new_ref = sorted(cb_hash[h])[0]
-                entry.update({"class": "REMAP_REGEN", "cookbook_path": None,
-                              "new_cookbook_path": new_ref, "similarity": 1.0,
-                              "note": "no run block; source found by content match"})
+                if is_curated(info):
+                    # Exact source identity does not make a hand-written
+                    # container safe to regenerate. Curated pages can wrap an
+                    # exact first fence with additional tabs, setup, or
+                    # explanation that generation would discard. Still claim
+                    # the matched source so it is not proposed as a NEW page.
+                    entry.update({"class": "PRESERVE_CURATED",
+                                  "cookbook_path": new_ref,
+                                  "similarity": 1.0,
+                                  "note": "exact source fence inside a curated page"})
+                else:
+                    entry.update({"class": "REMAP_REGEN", "cookbook_path": None,
+                                  "new_cookbook_path": new_ref, "similarity": 1.0,
+                                  "note": "no run block; source found by content match"})
                 claimed.setdefault(new_ref, slug)
             elif is_curated(info) and (info["in_nav"] or slug in linked):
                 entry.update({"class": "PRESERVE_CURATED"})
