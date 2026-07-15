@@ -20,7 +20,7 @@ The scripts install the Helm release `agentos` into the `agentos` namespace. Ove
 
 ## Production auth
 
-Token-Based Authorization is on by default. Without a `JWT_VERIFICATION_KEY` or `JWT_JWKS_FILE`, the app refuses to serve traffic in production. The platform's job is to keep your data private, so the safe default is "refuse to start" without an authentication token.
+Token-Based Authorization is on by default. Production startup requires `JWT_VERIFICATION_KEY` or a readable JWKS file at the pod path in `JWT_JWKS_FILE`; otherwise the process exits.
 
 Token-Based Auth gives you three things:
 
@@ -98,7 +98,7 @@ docker build -t <registry>/agentos:v2 . && docker push <registry>/agentos:v2
 IMAGE_TAG=v2 ./scripts/k8s/redeploy.sh
 ```
 
-`env-sync.sh` uses a fixed allowlist that includes `RUNTIME_ENV`, `AGENTOS_URL`, `JWT_JWKS_FILE`, the template's supported secrets, and `DB_PASS`. It does not sync a new provider key such as `ANTHROPIC_API_KEY`. Deliver that key via `extraEnv` and `helm upgrade`.
+`env-sync.sh` uses a fixed allowlist that includes `RUNTIME_ENV`, `AGENTOS_URL`, the `JWT_JWKS_FILE` path, the template's supported secrets, and `DB_PASS`. It does not deliver the referenced JWKS file or sync a new provider key such as `ANTHROPIC_API_KEY`. Provide the JWKS file through a custom image or chart volume. Deliver a new provider key via `extraEnv` and `helm upgrade`.
   </Accordion>
 
   <Accordion title="Add tools">
@@ -162,7 +162,7 @@ source .venv/bin/activate
 | `OPENAI_API_KEY` | Yes | - | Models and embeddings. |
 | `RUNTIME_ENV` | No | `prd` | `dev` disables JWT. Compose sets it for local. Never put it in an env file that syncs to a real cluster, or production deploys unauthenticated. |
 | `JWT_VERIFICATION_KEY` | Production | - | Public key from os.agno.com. Quote the value so the multi-line PEM parses as one variable. |
-| `JWT_JWKS_FILE` | Production | - | Path to a JWKS file inside the container. Alternative to `JWT_VERIFICATION_KEY`. `up.sh` and `env-sync.sh` deliver it as the chart value `jwtJwksFile`. |
+| `JWT_JWKS_FILE` | Production | - | Path inside the pod to a JWKS file. `up.sh` and `env-sync.sh` set only the `jwtJwksFile` path. The current chart does not mount the file. |
 | `MCP_CONNECT_SECRET` | No | - | OAuth consent secret (16+ chars) for connecting claude.ai and ChatGPT to `/mcp`. `up.sh` generates it into `.env.production` when the deploy has a public URL (`INGRESS_HOST` or `AGENTOS_URL`); set it by hand otherwise. |
 | `AGENTOS_MCP_SIGNING_KEY` | No | generated | Optional high-entropy signing-key material (32+ chars) for OAuth tokens. Unset, a strong key is generated and persisted in the database. Rotating it invalidates outstanding tokens. |
 | `AGENTOS_URL` | No | `http://agentos:8000` | Scheduler base URL. The chart resolves an explicit value first, then the ingress URL, then the release service URL. Set it only for a custom domain or tunnel. When `MCP_CONNECT_SECRET` is set, OAuth metadata uses this URL as its public origin. |
@@ -196,10 +196,10 @@ Install [kubectl](https://kubernetes.io/docs/tasks/tools/) and [Helm](https://he
 `up.sh` deploys into your current kubectl context and verifies it can reach the cluster first. Point kubectl at the target cluster and confirm `kubectl get namespace` works, then rerun.
   </Accordion>
   <Accordion title="up.sh pauses asking for a JWT key">
-Expected. Mint the key at [os.agno.com](https://os.agno.com): connect your OS (**Connect OS** → **Live**, enter your AgentOS URL), then turn on **Token-Based Authorization (JWT)** under **Settings** → **OS & Security** and paste the full PEM. To do it later, skip the prompt, add `JWT_VERIFICATION_KEY` or `JWT_JWKS_FILE` to `.env.production`, and run `./scripts/k8s/env-sync.sh`.
+Expected. Mint the key at [os.agno.com](https://os.agno.com): connect your OS (**Connect OS** → **Live**, enter your AgentOS URL), then turn on **Token-Based Authorization (JWT)** under **Settings** → **OS & Security** and paste the full PEM. To add a PEM later, set `JWT_VERIFICATION_KEY` and run `./scripts/k8s/env-sync.sh`. To use JWKS, first provide the file through a custom image or chart volume, then set `JWT_JWKS_FILE` to its pod path and sync.
   </Accordion>
-  <Accordion title="App refuses to serve in production">
-JWT auth is on whenever `RUNTIME_ENV` is not `dev`. Set `JWT_VERIFICATION_KEY` or `JWT_JWKS_FILE` and sync. To opt out inside a private VPC behind another auth layer, set `authorization=False` in `app/main.py` and roll out your own image build.
+  <Accordion title="App fails to start in production">
+JWT auth is on whenever `RUNTIME_ENV` is not `dev`. Set `JWT_VERIFICATION_KEY` and sync. `JWT_JWKS_FILE` works only when a custom image or chart mount already provides a readable file at that pod path. To opt out inside a private VPC behind another auth layer, set `authorization=False` in `app/main.py` and roll out your own image build.
   </Accordion>
   <Accordion title="Pods stuck in ImagePullBackOff">
 The cluster can't pull the image. Confirm the tag was pushed and the cluster has access to your registry; for private registries, set `imagePullSecrets` in `charts/agentos/values.yaml`. On kind, `kind load docker-image` the tag and deploy with `IMAGE_PULL_POLICY=Never`.
