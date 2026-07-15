@@ -26,32 +26,41 @@ Mark a hook to run in the background without blocking the API response:
 
 ```python
 from agno.hooks import hook
+from agno.run.agent import RunOutput
+
 
 @hook(run_in_background=True)
-async def log_analytics(run_output, agent):
-    """Runs after the response is sent to the user."""
-    await store_metrics(run_output)
+def log_analytics(run_output: RunOutput) -> None:
+    print(run_output.metrics)
 ```
 
 ### Combining with Regular Hooks
 
 You can mix background and regular hooks on the same agent:
 
-```python
-from agno.hooks import hook
+```bash
+uv pip install -U agno openai
+```
 
-def validate_output(run_output, agent):
-    """Runs synchronously, blocks response until complete."""
+```python
+from agno.agent import Agent
+from agno.exceptions import OutputCheckError
+from agno.hooks import hook
+from agno.models.openai import OpenAIChat
+from agno.run.agent import RunOutput
+
+
+def validate_output(run_output: RunOutput) -> None:
     if not run_output.content:
         raise OutputCheckError("Empty response not allowed")
 
+
 @hook(run_in_background=True)
-async def send_notification(run_output, agent):
-    """Runs in background after response is sent."""
-    await notify_user(run_output.content)
+def send_notification(run_output: RunOutput) -> None:
+    print(f"Response complete: {run_output.run_id}")
 
 agent = Agent(
-    model=OpenAIChat(id="gpt-4o"),
+    model=OpenAIChat(id="gpt-5.2"),
     post_hooks=[validate_output, send_notification],
 )
 ```
@@ -63,7 +72,7 @@ agent = Agent(
 </Warning>
 
 <Warning>
-**Background hooks cannot modify data.** Since background hooks run after the response is sent, any modifications to `run_input`, `run_output`, or other parameters won't affect the agent's processing. Use background mode only for logging, analytics, or notifications.
+**Treat background hook arguments as read-only.** AgentOS attempts to deep-copy `run_input`, `run_context`, `run_output`, `session_state`, `dependencies`, and `metadata` before queueing a hook. If a value cannot be copied, AgentOS logs a warning and passes the original reference. Background hooks can write to databases and external services.
 </Warning>
 
 ## See Also
@@ -71,4 +80,3 @@ agent = Agent(
 - [Background Hooks](/agent-os/background-tasks/overview)
 - [Pre-hooks Reference](/reference/hooks/pre-hooks)
 - [Post-hooks Reference](/reference/hooks/post-hooks)
-
