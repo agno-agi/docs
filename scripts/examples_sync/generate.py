@@ -517,6 +517,8 @@ TITLE_OVERRIDES = {
     "examples/models/openrouter/responses/stream": "Streaming",
     "examples/models/openrouter/responses/tool-use": "Tools",
     "examples/models/openrouter/chat/tool-use": "Tools",
+    "examples/models/meta/llama-openai/metrics": "Llama OpenAI Metrics",
+    "examples/models/meta/llama/metrics": "Llama Metrics",
     "examples/reasoning/models/groq/deepseek-plus-claude": "Qwen3 Plus Claude",
     "examples/storage/in-memory/in-memory-storage-for-team": "In-Memory Storage for Team",
     "examples/tools/mcp/cli": "MCP CLI",
@@ -619,6 +621,16 @@ CEREBRAS_RETIRED_MODEL_MIGRATION_STEP = (
     "Replace `llama-3.3-70b`, `llama-4-scout-17b-16e-instruct`, or `qwen-3-32b` with `gpt-oss-120b` in the saved Python file before running.",
     None,
 )
+COHERE_RETIRED_VISION_WARNING = (
+    "The pinned source uses `c4ai-aya-vision-8b`, which Cohere retired on "
+    "April 4, 2026. Replace it with `command-a-vision-07-2025` before running. "
+    "See [Cohere's retirement notice](https://docs.cohere.com/changelog/2026-04-04-embed-v2-aya-8b-retirement)."
+)
+COHERE_VISION_MIGRATION_STEP = (
+    "Use Command A Vision",
+    "Replace `c4ai-aya-vision-8b` with `command-a-vision-07-2025` in the saved Python file before running.",
+    None,
+)
 LITELLM_STEP = (
     "Start LiteLLM",
     "Start the local OpenAI-compatible proxy on port 4000:",
@@ -682,6 +694,22 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
             (
                 "Add the sample image",
                 "Place a JPEG named `sample.jpg` in the same directory as `image_to_text.py`.",
+                None,
+            )
+        ],
+    },
+    "02_agents/12_multimodal/image_to_image.py": {
+        # FalTools checks FAL_API_KEY, while fal-client authenticates with FAL_KEY.
+        "env_add": {"FAL_KEY"},
+        "env_values": {
+            "FAL_API_KEY": "your_fal_key_here",
+            "FAL_KEY": "your_fal_key_here",
+        },
+        "pre_code_warning": "The pinned source constructs `FalTools()` with `enable_image_to_image=False`, the toolkit default, so the `image_to_image` tool is unavailable as written. Apply the migration below before running it.",
+        "pre_run_steps": [
+            (
+                "Enable image-to-image",
+                "Replace `tools=[FalTools()]` with `tools=[FalTools(enable_generate_media=False, enable_image_to_image=True)]` in the saved file.",
                 None,
             )
         ],
@@ -831,6 +859,10 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "04_workflows/06_advanced_concepts/run_control/event_storage.py": {
         "package_remove": {"fastapi"},
+    },
+    "04_workflows/08_human_in_the_loop/error/01_error_retry_skip.py": {
+        "package_remove": {"fastapi"},
+        "pre_code_warning": "The source fails the simulated API call 99% of the time but prints that the failure rate is 70%.",
     },
     "04_workflows/06_advanced_concepts/long_running/disruption_catchup.py": {
         "repo_layout": True,
@@ -1092,6 +1124,18 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
             )
         ],
     },
+    "90_models/cohere/image_agent.py": {
+        "pre_code_warning": COHERE_RETIRED_VISION_WARNING,
+        "pre_run_steps": [COHERE_VISION_MIGRATION_STEP],
+    },
+    "90_models/cohere/image_agent_bytes.py": {
+        "pre_code_warning": COHERE_RETIRED_VISION_WARNING,
+        "pre_run_steps": [COHERE_VISION_MIGRATION_STEP],
+    },
+    "90_models/cohere/image_agent_local_file.py": {
+        "pre_code_warning": COHERE_RETIRED_VISION_WARNING,
+        "pre_run_steps": [COHERE_VISION_MIGRATION_STEP],
+    },
     "90_models/lmstudio/basic.py": {"pre_run_steps": [LMSTUDIO_STEP]},
     "90_models/lmstudio/db.py": {"pre_run_steps": [LMSTUDIO_STEP]},
     "90_models/lmstudio/image_agent.py": {"pre_run_steps": [LMSTUDIO_VISION_STEP]},
@@ -1100,6 +1144,16 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "90_models/lmstudio/retry.py": {"pre_run_steps": [LMSTUDIO_RETRY_STEP]},
     "90_models/lmstudio/structured_output.py": {"pre_run_steps": [LMSTUDIO_STEP]},
     "90_models/lmstudio/tool_use.py": {"pre_run_steps": [LMSTUDIO_STEP]},
+    "90_models/meta/llama_openai/metrics.py": {
+        "pre_code_warning": "The pinned source reads `agent.run_response.messages`, but `Agent` does not expose that attribute. Update the saved file before running.",
+        "pre_run_steps": [
+            (
+                "Correct the message metrics loop",
+                "Replace `agent.run_response.messages` with `run_response.messages` in the saved file.",
+                None,
+            )
+        ],
+    },
     "90_models/llama_cpp/basic.py": {
         "pre_run_steps": [LLAMA_CPP_INSTALL_STEP, LLAMA_CPP_STEP]
     },
@@ -1111,10 +1165,20 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "91_tools/moviepy_video_tools.py": {"pre_run_steps": [VIDEO_PATH_STEP]},
     "91_tools/mlx_transcribe_tools.py": {
+        "pre_code_warning": (
+            "Run this example on macOS or Linux with a supported MLX backend. Windows is not supported. "
+            "Linux requires one of `mlx[cpu]`, `mlx[cuda12]`, or `mlx[cuda13]`. See "
+            "[MLX installation](https://ml-explore.github.io/mlx/build/html/install.html)."
+        ),
         "pre_run_steps": [
             (
+                "Install an MLX backend",
+                "On macOS, the dependency step installs the standard MLX package. On Linux, install exactly one backend for your hardware before running: `uv pip install -U \"mlx[cpu]\"`, `uv pip install -U \"mlx[cuda12]\"`, or `uv pip install -U \"mlx[cuda13]\"`.",
+                None,
+            ),
+            (
                 "Install ffmpeg",
-                "Install `ffmpeg` using the command for your operating system in the source header.",
+                "Install `ffmpeg` using the macOS or Ubuntu command in the source header.",
                 None,
             ),
             (
@@ -2091,9 +2155,6 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "observability/agent_ops.py": {
         "env_add": {"AGENTOPS_API_KEY"},
     },
-    "observability/langtrace_op.py": {
-        "env_add": {"LANGTRACE_API_KEY"},
-    },
     "observability/weave_op.py": {
         "env_add": {"WANDB_API_KEY"},
     },
@@ -2123,6 +2184,48 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "90_models/google/gemini_interactions/tool_use.py": {
         "intro_override": "Give a `GeminiInteractions` agent `WebSearchTools`, then invoke it with synchronous, streaming, and asynchronous response calls.",
     },
+    "90_models/google/gemini_interactions/antigravity_environment_config.py": {
+        "intro_override": "Reuse an existing Antigravity sandbox by ID, or create a new one from repository sources and documented network rules.",
+        "pre_code_warning": "The pinned source uses an obsolete Antigravity `EnvironmentConfig`: repository sources no longer accept `type=\"git\"` and `url`, and `network.allow_internet_access` is not part of the current schema. Apply the migration below before running the custom-environment agent. See [Google's environment schema](https://ai.google.dev/gemini-api/docs/agent-environment).",
+        "pre_run_steps": [
+            (
+                "Configure or skip environment reuse",
+                "Before running, replace `env_xxxxxxxx` in `agent_reuse` with the ID of an existing environment. To run only the custom path, comment out the `agent_reuse.print_response(...)` block instead.",
+                None,
+            ),
+            (
+                "Update the environment configuration",
+                "Replace the `environment` dictionary in `agent_custom` with `{'type': 'remote', 'sources': [{'type': 'repository', 'source': 'https://github.com/agno-agi/agno', 'target': '/workspace/agno'}]}`. Unrestricted outbound network access is the default.",
+                None,
+            )
+        ],
+    },
+    "90_models/aimlapi/basic.py": {
+        "pre_code_warning": "The pinned source uses `gpt-5.2`, but AIMLAPI's current GPT-5.2 model ID is `openai/gpt-5-2`. Apply the migration below before running. See [AIMLAPI's GPT-5.2 reference](https://docs.aimlapi.com/api-references/text-models-llm/openai/gpt-5.2).",
+        "pre_run_steps": [
+            (
+                "Update the AIMLAPI model ID",
+                "Replace `AIMLAPI(id=\"gpt-5.2\")` with `AIMLAPI(id=\"openai/gpt-5-2\")` in the saved file.",
+                None,
+            )
+        ],
+    },
+    "91_tools/mcp/brave.py": {
+        "pre_code_warning": "The pinned source uses the deprecated `@modelcontextprotocol/server-brave-search` package and `claude-sonnet-4-20250514`, which Anthropic retired on June 15, 2026. Apply both migrations below before running. See [Brave's maintained MCP server](https://github.com/brave/brave-search-mcp-server) and [Anthropic model deprecations](https://platform.claude.com/docs/en/about-claude/model-deprecations).",
+        "node_prepare_text": "The maintained Brave MCP server requires Node.js 22 or later. Install it, then confirm `node --version` reports v22 or later and `npx` is available:",
+        "pre_run_steps": [
+            (
+                "Update the Brave MCP server",
+                "Replace `npx -y @modelcontextprotocol/server-brave-search` with `npx -y @brave/brave-search-mcp-server --transport stdio` in the saved file.",
+                None,
+            ),
+            (
+                "Update the Claude model",
+                "Replace `Claude(id=\"claude-sonnet-4-20250514\")` with `Claude(id=\"claude-sonnet-4-6\")` in the saved file.",
+                None,
+            )
+        ],
+    },
     "90_models/google/gemini/gemini_2_to_3.py": {
         "pre_code_warning": GEMINI_31_PRO_WARNING,
         "pre_run_steps": [GEMINI_31_PRO_MIGRATION_STEP],
@@ -2140,7 +2243,9 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "pre_code_warning": "For `gemini-3.5-flash` on Vertex AI, current limits are 50 MB for PDF input through the API or Cloud Storage, 7 MB for `text/plain`, and 30 MB for Cloud Storage image input. See [Gemini 3.5 Flash model limits](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/3-5-flash). The pinned source's blanket 2 GB limit and additional MIME-type claims are stale.",
     },
     "observability/langtrace_op.py": {
-        "pre_code_warning": "The pinned source initializes Langtrace after importing Agno model modules, so automatic instrumentation may not attach.",
+        "env_add": {"LANGTRACE_API_KEY"},
+        "env_title": "Export your Langtrace and OpenAI API keys",
+        "pre_code_warning": "The pinned source initializes Langtrace after importing Agno model modules, so automatic instrumentation may not attach. Create a Langtrace project and generate an API key before running the example. See [Langtrace Python SDK setup](https://github.com/Scale3-Labs/langtrace-python-sdk#quick-start).",
         "pre_run_steps": [
             (
                 "Fix the initialization order",
@@ -4049,9 +4154,16 @@ def render(
         parts.append("    ```")
         parts.append("  </Step>")
     if req.needs_npx:
+        node_prepare_text = render_override.get(
+            "node_prepare_text",
+            "The MCP server runs with `npx`. Install Node.js, then verify the commands:",
+        )
+        assert isinstance(node_prepare_text, str) and node_prepare_text.strip(), (
+            f"{cookbook_rel}: node_prepare_text must be a non-empty string"
+        )
         parts.append("")
         parts.append('  <Step title="Prepare Node.js">')
-        parts.append("    The MCP server runs with `npx`. Install Node.js, then verify the commands:")
+        parts.append(f"    {node_prepare_text}")
         parts.append("    ```bash")
         parts.append("    node --version")
         parts.append("    npx --version")
