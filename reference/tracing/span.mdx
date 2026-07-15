@@ -11,7 +11,7 @@ A `Span` represents a single operation within an agent execution. Spans form a p
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `span_id` | `str` | Required | Unique span identifier |
-| `trace_id` | `str` | Required | Parent trace ID (groups related spans) |
+| `trace_id` | `str` | Required | Unique identifier of the trace that contains this span |
 | `parent_span_id` | `Optional[str]` | Required | Parent span ID (`None` for root spans) |
 | `name` | `str` | Required | Operation name (e.g., `OpenAIChat.invoke`, `get_weather`) |
 | `span_kind` | `str` | Required | Span kind (e.g., `INTERNAL`, `CLIENT`) |
@@ -86,8 +86,13 @@ from agno.db.sqlite import SqliteDb
 
 db = SqliteDb(db_file="tmp/traces.db")
 
-# Get all spans for a trace
-spans = db.get_spans(trace_id=trace.trace_id)
+# Get the most recent trace, then load its spans
+traces, _ = db.get_traces(limit=1)
+if not traces:
+    raise RuntimeError("No traces found")
+
+trace_id = traces[0].trace_id
+spans = db.get_spans(trace_id=trace_id)
 
 for span in spans:
     print(f"Span: {span.name}")
@@ -112,8 +117,7 @@ def print_span_tree(spans, parent_id=None, indent=0):
             print(f"{prefix}{span.name} ({span.duration_ms}ms)")
             print_span_tree(spans, span.span_id, indent + 1)
 
-# Get spans and print tree
-spans = db.get_spans(trace_id=trace.trace_id)
+# Print the spans loaded above
 print_span_tree(spans)
 ```
 
@@ -121,4 +125,3 @@ print_span_tree(spans)
 
 - [Trace Reference](/reference/tracing/trace) - Complete execution trace
 - [DB Functions](/tracing/db-functions) - Query functions for traces and spans
-
