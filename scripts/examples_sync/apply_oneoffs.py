@@ -118,6 +118,7 @@ TITLE_OVERRIDES = {
     "examples/models/vercel/tool-use": "Vercel v0 Tool Use",
     "examples/models/vllm/tool-use": "vLLM Tool Use",
     "examples/models/xai/finance-agent": "Finance Agent",
+    "examples/reasoning/models/groq/deepseek-plus-claude": "Qwen3 Plus Claude",
     "examples/storage/mongo/mongodb-for-agent": "MongoDB for Agent",
     "examples/storage/mongo/mongodb-for-team": "MongoDB for Team",
     "examples/teams/state/overview": "State & Session",
@@ -309,6 +310,12 @@ EXPLICIT_MISSING_ROWS = {
 # covers subgroup links without an overview page and factual corrections to
 # existing rows.
 EXPLICIT_ROW_OVERRIDES = {
+    "examples/reasoning/models/groq/overview": {
+        "examples/reasoning/models/groq/deepseek-plus-claude": (
+            "Qwen3 Plus Claude",
+            "Route reasoning through Qwen3-32B on Groq while Claude writes the final answer.",
+        ),
+    },
     "examples/models/google/overview": {
         "examples/models/google/gemini-interactions/basic": (
             "Gemini Interactions",
@@ -1459,6 +1466,7 @@ def repair_overview_tables() -> None:
     overview_slugs = (
         ROW_REPAIR_OVERVIEWS
         | set(EXPLICIT_MISSING_ROWS)
+        | set(EXPLICIT_ROW_OVERRIDES)
         | set(EXPLICIT_ROW_REFRESH)
         | FULL_ROW_REFRESH_OVERVIEWS
         | set(EXPLICIT_TABLE_ORDER)
@@ -1472,6 +1480,7 @@ def repair_overview_tables() -> None:
         if not any(TABLE_HEADER_RE.fullmatch(line) for line in text.splitlines()):
             assert (
                 overview not in EXPLICIT_MISSING_ROWS
+                and overview not in EXPLICIT_ROW_OVERRIDES
                 and overview not in EXPLICIT_ROW_REFRESH
                 and overview not in FULL_ROW_REFRESH_OVERVIEWS
             ), (

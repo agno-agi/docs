@@ -514,6 +514,7 @@ TITLE_OVERRIDES = {
     "examples/models/openrouter/responses/stream": "Streaming",
     "examples/models/openrouter/responses/tool-use": "Tools",
     "examples/models/openrouter/chat/tool-use": "Tools",
+    "examples/reasoning/models/groq/deepseek-plus-claude": "Qwen3 Plus Claude",
     "examples/tools/mcp/cli": "MCP CLI",
     "examples/tools/mcp/gibsonai": "GibsonAI MCP Server",
     "examples/tools/mcp/supabase": "Supabase MCP Agent",
@@ -608,6 +609,11 @@ AUTHENTICATED_MONGODB_STEP = (
     "-e MONGO_INITDB_ROOT_USERNAME=mongoadmin "
     "-e MONGO_INITDB_ROOT_PASSWORD=secret mongo:latest",
 )
+VIDEO_PATH_STEP = (
+    "Set the video path",
+    "Replace `{video with location}` in the prompt with the path to a local video file.",
+    None,
+)
 
 SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "00_quickstart/agent_search_over_knowledge.py": {
@@ -648,6 +654,10 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "02_agents/12_multimodal/video_caption.py": {
         # The source's prose paragraph is an incomplete install instruction.
         "suppress_intro": True,
+        "pre_run_steps": [VIDEO_PATH_STEP],
+    },
+    "03_teams/19_multimodal/video_caption_generation.py": {
+        "pre_run_steps": [VIDEO_PATH_STEP],
     },
     "02_agents/18_checkpointing/01_crash_recovery.py": {
         # CRASH_DB is an internal parent-to-worker handoff with a default.
@@ -1033,6 +1043,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "90_models/llama_cpp/basic.py": {"pre_run_steps": [LLAMA_CPP_STEP]},
     "90_models/llama_cpp/structured_output.py": {"pre_run_steps": [LLAMA_CPP_STEP]},
     "90_models/llama_cpp/tool_use.py": {"pre_run_steps": [LLAMA_CPP_STEP]},
+    "91_tools/moviepy_video_tools.py": {"pre_run_steps": [VIDEO_PATH_STEP]},
     "90_models/ollama/chat/demo_gemma.py": {
         "pre_run_steps": [
             (
