@@ -2179,6 +2179,99 @@ uv pip install -U agno openai pypdf valkey-glide-sync
 ```
 
 Valkey vector search requires""",
+        required=False,
+    )
+    root_sub(
+        "knowledge/vector-stores/valkey/overview.mdx",
+        """Install dependencies:
+
+```bash
+uv pip install -U agno openai pypdf valkey-glide-sync
+```
+
+Valkey vector search requires""",
+        """Install dependencies:
+
+```bash
+uv pip install -U agno openai pypdf valkey-glide-sync
+```
+
+Set the API key used by the default OpenAI embedder and agent model:
+
+<CodeGroup>
+```bash Mac/Linux
+export OPENAI_API_KEY="your_openai_api_key_here"
+```
+
+```bash Windows
+$Env:OPENAI_API_KEY="your_openai_api_key_here"
+```
+</CodeGroup>
+
+Valkey vector search requires""",
+    )
+    root_sub(
+        "knowledge/vector-stores/valkey/usage/valkey-db.mdx",
+        """  <Step title="Run Valkey">""",
+        """  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run Valkey">""",
+    )
+    root_sub(
+        "tracing/db-functions.mdx",
+        "Agno provides convenience functions on your database instance to query traces and spans. These functions work with any supported database (SQLite, PostgreSQL, etc.).",
+        "Agno provides convenience functions on your database instance to query traces and spans. Parameter support can vary by database implementation.",
+    )
+    root_sub(
+        "tracing/db-functions.mdx",
+        """**Returns:** `List[Span]`
+
+<Note>""",
+        """**Returns:** `List[Span]`
+
+<Warning>
+  In Agno v2.7.2, synchronous `SqliteDb.get_spans()` does not accept `limit`. Omit `limit` when using SQLite. The other filters and the SQLite example below work as shown.
+</Warning>
+
+<Note>""",
+    )
+    root_sub(
+        "reference-api/schema/approvals/get-approval-count.mdx",
+        """---
+openapi: get /approvals/count
+---""",
+        """---
+openapi: get /approvals/count
+---
+
+<Warning>
+  This endpoint counts pending approvals. With user isolation enabled, non-admin requests are scoped to the user ID in the JWT even when `user_id` is supplied. Authentication failures can return `401`, and databases without approval support can return `503`; the current OpenAPI operation declares only `200` and `422`.
+</Warning>""",
+    )
+    root_sub(
+        "examples/tools/dalle-tools.mdx",
+        "The pinned source expected the `openai` package and an `OPENAI_API_KEY`. Its `DalleTools` calls no longer run against the current OpenAI API.",
+        "This example expected the `openai` package and an `OPENAI_API_KEY`. Its `DalleTools` calls no longer run against the current OpenAI API.",
+    )
+    root_sub(
+        "tools/toolkits/models/azure-openai.mdx",
+        "The pinned source requires `requests`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, and `AZURE_OPENAI_IMAGE_DEPLOYMENT`.",
+        "This legacy example requires `requests`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, and `AZURE_OPENAI_IMAGE_DEPLOYMENT`.",
+    )
+    root_sub(
+        "tools/toolkits/others/dalle.mdx",
+        "The pinned source expected the `openai` package and an `OPENAI_API_KEY`.",
+        "This legacy example expected the `openai` package and an `OPENAI_API_KEY`.",
     )
     root_sub(
         "database/providers/valkey/usage/valkey-for-agent.mdx",
@@ -2528,7 +2621,7 @@ The agent writes 24 kHz, mono, 16-bit PCM audio to `tmp/response_stream.wav`. Th
         """## Current Status
 
 <Warning>
-  The pinned v2.7.2 source uses Pipedream's retired per-app SSE URL. It cannot connect to the current Pipedream MCP service without code and authentication changes. See [Pipedream MCP](https://pipedream.com/docs/connect/mcp) for the current end-user and developer flows.
+  This v2.7.2 example uses Pipedream's retired per-app SSE URL. It cannot connect to the current Pipedream MCP service without code and authentication changes. See [Pipedream MCP](https://pipedream.com/docs/connect/mcp) for the current end-user and developer flows.
 </Warning>""",
     )
 

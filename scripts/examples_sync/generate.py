@@ -474,7 +474,7 @@ SERVICE_STEPS = {
     "redis": ("Run Redis", "docker run -d --name my-redis -p 6379:6379 redis"),
     "surrealdb": (
         "Run SurrealDB",
-        "docker run --rm --pull always -p 8000:8000 surrealdb/surrealdb:latest start --user root --pass root",
+        "docker run -d --rm --name surrealdb --pull always -p 8000:8000 surrealdb/surrealdb:latest start --user root --pass root",
     ),
 }
 
@@ -630,15 +630,10 @@ CEREBRAS_RETIRED_MODEL_IDS = {
     "qwen-3-32b",
 }
 CEREBRAS_RETIRED_MODEL_WARNING = (
-    "The pinned source uses a Cerebras model ID that has been retired. Replace the "
+    "This example uses a Cerebras model ID that has been retired. Replace the "
     "retired ID with `gpt-oss-120b` before running. Review the "
     "[Cerebras migration notes](https://inference-docs.cerebras.ai/support/deprecation) "
     "when the example uses reasoning, tools, or structured output."
-)
-CEREBRAS_RETIRED_MODEL_MIGRATION_STEP = (
-    "Use a current Cerebras model",
-    "Replace `llama-3.3-70b`, `llama-4-scout-17b-16e-instruct`, or `qwen-3-32b` with `gpt-oss-120b` in the saved Python file before running.",
-    None,
 )
 COHERE_RETIRED_VISION_WARNING = (
     "The pinned source uses `c4ai-aya-vision-8b`, which Cohere retired on "
@@ -1570,6 +1565,22 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "05_agent_os/dbs/surreal_db/teams.py": {
         "run_note": "This helper is imported by the SurrealDB AgentOS application.",
     },
+    "05_agent_os/dbs/surreal_db/run.py": {
+        "package_remove": {"firecrawl"},
+        "pre_code_warning": "The source's search agent registers only Firecrawl scraping, while its finance agent registers only current-price lookup. Enable the tools promised by their roles before running. Also disable auto-reload so the MCP connection can keep one application lifespan.",
+        "pre_run_steps": [
+            (
+                "Enable the promised research tools",
+                "When saving `workflows.py`, replace `FirecrawlTools()` with `FirecrawlTools(enable_search=True)`. When saving `teams.py`, replace `YFinanceTools()` with `YFinanceTools(all=True)`.",
+                None,
+            ),
+            (
+                "Keep one MCP lifespan",
+                "When saving `run.py`, replace `agent_os.serve(app=\"run:app\", reload=True)` with `agent_os.serve(app=\"run:app\")`.",
+                None,
+            ),
+        ],
+    },
     "05_agent_os/dbs/surreal_db/workflows.py": {
         "package_remove": {"fastapi", "firecrawl"},
         "run_note": "This helper is imported by the SurrealDB AgentOS application.",
@@ -1816,7 +1827,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "pre_run_steps": [
             (
                 "Review the source limitation",
-                'The pinned source does not pass `GOOGLE_MAPS_API_KEY` to the Google Maps MCP server, and `include_tools=["airbnb_search"]` filters out every Maps tool. Correct both settings before running the restaurant query.',
+                'This example does not pass `GOOGLE_MAPS_API_KEY` to the Google Maps MCP server, and `include_tools=["airbnb_search"]` filters out every Maps tool. Correct both settings before running the restaurant query.',
                 None,
             ),
             (
@@ -2578,7 +2589,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "91_tools/mcp/cli.py": {
         "env_add": {"GITHUB_PERSONAL_ACCESS_TOKEN"},
-        "pre_code_warning": "The pinned v2.7.2 source starts an older npm GitHub MCP server. This page intentionally substitutes [GitHub's official MCP server](https://github.com/github/github-mcp-server) Docker image and adds the matching Docker setup.",
+        "pre_code_warning": "This v2.7.2 example starts an older npm GitHub MCP server. This page substitutes [GitHub's official MCP server](https://github.com/github/github-mcp-server) Docker image and adds the matching Docker setup.",
     },
     "91_tools/mcp/github.py": {
         "env_add": {"GITHUB_PERSONAL_ACCESS_TOKEN"},
@@ -2596,6 +2607,29 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "91_tools/scheduler_tools.py": {
         "intro_override": "Use a standalone agent to create and manage schedule records in PostgreSQL. This page covers record operations only.",
         "pre_code_warning": "This standalone example creates schedule records but does not run an AgentOS scheduler. Its `scheduler-demo` endpoint is absent from the linked AgentOS example, which serves `scheduler-agent`. Use [Scheduler Tools Agent](/examples/agent-os/scheduler/scheduler-tools-agent) as a separate end-to-end setup instead of mixing the two examples.",
+    },
+    "91_tools/models/gemini_video_generation.py": {
+        "intro_override": "Use Veo 3.1 through GeminiTools on Vertex AI and decode the returned base64 content before saving the MP4.",
+        "pre_code_warning": "Google discontinued the example's default `veo-2.0-generate-001` endpoint after June 30, 2026 and recommends `veo-3.1-generate-001`. The source also converts `video.content` to the string representation of a bytes object, which corrupts the saved MP4. Apply both corrections below. See [Vertex AI release notes](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/release-notes#March_24_2026).",
+        "pre_run_steps": [
+            (
+                "Use Veo 3.1",
+                "Replace `GeminiTools(vertexai=True)` with `GeminiTools(vertexai=True, video_generation_model=\"veo-3.1-generate-001\", enable_generate_image=False)` in the saved file.",
+                None,
+            ),
+            (
+                "Decode the returned content",
+                "Replace `base64_data=str(video.content)` with `base64_data=video.content.decode(\"utf-8\")` so `save_base64_data()` receives the base64 string instead of a bytes representation.",
+                None,
+            ),
+        ],
+    },
+    "04_workflows/06_advanced_concepts/history/continuous_execution.py": {
+        "intro_override": "Give the tutoring step access to the three most recent workflow runs for a continuing conversation.",
+        "pre_code_warning": "This example supplies the three most recent workflow runs, not the full conversation history claimed in the agent instructions. Set `num_history_runs` on `Step` to choose a larger bounded window; the step's default of 3 takes precedence over the workflow setting.",
+    },
+    "12_context/24_multi_context_streaming.py": {
+        "pre_code_warning": "This example deletes and recreates `demo-arch-wiki` and `demo-ops-wiki` beside the saved file when the module is imported. Keep both directories disposable and do not import the module into another application. The docstring's `docs wiki` prompt is stale; the configured providers are Architecture Wiki and Operations Wiki.",
     },
     "91_tools/trafilatura_tools.py": {
         "intro_override": "Configure TrafilaturaTools for txt, markdown, JSON, and XML extraction, precision or recall tuning, metadata-only mode, crawling, and HTML-to-text conversion.",
@@ -4210,15 +4244,25 @@ def apply_source_render_override(
             "Follow [Image Generation Agent](/models/providers/native/openai/responses/usage/image-generation-agent) "
             "to generate images with GPT Image 2."
         )
-    if any(
-        any_call_has_string_keyword_value(srcs, call_name, "id", model_id)
-        for call_name in {"Cerebras", "CerebrasOpenAI"}
+    cerebras_retired_model_ids = sorted(
+        model_id
         for model_id in CEREBRAS_RETIRED_MODEL_IDS
-    ):
+        if any(
+            any_call_has_string_keyword_value(srcs, call_name, "id", model_id)
+            for call_name in {"Cerebras", "CerebrasOpenAI"}
+        )
+    )
+    if cerebras_retired_model_ids:
         override.setdefault("pre_code_warning", CEREBRAS_RETIRED_MODEL_WARNING)
         pre_run_steps = list(override.get("pre_run_steps", []))
-        if CEREBRAS_RETIRED_MODEL_MIGRATION_STEP not in pre_run_steps:
-            pre_run_steps.append(CEREBRAS_RETIRED_MODEL_MIGRATION_STEP)
+        retired_ids = " or ".join(f"`{model_id}`" for model_id in cerebras_retired_model_ids)
+        migration_step = (
+            "Use a current Cerebras model",
+            f"Replace {retired_ids} with `gpt-oss-120b` in the saved Python file before running.",
+            None,
+        )
+        if migration_step not in pre_run_steps:
+            pre_run_steps.append(migration_step)
         override["pre_run_steps"] = pre_run_steps
     groq_migrations = [
         (model_id, migration)
@@ -4337,6 +4381,15 @@ def apply_source_render_override(
         req.needs_agno = bool(override["needs_agno"])
     if "needs_pgvector" in override:
         req.needs_pgvector = bool(override["needs_pgvector"])
+    for key in ("description_override", "intro_override", "pre_code_warning", "run_replacement"):
+        value = override.get(key)
+        if isinstance(value, str):
+            override[key] = (
+                value.replace("The pinned source's", "This example's")
+                .replace("The pinned source", "This example")
+                .replace("the pinned source's", "the example's")
+                .replace("the pinned source", "the example")
+            )
     return override
 
 
