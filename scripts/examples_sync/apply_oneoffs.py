@@ -453,6 +453,9 @@ EXPLICIT_ROW_OVERRIDES = {
 # These pages have a reviewed, factual mismatch that is grammatical enough not
 # to be caught by the fail-closed malformed-row detector.
 EXPLICIT_ROW_REFRESH = {
+    "examples/reasoning/tools/overview": {
+        "examples/reasoning/tools/cerebras-llama-reasoning-tools",
+    },
     "examples/agent-os/advanced-demo/overview": {
         "examples/agent-os/advanced-demo/demo",
         "examples/agent-os/advanced-demo/reasoning-demo",
@@ -617,8 +620,13 @@ EXPLICIT_ROW_REFRESH = {
         "examples/models/llama-cpp/overview",
         "examples/models/lmstudio/overview",
     },
-    "examples/models/cerebras/overview": {"examples/models/cerebras/db"},
+    "examples/models/cerebras/overview": {
+        "examples/models/cerebras/basic",
+        "examples/models/cerebras/db",
+        "examples/models/cerebras/tool-use",
+    },
     "examples/models/cerebras-openai/overview": {
+        "examples/models/cerebras-openai/basic",
         "examples/models/cerebras-openai/db",
     },
     "examples/models/aimlapi/overview": {
@@ -758,6 +766,7 @@ EXPLICIT_ROW_REFRESH = {
         "examples/tools/brandfetch-tools",
         "examples/tools/bravesearch-tools",
         "examples/tools/dalle-tools",
+        "examples/tools/discord-tools",
         "examples/tools/googlesheets-tools",
         "examples/tools/mem0-tools",
         "examples/tools/searchapi-tools",

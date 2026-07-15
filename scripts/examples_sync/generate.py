@@ -600,6 +600,22 @@ GEMINI_31_PRO_MIGRATION_STEP = (
     "Replace `gemini-3-pro-preview` with `gemini-3.1-pro-preview` in the saved Python file before running.",
     None,
 )
+CEREBRAS_RETIRED_MODEL_IDS = {
+    "llama-3.3-70b",
+    "llama-4-scout-17b-16e-instruct",
+    "qwen-3-32b",
+}
+CEREBRAS_RETIRED_MODEL_WARNING = (
+    "The pinned source uses a Cerebras model ID that has been retired. Replace the "
+    "retired ID with `gpt-oss-120b` before running. Review the "
+    "[Cerebras migration notes](https://inference-docs.cerebras.ai/support/deprecation) "
+    "when the example uses reasoning, tools, or structured output."
+)
+CEREBRAS_RETIRED_MODEL_MIGRATION_STEP = (
+    "Use a current Cerebras model",
+    "Replace `llama-3.3-70b`, `llama-4-scout-17b-16e-instruct`, or `qwen-3-32b` with `gpt-oss-120b` in the saved Python file before running.",
+    None,
+)
 LITELLM_STEP = (
     "Start LiteLLM",
     "Start the local OpenAI-compatible proxy on port 4000:",
@@ -1075,6 +1091,15 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "pre_run_steps": [LLAMA_CPP_INSTALL_STEP, LLAMA_CPP_STEP]
     },
     "91_tools/moviepy_video_tools.py": {"pre_run_steps": [VIDEO_PATH_STEP]},
+    "91_tools/discord_tools.py": {
+        "pre_run_steps": [
+            (
+                "Configure the Discord bot and IDs",
+                "Create a Discord application and bot. Enable the Message Content privileged intent in the bot settings, then install the bot in the target server with the `bot` scope and View Channels, Send Messages, and Read Message History permissions. Grant Manage Messages only if you enable deletion. Enable Developer Mode in Discord, then replace `YOUR_CHANNEL_ID` and `YOUR_SERVER_ID` in the saved Python file with IDs copied from that server.",
+                None,
+            )
+        ],
+    },
     "90_models/ollama/chat/demo_gemma.py": {
         "pre_run_steps": [
             (
@@ -1886,11 +1911,22 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "extra_add": {"a2a", "os"},
         "package_add": {"chromadb", "ddgs", "openai"},
         "env_add": {"OPENAI_API_KEY"},
+        "pre_code_warning": "The pinned source contains two stale `cookbook/06_agent_os` paths, including one printed at runtime. Use the `cookbook/05_agent_os` server path in the run steps below.",
         "pre_run_steps": [
             (
                 "Start the Agno A2A server",
                 "In another terminal, start the [Agno A2A server](/examples/agent-os/remote/agno-a2a-server) on port 7779:",
                 "python cookbook/05_agent_os/remote/agno_a2a_server.py",
+            )
+        ],
+    },
+    "03_teams/12_learning/10_team_agentic_learning.py": {
+        "pre_code_warning": "The pinned source imports `LearningMode` from a module that does not exist in Agno v2.7.2. Update the import before running.",
+        "pre_run_steps": [
+            (
+                "Fix the LearningMode import",
+                "Replace `from agno.learn.mode import LearningMode` with `from agno.learn import LearningMode` in the saved Python file.",
+                None,
             )
         ],
     },
@@ -3706,6 +3742,16 @@ def apply_source_render_override(
             "Follow [Image Generation Agent](/models/providers/native/openai/responses/usage/image-generation-agent) "
             "to generate images with GPT Image 2."
         )
+    if any(
+        any_call_has_string_keyword_value(srcs, call_name, "id", model_id)
+        for call_name in {"Cerebras", "CerebrasOpenAI"}
+        for model_id in CEREBRAS_RETIRED_MODEL_IDS
+    ):
+        override.setdefault("pre_code_warning", CEREBRAS_RETIRED_MODEL_WARNING)
+        pre_run_steps = list(override.get("pre_run_steps", []))
+        if CEREBRAS_RETIRED_MODEL_MIGRATION_STEP not in pre_run_steps:
+            pre_run_steps.append(CEREBRAS_RETIRED_MODEL_MIGRATION_STEP)
+        override["pre_run_steps"] = pre_run_steps
     if any_call_has_string_keyword_value(
         srcs, "OpenAITools", "image_model", "gpt-image-1"
     ):
