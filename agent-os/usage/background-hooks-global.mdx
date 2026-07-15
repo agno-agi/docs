@@ -1,11 +1,11 @@
 ---
 title: Background Hooks (Global)
 sidebarTitle: Background Hooks (Global)
-description: Run all agent hooks as background tasks using AgentOS
+description: Run non-guardrail agent hooks as background tasks using AgentOS
 mode: wide
 ---
 
-Run **all** hooks as FastAPI background tasks by enabling `run_hooks_in_background` at the AgentOS level.
+Run non-guardrail hooks as FastAPI background tasks by enabling `run_hooks_in_background` at the AgentOS level. Guardrail hooks remain synchronous so they can accept or reject the run before processing continues.
 
 <Steps>
 
@@ -23,8 +23,8 @@ Run **all** hooks as FastAPI background tasks by enabling `run_hooks_in_backgrou
     # Pre-hook for logging requests
     def log_request(run_input: RunInput, agent):
         """
-        This pre-hook will run in the background before the agent processes the request.
-        Note: Pre-hooks in background mode cannot modify run_input.
+        This pre-hook is queued while the run starts and executes after the response.
+        Background pre-hooks cannot modify run_input for the active run.
         """
         print(f"[Background Pre-Hook] Request received for agent: {agent.name}")
         print(f"[Background Pre-Hook] Input: {run_input.input_content}")
@@ -71,7 +71,7 @@ Run **all** hooks as FastAPI background tasks by enabling `run_hooks_in_backgrou
     # Create AgentOS with background hooks enabled
     agent_os = AgentOS(
         agents=[agent],
-        run_hooks_in_background=True,  # All hooks run in background
+        run_hooks_in_background=True,  # Non-guardrail hooks run in background
     )
 
     # Get the FastAPI app
@@ -130,10 +130,10 @@ Run **all** hooks as FastAPI background tasks by enabling `run_hooks_in_backgrou
 
 1. The agent processes the request
 2. The response is sent immediately to the user
-3. All pre-hooks and post-hooks run in the background
-4. The user doesn't have to wait for these tasks to complete
+3. Non-guardrail pre-hooks and post-hooks run in the background
+4. Guardrail hooks run synchronously and can block the request
+5. The user doesn't have to wait for background tasks to complete
 
 <Note>
-With `run_hooks_in_background=True` on AgentOS, **all** hooks for all agents run in the background. Use the [`@hook` decorator](/agent-os/usage/background-hooks-decorator) for more granular control over which hooks run in the background.
+With `run_hooks_in_background=True` on AgentOS, non-guardrail hooks for all agents run in the background. Guardrail hooks remain synchronous. Use the [`@hook` decorator](/agent-os/usage/background-hooks-decorator) for per-hook control.
 </Note>
-
