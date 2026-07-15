@@ -12,7 +12,7 @@ The scripts install the Helm release `agentos` into the `agentos` namespace. Ove
 |------|---------|
 | Roll to a new image tag | `IMAGE_TAG=v2 ./scripts/k8s/redeploy.sh` (build and push the tag first) |
 | Restart pods in place | `./scripts/k8s/redeploy.sh` |
-| Sync env variables | `./scripts/k8s/env-sync.sh` (connection and secret keys only; defaults to `.env.production`, pass `.env` to sync that instead) |
+| Sync supported env variables | `./scripts/k8s/env-sync.sh` (updates nonempty values from a fixed allowlist that includes `RUNTIME_ENV`; defaults to `.env.production`, or pass `.env`) |
 | Tail logs | `kubectl logs deploy/agentos -n agentos -f` |
 | Port-forward the API | `kubectl port-forward svc/agentos 8000:8000 -n agentos` |
 | Roll back a release | `helm rollback agentos -n agentos` |
@@ -98,7 +98,7 @@ docker build -t <registry>/agentos:v2 . && docker push <registry>/agentos:v2
 IMAGE_TAG=v2 ./scripts/k8s/redeploy.sh
 ```
 
-`env-sync.sh` syncs only the connection and secret keys, so a new provider key like `ANTHROPIC_API_KEY` never reaches the cluster that way. Deliver it via `extraEnv` and `helm upgrade`.
+`env-sync.sh` uses a fixed allowlist that includes `RUNTIME_ENV`, `AGENTOS_URL`, `JWT_JWKS_FILE`, the template's supported secrets, and `DB_PASS`. It does not sync a new provider key such as `ANTHROPIC_API_KEY`. Deliver that key via `extraEnv` and `helm upgrade`.
   </Accordion>
 
   <Accordion title="Add tools">
@@ -134,7 +134,7 @@ Sync with `./scripts/k8s/env-sync.sh`. The interface activates automatically and
   <Accordion title="Toggle scheduled workflows">
 The deployment check runs daily by default (`ENABLE_DEPLOY_CHECK=True`); it is deterministic and free. Scheduled evals are off by default (`ENABLE_SCHEDULED_EVALS=False`) because they use model calls. Both workflows stay runnable on demand regardless.
 
-In the cluster these are chart values. Set them via `extraEnv` and `helm upgrade`; `./scripts/k8s/env-sync.sh` syncs only the connection and secret keys.
+In the cluster these are chart values. Set them via `extraEnv` and `helm upgrade`; `env-sync.sh` does not sync `ENABLE_DEPLOY_CHECK`, `ENABLE_SCHEDULED_EVALS`, or `EVALS_*`.
   </Accordion>
 </AccordionGroup>
 
@@ -165,7 +165,7 @@ source .venv/bin/activate
 | `JWT_JWKS_FILE` | Production | - | Path to a JWKS file inside the container. Alternative to `JWT_VERIFICATION_KEY`. `up.sh` and `env-sync.sh` deliver it as the chart value `jwtJwksFile`. |
 | `MCP_CONNECT_SECRET` | No | - | OAuth consent secret (16+ chars) for connecting claude.ai and ChatGPT to `/mcp`. `up.sh` generates it into `.env.production` when the deploy has a public URL (`INGRESS_HOST` or `AGENTOS_URL`); set it by hand otherwise. |
 | `AGENTOS_MCP_SIGNING_KEY` | No | generated | Optional high-entropy signing-key material (32+ chars) for OAuth tokens. Unset, a strong key is generated and persisted in the database. Rotating it invalidates outstanding tokens. |
-| `AGENTOS_URL` | No | `http://127.0.0.1:8000` | Scheduler base URL. The chart resolves it automatically: explicit value, then ingress URL, then in-cluster service DNS. Set it by hand only for a custom domain or tunnel. Also the public origin OAuth metadata derives from when `MCP_CONNECT_SECRET` is set. |
+| `AGENTOS_URL` | No | `http://agentos:8000` | Scheduler base URL. The chart resolves an explicit value first, then the ingress URL, then the release service URL. Set it only for a custom domain or tunnel. When `MCP_CONNECT_SECRET` is set, OAuth metadata uses this URL as its public origin. |
 | `ENABLE_DEPLOY_CHECK` | No | `True` | Daily deployment-check cron. |
 | `ENABLE_SCHEDULED_EVALS` | No | `False` | Daily run-evals cron. Uses model calls. |
 | `EVALS_TAG` | No | `smoke` | Eval tag the run-evals workflow runs. |
