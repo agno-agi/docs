@@ -2439,11 +2439,13 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "pre_code_warning": "The pinned source initializes Langtrace after importing Agno model modules, so automatic instrumentation may not attach. Create a Langtrace project and generate an API key before running the example. See [Langtrace Python SDK setup](https://github.com/Scale3-Labs/langtrace-python-sdk#quick-start).",
         "pre_run_steps": [
             (
-                "Fix the initialization order",
-                "Move the `langtrace_python_sdk` import and `langtrace.init()` before every Agno and OpenAI import in the saved file.",
+                "Save and fix the initialization order",
+                "Save the code above as `langtrace_op.py`, then move the `langtrace_python_sdk` import and `langtrace.init()` before every Agno and OpenAI import.",
                 None,
             )
         ],
+        "run_title": "Run the example",
+        "run_replacement": "Run the corrected file:\n    ```bash\n    python langtrace_op.py\n    ```",
     },
     "03_teams/02_modes/tasks_stream.py": {
         "suppress_intro": True,

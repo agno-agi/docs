@@ -2871,6 +2871,11 @@ Setup for each provider""",
 
 The source fence is preserved for v2.7.2 fidelity. Apply every change in the warning above before running it.""",
     )
+    root_sub(
+        "workflows/running-workflows.mdx",
+        "See detailed documentation in the [WorkflowRunOutputEvent](/reference/workflows/run-output) documentation.",
+        "See the [WorkflowRunOutputEvent](/reference/workflows/run-output) reference.",
+    )
 
     # 7. The pinned Dakera client predates the current container authentication,
     #    routes, and recall response shape. Preserve the source but do not offer
