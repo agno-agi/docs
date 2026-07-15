@@ -526,6 +526,9 @@ EXPLICIT_ROW_REFRESH = {
         "examples/agent-os/tracing/dbs/basic-agent-with-postgresdb",
         "examples/agent-os/tracing/dbs/basic-agent-with-sqlite",
     },
+    "examples/tools/mcp/overview": {
+        "examples/tools/mcp/pipedream-linkedin",
+    },
     "examples/integrations/rag/overview": {
         "examples/knowledge/integrations/rag/agentic-rag-infinity-reranker",
         "examples/knowledge/integrations/rag/agentic-rag-with-lightrag",
@@ -799,6 +802,7 @@ EXPLICIT_ROW_REFRESH = {
 # derived from the table rather than maintained target by target.
 FULL_ROW_REFRESH_OVERVIEWS = {
     "examples/models/google/gemini/overview",
+    "examples/models/xai/overview",
 }
 
 EXPLICIT_LABEL_REFRESH = {
@@ -2222,6 +2226,47 @@ The example configures audio streaming with 24kHz sample rate, mono channel, and
 ## Output Format
 
 The agent writes 24 kHz, mono, 16-bit PCM audio to `tmp/response_stream.wav`. The script saves the stream to disk. It does not play the audio.""",
+    )
+
+    sub(
+        "tools/mcp/pipedream-linkedin.mdx",
+        """## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U "agno[mcp]" openai
+    ```
+  </Step>
+
+  <Step title="Export environment variables">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export MCP_SERVER_URL="your_mcp_server_url_here"
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:MCP_SERVER_URL="your_mcp_server_url_here"
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `pipedream_linkedin.py`, then run:
+    ```bash
+    python pipedream_linkedin.py
+    ```
+  </Step>
+</Steps>""",
+        """## Current Status
+
+<Warning>
+  The pinned v2.7.2 source uses Pipedream's retired per-app SSE URL. It cannot connect to the current Pipedream MCP service without code and authentication changes. See [Pipedream MCP](https://pipedream.com/docs/connect/mcp) for the current end-user and developer flows.
+</Warning>""",
     )
 
     # 7. Reviewed frontmatter overrides consumed by the overview row pass.

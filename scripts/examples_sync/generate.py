@@ -1151,6 +1151,65 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
             )
         ],
     },
+    "05_agent_os/mcp_demo/dynamic_headers/client.py": {
+        "intro_override": "Forward per-run user and session context from AgentOS to an MCP server with dynamic HTTP headers.",
+        "package_add": {"fastmcp"},
+        "pre_run_steps": [
+            (
+                "Start the MCP server",
+                "Follow the [server example](/examples/agent-os/mcp-demo/dynamic-headers/server) to save `server.py`, then start it in another terminal and keep it running:",
+                "python server.py",
+            )
+        ],
+    },
+    "05_agent_os/integrations/shopify_demo.py": {
+        "intro_override": "For a new app on your own store, create and install it in Shopify's [Dev Dashboard](https://shopify.dev/docs/apps/build/dev-dashboard/create-apps-using-dev-dashboard), request an access token with the [client credentials grant](https://shopify.dev/docs/apps/build/dev-dashboard/get-api-access-tokens), and export the returned token as `SHOPIFY_ACCESS_TOKEN`. The Shopify Admin path in the pinned source applies only to existing admin-created custom apps.",
+    },
+    "90_models/google/gemini/image_editing.py": {
+        "pre_run_steps": [
+            (
+                "Use an image-generation model",
+                "Before running the source-fidelity code, change `gemini-3.5-flash` to `gemini-3.1-flash-image`. Gemini 3.5 Flash accepts image input but does not generate images.",
+                None,
+            )
+        ],
+    },
+    "90_models/google/gemini/image_generation.py": {
+        "pre_run_steps": [
+            (
+                "Use an image-generation model",
+                "Before running the source-fidelity code, change `gemini-3.5-flash` to `gemini-3.1-flash-image`. Gemini 3.5 Flash accepts image input but does not generate images.",
+                None,
+            )
+        ],
+    },
+    "90_models/google/gemini_interactions/image_generation.py": {
+        "pre_run_steps": [
+            (
+                "Use the stable image model",
+                "Before running the source-fidelity code, change `gemini-3.1-flash-image-preview` to `gemini-3.1-flash-image`. The preview model has been shut down.",
+                None,
+            )
+        ],
+    },
+    "05_agent_os/interfaces/whatsapp/image_generation_model.py": {
+        "pre_run_steps": [
+            (
+                "Use the stable image model",
+                "Before running the source-fidelity code, change `gemini-3-pro-image-preview` to `gemini-3-pro-image`. The preview model has been shut down.",
+                None,
+            )
+        ],
+    },
+    "90_models/xai/finance_agent.py": {
+        "intro_override": "Use YFinanceTools with Grok to report stock prices, analyst recommendations, company data, and news.",
+    },
+    "90_models/xai/retry.py": {
+        "intro_override": "Retry a deliberately invalid Grok model request three times with a one-second initial delay and exponential backoff.",
+    },
+    "91_tools/mcp/pipedream_linkedin.py": {
+        "intro_override": "The pinned source uses a retired Pipedream per-app SSE URL and cannot connect to the current service without code and authentication changes. See [Pipedream MCP](https://pipedream.com/docs/connect/mcp) for the current connection flows.",
+    },
     "91_tools/mcp/graphiti.py": {
         "intro_override": "Use Agno's MCP integration with Graphiti to build a personal diary assistant that stores and recalls entries from a knowledge graph.",
         "pre_run_steps": [
