@@ -776,6 +776,9 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "11_memory/memory_manager/03_custom_memory_instructions.py": {
         "intro_override": "Run one custom memory-capture scenario for academic interests, then a separate default scenario over multi-turn messages.",
     },
+    "11_memory/06_multi_user_multi_session_chat_concurrent.py": {
+        "intro_override": "A shared agent runs three user conversations concurrently with `asyncio.gather` and persists user memories across sessions.",
+    },
     "04_workflows/02_conditional_execution/condition_with_parallel.py": {
         "suppress_intro": True,
     },
