@@ -627,6 +627,9 @@ SLACK_INTERFACE_STEP = (
 )
 
 SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
+    "integrations/parallel/07_research_workflow.py": {
+        "intro_override": "Run source gathering and cited-brief writing as defined workflow steps. Agent outputs can vary between runs.",
+    },
     "00_quickstart/agent_search_over_knowledge.py": {
         "package_add": {"beautifulsoup4"},
     },
@@ -1245,15 +1248,13 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "pre_run_steps": [MCP_TOOLBOX_STEP],
     },
     "11_memory/integrations/dakera_integration.py": {
-        "env_add": {"DAKERA_API_KEY"},
-        "env_values": {"DAKERA_API_KEY": "demo"},
-        "pre_run_steps": [
-            (
-                "Start Dakera",
-                "Start the local memory server on port 3300:",
-                "docker run -d -p 3300:3300 -e DAKERA_API_KEY=demo ghcr.io/dakera-ai/dakera:latest",
-            )
-        ],
+        "intro_override": "The source-fidelity example stores memory in self-hosted Dakera, then sends recalled memory to OpenAI as agent context. Its pinned client targets an older Dakera API and requires migration before use.",
+    },
+    "03_teams/19_multimodal/generate_image_with_team.py": {
+        "intro_override": "The source-fidelity team uses `DalleTools`, whose supported DALL-E models are deprecated. Migrate the image member to GPT Image 2 before use.",
+    },
+    "05_agent_os/interfaces/telegram/agent_with_media.py": {
+        "intro_override": "The Telegram bot's DALL-E image path requires migration to GPT Image 2. Its media analysis and ElevenLabs paths remain as shown.",
     },
     "07_knowledge/05_integrations/rag/agentic_rag_with_lightrag.py": {
         "repo_layout": True,
@@ -1444,7 +1445,29 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         ],
     },
     "90_models/openai/responses/image_generation_agent.py": {
-        "intro_override": "The agent uses `OpenAITools` with `gpt-image-1` to generate an image.",
+        "intro_override": "The source-fidelity code uses `OpenAIChat` and `gpt-image-1` despite its Responses category. Replace them with `OpenAIResponses` and `gpt-image-2` before running the example.",
+        "pre_run_steps": [
+            (
+                "Use the Responses API",
+                "Replace the `OpenAIChat` import and constructor with `OpenAIResponses(id=\"gpt-5.2\")`.",
+                None,
+            ),
+            (
+                "Encode the image bytes",
+                "Add `import base64`. Encode `response.images[0].content` with `base64.b64encode(...).decode(\"utf-8\")`, then pass that string to `save_base64_data`.",
+                None,
+            )
+        ],
+    },
+    "90_models/mistral/image_file_input_agent.py": {
+        "intro_override": "The source-fidelity code uses deprecated `pixtral-12b-2409`. Replace it with `ministral-14b-2512` and add `sample.jpeg` before running the example.",
+        "pre_run_steps": [
+            (
+                "Add the sample image",
+                "Place a JPEG named `sample.jpeg` in the same directory as the code file.",
+                None,
+            ),
+        ],
     },
     "90_models/google/gemini_interactions/deep_research_file_search.py": {
         "pre_run_steps": [
@@ -1599,6 +1622,13 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
             )
         ],
     },
+    "91_tools/models/azure_openai_tools.py": {
+        "intro_override": "This source-fidelity example uses `AzureOpenAITools`, whose supported DALL-E models are retired. It is preserved as a legacy reference.",
+        "pre_code_warning": "Azure DALL-E 2 and DALL-E 3 deployments are retired, and the v2.7.2 toolkit supports no current image model. Do not run this source as written.",
+        "replacement_only": True,
+        "replacement_heading": "Current Alternatives",
+        "run_replacement": "Use a current Azure image-generation client by following [Microsoft's migration guidance](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/dall-e), or use [Image Generation Agent](/models/providers/native/openai/responses/usage/image-generation-agent) with OpenAI GPT Image 2.",
+    },
     "91_tools/jira_tools.py": {
         "env_add": {"JIRA_TOKEN"},
         "env_remove": {"JIRA_API_TOKEN", "JIRA_PASSWORD"},
@@ -1731,6 +1761,15 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     # be inferred reliably from the primary source file alone.
     "05_agent_os/knowledge/agno_docs_agent.py": {
         "package_add": {"beautifulsoup4"},
+        "intro_override": "Serve an Agno docs knowledge agent through AgentOS. Its pinned media instruction branches require migration before use.",
+        "pre_code_warning": "The pinned source tells the agent to call `text_to_speech` and `create_image`, but registers neither tool.",
+        "pre_run_steps": [
+            (
+                "Remove the media instructions",
+                "Delete the `Explain important concepts using audio` and `Explain concepts with images` branches from `instructions`. Remove `and optional audio explanations for complex concepts` from `description` before running.",
+                None,
+            )
+        ],
     },
     "05_agent_os/mcp_demo/oauth_authkit_example.py": {
         "intro_override": "Pass a FastMCP AuthProvider as `mcp_auth` to delegate MCP OAuth to an external authorization server. This example uses WorkOS AuthKit for identity, RBAC, and SSO. See [Built-in OAuth](/examples/agent-os/mcp-demo/oauth-builtin-example) for AgentOS-hosted authorization.",
@@ -1875,6 +1914,17 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
                 "Run ClickHouse",
                 "Start ClickHouse on the ports and with the credentials used by the example:",
                 "docker run -d --name clickhouse-server -e CLICKHOUSE_DB=ai -e CLICKHOUSE_USER=ai -e CLICKHOUSE_PASSWORD=ai -e CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 -p 8123:8123 -p 9000:9000 clickhouse/clickhouse-server",
+            )
+        ],
+    },
+    "05_agent_os/tracing/03_agent_with_knowledge_tracing.py": {
+        "intro_override": "Trace an AgentOS knowledge agent. Its pinned media instruction branches require migration before use.",
+        "pre_code_warning": "The pinned source tells the agent to call `text_to_speech` and `create_image`, but registers neither tool.",
+        "pre_run_steps": [
+            (
+                "Remove the media instructions",
+                "Delete the `Explain important concepts using audio` and `Explain concepts with images` branches from `instructions`. Remove `and optional audio explanations for complex concepts` from `description` before running.",
+                None,
             )
         ],
     },
@@ -3028,6 +3078,28 @@ def has_any_call(srcs: list[str], call_names: set[str]) -> bool:
     return False
 
 
+def any_call_has_string_keyword_value(
+    srcs: list[str], call_name: str, keyword: str, value: str
+) -> bool:
+    """Return whether a constructor receives an exact string keyword value."""
+    for src in srcs:
+        try:
+            tree = ast.parse(src)
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or _call_name(node) != call_name:
+                continue
+            if any(
+                item.arg == keyword
+                and isinstance(item.value, ast.Constant)
+                and item.value.value == value
+                for item in node.keywords
+            ):
+                return True
+    return False
+
+
 def ollama_model_ids(src: str) -> set[str]:
     """Literal model IDs used by Ollama constructors."""
     try:
@@ -3566,7 +3638,9 @@ def render_env_step(
   </Step>"""
 
 
-def apply_source_render_override(req: Requirements, cookbook_rel: str) -> dict[str, object]:
+def apply_source_render_override(
+    req: Requirements, cookbook_rel: str, srcs: list[str]
+) -> dict[str, object]:
     """Apply reviewed source-specific metadata and return rendering controls."""
     rel = cookbook_rel.removeprefix("cookbook/")
     override = dict(SOURCE_RENDER_OVERRIDES.get(rel, {}))
@@ -3575,6 +3649,71 @@ def apply_source_render_override(req: Requirements, cookbook_rel: str) -> dict[s
         if not any(step[0] == "Configure Slack" for step in pre_run_steps):
             pre_run_steps.append(SLACK_INTERFACE_STEP)
         override["pre_run_steps"] = pre_run_steps
+    if has_any_call(srcs, {"DalleTools"}):
+        override.setdefault(
+            "intro_override",
+            "The source-fidelity code uses `DalleTools`, whose supported DALL-E models are deprecated. Migrate the image path to GPT Image 2 before use.",
+        )
+        override["pre_code_warning"] = (
+            "DALL-E models are deprecated. This source-fidelity example is preserved "
+            "for reference and should not be run as written. Use "
+            "[Image Generation Agent](/models/providers/native/openai/responses/usage/image-generation-agent) "
+            "with GPT Image 2."
+        )
+        override["replacement_only"] = True
+        override["replacement_heading"] = "Current Alternative"
+        override["run_replacement"] = (
+            "Follow [Image Generation Agent](/models/providers/native/openai/responses/usage/image-generation-agent) "
+            "to generate images with GPT Image 2."
+        )
+    if any_call_has_string_keyword_value(
+        srcs, "OpenAITools", "image_model", "gpt-image-1"
+    ):
+        pre_run_steps = list(override.get("pre_run_steps", []))
+        step = (
+            "Update the image model",
+            "When saving the code, replace `gpt-image-1` with `gpt-image-2`.",
+            None,
+        )
+        if step not in pre_run_steps:
+            pre_run_steps.append(step)
+        override["pre_run_steps"] = pre_run_steps
+        override.setdefault(
+            "intro_override",
+            "The source-fidelity code uses `gpt-image-1`. Replace it with `gpt-image-2` before running the example.",
+        )
+    if any_call_has_string_keyword_value(
+        srcs, "MistralChat", "id", "pixtral-12b-2409"
+    ):
+        pre_run_steps = list(override.get("pre_run_steps", []))
+        step = (
+            "Update the model",
+            "When saving the code, replace `pixtral-12b-2409` with `ministral-14b-2512`.",
+            None,
+        )
+        if step not in pre_run_steps:
+            pre_run_steps.append(step)
+        override["pre_run_steps"] = pre_run_steps
+        override.setdefault(
+            "intro_override",
+            "The source-fidelity code uses deprecated `pixtral-12b-2409`. Replace it with `ministral-14b-2512` before running the example.",
+        )
+    if any_call_has_string_keyword_value(
+        srcs, "xAI", "id", "grok-2-vision-latest"
+    ):
+        pre_run_steps = list(override.get("pre_run_steps", []))
+        step = (
+            "Update the model",
+            "When saving the code, replace `grok-2-vision-latest` with `grok-4.5`.",
+            None,
+        )
+        if step not in pre_run_steps:
+            pre_run_steps.append(step)
+        override["pre_run_steps"] = pre_run_steps
+        override.setdefault(
+            "intro_override",
+            "The source-fidelity code uses the older `grok-2-vision-latest` model. Replace it with `grok-4.5` before running the example.",
+        )
     package_remove = {
         requirement_key(str(package)) for package in override.get("package_remove", set())
     }
@@ -3622,7 +3761,7 @@ def render(
     skip_modules = frozenset(p.stem for p in siblings)
     all_srcs = [src] + [s for _, s in sibling_srcs]
     req = derive_requirements(all_srcs, agno_root, skip_modules)
-    render_override = apply_source_render_override(req, cookbook_rel)
+    render_override = apply_source_render_override(req, cookbook_rel, all_srcs)
     if "intro_override" in render_override:
         intro_override = render_override["intro_override"]
         assert isinstance(intro_override, str) and intro_override.strip(), (
@@ -3683,6 +3822,15 @@ def render(
     if intro and intro.rstrip(".") != description.rstrip("."):
         parts.append(mdx_escape(intro))
         parts.append("")
+    pre_code_warning = render_override.get("pre_code_warning")
+    if pre_code_warning:
+        assert isinstance(pre_code_warning, str), (
+            f"{cookbook_rel}: pre_code_warning must be a string"
+        )
+        parts.append("<Warning>")
+        parts.append(f"  {pre_code_warning}")
+        parts.append("</Warning>")
+        parts.append("")
     parts.append(f"{fence}python {run_name}")
     parts.append(code)
     parts.append(fence)
@@ -3698,8 +3846,38 @@ def render(
             parts.append(sib_code)
             parts.append(sib_fence)
             parts.append("")
+    run_replacement = render_override.get("run_replacement")
+    replacement_only = render_override.get("replacement_only", False)
+    assert isinstance(replacement_only, bool), (
+        f"{cookbook_rel}: replacement_only must be a boolean"
+    )
+    if replacement_only:
+        assert isinstance(run_replacement, str) and run_replacement.strip(), (
+            f"{cookbook_rel}: replacement_only requires run_replacement"
+        )
+        replacement_heading = render_override.get(
+            "replacement_heading", "Current Alternative"
+        )
+        assert isinstance(replacement_heading, str) and replacement_heading.strip(), (
+            f"{cookbook_rel}: replacement_heading must be a non-empty string"
+        )
+        parts.append(f"## {replacement_heading}")
+        parts.append("")
+        parts.append(run_replacement)
+        parts.append("")
+        parts.append(f"Full source: [{cookbook_rel}]({GITHUB_BLOB}/{cookbook_rel})")
+        parts.append("")
+        return "\n".join(parts)
+
     parts.append("## Run the Example")
     parts.append("")
+    run_warning = render_override.get("run_warning")
+    if run_warning:
+        assert isinstance(run_warning, str), f"{cookbook_rel}: run_warning must be a string"
+        parts.append("<Warning>")
+        parts.append(f"  {run_warning}")
+        parts.append("</Warning>")
+        parts.append("")
     parts.append("<Steps>")
     parts.append('  <Snippet file="create-venv-step.mdx" />')
     if install:
@@ -3787,7 +3965,14 @@ def render(
         parts.append("  </Step>")
     parts.append("")
     run_note = render_override.get("run_note")
-    if run_note:
+    if run_replacement:
+        assert isinstance(run_replacement, str), (
+            f"{cookbook_rel}: run_replacement must be a string"
+        )
+        run_title = render_override.get("run_title", "Use the current example")
+        parts.append(f'  <Step title="{run_title}">')
+        parts.append(f"    {run_replacement}")
+    elif run_note:
         parts.append('  <Step title="Use the helper">')
         parts.append(f"    {run_note}")
     else:

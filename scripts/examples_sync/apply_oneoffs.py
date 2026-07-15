@@ -66,6 +66,7 @@ DESCRIPTION_OVERRIDES = {
     "examples/models/ibm/overview": "IBM watsonx examples for model retries, storage, knowledge, structured output, and tools.",
     "examples/models/ollama/overview": "Ollama Chat and Responses API examples for local and cloud models, knowledge, memory, reasoning, structured output, and tools.",
     "examples/models/openai/overview": "OpenAI Chat and Responses API examples for multimodal input, tools, reasoning, structured output, storage, and streaming.",
+    "examples/models/openai/chat/overview": "OpenAI Chat examples for multimodal input and output, tools, reasoning, structured output, storage, and retries.",
     "examples/models/openrouter/overview": "OpenRouter Chat and Responses API examples for model routing, retries, structured output, and tools.",
     "examples/models/vertexai/overview": "Vertex AI examples for Claude models, retries, multimodal input, knowledge, memory, caching, structured output, and tools.",
     "examples/teams/context-compression/overview": "Compress team tool results to keep long-running collaboration within model context limits.",
@@ -115,6 +116,9 @@ DESCRIPTION_OVERRIDES = {
 TITLE_OVERRIDES = {
     "examples/agent-os/rbac/asymmetric/workos-byot": "WorkOS BYOT",
     "examples/agents/tools/tools-with-literal-type-param": "Tools with Literal Type Parameters",
+    "examples/integrations/parallel/research-workflow": "Research Workflow",
+    "examples/models/openai/chat/text-to-speech-agent": "Text-to-Speech Agent",
+    "examples/models/openai/responses/image-generation-agent": "Image Generation Agent",
     "examples/models/vercel/tool-use": "Vercel v0 Tool Use",
     "examples/models/vllm/tool-use": "vLLM Tool Use",
     "examples/models/xai/finance-agent": "Finance Agent",
@@ -484,9 +488,16 @@ EXPLICIT_ROW_REFRESH = {
     "examples/agent-os/interfaces/slack/overview": {
         "examples/agent-os/interfaces/slack/basic",
         "examples/agent-os/interfaces/slack/multiple-instances",
+        "examples/agent-os/interfaces/slack/multimodal-team",
+        "examples/agent-os/interfaces/slack/multimodal-workflow",
     },
     "examples/agent-os/interfaces/whatsapp/overview": {
         "examples/agent-os/interfaces/whatsapp/multiple-instances",
+        "examples/agent-os/interfaces/whatsapp/multimodal-team",
+        "examples/agent-os/interfaces/whatsapp/multimodal-workflow",
+    },
+    "examples/integrations/memory/overview": {
+        "examples/memory/integrations/dakera-integration",
     },
     "examples/agent-os/knowledge/overview": {"examples/agent-os/knowledge/agentos-knowledge"},
     "examples/agent-os/rbac/overview": {
@@ -682,6 +693,11 @@ EXPLICIT_ROW_REFRESH = {
         "examples/models/llama-cpp/tool-use",
     },
     "examples/models/mistral/overview": {
+        "examples/models/mistral/image-bytes-input-agent",
+        "examples/models/mistral/image-compare-agent",
+        "examples/models/mistral/image-file-input-agent",
+        "examples/models/mistral/image-ocr-with-structured-output",
+        "examples/models/mistral/image-transcribe-document-agent",
         "examples/models/mistral/mistral-small",
         "examples/models/mistral/tool-use",
     },
@@ -697,6 +713,9 @@ EXPLICIT_ROW_REFRESH = {
         "examples/models/openai/responses/image-generation-agent",
         "examples/models/openai/responses/tool-use",
         "examples/models/openai/responses/zdr-reasoning-agent",
+    },
+    "examples/models/openai/chat/overview": {
+        "examples/models/openai/chat/generate-images",
     },
     "examples/models/together/overview": {"examples/models/together/tool-use"},
     "examples/models/openrouter/chat/overview": {
@@ -738,6 +757,7 @@ EXPLICIT_ROW_REFRESH = {
     "examples/tools/overview": {
         "examples/tools/brandfetch-tools",
         "examples/tools/bravesearch-tools",
+        "examples/tools/dalle-tools",
         "examples/tools/googlesheets-tools",
         "examples/tools/mem0-tools",
         "examples/tools/searchapi-tools",
@@ -750,6 +770,13 @@ EXPLICIT_ROW_REFRESH = {
         "examples/tools/other/overview",
         "examples/tools/tool-decorator/overview",
         "examples/tools/tool-hooks/overview",
+    },
+    "examples/tools/models/overview": {
+        "examples/tools/models/azure-openai-tools",
+        "examples/tools/models/openai-tools",
+    },
+    "examples/workflows/conditional-branching/overview": {
+        "examples/workflows/conditional-branching/selector-media-pipeline",
     },
     "examples/agent-os/dbs/overview": {
         "examples/agent-os/dbs/agentos-default-db",
@@ -764,6 +791,9 @@ EXPLICIT_ROW_REFRESH = {
         "examples/teams/modes/tasks/basic",
         "examples/teams/modes/tasks/dependencies",
         "examples/teams/modes/tasks/parallel",
+    },
+    "examples/teams/multimodal/overview": {
+        "examples/teams/multimodal/generate-image-with-team",
     },
     "examples/teams/overview": {
         "examples/teams/basics/overview",
@@ -794,6 +824,7 @@ EXPLICIT_ROW_REFRESH = {
         "examples/teams/task-mode/task-mode-with-tools",
         "examples/teams/task-mode/multi-run-session",
         "examples/teams/task-mode/dependency-chain",
+        "examples/teams/multimodal/generate-image-with-team",
     },
 }
 
@@ -802,6 +833,7 @@ EXPLICIT_ROW_REFRESH = {
 # derived from the table rather than maintained target by target.
 FULL_ROW_REFRESH_OVERVIEWS = {
     "examples/models/google/gemini/overview",
+    "examples/models/openai/chat/overview",
     "examples/models/xai/overview",
 }
 
@@ -2269,10 +2301,52 @@ The agent writes 24 kHz, mono, 16-bit PCM audio to `tmp/response_stream.wav`. Th
 </Warning>""",
     )
 
-    # 7. Reviewed frontmatter overrides consumed by the overview row pass.
+    # 7. The pinned Dakera client predates the current container authentication,
+    #    routes, and recall response shape. Preserve the source but do not offer
+    #    runnable instructions for an incompatible client.
+    sub(
+        "memory/integrations/dakera-integration.mdx",
+        """## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `dakera_integration.py`, then run:
+    ```bash
+    python dakera_integration.py
+    ```
+  </Step>
+</Steps>""",
+        """## Current Status
+
+<Warning>
+  The current `ghcr.io/dakera-ai/dakera:latest` image requires `DAKERA_ROOT_API_KEY`. The pinned client uses `/v1/memories` and `/v1/memories/search`, while the current API uses `/v1/memory/store` and `/v1/memory/recall` and returns recalled entries under `memories`. Update the server environment, client authentication, routes, and response parsing before running this example.
+</Warning>""",
+    )
+
+    # 8. Reviewed frontmatter overrides consumed by the overview row pass.
     apply_frontmatter_overrides()
 
-    # 8. Title-casing pass over every page (fixes curated overview stubs:
+    # 9. Title-casing pass over every page (fixes curated overview stubs:
     #    Openai -> OpenAI, Vertexai -> Vertex AI, Mcp Demo -> MCP Demo, ...).
     count = 0
     for p in sorted(DOCS.rglob("*.mdx")):
@@ -2287,11 +2361,11 @@ The agent writes 24 kHz, mono, 16-bit PCM audio to `tmp/response_stream.wav`. Th
                 p.write_text(text.replace(f'title: "{old_t}"', f'title: "{new_t}"', 1), encoding="utf-8")
             count += 1
 
-    # 9. Refresh only malformed or explicitly stale overview rows, then add
+    # 10. Refresh only malformed or explicitly stale overview rows, then add
     #    only the navigation-backed omissions approved by the audit.
     repair_overview_tables()
 
-    # 10. Restore post-tag toolkit cards that shipped in navigation without
+    # 11. Restore post-tag toolkit cards that shipped in navigation without
     #     corresponding entries in the hand-maintained complete index.
     repair_toolkit_index()
 
