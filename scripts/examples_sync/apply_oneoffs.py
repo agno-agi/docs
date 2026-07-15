@@ -3338,6 +3338,703 @@ async def handle_stripe(event: dict):
     ],""",
     )
 
+    # Sample 29: correct static provider, interface, FAQ, and team pages.
+    root_sub(
+        "models/providers/native/google/usage/interactions-antigravity.mdx",
+        "Unlike Deep Research, Antigravity runs in the foreground. The model still forces `store=True` so the interaction is retrievable.",
+        "`GeminiInteractions` in Agno 2.7.2 sends Antigravity requests in the foreground and forces `store=True` so each interaction is retrievable. The Google API also supports background Antigravity execution. Use the Google Gen AI SDK directly when you need background execution.",
+    )
+
+    root_sub(
+        "models/providers/gateways/huggingface/usage/llama-essay-writer.mdx",
+        """title: Llama Essay Writer
+description: Write a 300-word essay on a user-provided topic with a HuggingFace agent.""",
+        """title: GPT-OSS Essay Writer
+description: Write a 300-word essay on a user-provided topic with GPT-OSS 120B through Hugging Face.""",
+    )
+
+    root_sub(
+        "use-cases/product-agents/interfaces.mdx",
+        """| Telegram | `tg:<entity_id>:<chat_id>` with an optional topic suffix | Telegram user ID |
+| WhatsApp | `wa:<entity_id>:<user_id>` | Phone number or encrypted user ID |""",
+        """| Telegram | `tg:<entity_id>:<chat_id>[:<topic_id>][:<reset_id>]` | Telegram user ID |
+| WhatsApp | `wa:<entity_id>:<user_id>[:<reset_id>]` | Phone number or encrypted user ID |""",
+    )
+    root_sub(
+        "use-cases/product-agents/interfaces.mdx",
+        """Stored memory can follow a user across surfaces when the interfaces resolve to the same `user_id` and use the same agent database and memory configuration. Session history remains scoped to each interface-generated `session_id`. Interfaces can add surface metadata and dependencies to a run.
+
+## One agent, every surface""",
+        """For Telegram and WhatsApp, `/new` preserves earlier sessions and creates a session whose ID has a new eight-character suffix. This command requires a database.
+
+Stored memory can follow a user across surfaces when the interfaces resolve to the same `user_id` and use the same agent database and memory configuration. Session history remains scoped to each interface-generated `session_id`. Interfaces can add surface metadata and dependencies to a run.
+
+## One agent, every surface""",
+    )
+    root_sub(
+        "use-cases/product-agents/interfaces.mdx",
+        """from agno.os.interfaces.agui import AGUI
+from agno.os.interfaces.whatsapp import Whatsapp""",
+        """from agno.os.interfaces.a2a import A2A
+from agno.os.interfaces.agui import AGUI
+from agno.os.interfaces.whatsapp import Whatsapp""",
+    )
+    root_sub(
+        "use-cases/product-agents/interfaces.mdx",
+        """        Slack(agent=agent, token=..., signing_secret=...),
+        Telegram(agent=agent, token=...),
+        Whatsapp(agent=agent, access_token=..., verify_token=...),
+        AGUI(agent=agent),""",
+        """        Slack(agent=agent, token="xoxb-your-token", signing_secret="your-signing-secret"),
+        Telegram(agent=agent, token="your-bot-token"),
+        Whatsapp(
+            agent=agent,
+            access_token="your-access-token",
+            phone_number_id="your-phone-number-id",
+            verify_token="your-verify-token",
+        ),
+        AGUI(agent=agent),
+        A2A(agents=[agent]),""",
+    )
+
+    root_sub(
+        "faq/connecting-to-tableplus.mdx",
+        """## Step 2: Configure TablePlus
+
+1. Launch TablePlus.""",
+        """## Step 2: Create the Session Table
+
+Agno creates database tables when a database-backed feature first uses them. Run this example to create the default `agno_sessions` table:
+
+```python create_session.py
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIResponses
+
+db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.4-mini"),
+    db=db,
+)
+agent.print_response("What is the capital of France?", session_id="tableplus-demo")
+```
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai "psycopg[binary]"
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash macOS / Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```powershell Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code as `create_session.py`, then run:
+    ```bash
+    python create_session.py
+    ```
+  </Step>
+</Steps>
+
+Only table types exercised against this database appear. Run the [Postgres memory guide](/memory/working-with-memories/postgres-memory) to create memory tables and the [PgVector guide](/knowledge/vector-stores/pgvector/overview) to create knowledge tables.
+
+## Step 3: Configure TablePlus
+
+1. Launch TablePlus.""",
+    )
+    root_sub(
+        "faq/connecting-to-tableplus.mdx",
+        '<img src="/images/tableplus.png" />',
+        '<img src="/images/tableplus.png" alt="TablePlus PostgreSQL connection settings" />',
+    )
+
+    root_sub(
+        "teams/running-teams.mdx",
+        """```
+
+## Execution Flow""",
+        """```
+
+## Run the example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai yfinance
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash macOS / Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```powershell Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code as `running_team.py`, then run:
+    ```bash
+    python running_team.py
+    ```
+  </Step>
+</Steps>
+
+## Execution Flow""",
+    )
+    root_sub(
+        "teams/running-teams.mdx",
+        'images=[Image(url="https://example.com/image.jpg")]',
+        'images=[Image(url="https://agno-public.s3.amazonaws.com/images/krakow_mariacki.jpg")]',
+    )
+    root_sub(
+        "teams/running-teams.mdx",
+        """Run teams in the background with `arun(background=True)`. Background execution requires a database so Agno can persist run state. With `stream=True`, Agno retains up to 10,000 events per run in memory and persists run events through the database. After a disconnect, an AgentOS client calls the run's `/resume` endpoint with the last received event index.
+
+See [Background Execution](/background-execution/overview) for polling, resumable streaming, and the `/resume` endpoint.""",
+        """Run teams in the background with `arun(background=True)`. Background execution requires a database so Agno can persist run state. With `stream=True`, Agno retains up to 10,000 events per run in memory for reconnection while the AgentOS process remains alive. After a disconnect, an AgentOS client calls the run's `/resume` endpoint with the last received event index.
+
+See [Background Execution](/background-execution/overview) for polling, resumable streaming, and the `/resume` endpoint.""",
+        required=False,
+    )
+    root_sub(
+        "teams/running-teams.mdx",
+        """Run teams in the background with `arun(background=True)`. Background execution requires a database so Agno can persist run state. With `stream=True`, Agno buffers stream events in the database. After a disconnect, an AgentOS client calls the run's `/resume` endpoint with the last received event index.
+
+See [Background Execution](/background-execution/overview) for polling, resumable streaming, and the `/resume` endpoint.""",
+        """Run teams in the background with `arun(background=True)`. Background execution requires a database so Agno can persist run state. With `stream=True`, Agno retains up to 10,000 events per run in memory for reconnection while the AgentOS process remains alive. After a disconnect, an AgentOS client calls the run's `/resume` endpoint with the last received event index.
+
+See [Background Execution](/background-execution/overview) for polling, resumable streaming, and the `/resume` endpoint.""",
+        required=False,
+    )
+    root_sub(
+        "teams/running-teams.mdx",
+        """Run teams in the background with `arun(background=True)`. Background execution requires a database so AgentOS can persist run state. With `stream=True`, AgentOS buffers stream events in the database. After a disconnect, the client calls the run's `/resume` endpoint with the last received event index.
+
+See [Background Execution](/background-execution/overview) for polling, resumable streaming, and the `/resume` endpoint.""",
+        """Run teams in the background with `arun(background=True)`. Background execution requires a database so Agno can persist run state. With `stream=True`, Agno retains up to 10,000 events per run in memory for reconnection while the AgentOS process remains alive. After a disconnect, an AgentOS client calls the run's `/resume` endpoint with the last received event index.
+
+See [Background Execution](/background-execution/overview) for polling, resumable streaming, and the `/resume` endpoint.""",
+        required=False,
+    )
+    root_sub(
+        "teams/running-teams.mdx",
+        """Run teams in the background with `arun(background=True)`. The team continues running even if the client disconnects. Combine with `stream=True` for resumable SSE streaming with automatic event buffering and reconnection.
+
+See [Background Execution](/background-execution/overview) for polling, resumable streaming, and the `/resume` endpoint.""",
+        """Run teams in the background with `arun(background=True)`. Background execution requires a database so Agno can persist run state. With `stream=True`, Agno retains up to 10,000 events per run in memory for reconnection while the AgentOS process remains alive. After a disconnect, an AgentOS client calls the run's `/resume` endpoint with the last received event index.
+
+See [Background Execution](/background-execution/overview) for polling, resumable streaming, and the `/resume` endpoint.""",
+    )
+
+    # Sample 29: configure LangDB's current endpoint without changing the
+    # pinned source default documented in the parameter table.
+    root_sub(
+        "models/providers/gateways/langdb/overview.mdx",
+        """description: Use LangDB AI Gateway to access 350+ LLMs with Agno agents.
+---
+
+[LangDB](https://langdb.ai/) is an AI Gateway that provides access to 350+ LLMs through OpenAI-compatible APIs, with tools to secure, govern, and optimize AI traffic.
+
+For detailed integration instructions, see the [LangDB Agno documentation](https://docs.langdb.ai/getting-started/working-with-agent-frameworks/working-with-agno).""",
+        """description: "Use the LangDB AI Gateway with Agno agents."
+---
+
+[LangDB](https://langdb.ai/) routes model requests through an OpenAI-compatible AI gateway. See [LangDB's Agno integration guide](https://docs.langdb.ai/getting-started/working-with-agent-frameworks/working-with-agno) for gateway configuration.""",
+    )
+    root_sub(
+        "models/providers/gateways/langdb/overview.mdx",
+        "Set your `LANGDB_API_KEY` and `LANGDB_PROJECT_ID` environment variables. Get your key from [here](https://app.langdb.ai/settings/api_keys).",
+        "Create an API key in [LangDB API key settings](https://app.langdb.ai/settings/api_keys), then export the gateway credentials and API base URL.",
+    )
+    root_sub(
+        "models/providers/gateways/langdb/overview.mdx",
+        """<CodeGroup>
+
+```bash Mac
+export LANGDB_API_KEY=***
+export LANGDB_PROJECT_ID=***
+
+```
+
+```bash Windows
+setx LANGDB_API_KEY ***
+setx LANGDB_PROJECT_ID ***
+```
+
+</CodeGroup>""",
+        """<CodeGroup>
+
+```bash macOS / Linux
+export LANGDB_API_KEY="your_langdb_api_key"
+export LANGDB_PROJECT_ID="your_langdb_project_id"
+export LANGDB_API_BASE_URL="https://api.langdb.ai"
+```
+
+```powershell Windows
+$Env:LANGDB_API_KEY="your_langdb_api_key"
+$Env:LANGDB_PROJECT_ID="your_langdb_project_id"
+$Env:LANGDB_API_BASE_URL="https://api.langdb.ai"
+```
+
+</CodeGroup>""",
+    )
+    root_sub(
+        "models/providers/gateways/langdb/overview.mdx",
+        "<Note> View more examples [here](/models/providers/gateways/langdb/usage/basic). </Note>",
+        "See the [LangDB usage examples](/models/providers/gateways/langdb/usage/basic).",
+    )
+    root_sub(
+        "models/providers/gateways/langdb/overview.mdx",
+        "The id of the model to use through LangDB",
+        "The ID of the model to use through LangDB",
+    )
+
+    langdb_usage_pages = (
+        "models/providers/gateways/langdb/usage/basic-stream.mdx",
+        "models/providers/gateways/langdb/usage/basic.mdx",
+        "models/providers/gateways/langdb/usage/data-analyst.mdx",
+        "models/providers/gateways/langdb/usage/structured-output.mdx",
+        "models/providers/gateways/langdb/usage/tool-use.mdx",
+    )
+    for path in langdb_usage_pages:
+        root_sub(
+            path,
+            """  <Step title="Set your API key">
+    ```bash
+    export LANGDB_API_KEY=xxx
+    export LANGDB_PROJECT_ID=xxx
+    ```
+  </Step>""",
+            """  <Step title="Export environment variables">
+    ```bash
+    export LANGDB_API_KEY="your_langdb_api_key"
+    export LANGDB_PROJECT_ID="your_langdb_project_id"
+    export LANGDB_API_BASE_URL="https://api.langdb.ai"
+    ```
+  </Step>""",
+        )
+
+    root_sub(
+        "models/providers/gateways/langdb/usage/tool-use.mdx",
+        'agent.print_response("Whats happening in France?", stream=True)',
+        'agent.print_response("What\'s happening in France?", stream=True)',
+    )
+
+    # Sample 29: require an explicit current Nebius model because both the
+    # retired cookbook ID and the pinned Agno 2.7.2 default are unavailable.
+    root_sub(
+        "models/providers/gateways/nebius/overview.mdx",
+        """Nebius Token Factory is a platform from Nebius that simplifies the process of building applications using AI models. It provides a suite of tools and services for developers to easily test, integrate and fine-tune various AI models, including those for text and image generation.
+You can check out the list of available models [here](https://tokenfactory.nebius.com/).
+
+We recommend experimenting to find the best-suited model for your use case.""",
+        """Nebius Token Factory provides OpenAI-compatible inference for hosted models. Browse the [model catalog](https://tokenfactory.nebius.com/), query the [model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models), and check [function-calling support](https://docs.tokenfactory.nebius.com/ai-models-inference/function-calling) before selecting a model.""",
+    )
+    root_sub(
+        "models/providers/gateways/nebius/overview.mdx",
+        "Create an API key in the [Nebius Token Factory console](https://tokenfactory.nebius.com/?modals=create-api-key), then export the key and a current model ID.",
+        "Create an API key in the [Nebius Token Factory console](https://tokenfactory.nebius.com/?modals=create-api-key), then export the key and a current text-generation model ID.",
+        required=False,
+    )
+    root_sub(
+        "models/providers/gateways/nebius/overview.mdx",
+        "Set your `NEBIUS_API_KEY` environment variable. Get your key [from Nebius Token Factory here](https://tokenfactory.nebius.com/?modals=create-api-key).",
+        "Create an API key in the [Nebius Token Factory console](https://tokenfactory.nebius.com/?modals=create-api-key), then export the key and a current text-generation model ID.",
+    )
+    root_sub(
+        "models/providers/gateways/nebius/overview.mdx",
+        """<CodeGroup>
+
+```bash macOS / Linux
+export NEBIUS_API_KEY="your_nebius_api_key"
+export NEBIUS_MODEL_ID="your_current_model_id"
+```
+
+```powershell Windows
+$Env:NEBIUS_API_KEY="your_nebius_api_key"
+$Env:NEBIUS_MODEL_ID="your_current_model_id"
+```
+
+</CodeGroup>""",
+        """<CodeGroup>
+
+```bash macOS / Linux
+export NEBIUS_API_KEY="your_nebius_api_key"
+export NEBIUS_MODEL_ID="your_current_text_model_id"
+```
+
+```powershell Windows
+$Env:NEBIUS_API_KEY="your_nebius_api_key"
+$Env:NEBIUS_MODEL_ID="your_current_text_model_id"
+```
+
+</CodeGroup>""",
+        required=False,
+    )
+    root_sub(
+        "models/providers/gateways/nebius/overview.mdx",
+        """<CodeGroup>
+
+```bash Mac
+export NEBIUS_API_KEY=***
+```
+
+```bash Windows
+setx NEBIUS_API_KEY ***
+```
+
+</CodeGroup>""",
+        """<CodeGroup>
+
+```bash macOS / Linux
+export NEBIUS_API_KEY="your_nebius_api_key"
+export NEBIUS_MODEL_ID="your_current_text_model_id"
+```
+
+```powershell Windows
+$Env:NEBIUS_API_KEY="your_nebius_api_key"
+$Env:NEBIUS_MODEL_ID="your_current_text_model_id"
+```
+
+</CodeGroup>""",
+    )
+    root_sub(
+        "models/providers/gateways/nebius/overview.mdx",
+        '        id=os.environ["NEBIUS_MODEL_ID"]\n',
+        '        id=os.environ["NEBIUS_MODEL_ID"],\n',
+        required=False,
+    )
+    root_sub(
+        "models/providers/gateways/nebius/overview.mdx",
+        """        id="meta-llama/Llama-3.3-70B-Instruct",
+        api_key=os.getenv("NEBIUS_API_KEY")""",
+        '        id=os.environ["NEBIUS_MODEL_ID"],',
+    )
+    root_sub(
+        "models/providers/gateways/nebius/overview.mdx",
+        """See the [Nebius usage examples](/models/providers/gateways/nebius/usage/basic-stream).
+
+<Warning>
+  The pinned Agno 2.7.2 default, `openai/gpt-oss-20b`, is retired from serverless inference. Set `id` to an explicit current model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
+</Warning>""",
+        """See the [Nebius usage examples](/models/providers/gateways/nebius/usage/basic-stream).
+
+<Warning>
+  The pinned Agno 2.7.2 default, `openai/gpt-oss-20b`, is retired from serverless inference. Set `id` to an explicit current text-generation model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
+</Warning>""",
+        required=False,
+    )
+    root_sub(
+        "models/providers/gateways/nebius/overview.mdx",
+        """See the [Nebius usage examples](/models/providers/gateways/nebius/usage/basic-stream).
+
+<Warning>
+  The pinned Agno 2.7.2 default, `openai/gpt-oss-20b`, is retired. Set `id` to an explicit current model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
+</Warning>""",
+        """See the [Nebius usage examples](/models/providers/gateways/nebius/usage/basic-stream).
+
+<Warning>
+  The pinned Agno 2.7.2 default, `openai/gpt-oss-20b`, is retired from serverless inference. Set `id` to an explicit current text-generation model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
+</Warning>""",
+        required=False,
+    )
+    root_sub(
+        "models/providers/gateways/nebius/overview.mdx",
+        "<Note> View more examples [here](/models/providers/gateways/nebius/usage/basic-stream). </Note>",
+        """See the [Nebius usage examples](/models/providers/gateways/nebius/usage/basic-stream).
+
+<Warning>
+  The pinned Agno 2.7.2 default, `openai/gpt-oss-20b`, is retired from serverless inference. Set `id` to an explicit current text-generation model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
+</Warning>""",
+    )
+
+    nebius_usage_pages = (
+        "models/providers/gateways/nebius/usage/basic-stream.mdx",
+        "models/providers/gateways/nebius/usage/basic.mdx",
+        "models/providers/gateways/nebius/usage/knowledge.mdx",
+        "models/providers/gateways/nebius/usage/storage.mdx",
+        "models/providers/gateways/nebius/usage/structured-output.mdx",
+        "models/providers/gateways/nebius/usage/tool-use.mdx",
+    )
+    for path in nebius_usage_pages:
+        if path != "models/providers/gateways/nebius/usage/structured-output.mdx":
+            root_sub(
+                path,
+                "from agno.agent import",
+                "import os\n\nfrom agno.agent import",
+            )
+        if path == "models/providers/gateways/nebius/usage/knowledge.mdx":
+            root_sub(
+                path,
+                """  <Step title="Export environment variables">
+    Select an available model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models). `PgVector` uses `OpenAIEmbedder` by default, so this example also requires an OpenAI API key.
+
+    <CodeGroup>
+    ```bash macOS / Linux
+    export NEBIUS_API_KEY="your_nebius_api_key"
+    export NEBIUS_MODEL_ID="your_current_model_id"
+    export OPENAI_API_KEY="your_openai_api_key"
+    ```
+
+    ```powershell Windows
+    $Env:NEBIUS_API_KEY="your_nebius_api_key"
+    $Env:NEBIUS_MODEL_ID="your_current_model_id"
+    $Env:OPENAI_API_KEY="your_openai_api_key"
+    ```
+    </CodeGroup>
+  </Step>""",
+                """  <Step title="Export environment variables">
+    Select an available text-generation model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models). `PgVector` uses `OpenAIEmbedder` by default, so this example also requires an OpenAI API key.
+
+    <CodeGroup>
+    ```bash macOS / Linux
+    export NEBIUS_API_KEY="your_nebius_api_key"
+    export NEBIUS_MODEL_ID="your_current_text_model_id"
+    export OPENAI_API_KEY="your_openai_api_key"
+    ```
+
+    ```powershell Windows
+    $Env:NEBIUS_API_KEY="your_nebius_api_key"
+    $Env:NEBIUS_MODEL_ID="your_current_text_model_id"
+    $Env:OPENAI_API_KEY="your_openai_api_key"
+    ```
+    </CodeGroup>
+  </Step>""",
+                required=False,
+            )
+            root_sub(
+                path,
+                """  <Step title="Export environment variables">
+    Select an available model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
+
+    <CodeGroup>
+    ```bash macOS / Linux
+    export NEBIUS_API_KEY="your_nebius_api_key"
+    export NEBIUS_MODEL_ID="your_current_model_id"
+    ```
+
+    ```powershell Windows
+    $Env:NEBIUS_API_KEY="your_nebius_api_key"
+    $Env:NEBIUS_MODEL_ID="your_current_model_id"
+    ```
+    </CodeGroup>
+  </Step>""",
+                """  <Step title="Export environment variables">
+    Select an available text-generation model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models). `PgVector` uses `OpenAIEmbedder` by default, so this example also requires an OpenAI API key.
+
+    <CodeGroup>
+    ```bash macOS / Linux
+    export NEBIUS_API_KEY="your_nebius_api_key"
+    export NEBIUS_MODEL_ID="your_current_text_model_id"
+    export OPENAI_API_KEY="your_openai_api_key"
+    ```
+
+    ```powershell Windows
+    $Env:NEBIUS_API_KEY="your_nebius_api_key"
+    $Env:NEBIUS_MODEL_ID="your_current_text_model_id"
+    $Env:OPENAI_API_KEY="your_openai_api_key"
+    ```
+    </CodeGroup>
+  </Step>""",
+                required=False,
+            )
+            root_sub(
+                path,
+                """  <Step title="Set your API key">
+    ```bash
+    export NEBIUS_API_KEY=xxx
+    ```
+  </Step>""",
+                """  <Step title="Export environment variables">
+    Select an available text-generation model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models). `PgVector` uses `OpenAIEmbedder` by default, so this example also requires an OpenAI API key.
+
+    <CodeGroup>
+    ```bash macOS / Linux
+    export NEBIUS_API_KEY="your_nebius_api_key"
+    export NEBIUS_MODEL_ID="your_current_text_model_id"
+    export OPENAI_API_KEY="your_openai_api_key"
+    ```
+
+    ```powershell Windows
+    $Env:NEBIUS_API_KEY="your_nebius_api_key"
+    $Env:NEBIUS_MODEL_ID="your_current_text_model_id"
+    $Env:OPENAI_API_KEY="your_openai_api_key"
+    ```
+    </CodeGroup>
+  </Step>""",
+            )
+        else:
+            root_sub(
+                path,
+                """  <Step title="Export environment variables">
+    Select an available model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
+
+    <CodeGroup>
+    ```bash macOS / Linux
+    export NEBIUS_API_KEY="your_nebius_api_key"
+    export NEBIUS_MODEL_ID="your_current_model_id"
+    ```
+
+    ```powershell Windows
+    $Env:NEBIUS_API_KEY="your_nebius_api_key"
+    $Env:NEBIUS_MODEL_ID="your_current_model_id"
+    ```
+    </CodeGroup>
+  </Step>""",
+                """  <Step title="Export environment variables">
+    Select an available text-generation model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
+
+    <CodeGroup>
+    ```bash macOS / Linux
+    export NEBIUS_API_KEY="your_nebius_api_key"
+    export NEBIUS_MODEL_ID="your_current_text_model_id"
+    ```
+
+    ```powershell Windows
+    $Env:NEBIUS_API_KEY="your_nebius_api_key"
+    $Env:NEBIUS_MODEL_ID="your_current_text_model_id"
+    ```
+    </CodeGroup>
+  </Step>""",
+                required=False,
+            )
+            root_sub(
+                path,
+                """  <Step title="Set your API key">
+    ```bash
+    export NEBIUS_API_KEY=xxx
+    ```
+  </Step>""",
+                """  <Step title="Export environment variables">
+    Select an available text-generation model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
+
+    <CodeGroup>
+    ```bash macOS / Linux
+    export NEBIUS_API_KEY="your_nebius_api_key"
+    export NEBIUS_MODEL_ID="your_current_text_model_id"
+    ```
+
+    ```powershell Windows
+    $Env:NEBIUS_API_KEY="your_nebius_api_key"
+    $Env:NEBIUS_MODEL_ID="your_current_text_model_id"
+    ```
+    </CodeGroup>
+  </Step>""",
+            )
+
+    root_sub(
+        "models/providers/gateways/nebius/usage/structured-output.mdx",
+        "from typing import List\n\nimport os\n\nfrom agno.agent import",
+        "import os\nfrom typing import List\n\nfrom agno.agent import",
+        required=False,
+    )
+    root_sub(
+        "models/providers/gateways/nebius/usage/structured-output.mdx",
+        "from typing import List\n\nfrom agno.agent import",
+        "import os\nfrom typing import List\n\nfrom agno.agent import",
+    )
+    for path in (
+        "models/providers/gateways/nebius/usage/basic-stream.mdx",
+        "models/providers/gateways/nebius/usage/basic.mdx",
+        "models/providers/gateways/nebius/usage/storage.mdx",
+    ):
+        root_sub(
+            path,
+            "model=Nebius()",
+            'model=Nebius(id=os.environ["NEBIUS_MODEL_ID"])',
+        )
+
+    for path in (
+        "models/providers/gateways/nebius/usage/knowledge.mdx",
+        "models/providers/gateways/nebius/usage/structured-output.mdx",
+        "models/providers/gateways/nebius/usage/tool-use.mdx",
+    ):
+        root_sub(
+            path,
+            'model=Nebius(id="Qwen/Qwen3-30B-A3B")',
+            'model=Nebius(id=os.environ["NEBIUS_MODEL_ID"])',
+        )
+
+    root_sub(
+        "models/providers/gateways/nebius/usage/knowledge.mdx",
+        'description: "Answer questions from a PDF using a Nebius Qwen3-30B-A3B agent and PgVector."',
+        'description: "Answer questions from a PDF using a Nebius agent and PgVector."',
+    )
+    for path in (
+        "models/providers/gateways/nebius/usage/knowledge.mdx",
+        "models/providers/gateways/nebius/usage/storage.mdx",
+    ):
+        root_sub(
+            path,
+            "```\n\n## Usage",
+            """```
+
+Select a text-generation model with [function-calling support](https://docs.tokenfactory.nebius.com/ai-models-inference/function-calling) for this example.
+
+## Usage""",
+        )
+    root_sub(
+        "models/providers/gateways/nebius/usage/structured-output.mdx",
+        'description: "Return a validated Pydantic MovieScript from a Nebius Qwen3-30B-A3B agent using output_schema."',
+        'description: "Return a validated Pydantic MovieScript from a Nebius agent using output_schema."',
+    )
+    root_sub(
+        "models/providers/gateways/nebius/usage/structured-output.mdx",
+        "```\n\n## Usage",
+        """```
+
+Select a text-generation model with [JSON mode support](https://docs.tokenfactory.nebius.com/ai-models-inference/json) for this example.
+
+## Usage""",
+    )
+    root_sub(
+        "models/providers/gateways/nebius/usage/tool-use.mdx",
+        'description: "Give a Nebius Qwen3-30B-A3B agent web search with WebSearchTools."',
+        'description: "Give a Nebius agent web search with WebSearchTools."',
+    )
+    root_sub(
+        "models/providers/gateways/nebius/usage/tool-use.mdx",
+        'agent.print_response("Whats happening in France?", stream=True)',
+        'agent.print_response("What\'s happening in France?", stream=True)',
+    )
+    root_sub(
+        "models/providers/gateways/nebius/usage/tool-use.mdx",
+        "Select a model with [function-calling support](https://docs.tokenfactory.nebius.com/ai-models-inference/function-calling) for this example.",
+        "Select a text-generation model with [function-calling support](https://docs.tokenfactory.nebius.com/ai-models-inference/function-calling) for this example.",
+        required=False,
+    )
+    root_sub(
+        "models/providers/gateways/nebius/usage/tool-use.mdx",
+        """```
+
+## Usage""",
+        """```
+
+Select a text-generation model with [function-calling support](https://docs.tokenfactory.nebius.com/ai-models-inference/function-calling) for this example.
+
+## Usage""",
+    )
+
     # 9. Reviewed frontmatter overrides consumed by the overview row pass.
     apply_frontmatter_overrides()
 

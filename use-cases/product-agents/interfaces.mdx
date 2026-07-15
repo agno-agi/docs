@@ -44,16 +44,19 @@ Each interface maps surface state onto AgentOS sessions, so a follow-up in the s
 | Interface | `session_id` | `user_id` |
 |-----------|--------------|-----------|
 | Slack | `<entity_id>:<thread_ts>` | Slack user ID, or resolved email when enabled |
-| Telegram | `tg:<entity_id>:<chat_id>` with an optional topic suffix | Telegram user ID |
-| WhatsApp | `wa:<entity_id>:<user_id>` | Phone number or encrypted user ID |
+| Telegram | `tg:<entity_id>:<chat_id>[:<topic_id>][:<reset_id>]` | Telegram user ID |
+| WhatsApp | `wa:<entity_id>:<user_id>[:<reset_id>]` | Phone number or encrypted user ID |
 | AG-UI | Client `thread_id` | JWT subject, or forwarded `user_id` when anonymous |
 | A2A | A2A context ID | JWT subject, or request metadata when anonymous |
+
+For Telegram and WhatsApp, `/new` preserves earlier sessions and creates a session whose ID has a new eight-character suffix. This command requires a database.
 
 Stored memory can follow a user across surfaces when the interfaces resolve to the same `user_id` and use the same agent database and memory configuration. Session history remains scoped to each interface-generated `session_id`. Interfaces can add surface metadata and dependencies to a run.
 
 ## One agent, every surface
 
 ```python
+from agno.os.interfaces.a2a import A2A
 from agno.os.interfaces.agui import AGUI
 from agno.os.interfaces.whatsapp import Whatsapp
 
@@ -61,10 +64,16 @@ agent_os = AgentOS(
     agents=[agent],
     db=db,
     interfaces=[
-        Slack(agent=agent, token=..., signing_secret=...),
-        Telegram(agent=agent, token=...),
-        Whatsapp(agent=agent, access_token=..., verify_token=...),
+        Slack(agent=agent, token="xoxb-your-token", signing_secret="your-signing-secret"),
+        Telegram(agent=agent, token="your-bot-token"),
+        Whatsapp(
+            agent=agent,
+            access_token="your-access-token",
+            phone_number_id="your-phone-number-id",
+            verify_token="your-verify-token",
+        ),
         AGUI(agent=agent),
+        A2A(agents=[agent]),
     ],
 )
 ```
