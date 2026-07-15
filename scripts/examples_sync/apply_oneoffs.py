@@ -2875,9 +2875,31 @@ Setup for each provider""",
     ```
   </Step>
 </Steps>""",
-        """## Current Status
+        """## Prepare a corrected copy
 
-The source fence is preserved for v2.7.2 fidelity. Apply every change in the warning above before running it.""",
+The source fence is preserved for v2.7.2 fidelity. These packages and API keys cover its imports. Apply every change in the warning above before running it.
+
+<Steps>
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno groq openai
+    ```
+  </Step>
+
+  <Step title="Set API keys">
+    <CodeGroup>
+    ```bash macOS / Linux
+    export GROQ_API_KEY="your_groq_api_key_here"
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```powershell Windows
+    $Env:GROQ_API_KEY="your_groq_api_key_here"
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>""",
     )
     root_sub(
         "workflows/running-workflows.mdx",
@@ -3433,7 +3455,7 @@ agent.print_response("What is the capital of France?", session_id="tableplus-dem
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U agno openai "psycopg[binary]"
+    uv pip install -U agno openai "psycopg[binary]" sqlalchemy
     ```
   </Step>
 
