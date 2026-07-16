@@ -1466,7 +1466,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "post_run_steps": [
             (
                 "Configure the webhook",
-                "Follow [WhatsApp setup](/agent-os/usage/interfaces/whatsapp/setup). In Meta, set the callback URL to `https://<your-ngrok-url>/whatsapp/webhook`, use the same verify token as `WHATSAPP_VERIFY_TOKEN`, and subscribe to the `messages` field. Verify the webhook while AgentOS and ngrok are running.",
+                "Follow [WhatsApp setup](/agent-os/interfaces/whatsapp/setup). In Meta, set the callback URL to `https://<your-ngrok-url>/whatsapp/webhook`, use the same verify token as `WHATSAPP_VERIFY_TOKEN`, and subscribe to the `messages` field. Verify the webhook while AgentOS and ngrok are running.",
                 None,
             )
         ],
