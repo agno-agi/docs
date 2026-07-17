@@ -6,10 +6,14 @@ mode: wide
 ---
 
 This example shows:
-1. Using `session_state` in a Condition evaluator function
-2. Reading and modifying `session_state` based on condition logic
-3. Accessing `user_id` and `session_id` from `session_state`
-4. Making conditional decisions based on `session_state`
+1. Using `run_context.session_state` in a Condition evaluator function
+2. Reading and modifying session state based on condition logic
+3. Accessing `user_id` and `session_id` from session state
+4. Making conditional decisions based on session state
+
+<Note>
+Accepting a `session_state` parameter directly is deprecated. Accept `run_context: RunContext` and use `run_context.session_state` instead.
+</Note>
 
 <Steps>
 <Step title="Create a Python file">
@@ -18,39 +22,40 @@ This example shows:
 from agno.agent import Agent
 from agno.db.in_memory import InMemoryDb
 from agno.models.openai import OpenAIResponses
+from agno.run import RunContext
 from agno.workflow.condition import Condition
 from agno.workflow.step import Step, StepInput, StepOutput
 from agno.workflow.workflow import Workflow
 
 
-def check_user_has_context(step_input: StepInput, session_state: dict) -> bool:
+def check_user_has_context(step_input: StepInput, run_context: RunContext) -> bool:
     """
     Condition evaluator that checks if user has been greeted before.
 
     Args:
         step_input: The input for this step (contains workflow context)
-        session_state: The shared session state
+        run_context: The run context holding the workflow session state
 
     Returns:
         bool: True if user has context, False otherwise
     """
     print("\n=== Evaluating Condition ===")
-    print(f"User ID: {session_state.get('current_user_id')}")
-    print(f"Session ID: {session_state.get('current_session_id')}")
-    print(f"Has been greeted: {session_state.get('has_been_greeted', False)}")
+    print(f"User ID: {run_context.session_state.get('current_user_id')}")
+    print(f"Session ID: {run_context.session_state.get('current_session_id')}")
+    print(f"Has been greeted: {run_context.session_state.get('has_been_greeted', False)}")
 
     # Check if user has been greeted before
-    return session_state.get("has_been_greeted", False)
+    return run_context.session_state.get("has_been_greeted", False)
 
 
-def mark_user_as_greeted(step_input: StepInput, session_state: dict) -> StepOutput:
+def mark_user_as_greeted(step_input: StepInput, run_context: RunContext) -> StepOutput:
     """Custom function that marks user as greeted in session state."""
     print("\n=== Marking User as Greeted ===")
-    session_state["has_been_greeted"] = True
-    session_state["greeting_count"] = session_state.get("greeting_count", 0) + 1
+    run_context.session_state["has_been_greeted"] = True
+    run_context.session_state["greeting_count"] = run_context.session_state.get("greeting_count", 0) + 1
 
     return StepOutput(
-        content=f"User has been greeted. Total greetings: {session_state['greeting_count']}"
+        content=f"User has been greeted. Total greetings: {run_context.session_state['greeting_count']}"
     )
 
 
@@ -79,8 +84,8 @@ workflow = Workflow(
             name="Check If New User",
             description="Check if this is a new user who needs greeting",
             # Condition returns True if user has context, so we negate it
-            evaluator=lambda step_input, session_state: not check_user_has_context(
-                step_input, session_state
+            evaluator=lambda step_input, run_context: not check_user_has_context(
+                step_input, run_context
             ),
             steps=[
                 # Only execute these steps for new users
