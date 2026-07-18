@@ -54,6 +54,12 @@ LEGACY_BLOCK_MARKERS = {
 }
 
 POST_TAG_IMPORT_FILES = {
+    "from agno.tools.plivo import PlivoTools": {
+        "tools/toolkits/social/plivo.mdx",
+    },
+    "from agno.tools.superserve import SuperserveTools": {
+        "tools/toolkits/others/superserve.mdx",
+    },
     "from agno.db.valkey import ValkeyDb": {
         "database/providers/valkey/overview.mdx",
         "database/providers/valkey/usage/valkey-for-agent.mdx",
