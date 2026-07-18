@@ -781,6 +781,14 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "04_workflows/02_conditional_execution/condition_with_parallel.py": {
         "suppress_intro": True,
+        "pre_code_warning": "This example's sample input activates only the Hacker News branch. The code fence remains source-exact. Apply the input replacement below to exercise the Hacker News, web, and Exa branches together.",
+        "pre_run_steps": [
+            (
+                "Exercise all research branches",
+                "Replace all four `Latest AI developments in machine learning` inputs in the saved file with `AI research news`.",
+                None,
+            )
+        ],
     },
     "04_workflows/08_human_in_the_loop/executor_hitl/08_agent_user_input_step.py": {
         "pre_code_warning": "The pinned source docstring points to `libs/agno/agno/test.py`, which does not exist. Use the generated run command below.",
@@ -2344,6 +2352,16 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "03_teams/23_checkpointing/02_tool_error_persistence.py": {
         "intro_override": "Run two failure scenarios, then retry the failed team run in place with `Team.acontinue_run()`.",
     },
+    "03_teams/15_distributed_rag/03_distributed_rag_with_reranking.py": {
+        "pre_code_warning": "This example passes `url=` to `insert_many()` and `ainsert_many()`. Agno v2.7.2 reads the `urls` argument, so these calls insert no documents. The code fence remains source-exact. Apply the replacement below before running.",
+        "pre_run_steps": [
+            (
+                "Fix the batch insert arguments",
+                "Replace all six `url=\"https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf\"` arguments in the saved file with `urls=[\"https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf\"]`.",
+                None,
+            )
+        ],
+    },
     "04_workflows/06_advanced_concepts/session_state/rename_session.py": {
         "intro_override": "Call `Workflow.set_session_name(autogenerate=True)` after a run to generate a session name.",
     },
@@ -2362,7 +2380,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "12_context/20_google_workspace.py": {
         "intro_override": "Combine Google Drive, Gmail, and Calendar context providers in one agent for cross-service workflows.",
-        "pre_code_warning": "The pinned source uses Google Drive's default service-account instructions. Because this page sets `GOOGLE_DELEGATED_USER` for Gmail, Drive also impersonates that Workspace user. The rendered fence intentionally replaces the Drive instructions with delegated-user guidance.",
+        "pre_code_warning": "`GOOGLE_DELEGATED_USER` makes Google Drive, Gmail, and Calendar impersonate the same Workspace user. The source still gives Drive service-account search instructions, including `sharedWithMe` fallbacks. Confirm domain-wide delegation covers all three APIs and adapt the Drive instructions to the delegated user's files before running.",
         "env_add": {"GOOGLE_SERVICE_ACCOUNT_FILE", "GOOGLE_DELEGATED_USER"},
         "env_remove": {"GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_PROJECT_ID"},
     },
@@ -2375,6 +2393,9 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
                 None,
             )
         ],
+    },
+    "90_models/google/gemini/url_context.py": {
+        "pre_code_warning": "This example's source docstring names the legacy `google-generativeai` package. Agno v2.7.2 uses the Google Gen AI SDK from `google-genai`. Use the generated install step below.",
     },
     "10_reasoning/models/gemini/basic_reasoning.py": {
         "intro_override": "Compare Gemini 2.5 Flash with thinking disabled against a fixed 1,024-token reasoning model, then inspect the captured reasoning content.",
@@ -2796,7 +2817,15 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "91_tools/mcp/cli.py": {
         "env_add": {"GITHUB_PERSONAL_ACCESS_TOKEN"},
-        "pre_code_warning": "This v2.7.2 example starts an older npm GitHub MCP server. This page substitutes [GitHub's official MCP server](https://github.com/github/github-mcp-server) Docker image and adds the matching Docker setup.",
+        "needs_npx": False,
+        "pre_code_warning": "The pinned source starts the retired npm GitHub MCP server. The fence remains byte-matched to v2.7.2. Replace that command in the saved file with [GitHub's maintained MCP server](https://github.com/github/github-mcp-server) before running it.",
+        "pre_run_steps": [
+            (
+                "Use GitHub's maintained MCP server",
+                "Install and start Docker. Then replace `npx -y @modelcontextprotocol/server-github` in the saved file with `docker run -i --rm -e GITHUB_PERSONAL_ACCESS_TOKEN -e GITHUB_READ_ONLY=1 ghcr.io/github/github-mcp-server`.",
+                "docker --version",
+            )
+        ],
     },
     "91_tools/mcp/github.py": {
         "env_add": {"GITHUB_PERSONAL_ACCESS_TOKEN"},
@@ -4692,6 +4721,8 @@ def apply_source_render_override(
         req.needs_agno = bool(override["needs_agno"])
     if "needs_pgvector" in override:
         req.needs_pgvector = bool(override["needs_pgvector"])
+    if "needs_npx" in override:
+        req.needs_npx = bool(override["needs_npx"])
     for key in ("description_override", "intro_override", "pre_code_warning", "run_replacement"):
         value = override.get(key)
         if isinstance(value, str):

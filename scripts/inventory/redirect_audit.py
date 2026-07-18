@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Audit the "redirects" array in docs.json for four problem classes:
 
-  shadowing         source matches a live nav-reachable page (exact, or a
-                    :param*/:param wildcard source that covers live pages),
+  shadowing         source matches a tracked content page (exact, or a
+                    :param*/:param wildcard source that covers tracked pages),
                     so the redirect can mask real content
   dead_destination  destination (anchor/query stripped, one redirect hop
                     resolved) is not a live page, not an orphan .mdx on disk,
@@ -46,6 +46,7 @@ def build_report(ctx: _lib.Context) -> dict:
     redirects = ctx.docs_json.get("redirects", [])
     live = ctx.live_pages
     orphans = ctx.orphan_pages
+    content_pages = set(ctx.page_files)
 
     exact_sources: dict[str, str] = {}
     wildcards: list[tuple[dict, object]] = []
@@ -68,15 +69,15 @@ def build_report(ctx: _lib.Context) -> dict:
         # (a) shadowing
         if _lib.is_wildcard(r["source"]):
             pattern = _lib.compile_source_pattern(r["source"])
-            hits = sorted(p for p in live if pattern.match(p))
+            hits = sorted(p for p in content_pages if pattern.match(p))
             if hits:
                 shadowing.append({
                     "source": r["source"], "destination": raw_dest,
-                    "live_pages_matched": len(hits), "sample": hits[:5],
+                    "content_pages_matched": len(hits), "sample": hits[:5],
                 })
-        elif src in live:
+        elif src in content_pages:
             shadowing.append({"source": r["source"], "destination": raw_dest,
-                              "live_pages_matched": 1, "sample": [src]})
+                              "content_pages_matched": 1, "sample": [src]})
 
         if _lib.is_external(raw_dest):
             continue
@@ -150,8 +151,8 @@ def main(argv=None) -> int:
 
     _lib.print_counts(report["counts"])
     _lib.print_list(
-        "Shadowing (source covers a live page)",
-        [f"{s['source']} -> {s['destination']}  (masks {s['live_pages_matched']}: {', '.join(s['sample'][:2])}...)"
+        "Shadowing (source covers a tracked content page)",
+        [f"{s['source']} -> {s['destination']}  (masks {s['content_pages_matched']}: {', '.join(s['sample'][:2])}...)"
          for s in report["shadowing"]], args.limit)
     _lib.print_list(
         "Dead destinations",

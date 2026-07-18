@@ -1814,11 +1814,6 @@ def main() -> None:
     )
     sub(
         "reasoning/models/vertex-ai/basic-reasoning-stream.mdx",
-        "thinking_budget=1024,  # Required to enable thinking mode",
-        "thinking_budget=1024,  # Set a fixed 1,024-token thinking budget",
-    )
-    sub(
-        "reasoning/models/vertex-ai/basic-reasoning-stream.mdx",
         """  <Step title="Authenticate with Google Cloud">
     Sign in with Application Default Credentials:
     ```bash
@@ -1832,106 +1827,6 @@ def main() -> None:
     ```
   </Step>""",
     )
-    sub(
-        "tools/mcp/cli.mdx",
-        'async with MCPTools("npx -y @modelcontextprotocol/server-github") as mcp_tools:',
-        """async with MCPTools(
-        "docker run -i --rm -e GITHUB_PERSONAL_ACCESS_TOKEN "
-        "-e GITHUB_READ_ONLY=1 "
-        "ghcr.io/github/github-mcp-server"
-    ) as mcp_tools:""",
-    )
-    sub(
-        "context/google-workspace.mdx",
-        "gdrive = GoogleDriveContextProvider(model=sub_model)",
-        '''gdrive = GoogleDriveContextProvider(
-    model=sub_model,
-    instructions="""You answer questions by searching and reading Google Drive as the delegated Workspace user.
-Use search_files or list_files to find relevant files, then read_file for selected content.
-Cite webViewLink values and keep access read-only.""",
-)''',
-    )
-    sub(
-        "tools/mcp/cli.mdx",
-        "Github repo: https://github.com/agno-agi/agno",
-        "GitHub repo: https://github.com/agno-agi/agno",
-    )
-    sub(
-        "tools/mcp/cli.mdx",
-        """  <Step title="Prepare Node.js">
-    The MCP server runs with `npx`. Install Node.js, then verify the commands:
-    ```bash
-    node --version
-    npx --version
-    ```
-  </Step>""",
-        """  <Step title="Prepare Docker">
-    Install and start [Docker](https://docs.docker.com/get-started/get-docker/), then verify the command:
-    ```bash
-    docker --version
-    ```
-  </Step>""",
-    )
-    sub_all(
-        "teams/distributed-rag/distributed-rag-with-reranking.mdx",
-        'url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf"',
-        'urls=["https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf"]',
-        expected=6,
-    )
-    sub(
-        "workflows/conditional-execution/condition-with-parallel.mdx",
-        """    return any(keyword in topic.lower() for keyword in general_keywords)
-
-
-def check_if_we_should_search_x(step_input: StepInput) -> bool:
-    topic = step_input.input or step_input.previous_step_content or ""
-    social_keywords = [
-        "trending",
-        "viral",
-        "social",
-        "discussion",
-        "opinion",
-        "twitter",
-        "x",
-    ]
-    return any(keyword in topic.lower() for keyword in social_keywords)
-
-
-def check_if_we_should_search_exa(step_input: StepInput) -> bool:""",
-        """    return any(keyword in topic.lower() for keyword in general_keywords)
-
-
-def check_if_we_should_search_exa(step_input: StepInput) -> bool:""",
-    )
-    sub_all(
-        "workflows/conditional-execution/condition-with-parallel.mdx",
-        'input="Latest AI developments in machine learning"',
-        'input="AI research news"',
-        expected=4,
-    )
-    sub(
-        "models/google/gemini/url-context.mdx",
-        "uv pip install google-generativeai",
-        "uv pip install google-genai",
-    )
-    sub(
-        "knowledge/advanced/knowledge-protocol.mdx",
-        """KnowledgeProtocol is an interface for building custom knowledge sources
-that don't use the standard Knowledge class.
-
-Implement this when you need:
-- Knowledge from a non-standard source (file system, API, database)
-- Custom search logic that doesn't fit the vector DB model
-- Integration with existing retrieval systems""",
-        """KnowledgeProtocol defines the methods a custom knowledge source implements
-to build agent context, expose tools, and retrieve documents.
-
-Implement it for:
-- Knowledge from a file system, API, or database
-- Custom vector database, keyword, graph, or hybrid search logic
-- Integration with an existing retrieval system""",
-    )
-
     # 1. Docstring title is the generic mode name; page is the structured-debate example.
     sub(
         "teams/modes/broadcast/structured-debate.mdx",
@@ -1942,11 +1837,6 @@ Implement it for:
     # 2. Digit-heavy stem (9_11_or_9_9) defeats the numeric-prefix strip; upstream
     #    docstring is a machine stub.
     sub("reasoning/models/groq/or-9-9.mdx", 'title: "11 or 9 9"', 'title: "9.11 or 9.9"')
-    sub(
-        "reasoning/models/groq/or-9-9.mdx",
-        'description: "Runnable cookbook example: 11 or 9 9."',
-        'description: "Groq reasoning model works through the classic 9.11 vs 9.9 comparison."',
-    )
 
     # 3. Curated page shipped with an empty description.
     sub(

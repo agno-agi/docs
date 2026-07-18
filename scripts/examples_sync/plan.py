@@ -110,41 +110,22 @@ NAV_SEEDS = {
 SIM_ACCEPT = 0.55   # basename match: accept relocation at/above this ratio
 KNOWLEDGE_REDIRECT_SIM = 0.5
 
-# Shipped example routes that now have canonical homes elsewhere. Keep the
-# source files as hidden redirect sources so a fresh plan never proposes
-# deleting them, but do not let them claim cookbook sources or nav slots.
-# These overrides are applied after fallback redirect selection.
-CANONICAL_REDIRECT_OVERRIDES: tuple[tuple[str, str], ...] = (
-    (
-        "examples/agent-os/factories/agent/hitl-factory",
-        "examples/agent-os/factories/hitl-factory",
-    ),
-    (
-        "examples/agent-os/factories/agent/jwt-role-factory",
-        "examples/agent-os/factories/jwt-role-factory",
-    ),
-    (
-        "examples/integrations/rag/overview",
-        "examples/knowledge/overview",
-    ),
-    (
-        "examples/integrations/rag/agentic-rag-infinity-reranker",
-        "examples/knowledge/integrations/rag/agentic-rag-infinity-reranker",
-    ),
-    (
-        "examples/integrations/rag/agentic-rag-with-lightrag",
-        "examples/knowledge/integrations/rag/agentic-rag-with-lightrag",
-    ),
-    (
-        "examples/integrations/rag/local-rag-langchain-qdrant",
-        "examples/knowledge/integrations/rag/local-rag-langchain-qdrant",
-    ),
-    (
-        "examples/reasoning/models/xai/overview",
-        "examples/reasoning/models/xai/reasoning-effort",
-    ),
-)
+# Reserve explicit redirect overrides for retired routes without tracked page
+# content. Tracked pages remain live pages and must not be listed here.
+CANONICAL_REDIRECT_OVERRIDES: tuple[tuple[str, str], ...] = ()
 REDIRECT_SOURCE_SLUGS = {source for source, _ in CANONICAL_REDIRECT_OVERRIDES}
+
+# These shipped routes own tracked content outside the current navigation.
+# Preserve them as pages instead of classifying them as deletion candidates.
+PRESERVED_TRACKED_PAGE_SLUGS = {
+    "examples/agent-os/factories/agent/hitl-factory",
+    "examples/agent-os/factories/agent/jwt-role-factory",
+    "examples/integrations/rag/overview",
+    "examples/integrations/rag/agentic-rag-infinity-reranker",
+    "examples/integrations/rag/agentic-rag-with-lightrag",
+    "examples/integrations/rag/local-rag-langchain-qdrant",
+    "examples/reasoning/models/xai/overview",
+}
 
 # These examples landed on docs main after the pinned v2.7.2 source tag. Keep
 # their shipped pages while this sync remains pinned to that tag. The strict
@@ -452,6 +433,13 @@ def main() -> None:
         info["in_nav"] = slug in nav_slugs
         pages[slug] = info
 
+    missing_preserved_pages = PRESERVED_TRACKED_PAGE_SLUGS - pages.keys()
+    if missing_preserved_pages:
+        raise RuntimeError(
+            "preserved tracked page is missing: "
+            + ", ".join(sorted(missing_preserved_pages))
+        )
+
     # inbound links (to judge orphans)
     linked: set[str] = set()
     link_re = re.compile(r"\(/(examples/[a-z0-9\-/]+)[)#]")
@@ -536,6 +524,14 @@ def main() -> None:
                 "subtype": "post-tag-source-update",
                 "cookbook_path": post_tag_existing_source,
                 "note": "source update shipped after the pinned tag; preserve the upstream page",
+            })
+            results.append(entry)
+            continue
+        if slug in PRESERVED_TRACKED_PAGE_SLUGS:
+            entry.update({
+                "class": "PRESERVE_CURATED",
+                "subtype": "tracked-page",
+                "note": "tracked page retained outside navigation",
             })
             results.append(entry)
             continue
@@ -871,6 +867,17 @@ def main() -> None:
         # Explicit canonical redirects replace any fallback selected above and
         # also emit for preserved hidden sources that are not DELETE entries.
         redirects_by_source["/" + source] = "/" + dest
+
+    shadowed_redirects = sorted(
+        source.removeprefix("/")
+        for source in redirects_by_source
+        if source.removeprefix("/") in live
+    )
+    if shadowed_redirects:
+        raise RuntimeError(
+            "generated redirects shadow retained pages: "
+            + ", ".join(shadowed_redirects)
+        )
 
     redirects = [
         {"source": source, "destination": redirects_by_source[source]}
