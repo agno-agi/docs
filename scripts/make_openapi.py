@@ -5,8 +5,8 @@ surface of the reference-api spec, dumps app.openapi() to
 scripts/out/openapi.json / openapi.yaml, and writes a structured diff against
 the checked-in reference-api/openapi.yaml to scripts/out/openapi-diff.md.
 
-Never touches reference-api/ itself: review the diff, then copy
-scripts/out/openapi.yaml over reference-api/openapi.yaml by hand.
+Never touches reference-api/ itself. It carries forward the reviewed Slack
+request metadata that FastAPI cannot derive from the router implementation.
 
 Run with a venv where agno[os,mcp,telegram,agui,a2a,slack] is importable:
   python scripts/make_openapi.py
@@ -212,6 +212,22 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
     return spec
 
 
+def preserve_curated_slack_metadata(spec: dict) -> dict:
+    """Carry forward Slack request details read imperatively by the router."""
+    old = yaml.safe_load(OLD_YAML.read_text())
+    fields = {
+        "/slack/events": ("description", "parameters"),
+        "/slack/interactions": ("description", "parameters", "requestBody"),
+    }
+    for path, names in fields.items():
+        current_post = spec["paths"][path]["post"]
+        curated_post = old["paths"][path]["post"]
+        for name in names:
+            assert name in curated_post, f"missing curated Slack {path} {name}"
+            current_post[name] = curated_post[name]
+    return spec
+
+
 # --- YAML dumping shaped like the existing reference-api/openapi.yaml ----------
 
 
@@ -383,6 +399,7 @@ def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     app = build_app()
     spec = apply_runtime_description_enrichments(app.openapi())
+    spec = preserve_curated_slack_metadata(spec)
 
     NEW_JSON.write_text(json.dumps(spec, indent=2) + "\n")
     dump_yaml(spec, NEW_YAML)

@@ -56,11 +56,8 @@ the release tag:
 5. `python scripts/reference_drift.py`, then work through
    `out/drift-report.json` against the `reference/**` tables.
 6. At GA only: `python scripts/make_openapi.py`, review `out/openapi-diff.md`,
-   copy `out/openapi.yaml` over `reference-api/openapi.yaml`. Re-apply the two
-   Slack enrichment blocks from PR #681 on top (header parameters,
-   form-urlencoded request body, and HITL descriptions for
-   `POST /slack/events` and `POST /slack/interactions`); the generator emits
-   both operations but the Slack router reads headers imperatively, so the
-   enrichment is not derivable. Add stub pages and docs.json nav entries for
-   any new endpoints.
+   and copy `out/openapi.yaml` over `reference-api/openapi.yaml`. The generator
+   preserves the curated Slack header parameters, form request body, and HITL
+   descriptions because the Slack router reads those values imperatively.
+   Add stub pages and `docs.json` nav entries for any new endpoints.
 7. `python scripts/check_imports.py`, then `mint broken-links`.
