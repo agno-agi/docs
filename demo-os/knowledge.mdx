@@ -1,158 +1,111 @@
 ---
 title: Knowledge
-description: "Hybrid search with embeddings, chunking, and metadata in the Dash team."
+description: "Hybrid vector and PostgreSQL full-text search used by the Dash team."
 ---
 
-`Knowledge` is the retrieval primitive: a vector index with an optional keyword index and optional reranker. Dash uses it heavily for grounding text-to-SQL.
+Dash gives its Analyst and Engineer the same `Knowledge` instance and enables the `search_knowledge_base` tool.
 
 ```python
+from agno.agent import Agent
 from agno.knowledge import Knowledge
-from agno.vectordb.pgvector import PgVector
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.vectordb.pgvector import PgVector, SearchType
 
 dash_knowledge = Knowledge(
+    name="Dash Knowledge",
     vector_db=PgVector(
-        table_name="dash_knowledge",
         db_url=DB_URL,
-        search_type="hybrid",       # vector + BM25
+        table_name="dash_knowledge",
+        search_type=SearchType.hybrid,
+        embedder=OpenAIEmbedder(id="text-embedding-3-small"),
     ),
 )
 
-dash = Agent(
+analyst = Agent(
     knowledge=dash_knowledge,
-    add_knowledge_to_context=True,  # auto-search before each run
-    search_knowledge=True,          # also expose as a tool
+    search_knowledge=True,
 )
 ```
+
+Demo OS also configures a contents database so it can track the source content separately from the vector index.
 
 ## Loading content
 
-Three ways to put content in:
-
-```python
-# From a directory
-dash_knowledge.insert(path="knowledge/tables/")
-
-# From a URL
-dash_knowledge.insert(url="https://example.com/article")
-
-# Programmatically
-dash_knowledge.insert(
-    name="MRR definition",
-    text_content="MRR is sum of active subscriptions excluding trials.",
-    metadata={"category": "business_rules"},
-)
-```
-
-Demo OS loads via scripts:
+Dash loads table descriptions, validated queries, and business rules from `agents/dash/knowledge/`:
 
 ```bash
 python -m agents.dash.scripts.load_knowledge
 ```
 
-Re-run with `--recreate` to rebuild from scratch. Without it, content is upserted by primary key.
+Pass `--recreate` to drop and rebuild the vector table. The default run inserts or updates the three knowledge directories.
 
-## Chunking and embedding
-
-By default, `Knowledge` chunks long content and embeds each chunk with `text-embedding-3-small`. You set the embedder on the vector database and the chunking strategy on the reader that ingests the content:
+You can also insert content directly:
 
 ```python
-from agno.knowledge.chunking.fixed import FixedSizeChunking
-from agno.knowledge.embedder.openai import OpenAIEmbedder
-from agno.knowledge.reader.markdown_reader import MarkdownReader
-
-dash_knowledge = Knowledge(
-    vector_db=PgVector(
-        table_name="dash_knowledge",
-        db_url=DB_URL,
-        embedder=OpenAIEmbedder(id="text-embedding-3-large"),
-    ),
-)
-
 dash_knowledge.insert(
-    path="knowledge/tables/",
-    reader=MarkdownReader(
-        chunking_strategy=FixedSizeChunking(chunk_size=1000, overlap=100),
-    ),
+    name="MRR definition",
+    text_content="MRR is the sum of active subscriptions excluding trials.",
+    metadata={"category": "business_rules"},
 )
 ```
-
-Other chunking strategies live under `agno.knowledge.chunking.*`: by markdown headers, by code structure, by recursive token count, by semantic boundaries.
 
 ## Hybrid search
 
-`search_type="hybrid"` runs both:
+PgVector hybrid search combines two scores:
 
-| Index | Catches |
-|-------|---------|
-| Vector (semantic) | "different words for the same idea" |
-| BM25 (keyword) | "find the doc that mentions this exact term" |
+| Signal | Implementation |
+|--------|----------------|
+| Semantic similarity | Vector distance against the configured embeddings |
+| Keyword relevance | PostgreSQL full-text search with `to_tsvector` and `ts_rank_cd` |
 
-Results from both get merged with reciprocal rank fusion. Hybrid almost always beats either alone.
+PgVector normalizes the text rank and combines it with the vector score using `vector_score_weight`. The default gives each signal a weight of `0.5`. This path uses weighted scoring. BM25 and reciprocal rank fusion use different scoring algorithms.
 
-## Metadata filtering
+## When Dash searches
 
-Metadata attached at ingest time becomes a filter at query time:
+`search_knowledge=True` adds `search_knowledge_base(query)` to each specialist. Dash does not set `add_knowledge_to_context`, so AgentOS does not run a knowledge search automatically before every response.
+
+The Analyst and Engineer instructions tell the model to search first. The model decides when to call the tool, and tool use remains model-driven.
+
+## Metadata filters
+
+Metadata attached during ingestion can filter a search:
 
 ```python
-# Ingest
-dash_knowledge.insert(
-    name="MRR definition",
-    text_content="...",
-    metadata={"category": "business_rules", "team": "finance"},
-)
-
-# Retrieve only finance team rules
 dash_knowledge.search(
-    query="how do we calculate MRR?",
-    filters={"team": "finance"},
+    query="How do we calculate MRR?",
+    filters={"category": "business_rules"},
 )
 ```
 
-Useful for multi-tenant agents (filter by `tenant_id`) or topic scoping (filter by `category`).
-
-## When the model gets the chunks
-
-With `add_knowledge_to_context=True`:
-
-1. User message arrives.
-2. AgentOS runs `knowledge.search(message)` automatically.
-3. Top-k chunks get inserted into the system prompt.
-4. The model answers with the chunks visible.
-
-With `search_knowledge=True`:
-
-The agent gets a `search_knowledge_base(query)` tool. The model decides when to call it. Useful for follow-up retrieval mid-run.
-
-Both flags are common to set together. Auto-search hits first, the tool catches "I need to look up something else" cases.
+Use filters for tenant, topic, or document-type boundaries when those fields are present in the stored metadata.
 
 ## Reranking
 
-For larger knowledge bases, add a reranker:
+Dash does not configure a reranker. To add one, set the candidate count on `Knowledge` and the output limit on the reranker:
 
 ```python
 from agno.knowledge.reranker.cohere import CohereReranker
 
-dash_knowledge = Knowledge(
+knowledge = Knowledge(
+    max_results=20,
     vector_db=PgVector(
-        table_name="dash_knowledge",
+        table_name="company_knowledge",
         db_url=DB_URL,
-        search_type="hybrid",
-        reranker=CohereReranker(model="rerank-3.5"),
+        search_type=SearchType.hybrid,
+        reranker=CohereReranker(
+            model="rerank-multilingual-v3.0",
+            top_n=5,
+        ),
     ),
 )
 ```
 
-The vector DB returns the top-50, the reranker scores them, and the top-10 reach the model. This two-stage retrieval (cast wide, rerank tight) is the standard production setup.
+This configuration retrieves up to 20 candidates and then returns at most 5 reranked documents. Without `top_n`, the reranker reorders the retrieved candidates without reducing their count. `Knowledge.max_results` defaults to 10.
 
-## See it in action
+## Developer Resources
 
-```
-@Dash what's the right way to count active subscriptions?
-@Dash show me a query for MRR by plan
-@Dash which tables track customer lifecycle events?
-```
-
-Source: [`agents/dash/`](https://github.com/agno-agi/demo-os/tree/main/agents/dash), [Knowledge docs](/knowledge/overview)
+- [Dash source](https://github.com/agno-agi/demo-os/tree/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/agents/dash)
+- [Knowledge overview](/knowledge/overview)
 
 ## Next
 

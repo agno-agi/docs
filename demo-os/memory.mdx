@@ -1,122 +1,89 @@
 ---
 title: Memory
-description: "Entity memory, user profile, and session context in the Contacts agent."
+description: "Session state, user memory, and past-session search in the Planner agent."
 ---
 
-The [Contacts agent](https://github.com/agno-agi/demo-os/blob/main/agents/contacts/agent.py) is a mini CRM that remembers people, the facts you tell it about them, who knows whom, and what's happening between them.
-
-Three memory stores, each scoped to a different shape of state:
+Planner stores tasks in session state and preferences in user memory:
 
 ```python
-from agno.learn import (
-    LearningMachine, LearningMode,
-    UserProfileConfig, EntityMemoryConfig, SessionContextConfig,
-)
+from agno.agent import Agent
 
-contacts = Agent(
-    id="contacts",
-    name="Contacts",
-    model=MODEL,
+taskboard = Agent(
+    id="planner",
+    name="Planner",
     db=agent_db,
-    learning=LearningMachine(
-        user_profile=UserProfileConfig(mode=LearningMode.ALWAYS),
-        entity_memory=EntityMemoryConfig(
-            mode=LearningMode.AGENTIC,
-            enable_create_entity=True,
-            enable_add_fact=True,
-            enable_add_relationship=True,
-            enable_add_event=True,
-        ),
-        session_context=SessionContextConfig(
-            mode=LearningMode.ALWAYS,
-            enable_planning=True,
-        ),
-    ),
+    tools=[
+        add_task,
+        update_task_status,
+        remove_task,
+        list_tasks,
+        agenda,
+        plan_my_day,
+        get_summary,
+    ],
+    session_state={
+        "tasks": [],
+        "categories": ["general", "work", "personal"],
+    },
+    enable_agentic_state=True,
+    add_session_state_to_context=True,
     enable_agentic_memory=True,
+    search_past_sessions=True,
+    num_past_sessions_to_search=5,
 )
 ```
 
-## Three stores, three shapes
+## Storage roles
 
-| Store | Cardinality | Mode | Example |
-|-------|-------------|------|---------|
-| [User profile](/learning/stores/user-profile) | One record per user | `ALWAYS` (auto-extracted) | "Prefers async communication, based in PT, role: PM" |
-| [Entity memory](/learning/stores/entity-memory) | Graph of entities + facts + relationships + events | `AGENTIC` (agent writes) | Sarah Chen → role: VP Eng → company: Acme → "joined 2024-Q4" |
-| [Session context](/learning/stores/session-context) | Per session | `ALWAYS` | "User is planning a Q1 offsite, talking through agenda" |
+| Mechanism | Planner data | Scope and behavior |
+|-----------|--------------|--------------------|
+| `session_state` | Tasks and categories | Stored with the session and restored for later runs using the same session |
+| `enable_agentic_state` | Direct state updates | Adds tools that let the model update session state |
+| `enable_agentic_memory` | Work-style preferences and recurring patterns | Adds a user-memory tool that the model may call |
+| `search_past_sessions` | Prior conversation details | Adds search and read tools for earlier sessions; the model chooses when to call them |
 
-`LearningMode.ALWAYS` runs an extractor on every turn. `LearningMode.AGENTIC` gives the agent tools to write when it judges something worth keeping.
+Planner's task tools accept `RunContext` and mutate `run_context.session_state` directly. For example, `add_task` initializes the state, creates a task ID, and appends the task object.
 
-## Entity memory in detail
-
-The Contacts agent gets four entity-memory tools when configured as above:
-
-| Tool | What it does |
-|------|--------------|
-| `create_entity(name, type)` | Adds a new entity (Person, Company, Project, ...) |
-| `add_fact(entity, fact)` | Attaches a fact to an entity |
-| `add_relationship(entity_a, entity_b, type)` | Links two entities |
-| `add_event(entity, event, when)` | Records a time-bound event |
-
-Example chat that builds up the graph:
-
-```
-User: Sarah Chen joined Acme as VP Engineering last month.
-Contacts: → create_entity("Sarah Chen", "Person")
-          → add_fact("Sarah Chen", "VP Engineering at Acme")
-          → add_relationship("Sarah Chen", "Acme", "employed_by")
-          → add_event("Sarah Chen", "joined Acme as VP Eng", "2026-03-15")
-```
-
-Next session, "what do I know about Sarah?" returns the full picture without the user re-telling.
-
-## User profile
-
-User profile is one record per `user_id`, updated in place. Whatever the agent learns about *you* (your role, your preferences, your working style) goes here.
-
-```
-User: I prefer concise responses, no preamble.
-Contacts: → user_profile updated: { communication_style: "concise, direct" }
+```python
+@tool
+def add_task(
+    run_context: RunContext,
+    title: str,
+    priority: str = "medium",
+    category: str = "general",
+    effort: str = "medium",
+    due_date: str = "",
+) -> str:
+    state = _state(run_context)
+    tasks = state["tasks"]
+    task_id = f"T-{len(tasks) + 1:03d}"
+    tasks.append(
+        {
+            "id": task_id,
+            "title": title,
+            "priority": priority,
+            "category": category,
+            "effort": effort,
+            "status": "todo",
+            "due_date": due_date,
+            "blocked_reason": "",
+        }
+    )
+    return f"Added {task_id}: {title}"
 ```
 
-Future responses across any session, any agent that shares the same `db`, get terser automatically.
+Reuse the same `session_id` to continue a task board. Set a stable `user_id` when user memories or past-session search should follow one user across sessions. The database stores these records; the initial `session_state` dictionary is only the default for a new session.
 
-## Session context
+Mentor uses `LearningMachine` for structured user profile, user memory, session context, learned knowledge, and decision-log records. See [Learning](/demo-os/learning) for that configuration.
 
-Session context is plan-shaped. "What's this conversation actually about? What does the user want by the end?" The agent uses it to keep multi-turn plans coherent.
+## Developer Resources
 
-```
-Session goal: Plan Q1 offsite agenda
-Open items: pick venue, set theme, draft schedule
-Decisions so far: 3 days, 25 people, focus on roadmap alignment
-```
-
-Useful for long, exploratory sessions where the user pivots and the agent needs to stay anchored.
-
-## Vanilla agentic memory vs LearningMachine
-
-For most agents, `enable_agentic_memory=True` is enough: a single bucket of facts that the agent writes to via tools.
-
-`LearningMachine` is right when the shape of memory matters:
-
-- A relationship graph (Contacts) needs entities and edges, not flat strings.
-- A self-improving SQL agent (Dash) needs to separate "validated queries" from "error patterns I've fixed".
-
-When in doubt, start with `enable_agentic_memory=True` and move to `LearningMachine` once flat memory feels too lossy.
-
-## See it in action
-
-```
-@Contacts Sarah Chen joined Acme as VP Eng last month
-@Contacts what do I know about Sarah?
-@Contacts who at Acme have I been talking to?
-@Contacts I'm meeting Sarah tomorrow about the platform roadmap
-@Contacts later: what was the meeting with Sarah about?
-```
-
-Each turn updates the entity graph. The agent uses the graph on every retrieval.
-
-Source: [`agents/contacts/agent.py`](https://github.com/agno-agi/demo-os/blob/main/agents/contacts/agent.py), [Learning Machine docs](/learning/overview)
+- [Planner agent](https://github.com/agno-agi/demo-os/blob/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/agents/taskboard/agent.py)
+- [Planner state tools](https://github.com/agno-agi/demo-os/blob/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/agents/taskboard/tools.py)
+- [Agent memory](/memory/agent/overview)
+- [Agent session state](/state/agent/overview)
+- [Past-session search](/database/chat-history)
 
 ## Next
 
-[Learning →](/demo-os/learning)
+[Learning ->](/demo-os/learning)

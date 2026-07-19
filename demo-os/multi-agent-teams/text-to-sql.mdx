@@ -1,9 +1,9 @@
 ---
 title: Text-to-SQL
-description: "Two-agent SQL team with read-only Analyst, schema-managing Engineer, and a self-learning loop."
+description: "Coordinate an Analyst and Engineer with different database access controls."
 ---
 
-The [Dash team](https://github.com/agno-agi/demo-os/tree/main/agents/dash) is a working text-to-SQL system with a structural separation between the agent that reads data and the agent that builds reusable views.
+Dash is a coordinate-mode team with an Analyst for queries and an Engineer for data assets.
 
 ```python
 from agno.team import Team, TeamMode
@@ -21,88 +21,78 @@ dash = Team(
 )
 ```
 
-Two members and one leader, sharing a single learning store.
+The leader has no SQL tools. Its `db=agent_db` setting persists team sessions.
+It delegates database work to one or both specialists and synthesizes their
+responses.
 
-## The split
+## Member responsibilities
 
-| Agent | Schema access | Tools |
-|-------|---------------|-------|
-| **Analyst** | `public` (read-only via `default_transaction_read_only=on`) | `SQLTools(read_only=True)`, `introspect_schema`, `save_validated_query`, `ReasoningTools` |
-| **Engineer** | `public` (read), `dash` (read+write, blocked from `public` writes via SQLAlchemy event listener) | `SQLTools` (full), `introspect_schema`, `update_knowledge`, `ReasoningTools` |
-| **Leader** | None directly | Routes the request, optional `SlackTools` for posting back |
+| Member | Intended work | Database connection |
+|--------|---------------|---------------------|
+| **Analyst** | Read data, write and validate queries, interpret results | PostgreSQL connection with `default_transaction_read_only=on` |
+| **Engineer** | Create views, summary tables, and other assets in `dash` | Read-write connection with `search_path=dash,public` |
+| **Leader** | Select members and combine results | No SQL tool access; the team database persists sessions |
 
-The boundary is enforced at the database engine, not in the prompt. The Analyst's connection physically cannot write, and the Engineer's writes physically cannot touch `public`. These hold even if the model goes off-script.
+Both specialists receive `search_knowledge_base`, schema introspection, SQL, and reasoning tools. The Analyst can also save validated queries. The Engineer can update the knowledge base after schema work.
 
-## How a question flows
+## Access controls
 
-1. User: "What's our MRR trend by plan?"
-2. **Leader** retrieves shared learnings (error patterns, gotchas) and routes to **Analyst**.
-3. **Analyst** retrieves table metadata + matching query patterns from knowledge.
-4. **Analyst** writes SQL grounded in the retrieved patterns.
-5. **Analyst** executes against `public` (read-only).
-6. **Analyst** interprets results, returns insight.
-7. **Leader** synthesizes and replies.
+The Analyst's connection sets PostgreSQL transactions to read-only. PostgreSQL rejects DML and DDL on that connection.
 
-If the Analyst hits a recurring need (a query the Engineer should turn into a view), it asks the **Engineer**. The Engineer creates `dash.monthly_mrr_by_plan` as a view, records it in knowledge, the Analyst prefers it next time.
+The Engineer uses a different control. A SQLAlchemy event listener searches statements for explicit writes to `public.*` and raises an error when it recognizes one. This regular-expression guard is best-effort. It can miss alternate SQL forms or unqualified targets, so it does not provide a database-enforced security boundary.
 
-## The self-learning loop
+For a hard Engineer boundary, use PostgreSQL roles and grants that permit reads from `public` and writes only to `dash`.
 
-When the Analyst hits a SQL error and finds a fix, it saves the pattern via `LearningMachine`:
+## Query flow
 
-```
-Error: "active subscription detection wrong"
-Diagnosis: filtered on status='active', but trials had status='active' too
-Fix: filter on ended_at IS NULL instead
-Saved as learning: "active means ended_at IS NULL, not status='active'"
-```
+For a direct data question, the expected flow is:
 
-Next time the same shape of question hits, the learning gets retrieved before the Analyst writes SQL. Same error doesn't happen twice.
+1. The leader delegates the question to the Analyst.
+2. The Analyst searches knowledge for table metadata, query patterns, and business rules.
+3. The Analyst executes SQL through the read-only connection.
+4. The leader turns the member response into the final answer.
 
-After a few weeks of use:
+For work that needs a reusable view, the leader can involve both members:
 
-- **Knowledge** holds the validated query library, table descriptions, business rules.
-- **Learnings** holds the error patterns and fixes the team has discovered.
-- The Analyst writes correct SQL faster because both are in context.
+1. The Analyst identifies the repeated query or missing data asset.
+2. The Engineer inspects the schema and creates an asset under `dash`.
+3. The Engineer records that asset in knowledge.
+4. The Analyst queries the new asset through its read-only connection.
 
-## Why coordinate mode
+`TeamMode.coordinate` allows the leader to call multiple members. It does not restrict a run to one specialist.
 
-`TeamMode.coordinate` means the leader decides who handles each request. Other modes:
+## Knowledge and learnings
 
-| Mode | Behavior |
-|------|----------|
-| `coordinate` | Leader routes to one specialist per turn |
-| `route` | Same, but with explicit routing rules |
-| `broadcast` | Leader sends to all specialists, gathers responses |
-| `tasks` | Leader breaks the request into tasks, fans out, synthesizes |
+Dash separates curated material from model-selected learnings:
 
-For text-to-SQL, `coordinate` is the right shape. One question maps to one specialist (Analyst for queries, Engineer for schema work). The leader picks based on the user's intent.
+| Store | Contents | Use |
+|-------|----------|-----|
+| `dash_knowledge` | Table metadata, validated queries, business rules, Engineer updates | Exposed to Analyst and Engineer through `search_knowledge_base` |
+| `dash_learnings` | Error patterns, corrections, and reusable observations | Attached through an agentic `LearningMachine` |
 
-## What runs where
+Knowledge search and learning writes are model-driven tool calls. The instructions request them, but the runtime does not guarantee that every successful fix is saved or reused.
+
+## Files
 
 | File | Purpose |
 |------|---------|
-| [`agents/dash/team.py`](https://github.com/agno-agi/demo-os/blob/main/agents/dash/team.py) | Team definition, leader instructions |
-| [`agents/dash/agents/analyst.py`](https://github.com/agno-agi/demo-os/blob/main/agents/dash/agents/analyst.py) | Read-only Analyst |
-| [`agents/dash/agents/engineer.py`](https://github.com/agno-agi/demo-os/blob/main/agents/dash/agents/engineer.py) | Schema-managing Engineer |
-| [`agents/dash/knowledge/`](https://github.com/agno-agi/demo-os/tree/main/agents/dash/knowledge) | Loaded at boot via `load_knowledge.py` |
-| [`agents/dash/scripts/load_data.py`](https://github.com/agno-agi/demo-os/blob/main/agents/dash/scripts/load_data.py) | Generates the synthetic SaaS dataset |
+| [`agents/dash/team.py`](https://github.com/agno-agi/demo-os/blob/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/agents/dash/team.py) | Team and leader configuration |
+| [`agents/dash/agents/analyst.py`](https://github.com/agno-agi/demo-os/blob/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/agents/dash/agents/analyst.py) | Analyst configuration |
+| [`agents/dash/agents/engineer.py`](https://github.com/agno-agi/demo-os/blob/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/agents/dash/agents/engineer.py) | Engineer configuration |
+| [`agents/dash/db_utils.py`](https://github.com/agno-agi/demo-os/blob/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/agents/dash/db_utils.py) | Read-only engine and Engineer statement guard |
+| [`agents/dash/tools/build.py`](https://github.com/agno-agi/demo-os/blob/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/agents/dash/tools/build.py) | Member tool assembly |
 
-## See it in action
+## Try it
 
-```
+```text
 @Dash what's our current MRR?
 @Dash which plan has the highest churn rate?
-@Dash show me revenue trends by plan over the last 6 months
-@Dash which customers are at risk of churning?
-@Dash build me a view for monthly recurring revenue by plan
+@Dash show revenue trends by plan over the last 6 months
+@Dash create a monthly MRR view under the dash schema
 ```
 
-The first four go to the Analyst. The fifth goes to the Engineer.
-
-For a from-scratch tutorial that builds a Dash-style agent on your own data, see [Dash](/deploy/templates/dash/overview).
-
-Source: [`agents/dash/`](https://github.com/agno-agi/demo-os/tree/main/agents/dash)
+For a standalone Dash template, see [Dash](/deploy/templates/dash/overview).
 
 ## Next
 
-[Investment Team →](/demo-os/multi-agent-teams/investment)
+[Investment Committee →](/demo-os/multi-agent-teams/investment)

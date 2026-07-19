@@ -1,95 +1,80 @@
 ---
 title: Dependencies
-description: "Inject runtime config, feature flags, and per-request data via dependencies."
+description: "Resolve patient-specific Clinic context from callable dependencies on each run."
 ---
 
-The [Injector agent](https://github.com/agno-agi/demo-os/blob/main/agents/injector/agent.py) shows how to give an agent access to runtime configuration without baking it into the prompt or the tool definitions.
+Clinic passes two callable dependencies to its team and member agents:
 
 ```python
-from agno.agent import Agent
+from typing import Any
 
-DEPENDENCIES = {
-    "config": {
-        "app_name": "AgentOS Demo",
-        "version": "2.1.0",
-        "region": "us-east-1",
-    },
-    "feature_flags": {
-        "dark_mode": True,
-        "beta_features": False,
-        "ai_suggestions": True,
-    },
-    "user_preferences": {
-        "theme": "dark",
-        "timezone": "America/New_York",
-    },
+from agno.team import Team
+
+from teams.clinic.context import get_patient_context
+from teams.clinic.patients import patient_id_for
+
+
+def current_patient_id(run_context: Any) -> str:
+    return patient_id_for(getattr(run_context, "user_id", None))
+
+
+dependencies = {
+    "patient_appointments": get_patient_context,
+    "current_patient_id": current_patient_id,
 }
 
-injector = Agent(
-    id="injector",
-    name="Injector",
-    model=MODEL,
-    db=agent_db,
-    tools=[get_config, check_feature_flag, get_user_preference],
-    dependencies=DEPENDENCIES,
+clinic = Team(
+    id="clinic",
+    dependencies=dependencies,
     add_dependencies_to_context=True,
+    # ...
 )
 ```
 
-`add_dependencies_to_context=True` makes the dependencies visible in the system prompt. The agent can refer to them directly:
-
-> *"Is dark mode enabled?"* → reads `feature_flags.dark_mode` from dependencies, answers "Yes."
-
-Tools can also access dependencies via `RunContext`:
+Agno resolves each callable for the current run. The callable receives `run_context`, so Clinic can derive a patient ID from `run_context.user_id` and query the current patient's appointments.
 
 ```python
-from agno.run import RunContext
-from agno.tools import tool
+def get_patient_context(run_context: Any) -> str:
+    patient_id = patient_id_for(getattr(run_context, "user_id", None))
 
-@tool
-def get_config(run_context: RunContext, key: str) -> str:
-    """Read a config value injected from dependencies."""
-    return str(run_context.dependencies["config"].get(key, "not set"))
+    with _engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                "SELECT a.appt_date, a.appt_time, p.name, p.specialty, "
+                "a.reason, a.status "
+                "FROM clinic.appointments a "
+                "JOIN clinic.providers p USING (provider_id) "
+                "WHERE a.patient_id = :pid AND a.status = 'scheduled' "
+                "ORDER BY a.appt_date, a.appt_time"
+            ),
+            {"pid": patient_id},
+        ).fetchall()
+
+    # Format the rows as context for the model.
 ```
 
-The `RunContext` parameter is auto-injected. Tools that take it get the full request scope: `dependencies`, `user_id`, `session_id`, `metadata`, `messages`, even the parent `agent`.
+`add_dependencies_to_context=True` adds the resolved values to the model context. Clinic provides the same dependency mapping to the team leader, Scheduling Coordinator, and Medical Records Specialist.
 
-## Static vs per-request dependencies
+## Dependency roles
 
-The Injector example uses static dependencies (defined at agent construction). For per-request dependencies, set them on the run:
+| Dependency | Result | Consumer |
+|------------|--------|----------|
+| `patient_appointments` | Formatted upcoming appointments from live SQL | Team leader and members |
+| `current_patient_id` | Patient ID mapped from `run_context.user_id` | Provided to the Medical Records Specialist so it can select a knowledge filter |
 
-```python
-result = agent.run(
-    "What region am I in?",
-    dependencies={"region": "eu-west-1"},     # request-scoped
-    user_id="user-123",
-)
-```
+The scheduling tools also read `run_context.user_id` directly before querying appointment rows. Provider availability and formulary queries are shared clinic data and do not use a patient ID.
 
-Per-request dependencies override the agent-level ones for that single run. Useful for multi-tenant apps where each request brings its own tenant ID, feature set, or DB connection.
+<Warning>
+  The Demo OS mapping accepts known usernames or raw IDs beginning with `P-`. Missing and unknown users map to the sample patient `P-1002`. Treat this as sample data routing. Production applications should derive the patient ID from an authenticated identity and enforce database and document access independently of model instructions.
+</Warning>
 
-## What belongs in dependencies vs memory vs knowledge
+## Developer Resources
 
-| Lives in | When |
-|----------|------|
-| `dependencies` | Per-request runtime values: feature flags, tenant config, request scope |
-| Memory | User-level facts that should survive sessions |
-| Knowledge | Content the agent should be able to retrieve and cite |
-| `session_state` | Mutable state for one session only (see [Taskboard](/demo-os/session-state)) |
-
-The lines blur, but the rule of thumb is that dependencies are read-only and ephemeral, memory and knowledge are persistent, and session state is mutable but session-scoped.
-
-## See it in action
-
-```
-@Injector is dark mode enabled?
-@Injector what's the current app version and region?
-@Injector what's my preferred timezone?
-@Injector list all enabled feature flags
-```
-
-Source: [`agents/injector/agent.py`](https://github.com/agno-agi/demo-os/blob/main/agents/injector/agent.py)
+- [Clinic dependency configuration](https://github.com/agno-agi/demo-os/blob/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/teams/clinic/team.py)
+- [Appointment context provider](https://github.com/agno-agi/demo-os/blob/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/teams/clinic/context.py)
+- [Demo patient mapping](https://github.com/agno-agi/demo-os/blob/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/teams/clinic/patients.py)
+- [Context providers](/context-providers/overview)
 
 ## Next
 
-[Session State →](/demo-os/session-state)
+[Session State ->](/demo-os/session-state)

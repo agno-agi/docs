@@ -1,17 +1,17 @@
 ---
 title: MCP
-description: "Querying live Agno docs through a Model Context Protocol server."
+description: "Connect the Agno Expert agent to the Agno documentation MCP server."
 ---
 
-The [MCP agent](https://github.com/agno-agi/demo-os/blob/main/agents/mcp/agent.py) is twenty lines of code that answers questions about Agno using the official docs MCP server. The docs site exposes an MCP endpoint, the agent connects to it, and the answers stay current without a local knowledge base, embeddings, or an ingest pipeline.
+The Demo OS registers the `agno-expert` agent with one HTTP MCP toolkit:
 
 ```python
 from agno.agent import Agent
 from agno.tools.mcp import MCPTools
 
 mcp_agent = Agent(
-    id="mcp",
-    name="MCP",
+    id="agno-expert",
+    name="Agno Expert",
     model=MODEL,
     db=agent_db,
     tools=[MCPTools(url="https://docs.agno.com/mcp")],
@@ -20,52 +20,47 @@ mcp_agent = Agent(
 )
 ```
 
-That's the whole agent. `MCPTools(url=...)` wraps the MCP server's tools so the agent can call `search_docs`, `read_page`, etc. as if they were native tools.
+`MCPTools` discovers the tool names and schemas exposed by the server. The Agno Expert can then call those tools when answering questions about Agno. It does not maintain a local documentation knowledge base.
 
-## What MCP gives you
-
-[Model Context Protocol](https://modelcontextprotocol.io) is a standard for exposing tools, resources, and prompts to agents. Any MCP server (stdio, SSE, or streamable-HTTP transport) can be wrapped with `MCPTools`:
+## Agno v2.7.4 constructors
 
 ```python
-# Hosted server (HTTP)
-MCPTools(url="https://mcp.github.com/mcp")
+from agno.tools.mcp import MCPTools
+from agno.tools.mcp.params import StreamableHTTPClientParams
 
-# Local subprocess (stdio)
-MCPTools(command="uvx", args=["mcp-server-time"])
+# Streamable HTTP. This is the default transport when url is set.
+http_tools = MCPTools(url="https://docs.agno.com/mcp")
 
-# With auth
-MCPTools(url="https://mcp.linear.app", headers={"Authorization": "Bearer ..."})
+# Local stdio server. Include the executable and arguments in one command string.
+stdio_tools = MCPTools(command="uvx mcp-server-time")
+
+# Streamable HTTP with fixed request headers.
+authenticated_tools = MCPTools(
+    transport="streamable-http",
+    server_params=StreamableHTTPClientParams(
+        url="https://example.com/mcp",
+        headers={"Authorization": "Bearer <token>"},
+    ),
+)
 ```
 
-Tool discovery happens at connect time. The agent's instructions get a list of available tools and their schemas. The agent calls them like any other tool.
+| Connection | Constructor fields |
+|------------|--------------------|
+| Streamable HTTP | `url`; optional `transport="streamable-http"` |
+| SSE | `url` and `transport="sse"`; standalone SSE is deprecated in v2.7.4 |
+| stdio | `command`; optional `env` |
+| HTTP with fixed headers | `server_params=StreamableHTTPClientParams(...)` |
+| HTTP with per-run headers | `header_provider=callable` with HTTP transport |
 
-## When to use MCP vs writing a tool
+For standalone async code, manage the toolkit lifecycle with `async with MCPTools(...) as tools`, or call `await tools.connect()` and `await tools.close()` explicitly.
 
-| Situation | Pick |
-|-----------|------|
-| The service already has an MCP server (Linear, GitHub, Notion, etc.) | MCP |
-| You want tool discovery to update without redeploying | MCP |
-| You're integrating with internal systems | Write a tool, simpler |
-| You need fine-grained control over arguments / response shape | Write a tool |
+## Developer Resources
 
-For most third-party services, MCP wins. A `@tool` function is more direct for first-party data like your database or internal APIs.
-
-## See it in action
-
-```
-@MCP what changed in agno 2.6?
-@MCP how do I add memory to an agent?
-@MCP what providers does Agno support natively?
-```
-
-Each query triggers an MCP `search_docs` call against `docs.agno.com/mcp`. The agent reads the matching pages, synthesizes an answer, cites the source.
-
-## MCP as a context provider in Scout
-
-The MCP agent uses MCP as a tool. [Scout's `MCPContextProvider`](/deploy/templates/scout/overview) goes one step further: any MCP server becomes a registered context. Scout calls `query_mcp_<slug>` and a sub-agent answers from that server's tools. Same protocol, different ergonomic layer.
-
-Source: [`agents/mcp/agent.py`](https://github.com/agno-agi/demo-os/blob/main/agents/mcp/agent.py)
+- [Agno Expert source](https://github.com/agno-agi/demo-os/blob/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/agents/mcp/agent.py)
+- [MCPTools v2.7.4 source](https://github.com/agno-agi/agno/blob/v2.7.4/libs/agno/agno/tools/mcp/mcp.py)
+- [MCPTools connection parameters](https://github.com/agno-agi/agno/blob/v2.7.4/libs/agno/agno/tools/mcp/params.py)
+- [MCP tools](/tools/mcp/overview)
 
 ## Next
 
-[Dependencies →](/demo-os/dependencies)
+[Dependencies ->](/demo-os/dependencies)

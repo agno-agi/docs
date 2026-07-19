@@ -1,129 +1,118 @@
 ---
 title: Investment Committee
-description: "Seven specialists across four team modes, sharing one knowledge base and one learning store."
+description: "Seven investment agents exposed through four teams and one workflow."
 ---
 
-The [Investment team](https://github.com/agno-agi/demo-os/tree/main/teams/investment) is the most ambitious multi-agent demo in the repo. Seven specialist agents collaborate across four distinct team configurations to evaluate stocks, weigh risk, and produce investment memos. All seven share one knowledge base and one learnings store.
-
-| Agent | Role | Tools |
-|-------|------|-------|
-| **Committee Chair** | Final decision-maker, capital allocator | none directly |
-| **Financial Analyst** | Fundamental valuation, balance sheet, earnings | `YFinanceTools` |
-| **Market Analyst** | Macro context, sector trends, breaking news | `YFinanceTools`, Exa MCP, optional `ParallelTools` |
-| **Technical Analyst** | Price action, momentum indicators, entry/exit timing | `YFinanceTools` |
-| **Risk Officer** | Downside scenarios, position sizing, mandate compliance | `YFinanceTools` |
-| **Knowledge Agent** | Research RAG and memo archive navigation | `FileTools` (read-only) |
-| **Memo Writer** | Synthesizes analyst inputs into formal memos | `FileTools` |
-
-## Why a team for this
-
-The single-agent failure mode for investment analysis is bullish bias: one model talks itself into a thesis. A multi-agent committee structurally avoids this. The Risk Officer is *required* to argue against, the Technical Analyst is *required* to look at chart-level evidence, and the Chair has to weigh both.
-
-This is "agents as roles" rather than "agents as task fanout". Each member has a distinct charter that the Chair must consider.
-
-## Four team modes, one set of agents
-
-The demo ships four distinct teams built from the same agent set. Each demonstrates a different multi-agent architecture:
-
-| Team | Mode | Right when | Try |
-|------|------|-----------|-----|
-| **Investment Coordinate** | `TeamMode.coordinate` | Open-ended question that benefits from multi-analyst discussion | *"Should we invest $2M in NVIDIA?"* |
-| **Investment Route** | `TeamMode.route` | Single-specialist question that should land with exactly one agent | *"What's AAPL's P/E ratio?"* (routes to Financial Analyst) |
-| **Investment Broadcast** | `TeamMode.broadcast` | High-stakes decision where you want independent analyst opinions in parallel | *"Full committee review: evaluate Tesla for $2M."* |
-| **Investment Tasks** | `TeamMode.tasks` | Multi-step task that needs decomposition and parallel work | *"Deploy $10M across the top 5 AI stocks, no position over 30%."* |
-
-Pick the team in the AgentOS UI based on the shape of the request. See [Team modes](/teams/overview) for the underlying mechanics.
-
-## Three-layer knowledge
-
-Every agent on the team draws from the same three-layer context:
-
-| Layer | What it holds | How it's accessed |
-|-------|---------------|-------------------|
-| **Static context** | Fund mandate, risk policy, evaluation process | Injected into every agent's system prompt |
-| **Research library** | Company profiles, sector analyses | PgVector hybrid search (RAG) |
-| **Memo archive** | Past investment memos and decisions | `FileTools` over the memos directory |
-
-Same "context is everything" pattern Dash uses, applied to financial decision-making instead of SQL.
-
-## Shared learnings
-
-Every agent writes to one `investment_learnings` knowledge store with `namespace="global"`:
+The standalone [investment-committee](https://github.com/agno-agi/investment-committee) companion registers seven agents, four teams, and one workflow with AgentOS.
 
 ```python
-from agno.learn import LearnedKnowledgeConfig, LearningMachine, LearningMode
-
-investment_learnings = create_knowledge("Investment Learnings", "investment_learnings")
-
-_learning = LearningMachine(
-    knowledge=investment_learnings,
-    learned_knowledge=LearnedKnowledgeConfig(
-        mode=LearningMode.AGENTIC,
-        namespace="global",
-    ),
+agent_os = AgentOS(
+    name="Agentic Investment Team",
+    agents=[
+        market_analyst,
+        financial_analyst,
+        technical_analyst,
+        risk_officer,
+        knowledge_agent,
+        memo_writer,
+        committee_chair,
+    ],
+    teams=[coordinate_team, route_team, broadcast_team, task_team],
+    workflows=[investment_workflow],
 )
 ```
 
-After a few decisions the store accumulates patterns like:
+This implementation lives in its own repository. Demo OS does not define an Investment team under `teams/`.
 
-- "Tech stocks with negative free cash flow get downgraded"
-- "Avoid recommending positions during earnings week"
-- "Risk Officer's concerns weighted 1.5x for crypto exposure"
+## Agents
 
-The Chair retrieves these on every new evaluation. The committee gets sharper over time without anyone manually building the framework.
+| Agent | Model | Tools |
+|-------|-------|-------|
+| **Market Analyst** | `gemini-3-flash-preview` | Exa MCP, YFinance, optional Parallel |
+| **Financial Analyst** | `gemini-3-flash-preview` | YFinance |
+| **Technical Analyst** | `gemini-3-flash-preview` | YFinance |
+| **Risk Officer** | `gemini-3-flash-preview` | YFinance |
+| **Knowledge Agent** | `gemini-3-flash-preview` | Knowledge search and read-only memo file navigation |
+| **Memo Writer** | `gemini-3-flash-preview` | Read, search, list, and save memo files |
+| **Committee Chair** | `gemini-3.1-pro-preview` | Knowledge search for research and prior learnings |
 
-## File output
+All seven agents include the fund mandate, risk policy, and evaluation process in their instructions. All seven also enable agentic memory.
 
-The Memo Writer uses `FileTools` to produce a markdown memo per evaluation:
+## Resource attachment
 
-```
-teams/investment/memos/
-├── 2026-04-22_TSLA.md
-├── 2026-04-23_NVDA.md
-└── 2026-04-24_META.md
-```
+The companion creates one research knowledge base and one learning knowledge base. Each agent receives only the resources listed here:
 
-Each memo captures the committee's full reasoning, the dissents, and the final recommendation. Useful for retrospective analysis: which calls were right, which were wrong, and what the committee learned from each.
+| Agent | Research knowledge | Shared learnings | Memo files |
+|-------|--------------------|------------------|------------|
+| Market Analyst | Yes | Yes | No |
+| Financial Analyst | Yes | Yes | No |
+| Technical Analyst | Yes | Yes | No |
+| Risk Officer | Yes | Yes | No |
+| Knowledge Agent | Yes | No | Read-only |
+| Memo Writer | No | No | Read and write |
+| Committee Chair | Yes | Yes | No |
 
-## Mixing models
+The research knowledge uses PgVector hybrid search with `gemini-embedding-001`. Load the company and sector files before using it:
 
-The demo runs every agent on the same default model (`gpt-5.4` via `OpenAIResponses`). For real workloads, mixing models per role is a one-line change:
-
-```python
-from agno.models.anthropic import Claude
-from agno.models.google import Gemini
-
-committee_chair = Agent(
-    model=Claude(id="claude-opus-4-6"),   # Strong synthesis for the final decision
-    ...
-)
-
-market_analyst = Agent(
-    model=Gemini(id="gemini-2.5-pro"),    # Long context for filings
-    ...
-)
+```bash
+python -m app.load_knowledge
 ```
 
-The team coordinates regardless of which model each member uses. The standalone [investment-committee](https://github.com/agno-agi/investment-committee) repo runs Claude Sonnet 4.6 across the analysts and Claude Opus 4.6 on the Chair, which is the production-grade configuration.
+The learning configuration uses `namespace="global"` where it is attached. Knowledge Agent and Memo Writer do not receive the learning store. Memo Writer also does not receive the research knowledge base.
 
-## See it in action
+## Teams
 
-Try one prompt against each team:
+Every team leader uses `gemini-3.1-pro-preview`.
 
+| Team | Mode | Members | Leader resources |
+|------|------|---------|------------------|
+| **Investment Team - Coordinate** | `coordinate` | Six agents, excluding Committee Chair | Shared learnings |
+| **Investment Team - Route** | `route` | All seven agents | No knowledge or learning store attached directly |
+| **Investment Team - Broadcast** | `broadcast` | Market, Financial, Technical, and Risk | Shared learnings |
+| **Investment Team - Tasks** | `tasks` | Six agents, excluding Committee Chair | Shared learnings |
+
+Team leaders do not receive the research knowledge base directly. Members use their own attached resources when the leader delegates to them.
+
+| Request | Team |
+|---------|------|
+| Open-ended evaluation | Coordinate |
+| One specialist question | Route |
+| Four independent analyst views | Broadcast |
+| Decomposed portfolio task | Tasks |
+
+## Investment workflow
+
+The `investment-workflow` runs five stages:
+
+1. Market Assessment with Market Analyst.
+2. Fundamental Analysis and Technical Analysis in parallel.
+3. Risk Assessment with Risk Officer.
+4. Investment Memo with Memo Writer.
+5. Committee Decision with Committee Chair.
+
+The workflow excludes Knowledge Agent. Its participating agents keep their own model, knowledge, learning, and file-tool configuration.
+
+## Context layers
+
+| Layer | Contents | Attached to |
+|-------|----------|-------------|
+| Static context | Fund mandate, risk policy, evaluation process | All seven agent instruction prompts |
+| Research library | Company profiles and sector analyses | Six agents, excluding Memo Writer |
+| Memo archive | Past and newly written investment memos | Knowledge Agent and Memo Writer through different file permissions |
+
+## Try it
+
+```text
+@Investment Team - Route What's AAPL's P/E ratio?
+@Investment Team - Coordinate Should we invest in NVIDIA?
+@Investment Team - Broadcast Full committee review: evaluate TSLA for $2M
+@Investment Team - Tasks Deploy $10M across the top 5 AI stocks
+@Investment Review Pipeline Run full investment review on NVIDIA
 ```
-# Route: single specialist
-@InvestmentRoute What's NVDA's current trend?
 
-# Coordinate: open-ended discussion
-@InvestmentCoordinate Should we invest $2M in NVIDIA?
+## Developer Resources
 
-# Broadcast: parallel independent opinions
-@InvestmentBroadcast Full committee review: evaluate Tesla for $2M.
-
-# Tasks: multi-step decomposition
-@InvestmentTasks Deploy $10M across the top 5 AI stocks, no position over 30%.
-```
-
-Each prompt triggers the right shape of work. Expect 30-60 seconds for the parallel analyst teams, faster for route, longer for tasks.
-
-Source: [`teams/investment/`](https://github.com/agno-agi/demo-os/tree/main/teams/investment). For a standalone version with Claude across the team and a deterministic 5-step pipeline workflow, see the [investment-committee](https://github.com/agno-agi/investment-committee) repo.
+- [Investment Committee repository](https://github.com/agno-agi/investment-committee)
+- [Agent registrations](https://github.com/agno-agi/investment-committee/tree/5bb30f7d090c4b074e009578ee3dbd9209ad698d/agents)
+- [Team registrations](https://github.com/agno-agi/investment-committee/tree/5bb30f7d090c4b074e009578ee3dbd9209ad698d/teams)
+- [Investment workflow](https://github.com/agno-agi/investment-committee/blob/5bb30f7d090c4b074e009578ee3dbd9209ad698d/workflows/investment_workflow.py)
