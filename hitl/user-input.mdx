@@ -26,7 +26,7 @@ The key difference from user confirmation is that here you provide *data* to fil
 
 ## Collecting Specific Fields
 
-You can control which fields require user input using the `user_input_fields` parameter. Fields not in this list will be filled by the agent automatically based on the conversation context.
+You can control which fields require user input using the `user_input_fields` parameter. Fields not in this list remain in the tool schema and may be filled by the agent from the conversation context.
 
 In the example below, the agent pauses to collect the `to_address` parameter from the user for the `send_email` tool:
 
@@ -41,7 +41,7 @@ from agno.tools.function import UserInputField
 from agno.utils import pprint
 
 
-# You can either specify the user_input_fields or leave empty for all fields to be provided by the user
+# Explicitly list fields that must be supplied by the user
 @tool(requires_user_input=True, user_input_fields=["to_address"])
 def send_email(subject: str, body: str, to_address: str) -> str:
     """
@@ -118,29 +118,32 @@ The same `UserInputField` structure is used in [Dynamic User Input](/hitl/dynami
 
 ## Collecting All Fields
 
-If you want the user to provide *all* fields instead of letting the agent fill some automatically, simply omit the `user_input_fields` parameter or pass an empty list:
+Omitting `user_input_fields` or passing an empty list leaves all parameters in the tool schema. It does not force the user to provide every field. To require user input for all parameters, list every field explicitly:
 
 ```python
-@tool(requires_user_input=True)  # No user_input_fields means all fields need user input
+@tool(
+    requires_user_input=True,
+    user_input_fields=["subject", "body", "to_address"],
+)
 def send_email(subject: str, body: str, to_address: str) -> str:
     """Send an email."""
     return f"Sent email to {to_address} with subject {subject} and body {body}"
 ```
 
-This is useful when you want complete control over the data being passed to sensitive operations, or when you don't trust the LLM to extract the right values from context.
+Listed fields are removed from the model-facing tool schema and remain available in `user_input_schema` for your application to fill before continuing the run.
 
 ## Handling Pre-Filled Values
 
-When you specify `user_input_fields`, you're telling the agent which parameters the user should provide. The agent will automatically fill in the other parameters based on the conversation context.
+When you specify `user_input_fields`, you're telling the agent which parameters the user should provide. The agent can fill in other parameters based on the conversation context.
 
 For example, with `user_input_fields=["to_address"]` on a `send_email(subject, body, to_address)` function:
-- **`subject` and `body`** (not in the list) → Agent fills these from context, `value="Hello"` etc.
+- **`subject` and `body`** (not in the list) → Agent can fill these from context, `value="Hello"` etc.
 - **`to_address`** (in the list) → User must provide this, `value=None`
 
 The `user_input_schema` will include all parameters, but you only need to collect values for fields where `value=None`:
 
 ```python
-# You can either specify the user_input_fields or leave empty for all fields to be provided by the user
+# Explicitly list fields that must be supplied by the user
 @tool(requires_user_input=True, user_input_fields=["to_address"])
 def send_email(subject: str, body: str, to_address: str) -> str:
     """
@@ -258,4 +261,3 @@ A tool can only use one of these patterns at a time.
     User input with streaming responses
   </Card>
 </CardGroup>
-

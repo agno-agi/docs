@@ -14,17 +14,19 @@ The code is public at [agno-agi/coda](https://github.com/agno-agi/coda).
 
 ## How it works
 
-Coda is a team of five specialist agents coordinated by a leader:
+Coda is a team of up to five specialist agents coordinated by a leader:
 
 | Agent | Role |
 |-------|------|
-| **Explorer** | Searches code, answers architecture questions, reviews PRs (read-only) |
+| **Explorer** | Searches local code without modifying it, answers architecture questions, and can post GitHub review or issue comments |
 | **Coder** | Writes code in isolated worktrees, opens PRs |
 | **Planner** | Breaks features into ordered GitHub issues |
 | **Triager** | Labels, comments on, and closes issues based on code analysis |
-| **Researcher** | Searches the web for docs, APIs, and error messages |
+| **Researcher** | Searches the web for docs, APIs, and error messages when `PARALLEL_API_KEY` is set |
 
-Coda writes code in git worktrees on `coda/*` branches, so your main branch is never touched. It opens PRs; a human merges them. And it runs in your infrastructure, so your code stays on your machines. The only external calls go to your configured LLM provider.
+Coda's instructions direct the Coder to use git worktrees on `coda/*` branches and open pull requests for review. The repo-sync task updates each configured main checkout. `CodingTools` also exposes shell and git access, so branch protections remain the enforcement point for protected branches and human review.
+
+Coda runs in your infrastructure and calls the services you configure. Model prompts go to the model provider. Repository operations, diffs, and comments use GitHub. Messages and digests use Slack. The optional Researcher sends research queries to Parallel.
 
 Between them, the agents cover:
 
@@ -50,7 +52,7 @@ Repo sync always runs. The daily digest only registers when both `DIGEST_CHANNEL
 
 ### Self-learning
 
-Coda gets sharper the more you use it. It picks up your coding standards, conventions, and patterns. The learning is powered by Agno's [Learning Machines](/learning/overview):
+Coda can record coding standards, conventions, and patterns for later retrieval. The learning tools come from Agno's [Learning Machines](/learning/overview):
 
 | Week 1 | Week 4 |
 |--------|--------|
@@ -109,11 +111,11 @@ You'll need the [Railway CLI](https://docs.railway.app/guides/cli) installed and
 ./scripts/railway_redeploy.sh
 ```
 
-`railway_up.sh` provisions a pgvector database, creates the `coda` service with the variables from your `.env`, deploys, and creates a public domain. The domain can take about 5 minutes; check progress with `railway logs --service coda`. See `railway.json` to adjust CPU, memory, and replica settings.
+`railway_up.sh` provisions a pgvector database, creates the `coda` service with the variables from your `.env`, deploys, and creates a public domain. If `.env` has no `JWT_VERIFICATION_KEY`, the initial process exits after the domain is created. Copy that domain, generate the key below, sync it, and redeploy. The domain can take about 5 minutes; inspect startup with `railway logs --service coda`. See `railway.json` to adjust CPU, memory, and replica settings.
 
-Production runs with RBAC on (`RUNTIME_ENV=prd` is the default) and rejects every request until you give it a verification key:
+Production runs with RBAC on (`RUNTIME_ENV=prd` is the default). Without `JWT_VERIFICATION_KEY`, the process exits during startup. After the key is configured, protected AgentOS routes require a valid token. The operational and documentation routes `/`, `/health`, `/info`, `/docs`, `/redoc`, `/openapi.json`, and `/docs/oauth2-redirect` remain public.
 
-1. Open [os.agno.com](https://os.agno.com), click **Connect OS** → **Live**, and enter your Railway domain.
+1. Open [os.agno.com](https://os.agno.com), click **Connect OS** → **Live**, and enter the Railway domain created by `railway_up.sh`.
 2. Go to **Settings** and generate a key pair.
 3. Add the public key to `.env` as `JWT_VERIFICATION_KEY` (paste the full PEM block).
 4. Push it and redeploy:

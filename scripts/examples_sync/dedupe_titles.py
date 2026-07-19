@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from collections import defaultdict
@@ -30,6 +31,7 @@ sys.path.insert(0, str(HERE))
 import generate as gen  # noqa: E402
 
 DOCS_ROOT = HERE.parents[1]
+AGNO_ROOT = Path(os.environ.get("AGNO_REPO") or DOCS_ROOT / "agno")
 PLAN_PATH = HERE / "out" / "sync-plan.json"
 
 TITLE_RE = re.compile(r'^title: "(.*)"$', re.M)
@@ -44,6 +46,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--check", action="store_true", help="report retitles without writing")
     args = ap.parse_args()
+    gen.validate_agno_source(AGNO_ROOT)
 
     if not PLAN_PATH.is_file():
         raise SystemExit(f"error: {PLAN_PATH} not found; run plan.py first")

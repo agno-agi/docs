@@ -1,7 +1,7 @@
 ---
 title: Auth Middleware
 sidebarTitle: JWT
-description: Configure AuthMiddleware for JWT validation, claim injection, and RBAC across REST, MCP, and WebSocket connections.
+description: Configure AuthMiddleware for JWT validation, claim injection, and RBAC on AgentOS routes.
 keywords: [jwt middleware, auth middleware, jwt authentication, token validation, parameter injection, authorization, bearer token, jwt claims, http only cookies, token verification, jwt secret, user authentication, session management, jwt tokens, pyjwt, token security, rbac, scopes, role-based access control, service accounts]
 ---
 
@@ -39,13 +39,15 @@ app.add_middleware(
 
 ## Coverage Across Surfaces
 
-AgentOS installs a single `AuthMiddleware` instance on the parent app in every authenticated deployment mode. A token accepted on one surface is accepted with identical constraints on the others.
+AgentOS installs `AuthMiddleware` on the parent app when the parent authentication mode uses JWTs or a security key. When a database verifier is available, that same layer also accepts service account tokens. Credentials share identical constraints only across surfaces handled by the middleware.
 
 | Surface | How it is covered |
 |---------|-------------------|
 | REST routes | Requests pass through the middleware directly |
-| Mounted `/mcp` app | Parent-app middleware runs before the mount dispatches, so the MCP server carries no auth code of its own |
+| Mounted `/mcp` app | Parent middleware covers the mount when `mcp_auth` is unset. With `AgentOS(mcp_auth=...)`, the parent exempts the MCP OAuth paths and the FastMCP provider authenticates inside the mounted app. |
 | WebSockets | The middleware publishes its validator, audience, admin scope, and user-isolation settings to `app.state`; WebSocket handshakes validate against the same configuration |
+
+Self-authenticating webhook interfaces verify their own inbound requests and are excluded from the parent layer.
 
 ### Credential Dispatch
 

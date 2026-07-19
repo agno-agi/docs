@@ -1,28 +1,66 @@
 ---
 title: Human Approval
-description: "Confirmation, user input, external execution, and approval flows in three demo agents."
+description: "Confirmation, user input, external execution, and output review across four Demo OS components."
 ---
 
-Three demo agents exercise the HITL surface end-to-end, each showing a different combination of patterns over the same primitives.
-
-| Agent | What it shows |
-|-------|---------------|
-| [**Helpdesk**](https://github.com/agno-agi/demo-os/blob/main/agents/helpdesk/agent.py) | All three pause patterns + PII + injection guardrails + audit hook |
-| [**Approvals**](https://github.com/agno-agi/demo-os/blob/main/agents/approvals/agent.py) | The `@approval` decorator with audit trail |
-| [**Feedback**](https://github.com/agno-agi/demo-os/blob/main/agents/feedback/agent.py) | `UserFeedbackTools` and `UserControlFlowTools` for structured questions |
-
-## Helpdesk: the full HITL toolkit
+Voyager places four custom tool calls behind three pause patterns:
 
 ```python
-from agno.agent import Agent
-from agno.guardrails import OpenAIModerationGuardrail, PIIDetectionGuardrail, PromptInjectionGuardrail
-from agno.tools.user_feedback import UserFeedbackTools
+from agno.tools import tool
 
-helpdesk = Agent(
-    id="helpdesk",
-    model=MODEL,
-    db=agent_db,
-    tools=[restart_service, create_support_ticket, run_diagnostic, UserFeedbackTools()],
+
+@tool(external_execution=True)
+def check_live_fare(flight_id: str) -> str:
+    ...
+
+
+@tool(requires_user_input=True, user_input_fields=["passenger_name"])
+def set_passenger_name(passenger_name: str = "") -> str:
+    ...
+
+
+@tool(requires_user_input=True, user_input_fields=["recipient_email"])
+def set_recipient_email(recipient_email: str = "") -> str:
+    ...
+
+
+@tool(requires_confirmation=True)
+def book_flight(
+    flight_id: str,
+    passenger_name: str,
+    fare_usd: float,
+    seat_preference: str = "",
+) -> str:
+    ...
+```
+
+| Component | Pause pattern | Source behavior |
+|-----------|---------------|-----------------|
+| Voyager | User feedback | `UserFeedbackTools` collects structured flight and seat choices |
+| Voyager | User input | `set_passenger_name` and `set_recipient_email` request missing fields |
+| Voyager | Confirmation | `book_flight` waits before creating a simulated reservation reference |
+| Voyager | External execution | `check_live_fare` pauses so the client can execute the call and provide its result |
+| Operator | Required approval and confirmation | `apply_change` waits before returning a simulated rollout record |
+| Builder | Confirmation by tool name | Studio create, edit, delete, and publish operations require confirmation |
+| Troubleshooter | Step input and output review | The workflow collects environment fields, then pauses for review of the proposed solution |
+
+## Voyager
+
+Voyager combines the pause requirements with three pre-hooks and two post-hooks:
+
+```python
+travel = Agent(
+    id="voyager",
+    name="Voyager",
+    tools=[
+        search_flights,
+        check_live_fare,
+        UserFeedbackTools(),
+        set_passenger_name,
+        set_recipient_email,
+        book_flight,
+        ResendTools(from_email=VOYAGER_FROM_EMAIL),
+    ],
     pre_hooks=[
         OpenAIModerationGuardrail(),
         PIIDetectionGuardrail(),
@@ -32,122 +70,87 @@ helpdesk = Agent(
 )
 ```
 
-Where each pattern shows up:
+The default `PIIDetectionGuardrail()` rejects matching SSN, credit card, email, and phone patterns because `mask_pii` defaults to `False`. An email sent in the initial message is therefore rejected; the intended flow collects it through the paused `set_recipient_email` tool. The prompt-injection guardrail checks a fixed phrase list. Voyager's output hook replaces responses that match its configured sensitive-data regular expressions, and `audit_log` writes a line to standard output.
 
-| Tool | HITL pattern | Why |
-|------|--------------|-----|
-| `restart_service` | `requires_confirmation=True` | Restarting prod is irreversible. Human approves first. |
-| `create_support_ticket` | `requires_user_input=True` | Need details from the user before creating. |
-| `run_diagnostic` | `external_execution=True` | Diagnostic runs in another system. The agent gets the result back. |
-| `UserFeedbackTools()` | Structured question to user mid-run | "Which service do you want to restart?" |
+<Warning>
+  Voyager runs `OpenAIModerationGuardrail` before its local PII detector. Input
+  reaches the OpenAI moderation service before a later hook can reject matching
+  PII. Reorder the hooks or remove the remote moderation hook when input must
+  remain local.
+</Warning>
 
-Pre-hooks catch bad input before the model sees it (PII, injection, moderation), and post-hooks catch bad output and write the audit log. The agent never sees raw PII, and every run lands in the audit log.
+Flight search uses Duffel when `DUFFEL_API_TOKEN` is set and falls back to sample results. `book_flight` returns a simulated reference. It does not charge a card or issue a real airline PNR. An external-execution client must execute `check_live_fare`, attach the result to the paused requirement, and continue the run.
 
-## Approvals: compliance gates
+## Operator
 
 ```python
-from agno.tools import tool
 from agno.approval.decorator import approval
+from agno.tools import tool
+
 
 @approval(type="required")
 @tool(requires_confirmation=True)
-def process_refund(customer_id: str, amount: float, reason: str) -> str:
-    return charge_refund(customer_id, amount)
-
-@approval(type="audit")
-@tool
-def export_customer_data(customer_id: str) -> str:
-    return get_customer_data(customer_id)
+def apply_change(resource: str, action: Action, summary: str) -> str:
+    ...
 ```
 
-`@approval(type="required")` blocks the run until a human approves. Audit log captures both the request and the decision.
+Operator drafts a typed `ChangePlan` before calling `apply_change`. The approved function returns a simulated change record. It does not modify infrastructure.
 
-`@approval(type="audit")` runs the tool but logs to the audit trail asynchronously. Used when policy says "this needs to be tracked, not gated."
-
-## Feedback: structured questions mid-run
+## Builder
 
 ```python
-from agno.tools.user_control_flow import UserControlFlowTools
-from agno.tools.user_feedback import UserFeedbackTools
-
-feedback = Agent(
-    id="feedback",
-    tools=[UserFeedbackTools(), UserControlFlowTools()],
-)
-```
-
-`UserFeedbackTools` lets the agent pause and ask a structured question:
-
-> Agent: I need to know your team size. Please pick one: [1-5, 6-20, 21-100, 100+]
-
-The user picks. The run resumes with the answer in scope. No prompt engineering, no hand-rolled flow control.
-
-`UserControlFlowTools` adds branching. The agent can offer choices and route based on the user's pick:
-
-> Agent: Want to (a) keep the current settings, (b) reset to defaults, or (c) customize?
-
-## Pre-hooks for input safety
-
-PII detection and prompt injection guardrails are pre-hooks that run before the model sees the user message:
-
-```python
-from agno.guardrails import PIIDetectionGuardrail, PromptInjectionGuardrail
-
-agent = Agent(
-    pre_hooks=[
-        PIIDetectionGuardrail(
-            mask_pii=True,
-            enable_ssn_check=True,
-            enable_credit_card_check=True,
-            enable_email_check=True,
-            enable_phone_check=True,
-        ),
-        PromptInjectionGuardrail(),
+StudioTool(
+    registry=registry,
+    db=agent_db,
+    agents=True,
+    versions=True,
+    requires_confirmation_tools=[
+        "create_agent",
+        "edit_agent",
+        "delete_agent",
+        "publish_component",
     ],
 )
 ```
 
-PII gets masked in place, injection attempts get blocked outright, and the two are commonly used together.
+Builder can list and run registry agents without the configured mutation gate. Create, edit, delete, and publish calls require confirmation. Versioning keeps edits as drafts until publication.
 
-## Post-hooks for output safety
-
-Output guardrails and audit logs run after the model produces output. The Helpdesk agent demonstrates both:
+## Troubleshooter
 
 ```python
-def output_guardrail(run_output, agent):
-    """Block responses that accidentally leak sensitive patterns."""
-    import re
-    sensitive = [r"sk-[a-zA-Z0-9]{20,}", r"postgres://[^\s]+"]
-    for pattern in sensitive:
-        if re.search(pattern, run_output.content or ""):
-            run_output.content = "I'm unable to provide that information."
-            return
-
-def audit_log(run_output, agent):
-    """Audit trail for compliance."""
-    print(f"[AUDIT] Agent={agent.name} Status={run_output.event}")
+Step(
+    name="collect_environment",
+    executor=collect_environment,
+    requires_user_input=True,
+    user_input_schema=[
+        {"name": "agno_version", "field_type": "str", "required": True},
+        {"name": "python_version", "field_type": "str", "required": True},
+        {"name": "os", "field_type": "str", "required": False},
+        {"name": "install_method", "field_type": "str", "required": False},
+        {"name": "details", "field_type": "str", "required": False},
+    ],
+),
+Step(
+    name="resolve",
+    agent=resolver,
+    human_review=HumanReview(
+        requires_output_review=True,
+        on_reject=OnReject.cancel,
+    ),
+),
 ```
 
-For audit logs that shouldn't gate the response, use `@hook(run_in_background=True)`. See [Human-in-the-Loop](/hitl/overview) for the full pattern.
+The first pause collects environment data before research. The second pause reviews the resolver output. Rejecting the output cancels the workflow because the source sets `OnReject.cancel`.
 
-## See it in action
+## Developer Resources
 
-```
-# Helpdesk
-@Helpdesk restart the auth service       # confirmation pause
-@Helpdesk file a ticket for slow API     # user input pause
-@Helpdesk run a network diagnostic       # external execution pause
-
-# Approvals
-@Approvals refund customer ACME-123 for $500       # blocked until approved
-@Approvals export customer data for ACME-123       # runs, audit-logged
-
-# Feedback
-@Feedback help me pick a deployment region          # structured questions
-```
-
-Sources: [`agents/helpdesk/`](https://github.com/agno-agi/demo-os/tree/main/agents/helpdesk), [`agents/approvals/`](https://github.com/agno-agi/demo-os/tree/main/agents/approvals), [`agents/feedback/`](https://github.com/agno-agi/demo-os/tree/main/agents/feedback)
+- [Voyager agent](https://github.com/agno-agi/demo-os/blob/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/agents/travel/agent.py)
+- [Voyager tools](https://github.com/agno-agi/demo-os/blob/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/agents/travel/tools.py)
+- [Operator approval](https://github.com/agno-agi/demo-os/blob/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/agents/infra/tools.py)
+- [Builder agent](https://github.com/agno-agi/demo-os/blob/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/agents/builder/agent.py)
+- [Troubleshooter workflow](https://github.com/agno-agi/demo-os/blob/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/workflows/support_bot/workflow.py)
+- [Human-in-the-Loop](/hitl/overview)
 
 ## Next
 
-[Multi-Agent Teams →](/demo-os/multi-agent-teams/text-to-sql)
+[Multi-Agent Teams ->](/demo-os/multi-agent-teams/text-to-sql)

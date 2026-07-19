@@ -1,99 +1,118 @@
 ---
 title: Session State
-description: "Mutable per-session state with agentic updates, demonstrated by Taskboard."
+description: "Mutable per-session task state in the Planner agent."
 ---
 
-The [Taskboard agent](https://github.com/agno-agi/demo-os/blob/main/agents/taskboard/agent.py) is a working task list that lives in one session. State persists across messages in the session. The agent updates it directly.
+The Demo OS `taskboard` module registers an agent named **Planner** with the ID `planner`.
 
 ```python
 from agno.agent import Agent
 
 taskboard = Agent(
-    id="taskboard",
+    id="planner",
+    name="Planner",
     model=MODEL,
     db=agent_db,
-    tools=[add_task, update_task_status, list_tasks, remove_task, get_summary],
+    tools=[
+        add_task,
+        update_task_status,
+        remove_task,
+        list_tasks,
+        agenda,
+        plan_my_day,
+        get_summary,
+    ],
     session_state={
         "tasks": [],
         "categories": ["general", "work", "personal"],
     },
-    enable_agentic_state=True,         # agent can mutate session_state
-    add_session_state_to_context=True, # state is visible in the prompt
+    enable_agentic_state=True,
+    add_session_state_to_context=True,
 )
 ```
 
-Three flags do the work:
+| Setting | Behavior |
+|---------|----------|
+| `session_state={...}` | Supplies the initial state for a new session. |
+| `enable_agentic_state=True` | Adds the `update_session_state` tool. |
+| `add_session_state_to_context=True` | Adds the current state to the model context. |
+| `db=agent_db` | Persists the session and its state. |
 
-| Flag | Behavior |
-|------|----------|
-| `session_state={...}` | Initial state. Persisted to `agno_sessions` per `(user_id, session_id)`. |
-| `enable_agentic_state=True` | Agent gets `update_session_state` tool. Can mutate the dict directly. |
-| `add_session_state_to_context=True` | State gets injected into the system prompt every turn. |
+## Update state in a tool
 
-## Session state vs memory vs dependencies
-
-| Type | Scope | Mutability | Persistence |
-|------|-------|------------|-------------|
-| `session_state` | One `(user_id, session_id)` | Mutable, agent updates | Yes, in `agno_sessions` |
-| Memory | Per `user_id` across sessions | Mutable, agent or extractor updates | Yes, in `agno_memories` |
-| Knowledge | Global (filterable) | Mutable, you load/upsert | Yes, in `agno_knowledge` |
-| Dependencies | One run | Read-only | No, ephemeral |
-
-Session state holds what the user is working on right now. Memory holds what's true about the user across sessions. Dependencies carry config for the current request.
-
-## CRUD via tools
-
-The Taskboard agent ships its own CRUD tools instead of relying on `update_session_state` directly. This gives the model cleaner intent labels and lets you validate updates:
+Planner's custom tools receive a `RunContext`. They read and mutate `run_context.session_state` directly.
 
 ```python
+from agno.run import RunContext
 from agno.tools import tool
 
-@tool
-def add_task(session_state: dict, title: str, category: str = "general") -> str:
-    """Add a task to the board."""
-    if category not in session_state["categories"]:
-        return f"Unknown category: {category}"
-    task = {"id": len(session_state["tasks"]) + 1, "title": title, "status": "open"}
-    session_state["tasks"].append(task)
-    return f"Added task #{task['id']}"
 
 @tool
-def update_task_status(session_state: dict, task_id: int, status: str) -> str:
-    """Mark a task as open, in_progress, or done."""
-    for t in session_state["tasks"]:
-        if t["id"] == task_id:
-            t["status"] = status
-            return f"Task #{task_id} → {status}"
-    return f"Task #{task_id} not found"
+def add_task(
+    run_context: RunContext,
+    title: str,
+    priority: str = "medium",
+    category: str = "general",
+    effort: str = "medium",
+    due_date: str = "",
+) -> str:
+    state = _state(run_context)
+    tasks = state["tasks"]
+    task_id = f"T-{len(tasks) + 1:03d}"
+    tasks.append(
+        {
+            "id": task_id,
+            "title": title,
+            "priority": priority,
+            "category": category,
+            "effort": effort,
+            "status": "todo",
+            "due_date": due_date,
+            "blocked_reason": "",
+        }
+    )
+    return f"Added {task_id}: {title}"
 ```
 
-`session_state` gets injected into tool functions automatically (same way `RunContext` does for [Injector](/demo-os/dependencies)). Mutations persist.
+The live state mutation is included when the run's session is persisted. Passing a plain `session_state` argument to the tool would not match this implementation.
 
-## When to use session state
+## Task model
 
-| Use case | Use |
-|----------|-----|
-| Working list the user is editing (tasks, items, choices) | `session_state` |
-| Multi-turn form filling | `session_state` |
-| Per-conversation scratchpad | `session_state` |
-| Cross-session preferences | Memory or user profile |
-| Per-request config (tenant, flags) | Dependencies |
+| Field | Values used by Planner |
+|-------|------------------------|
+| `id` | `T-001`, `T-002`, and subsequent sequence values |
+| `priority` | `high`, `medium`, `low` |
+| `effort` | `quick`, `medium`, `deep` |
+| `category` | `general`, `work`, `personal` by default |
+| `status` | `todo`, `in_progress`, `blocked`, `waiting`, `done`, `cancelled` |
+| `due_date` | `YYYY-MM-DD` or an empty string |
 
-If state should survive the user closing the chat and coming back next week, it belongs in memory or a database table the agent reads from, not in session state.
+`agenda` selects overdue and due-today work. `plan_my_day` ranks actionable tasks by priority, due date, and effort.
 
-## See it in action
+## Session state and memory
 
+| Data | Scope | Planner example |
+|------|-------|-----------------|
+| Session state | One session | The tasks currently tracked in that Planner session |
+| Memory | A user across sessions | Work preferences and recurring planning patterns |
+| Run context | One run | The live state and request context passed to tools |
+
+Reopen the same session ID to continue with its state. Start a new session for a separate taskboard. Planner also enables agentic memory and past-session search for information that should carry across sessions.
+
+## Try it
+
+```text
+@Planner add a work task to review the Q2 roadmap, due 2026-07-24
+@Planner add a personal task to book a dentist appointment
+@Planner show my agenda
+@Planner mark T-001 as in_progress
+@Planner plan my day
 ```
-@Taskboard add a task: review the Q2 roadmap, category: work
-@Taskboard add a task: book dentist appointment, category: personal
-@Taskboard show me my tasks
-@Taskboard mark task #1 as in_progress
-@Taskboard summarize what I've got open
-```
 
-Each turn updates `session_state`. The next turn sees the updated state in context. Refreshing the chat page reloads the state from `agno_sessions`.
+## Developer Resources
 
-Source: [`agents/taskboard/agent.py`](https://github.com/agno-agi/demo-os/blob/main/agents/taskboard/agent.py)
+- [Planner agent](https://github.com/agno-agi/demo-os/blob/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/agents/taskboard/agent.py)
+- [Planner tools](https://github.com/agno-agi/demo-os/blob/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/agents/taskboard/tools.py)
 
 ## Next
 

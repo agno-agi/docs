@@ -4,17 +4,17 @@ sidebarTitle: "Introduction"
 description: "The runtime for your agent platform."
 ---
 
-**AgentOS is a FastAPI app that turns your agents into a platform.** It's a backend service that:
+**AgentOS is a FastAPI app that turns your agents into a platform.** The backend service:
 
 1. Runs agents via REST API, MCP, or interfaces like Slack, WhatsApp and Telegram.
-2. Maintains long-running stateful sessions that last from minutes to days to weeks.
-3. Is durable across restarts, replicas, and infrastructure failures.
-4. Is secure against unauthenticated access.
-5. Logs, traces and audits every run and action.
+2. Stores sessions, memory, knowledge, and traces in your configured databases.
+3. Preserves database-backed state across restarts and replicas when all instances use the same persistent stores.
+4. Supports JWT authorization, service account tokens, and security-key authentication.
+5. Supports database-backed tracing for agents, teams, and workflows.
 
 Build your agents using the [Agno SDK](/sdk/introduction). Run them using the AgentOS runtime.
 
-Here's the smallest possible AgentOS:
+A minimal AgentOS:
 
 ```python agno_assist.py
 from agno.agent import Agent
@@ -32,14 +32,18 @@ agent_os = AgentOS(agents=[agent])
 app = agent_os.get_app()
 ```
 
+<Warning>
+Authorization and tracing are disabled by default. Telemetry is enabled by default. Configure authentication before exposing AgentOS, and review [Agno telemetry](/telemetry) before deployment.
+</Warning>
+
 ## Key Features
 
 - **Production API**: 50+ ready to use endpoints with SSE-compatible streaming.
-- **Data Ownership**: Sessions, memory, knowledge, and traces stored in your database.
-- **Request Isolation**: No state bleed between users, agents, or sessions.
-- **Security**: JWT-based RBAC with hierarchical scopes.
-- **Observability**: Traces stored in your database with no third-party egress or vendor lock-in.
-- **Governance**: Guardrails, human-in-the-loop, and approval flows for full control.
+- **Data Ownership**: Sessions, memory, knowledge, and traces stored in your configured databases.
+- **Request Context**: User and session IDs scope persisted runs. JWT user isolation can bind these IDs to authenticated callers.
+- **Security**: Optional JWT-based RBAC with hierarchical scopes, service account tokens, or a shared security key.
+- **Observability**: Optional traces stored in your database.
+- **Governance**: Guardrails, human-in-the-loop, and approval flows.
 - **Multi-framework**: Serve agents built with the Claude Agent SDK, LangGraph and DSPy alongside native Agno agents. See [Multi-Framework Support](/agent-os/multi-framework/overview).
 
 ## Architecture
@@ -63,20 +67,24 @@ The runtime exposes the APIs that power both the control plane and your AI produ
   alt="AgentOS Architecture"
 />
 
-## Private by Design
+## Data Flow and Storage
 
-Most AI tooling stores your data on their servers. You pay retention costs, deal with egress fees, and depend on their security. AgentOS runs entirely in your infrastructure: the runtime runs as a container in your cloud, and the [control plane](/agent-os/control-plane) connects directly from your browser. No proxies. No data relays.
+The AgentOS runtime runs in your infrastructure. Sessions, memory, knowledge, and enabled traces are stored in your configured databases. The [control plane](/agent-os/control-plane) connects from your browser to the runtime.
 
-- **Your database**: Sessions, memory, knowledge, traces. All stored where you control it.
-- **Zero transmission**: No conversations, logs, or metrics sent to Agno.
-- **From browser to runtime**: The control plane connects from your browser to the runtime. Agno stores no data except for your runtime endpoint. All data resides in your database.
+Network traffic depends on your configuration:
 
-See [AgentOS Security](/agent-os/security/overview) for more details.
+| Destination | Data |
+|-------------|------|
+| Configured model and tool providers | Requests required by those providers and tools |
+| `https://os-api.agno.com` | Usage metadata when telemetry is enabled. Prompts and responses are excluded. |
+| Your AgentOS runtime | Control plane requests sent directly from the browser |
+
+AgentOS telemetry is enabled by default. Set `telemetry=False` on `AgentOS` to disable its launch event. Agents, teams, workflows, and evals have separate telemetry controls. See [Agno telemetry](/telemetry) for payload details and [AgentOS Security](/agent-os/security/overview) for authentication options.
 
 <Frame>
   <img
     src="/images/agentos-secure-infra-illustration.png"
-    alt="AgentOS Security and Privacy Architecture"
+    alt="AgentOS runtime and control plane connections"
     style={{ borderRadius: "0.5rem" }}
   />
 </Frame>

@@ -7,7 +7,7 @@ description: "Run AgentOS locally using Docker and deploy to production on AWS."
 AgentOS is a secure, scalable platform for running agents. The [agentos-aws](https://github.com/agno-agi/agentos-aws) codebase runs AgentOS locally using Docker and deploys to production on AWS. It comes with:
 
 - **2 platform agents** that build and run the platform for you. **Agent Builder** creates agents, teams, and workflows. **Platform Manager** understands, monitors, and explains the platform.
-- **5 [skills](/deploy/templates/improve-agents)** that let coding agents build, test, and improve the platform for you.
+- **6 [skills](/deploy/templates/improve-agents)** that let coding agents set up, build, test, and improve the platform for you.
 
 Because the trace data, agent code, evals, and system logs all live in one place, the platform can inspect and improve itself automatically.
 
@@ -95,7 +95,7 @@ Edit `.env.production` with production values: a different OpenAI key, productio
 ./scripts/aws/up.sh
 ```
 
-Provisions an ECR repo, a private RDS PostgreSQL 17 instance, and Secrets Manager secrets, then makes one `aws ecs create-express-gateway-service` call. That call brings the Fargate service, an ALB with HTTPS, security groups, autoscaling, CloudWatch logs and alarms, and a public URL (`https://ag-<id>.ecs.<region>.on.aws`, generated per service). The script pins scaling to a single always-on task so the in-process scheduler never double-fires, and sets `AGENTOS_URL` to the generated URL so scheduled jobs reach the platform. It also generates `MCP_CONNECT_SECRET` into `.env.production` when it's missing, so chat apps can connect over OAuth from the first deploy.
+Provisions an ECR repo, a private RDS PostgreSQL 17 instance, and Secrets Manager secrets, then makes one `aws ecs create-express-gateway-service` call. That call brings the Fargate service, an ALB with HTTPS, security groups, autoscaling, CloudWatch logs and alarms, and a public URL (`https://ag-<id>.ecs.<region>.on.aws`, generated per service). The script pins scaling to a single always-on task to control cost. It sets `AGENTOS_URL` to the generated URL so scheduled jobs reach the platform. It also generates `MCP_CONNECT_SECRET` into `.env.production` when it's missing, so chat apps can connect over OAuth from the first deploy. Schedule claims expire after 300 seconds without renewal, even on one task. Keep longer targets idempotent or use an external scheduler.
 
 The first run takes 30-45 minutes end to end. Certificate and DNS provisioning is the long pole, and the script waits until the gateway actually answers before declaring success. Redeploys take minutes. Region comes from `AWS_REGION` (default `us-east-1`).
 

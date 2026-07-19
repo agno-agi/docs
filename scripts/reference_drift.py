@@ -107,6 +107,19 @@ TABLE_OVERRIDES: dict[tuple[str, str], str] = {
     # BaseRunOutputEvent in run/base.py is a thin mixin without those fields.
     ("reference/agents/run-response.mdx", "baserunoutputevent"): "agno.run.agent:BaseAgentRunEvent",
     ("reference/teams/team-response.mdx", "baserunoutputevent"): "agno.run.team:BaseTeamRunEvent",
+    ("reference/teams/team-response.mdx", "baseteamrunoutputevent"): "agno.run.team:BaseTeamRunEvent",
+}
+
+# Public names that intentionally differ from the implementation signature.
+# Each entry is source-adjudicated. Keep this list narrow so new names still
+# surface as drift.
+ACCEPTED_DOCUMENTED_PARAMS: dict[tuple[str, str], set[str]] = {
+    ("reference/clients/agentos-client.mdx", "AgentOSClient.run_agent()"): {
+        "dependencies", "knowledge_filters", "metadata", "output_schema", "session_state",
+    },
+    # Parallel calls the variadic positional argument ``args`` in source. The
+    # public API documents those values as steps.
+    ("reference/workflows/parallel-steps.mdx", "Parallel"): {"steps"},
 }
 
 SKIP_PAGES: dict[str, str] = {
@@ -123,6 +136,8 @@ SKIP_PAGES: dict[str, str] = {
         "documents framework-injected hook callable arguments, not a class signature",
     "reference/hooks/base-guardrail.mdx":
         "abstract interface page (check/async_check methods as prose bullets), no param table",
+    "reference/cli/agnoctl.mdx": "CLI command page, not an SDK class signature",
+    "reference/storage/in_memory.mdx": "storage behavior overview, not an SDK class signature",
 }
 
 # Directory-specific candidate-name transforms (applied to the page title).
@@ -309,6 +324,11 @@ def _class_properties(obj) -> set[str]:
         for n, v in vars(klass).items():
             if not n.startswith("_") and isinstance(v, (property, functools.cached_property)):
                 props.add(n)
+    if is_dataclass(obj):
+        # init=False fields and fields on dataclasses with a custom __init__
+        # remain part of the public result/event object even though they are
+        # absent from the callable signature.
+        props.update(f.name for f in dc_fields(obj) if not f.name.startswith("_"))
     return props
 
 
@@ -587,6 +607,7 @@ NAME_COL_HEADERS = {"parameter", "attribute", "field", "name", "argument", "prop
 RESPONSE_FIELD_RE = re.compile(
     r"<ResponseField\s+name=\"([^\"]+)\"([^>]*)>", re.DOTALL
 )
+REFERENCE_LINK_RE = re.compile(r"\]\((/reference/[^)#]+)(?:#[^)]+)?\)")
 
 
 def resolve_snippets(text: str, depth: int = 0) -> tuple[str, list[str]]:
@@ -739,6 +760,23 @@ def extract_tables(text: str) -> list[dict]:
         if rows:
             out.append({"heading": t["heading"], "chain": t["chain"], "rows": rows})
     return out
+
+
+def linked_base_param_names(text: str) -> set[str]:
+    """Parameters delegated to an explicitly linked base reference page."""
+    names: set[str] = set()
+    for line in text.splitlines():
+        lower = line.lower()
+        if "extends" not in lower and "accepts" not in lower:
+            continue
+        for route in REFERENCE_LINK_RE.findall(line):
+            linked = DOCS_ROOT / (route.lstrip("/") + ".mdx")
+            if not linked.exists():
+                continue
+            linked_text, _ = resolve_snippets(linked.read_text(encoding="utf-8"))
+            for table in extract_tables(linked_text):
+                names.update(row["name"] for row in table["rows"])
+    return names
 
 
 # ---------------------------------------------------------------------------
@@ -909,7 +947,9 @@ def strip_heading_suffix(heading: str) -> str:
 # ---------------------------------------------------------------------------
 
 def compare(table_rows: list[dict], sp: SourceParams,
-            page_doc_names: set[str] | None = None) -> dict:
+            page_doc_names: set[str] | None = None,
+            linked_doc_names: set[str] | None = None,
+            accepted_documented: set[str] | None = None) -> dict:
     documented: dict[str, dict] = {}
     for r in table_rows:
         documented.setdefault(r["name"], r)
@@ -930,9 +970,13 @@ def compare(table_rows: list[dict], sp: SourceParams,
     # base-class fields documented in another table on the same page (e.g. a
     # "BaseXEvent Attributes" table) are not per-class missing
     covered_elsewhere = sorted(missing_raw & (page_doc_names or set()))
-    missing = sorted(missing_raw - set(covered_elsewhere))
+    after_page = missing_raw - set(covered_elsewhere)
+    covered_by_link = sorted(after_page & (linked_doc_names or set()))
+    missing = sorted(after_page - set(covered_by_link))
+    accepted_documented = accepted_documented or set()
+    accepted_extras = sorted(doc_names & accepted_documented)
     phantom = sorted(doc_names - set(src) - set(inherited_documented)
-                     - set(documented_properties))
+                     - set(documented_properties) - set(accepted_extras))
     documented_aliases = sorted(doc_names & src_deprecated)
     undocumented_aliases = sorted(src_deprecated - doc_names)
 
@@ -958,7 +1002,9 @@ def compare(table_rows: list[dict], sp: SourceParams,
         "undocumented_aliases": undocumented_aliases,
         "inherited_documented": inherited_documented,
         "documented_properties": documented_properties,
+        "accepted_documented": accepted_extras,
         "covered_by_other_table_on_page": covered_elsewhere,
+        "covered_by_linked_reference": covered_by_link,
         "wrong_defaults": wrong_defaults,
         "accepts_kwargs": sp.has_kwargs,
     }
@@ -995,7 +1041,7 @@ def main() -> None:
         rel = str(page.relative_to(DOCS_ROOT))
         entry: dict = {"page": rel}
         if rel in SKIP_PAGES:
-            entry["status"] = "UNPARSEABLE"
+            entry["status"] = "SKIPPED"
             entry["reason"] = SKIP_PAGES[rel]
             report_pages.append(entry)
             continue
@@ -1113,6 +1159,7 @@ def main() -> None:
         page_doc_names: set[str] = set()
         for rows in grouped.values():
             page_doc_names.update(r["name"] for r in rows)
+        linked_doc_names = linked_base_param_names(text)
 
         results = []
         for (hint, name, is_fn), rows in grouped.items():
@@ -1120,8 +1167,15 @@ def main() -> None:
             if sp is None:
                 results.append({"class": name, "status": "SOURCE_NOT_FOUND"})
                 continue
-            cmp = compare(rows, sp, page_doc_names if len(grouped) > 1 else None)
-            cmp.update({"class": name + ("()" if is_fn else ""), "module": sp.module,
+            class_label = name + ("()" if is_fn else "")
+            cmp = compare(
+                rows,
+                sp,
+                page_doc_names if len(grouped) > 1 else None,
+                linked_doc_names,
+                ACCEPTED_DOCUMENTED_PARAMS.get((rel, class_label)),
+            )
+            cmp.update({"class": class_label, "module": sp.module,
                         "extraction": sp.method, "status": "OK"})
             results.append(cmp)
 
@@ -1133,8 +1187,13 @@ def main() -> None:
             if sp is None:
                 unmapped_tables.append(mname)
                 continue
-            cmp = compare(rows, sp)
-            cmp.update({"class": f"{main_target[1]}.{mname}()", "module": sp.module,
+            class_label = f"{main_target[1]}.{mname}()"
+            cmp = compare(
+                rows,
+                sp,
+                accepted_documented=ACCEPTED_DOCUMENTED_PARAMS.get((rel, class_label)),
+            )
+            cmp.update({"class": class_label, "module": sp.module,
                         "extraction": sp.method, "status": "OK", "is_method": True})
             results.append(cmp)
 
@@ -1168,10 +1227,12 @@ def main() -> None:
         report_pages.append(entry)
 
     ok_pages = [p for p in report_pages if p["status"] == "OK"]
-    unparseable = [p for p in report_pages if p["status"] != "OK"]
+    skipped = [p for p in report_pages if p["status"] == "SKIPPED"]
+    unparseable = [p for p in report_pages if p["status"] not in {"OK", "SKIPPED"}]
     totals = {
         "pages_total": len(report_pages),
         "pages_ok": len(ok_pages),
+        "pages_skipped": len(skipped),
         "pages_unparseable": len(unparseable),
         "missing_total": sum(p["totals"]["missing"] for p in ok_pages),
         "phantom_total": sum(p["totals"]["phantom"] for p in ok_pages),

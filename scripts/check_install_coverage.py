@@ -12,8 +12,7 @@ comment inside a python fence. Mentioning an agno extra that provides the
 distribution (e.g. `agno[os]`) also counts; extras are parsed from the agno
 repo's libs/agno/pyproject.toml.
 
-Requirements are derived from a curated mapping built by reading the agno
-source at tag v2.7.2:
+Requirements are derived from a curated mapping built against Agno v2.7.4:
   - agno.db.* / agno.vectordb.*   the module's ImportError-guard package(s),
                                   plus sqlalchemy and a SQL driver (taken from
                                   the db_url dialect in the page's fences, or
@@ -65,15 +64,14 @@ AGNO_PYPROJECT = Path(
 
 SKIP_PREFIXES = ("examples/", "reference-api/", "deploy/")
 
-# Distributions bundled with core agno (pyproject [project] dependencies at
-# v2.7.2); never reported as missing.
+# Distributions bundled with core Agno 2.7.4; never reported as missing.
 CORE_DISTS = {
     "agno", "agnoctl", "docstring-parser", "h11", "httpx", "packaging",
     "pydantic", "pydantic-settings", "pyyaml", "rich", "typing-extensions",
 }
 
 # ---------------------------------------------------------------------------
-# Curated requirement mapping, built from the agno source at tag v2.7.2
+# Curated requirement mapping, built from the Agno v2.7.4 source
 # (libs/agno). Keys are dotted module paths; lookup takes the longest matching
 # prefix. BY_NAME means the imported class name decides (see NAME_DISTS);
 # a plain module import of a BY_NAME key goes to the review list.
@@ -106,6 +104,7 @@ MODULE_DISTS: dict[str, tuple | str] = {
     "agno.db.sqlite": ("sqlalchemy",),
     "agno.db.surrealdb": ("surrealdb",),
     "agno.db.utils": (),
+    "agno.db.valkey": ("valkey-glide-sync",),
     # ---- vector databases (agno/vectordb/*)
     "agno.vectordb": (),
     "agno.vectordb.base": (),
@@ -129,11 +128,11 @@ MODULE_DISTS: dict[str, tuple | str] = {
     "agno.vectordb.singlestore": ("sqlalchemy",),
     "agno.vectordb.surrealdb": ("surrealdb",),
     "agno.vectordb.upstashdb": ("upstash-vector",),
+    "agno.vectordb.valkey": ("valkey-glide-sync",),
     "agno.vectordb.weaviate": ("weaviate-client",),
     # ---- models (agno/models/*; provider SDK, or openai for OpenAILike)
     "agno.models": (),
     "agno.models.base": (),
-    "agno.models.defaults": (),
     "agno.models.fallback": (),
     "agno.models.message": (),
     "agno.models.metrics": (),
@@ -184,6 +183,7 @@ MODULE_DISTS: dict[str, tuple | str] = {
     "agno.models.sambanova": ("openai",),
     "agno.models.siliconflow": ("openai",),
     "agno.models.together": ("openai",),
+    "agno.models.tokenlab": ("openai",),
     "agno.models.tuning_engines": ("openai",),
     "agno.models.vercel": ("openai",),
     "agno.models.vertexai": ("anthropic",),
@@ -288,11 +288,13 @@ MODULE_DISTS: dict[str, tuple | str] = {
     "agno.tools.pandas": ("pandas",),
     "agno.tools.parallel": ("parallel-web",),
     "agno.tools.perplexity": (),
+    "agno.tools.plivo": ("plivo",),
     "agno.tools.postgres": ("psycopg",),
     "agno.tools.pubmed": (),
     "agno.tools.python": (),
     "agno.tools.reasoning": (),
     "agno.tools.reddit": ("praw",),
+    "agno.tools.redmine": ("python-redmine",),
     "agno.tools.redshift": ("redshift-connector",),
     "agno.tools.replicate": ("replicate",),
     "agno.tools.resend": ("resend",),
@@ -315,6 +317,7 @@ MODULE_DISTS: dict[str, tuple | str] = {
     "agno.tools.sql": ("sqlalchemy",),
     "agno.tools.streamlit": ("streamlit",),
     "agno.tools.studio": (),
+    "agno.tools.superserve": ("superserve",),
     "agno.tools.tavily": ("tavily-python",),
     "agno.tools.telegram": ("pytelegrambotapi",),
     "agno.tools.todoist": ("todoist-api-python",),
@@ -413,12 +416,12 @@ FAMILY_PREFIXES = (
 )
 
 # Vector db classes whose constructor defaults embedder to OpenAIEmbedder
-# (checked in the v2.7.2 source; Upstash, LangChain, LlamaIndex, and LightRag
+# (checked in the v2.7.4 source; Upstash, LangChain, LlamaIndex, and LightRag
 # wrappers do not).
 EMBEDDER_DEFAULT_CLASSES = {
     "Cassandra", "ChromaDb", "Clickhouse", "CouchbaseSearch", "LanceDb",
     "Milvus", "MongoDb", "PgVector", "PineconeDb", "Qdrant", "RedisDB",
-    "SingleStore", "SurrealDb", "Weaviate",
+    "SingleStore", "SurrealDb", "ValkeyDB", "Weaviate",
 }
 
 # SQL backends: which imports imply which default driver when the page shows
@@ -685,7 +688,7 @@ def resolve_import(module: str, name: str | None):
         return val, None
     if in_family(module):
         what = f"from {module} import {name}" if name else f"import {module}"
-        return None, f"'{what}': module not in the v2.7.2 mapping"
+        return None, f"'{what}': module not in the v2.7.4 mapping"
     return (), None
 
 

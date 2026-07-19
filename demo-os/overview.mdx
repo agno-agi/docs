@@ -1,76 +1,68 @@
 ---
 title: Overview
-description: "A reference AgentOS with 14 agents, 3 teams, and 5 workflows in one FastAPI service."
+description: "A reference AgentOS with 10 agents, 4 teams, and 5 workflows in one FastAPI service."
 ---
 
-The [Demo OS](https://github.com/agno-agi/demo-os) is a single AgentOS application that exercises every feature in the [Runtime](/features/runtime) section. Use it as a working reference when building your own.
+Run the Demo OS locally:
 
 ```bash
-git clone https://github.com/agno-agi/demo-os && cd demo-os
-cp example.env .env  # set OPENAI_API_KEY
-docker compose up -d --build
-```
-
-Open [os.agno.com](https://os.agno.com) → **Add OS** → **Local** → `http://localhost:8000`.
-
-## What's inside
-
-| Type | Count | Examples |
-|------|-------|----------|
-| Agents | 14 | Helpdesk (HITL + guardrails), Approvals (compliance), Contacts (memory), Studio (multimodal), Reasoner (reasoning + fallback) |
-| Teams | 3 | Dash (text-to-SQL), Research (4 team modes), Investment (7-agent committee) |
-| Workflows | 5 | Morning Brief, AI Research, Content Pipeline, Repo Walkthrough, Support Triage |
-
-All running inside one FastAPI service, sharing one Postgres for sessions, memory, knowledge, traces, and schedules.
-
-## Map: capability → demo
-
-Each row points at the demo agent that exercises that capability.
-
-| Capability | Demo agent | Page |
-|------------|------------|------|
-| Hybrid search RAG | Dash | [RAG](/demo-os/rag) |
-| MCP tool / context provider | MCP agent | [MCP](/demo-os/mcp) |
-| Dependency injection | Injector | [Dependencies](/demo-os/dependencies) |
-| Persistent learning across sessions | Dash, Contacts, Investment | [Learning](/demo-os/learning) |
-| Knowledge base with chunking & reranking | Dash | [Knowledge](/demo-os/knowledge) |
-| Entity memory + user profile + session context | Contacts | [Memory](/demo-os/memory) |
-| Session state with agentic updates | Taskboard | [Session State](/demo-os/session-state) |
-| HITL confirmation, user input, external execution | Helpdesk, Approvals, Feedback | [Human-in-the-Loop](/demo-os/human-in-the-loop) |
-| Multi-agent text-to-SQL with dual schema | Dash team | [Text-to-SQL](/demo-os/multi-agent-teams/text-to-sql) |
-| Multi-agent investment committee with Gemini | Investment team | [Investment](/demo-os/multi-agent-teams/investment) |
-
-## Why a reference implementation matters
-
-The docs explain what's possible; Demo OS shows it running. When the docs say "you can wire pre-hooks for PII detection," the [Helpdesk agent](https://github.com/agno-agi/demo-os/blob/main/agents/helpdesk/agent.py) shows the four-line config that does it. When the docs say "agents can update their own session state," the [Taskboard agent](https://github.com/agno-agi/demo-os/blob/main/agents/taskboard/agent.py) is a 30-line working example. Every page in this section links straight to the source.
-
-## Run it locally
-
-```bash
-git clone https://github.com/agno-agi/demo-os && cd demo-os
-cp example.env .env  # OPENAI_API_KEY required, others optional
+git clone https://github.com/agno-agi/demo-os.git
+cd demo-os
+cp example.env .env  # Set OPENAI_API_KEY
 docker compose up -d --build
 
-# Load Dash's SaaS dataset and knowledge
+# Load the Dash dataset and knowledge base
 docker exec -it demo-os-api python -m agents.dash.scripts.load_data
 docker exec -it demo-os-api python -m agents.dash.scripts.load_knowledge
+
+# Seed Clinic schedules and patient records
+docker exec -it demo-os-api python -m teams.clinic.scripts.seed_clinic
+docker exec -it demo-os-api python -m teams.clinic.scripts.load_records
 ```
 
-Confirm at `http://localhost:8000/health`. Then open [os.agno.com](https://os.agno.com) → **Add OS** → **Local** → `http://localhost:8000`.
+Open [os.agno.com](https://os.agno.com), add a local OS, and connect to `http://localhost:8000`.
 
-## Deploy it to Railway
+## Registered components
+
+The counts below come from the components registered in `app/main.py`. Agents used inside teams and workflows are not counted as separate top-level registrations.
+
+| Type | Count | Registered components |
+|------|-------|-----------------------|
+| Agents | 10 | Agno Expert, Researcher, Builder, Operator, Media Lab, Planner, Voyager, Repo Explainer, Forum, Abacus |
+| Teams | 4 | Dash, Mentor, Clinic, Newsroom |
+| Workflows | 5 | Classifier, Scribe, Code Scout, Troubleshooter, AI Digest |
+
+The service uses PostgreSQL for AgentOS persistence. Dash, Clinic, and Mentor also register knowledge bases backed by the same database configuration.
+
+## Capability map
+
+| Capability | Demo component | Guide |
+|------------|----------------|-------|
+| MCP tools | Agno Expert | [MCP](/demo-os/mcp) |
+| Callable dependencies | Clinic | [Dependencies](/demo-os/dependencies) |
+| Session state and user memory | Planner | [Memory](/demo-os/memory) |
+| Structured learning stores | Mentor, Dash | [Learning](/demo-os/learning) |
+| Human confirmation | Voyager, Operator, Builder | [Human Approval](/demo-os/human-in-the-loop) |
+| User input and output review | Voyager, Troubleshooter | [Human Approval](/demo-os/human-in-the-loop) |
+| Knowledge and SQL analysis | Dash | [Knowledge](/demo-os/knowledge) |
+| Agentic session state | Planner | [Session State](/demo-os/session-state) |
+| Multi-agent text-to-SQL | Dash | [Text-to-SQL](/demo-os/multi-agent-teams/text-to-sql) |
+
+## Deploy to Railway
 
 ```bash
 railway login
 ./scripts/railway_up.sh
 ```
 
-The script provisions Postgres, configures env vars, and ships the app. Same pattern as the [Scout](/deploy/templates/scout/overview), [Dash](/deploy/templates/dash/overview), and [Coda](/deploy/templates/coda/overview) deploys.
+The script provisions PostgreSQL, configures the Railway services, and deploys the application.
 
-<Note>
-  📷 **Add screenshot:** Demo OS connected to AgentOS UI showing the agent picker with all 14 agents listed.
-</Note>
+## Developer Resources
+
+- [AgentOS registration source](https://github.com/agno-agi/demo-os/blob/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/app/main.py)
+- [Demo OS source](https://github.com/agno-agi/demo-os/tree/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4)
+- [AgentOS overview](/agent-os/overview)
 
 ## Next
 
-[RAG →](/demo-os/rag)
+[RAG ->](/demo-os/rag)

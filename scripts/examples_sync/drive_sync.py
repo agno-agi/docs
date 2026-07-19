@@ -45,6 +45,7 @@ def main() -> int:
     ap.add_argument("--check", action="store_true",
                     help="render in memory and diff against disk; write nothing")
     args = ap.parse_args()
+    gen.validate_agno_source(AGNO_ROOT)
 
     if not PLAN_PATH.is_file():
         raise SystemExit(f"error: {PLAN_PATH} not found; run plan.py first")

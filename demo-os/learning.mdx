@@ -1,100 +1,78 @@
 ---
 title: Learning
-description: "LearningMachine in Dash, Contacts, and Investment."
+description: "Structured learning stores in Mentor and learned knowledge in Dash."
 ---
 
-A useful agent gets sharper the more you use it: generic patterns at first, your conventions after a few weeks of use, eventually anticipating what you need. That compounding behavior comes from `LearningMachine`. Three agents in the demo use it.
-
-| Agent | What it learns |
-|-------|----------------|
-| [Dash](https://github.com/agno-agi/demo-os/tree/main/agents/dash) | Schema gotchas, validated query patterns, error fixes that worked |
-| [Contacts](https://github.com/agno-agi/demo-os/tree/main/agents/contacts) | People, relationships, events, your communication preferences |
-| [Investment](https://github.com/agno-agi/demo-os/tree/main/teams/investment) | Past investment decisions, framework refinements, pattern recognition |
-
-## The shape
+Mentor configures five `LearningMachine` stores:
 
 ```python
 from agno.learn import (
-    LearningMachine, LearningMode,
-    UserProfileConfig, EntityMemoryConfig, SessionContextConfig,
+    DecisionLogConfig,
     LearnedKnowledgeConfig,
+    LearningMachine,
+    LearningMode,
+    SessionContextConfig,
+    UserMemoryConfig,
+    UserProfileConfig,
 )
 
-contacts = Agent(
-    learning=LearningMachine(
-        user_profile=UserProfileConfig(mode=LearningMode.ALWAYS),
-        entity_memory=EntityMemoryConfig(
-            mode=LearningMode.AGENTIC,
-            enable_create_entity=True,
-            enable_add_fact=True,
-            enable_add_relationship=True,
-            enable_add_event=True,
-        ),
-        session_context=SessionContextConfig(
-            mode=LearningMode.ALWAYS,
-            enable_planning=True,
-        ),
+coach_learning = LearningMachine(
+    db=agent_db,
+    knowledge=coach_learnings,
+    user_profile=UserProfileConfig(mode=LearningMode.ALWAYS),
+    user_memory=UserMemoryConfig(mode=LearningMode.ALWAYS),
+    session_context=SessionContextConfig(mode=LearningMode.ALWAYS),
+    learned_knowledge=LearnedKnowledgeConfig(
+        mode=LearningMode.AGENTIC,
+        namespace="global",
     ),
-    ...
+    decision_log=DecisionLogConfig(mode=LearningMode.ALWAYS),
 )
 ```
 
-Four learning stores, each opt-in:
+The Mentor and Curator agents share this `LearningMachine`. The Mentor team also receives it and sets `add_learnings_to_context=True`.
 
-| Store | Holds | Mode |
-|-------|-------|------|
-| [User profile](/learning/stores/user-profile) | Preferences, role, working style | `ALWAYS` (auto-extracted every run) |
-| [Entity memory](/learning/stores/entity-memory) | People, projects, relationships, events | `AGENTIC` (agent decides when to write) |
-| [Session context](/learning/stores/session-context) | Plans and structure for the current session | `ALWAYS` |
-| [Learned knowledge](/learning/stores/learned-knowledge) | Discovered patterns the agent wants to remember | `AGENTIC` |
+## Mentor stores
 
-`LearningMode.ALWAYS` runs the extractor on every turn. `LearningMode.AGENTIC` gives the agent tools to write learnings when it judges them worth keeping. See [Learning Modes](/learning/learning-modes).
+| Store | Mode | Source configuration |
+|-------|------|----------------------|
+| User profile | `ALWAYS` | Role, goals, and other profile details |
+| User memory | `ALWAYS` | Durable user facts and preferences |
+| Session context | `ALWAYS` | Current task and conversation context |
+| Learned knowledge | `AGENTIC` | Reusable learning records saved when the model calls the learning tool; namespace is `global` |
+| Decision log | `ALWAYS` | Decisions and their rationale |
 
-## Why this beats vanilla memory
+`ALWAYS` runs the configured learning process for each completed interaction. `AGENTIC` exposes tools and leaves the write decision to the model. `add_learnings_to_context=True` makes retrieved learning data available to the model during later runs.
 
-Vanilla `enable_agentic_memory=True` gives you one bucket. The agent dumps facts into it. Useful, but flat.
+## Dash learned knowledge
 
-`LearningMachine` separates concerns:
-
-- **User profile** is "this is who I'm talking to" (one record, updated in place).
-- **Entity memory** is "this is who/what they're talking about" (graph of nodes and edges).
-- **Session context** is "this is the plan for this conversation" (scoped to one session).
-- **Learned knowledge** is "this is something I want to remember for next time" (general patterns).
-
-Each store has its own retrieval path. The agent gets the right slice of memory at the right point in the run.
-
-## Dash's learning loop
-
-Dash uses learning differently. The Engineer agent runs SQL, hits errors, diagnoses them, and saves the fix as learned knowledge:
+Dash uses one learned-knowledge store for the team leader, Analyst, and Engineer:
 
 ```python
-from agno.learn import LearnedKnowledgeConfig, LearningMode
+dash_learnings = create_knowledge("Dash Learnings", "dash_learnings")
 
-dash_learnings = Knowledge(...)
-
-dash_engineer = Agent(
-    learning=LearningMachine(
-        knowledge=dash_learnings,
-        learned_knowledge=LearnedKnowledgeConfig(mode=LearningMode.AGENTIC),
-    ),
+dash_learning = LearningMachine(
+    knowledge=dash_learnings,
+    learned_knowledge=LearnedKnowledgeConfig(mode=LearningMode.AGENTIC),
 )
 ```
 
-The agent gets `save_learning(title, learning)` and `search_learnings(query)` tools. Once. The next time the same error pattern shows up, it pulls the fix from learnings instead of rediscovering it.
+Each component sets `learning=dash_learning` and `add_learnings_to_context=True`. Dash's instructions tell the specialists to search existing learnings and save useful SQL error patterns, schema details, and corrections.
 
-This is what makes the Dash team self-improving. After a few weeks of use, the same questions take fewer iterations because the right-shaped learnings are already in the store.
+The configuration provides storage and model-callable tools. Whether a run saves or reuses a learning depends on model behavior. The Demo OS does not measure accuracy or latency improvement from accumulated learnings.
 
-## See it in action
+## Planner memory
 
-| Agent | Try in chat |
-|-------|-------------|
-| Contacts | *"Sarah Chen joined Acme as VP Engineering last month."* → entity gets created, relationship added |
-| Contacts | *"What do I know about the Acme team?"* → entity memory query, returns people + facts + events |
-| Contacts | *"I prefer concise responses."* → user profile updated; future responses get terser |
-| Dash | First time: *"why is churn high?"* → diagnoses, saves learning. Second time: same question, faster, references the saved pattern |
+Planner uses `enable_agentic_memory=True` for user preferences and `search_past_sessions=True` for prior conversations. Its task list remains in session state. See [Memory](/demo-os/memory).
 
-Source: [`agents/contacts/`](https://github.com/agno-agi/demo-os/tree/main/agents/contacts), [`agents/dash/`](https://github.com/agno-agi/demo-os/tree/main/agents/dash), [Learning docs](/learning/overview)
+## Developer Resources
+
+- [Mentor learning configuration](https://github.com/agno-agi/demo-os/blob/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/teams/coach/team.py)
+- [Dash learning configuration](https://github.com/agno-agi/demo-os/blob/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/agents/dash/settings.py)
+- [Dash team configuration](https://github.com/agno-agi/demo-os/blob/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/agents/dash/team.py)
+- [Learning overview](/learning/overview)
+- [Learning modes](/learning/learning-modes)
 
 ## Next
 
-[MCP →](/demo-os/mcp)
+[MCP ->](/demo-os/mcp)

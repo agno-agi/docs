@@ -1,12 +1,12 @@
 ---
 title: "Dash"
 sidebarTitle: "Dash"
-description: "Self-learning data agent that grounds answers in six layers of context and improves with every query."
+description: "Data agent that grounds SQL analysis in five context layers and can save fixes as learnings."
 ---
 
-**Dash is a self-learning data agent built with systems engineering principles. It grounds answers in six layers of context and improves with every query.**
+**Dash is a data agent that grounds SQL analysis in five context layers and can save fixes as learnings.**
 
-Ask a question in English and get a correct, meaningful answer. That's the goal. But raw LLMs writing SQL hit a wall fast: schemas lack meaning, types are misleading, tribal knowledge is missing, there's no way to learn from mistakes, and results lack interpretation. The root cause is missing context and missing memory. Dash solves this with six layers of grounded context, a self-learning loop that captures every fix, and a focus on delivering insights you can act on.
+Ask a question in English and get a correct, meaningful answer. That's the goal. But raw LLMs writing SQL hit a wall fast: schemas lack meaning, types are misleading, tribal knowledge is missing, there's no way to learn from mistakes, and results lack interpretation. The root cause is missing context and missing memory. Dash solves this with five layers of grounded context, a learning loop that can save fixes for later queries, and a focus on delivering insights you can act on.
 
 Chat with Dash in Slack, the terminal, or the [AgentOS UI](https://os.agno.com). The code is public at [agno-agi/dash](https://github.com/agno-agi/dash).
 
@@ -16,33 +16,32 @@ Dash runs as an Agno team in coordinate mode, with a leader that routes each req
 
 | Agent | Role |
 |-------|------|
-| **Analyst** | Reads company data (read-only), generates SQL, interprets results |
+| **Analyst** | Queries company data; use a SELECT-only role for enforced read-only access |
 | **Engineer** | Builds reusable views and summary tables in the `dash` schema |
 | **Leader** | Routes queries, coordinates the team, posts to Slack |
 
-**Schema boundaries:** Company data lives in the `public` schema; agent-created views and summary tables live in the `dash` schema. The Analyst connects with `default_transaction_read_only=on`, so PostgreSQL rejects any write it attempts. A SQLAlchemy event listener blocks Engineer writes that target `public`. These guardrails live in the infrastructure, so they hold regardless of what the model generates.
+**Schema boundaries:** Company data lives in the `public` schema; agent-created views and summary tables live in the `dash` schema. The Analyst connection uses `default_transaction_read_only=on`, so each transaction starts read-only. A writable role can switch a transaction to read-write, and the bundled `ai` role is writable. Use a separate SELECT-only role to enforce the Analyst boundary. The Engineer uses the application's database role, and a regex-based SQLAlchemy listener blocks common writes to `public`. That listener is a best-effort guard, not a database privilege boundary. Use a role without `public` write privileges when the boundary must hold for every SQL form.
 
-### Six layers of context
+### Five layers of context
 
 | Layer | Purpose | Source |
 |-------|---------|--------|
 | **Table Usage** | Schema, columns, relationships | `knowledge/tables/*.json` |
 | **Human Annotations** | Metrics, definitions, business rules | `knowledge/business/*.json` |
 | **Query Patterns** | SQL that is known to work | `knowledge/queries/*.sql` |
-| **Institutional Knowledge** | Docs, wikis, external references | MCP (optional) |
 | **Learnings** | Error patterns and discovered fixes | Agno `Learning Machine` |
 | **Runtime Context** | Live schema changes | `introspect_schema` tool |
 
 ### Self-learning
 
-Every query retrieves knowledge and learnings before generating SQL. When a query fails, Dash diagnoses the error, fixes it, and saves the fix as a learning. Two complementary systems make this work:
+The Analyst is instructed to retrieve knowledge and learnings before generating SQL. It can diagnose a failed query and save the fix as a learning. These tools are model-callable, so retrieval and saving depend on the model's tool choices.
 
 | System | Stores | How it evolves |
 |--------|--------|----------------|
 | **Knowledge** | Validated queries, table schemas, business rules | Curated by you and refined by Dash |
-| **Learnings** | Error patterns and discovered fixes | Managed automatically by the Learning Machine |
+| **Learnings** | Error patterns and discovered fixes | Added when Dash calls `save_learning` |
 
-When a churn query returns wrong numbers because it filtered on the `status` column instead of `ended_at IS NULL`, Dash saves the fix and doesn't make that mistake again. When your team defines MRR as the sum of active subscriptions excluding trials, that rule lives in `knowledge/business/` and every future query respects it.
+When a churn query uses the wrong filter, Dash can save the corrected `ended_at IS NULL` pattern for later retrieval. When your team defines MRR as the sum of active subscriptions excluding trials, that rule can live in `knowledge/business/` for later queries.
 
 ### Insights you can act on
 
@@ -115,24 +114,32 @@ Production requires a `JWT_VERIFICATION_KEY` from AgentOS. You need the Railway 
 2. Open [os.agno.com](https://os.agno.com) and log in.
 3. Click **Connect OS**, choose **Live**, and paste your Railway URL.
 4. Go to **Settings** → **OS & Security** and turn on **Token-Based Authorization (JWT)**. The UI generates a key pair and shows you the public key.
-5. Add the public key to `.env.production`, wrapped in single quotes:
+5. Leave `JWT_VERIFICATION_KEY` unset in `.env.production`. Set it directly on the `dash` service, preserving the PEM line breaks:
 
 ```bash
-JWT_VERIFICATION_KEY='-----BEGIN PUBLIC KEY-----
+railway variables --set "JWT_VERIFICATION_KEY=-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkq...
------END PUBLIC KEY-----'
+-----END PUBLIC KEY-----" --service dash
 ```
+
+<Warning>
+  The current Dash scripts cannot safely share a multiline PEM through `.env.production`. `railway_up.sh` sources the file and requires shell quoting, while `railway_env.sh` leaves a trailing quote in a quoted multiline value.
+</Warning>
 
   </Step>
 
   <Step title="Push environment and redeploy">
+
+<Warning>
+  The current `railway_env.sh` exits after its first variable because `set -e` treats the initial `((count++))` result as a failure. Replace `((count++))` with `((++count))` in `scripts/railway_env.sh` before running it.
+</Warning>
 
 ```bash
 ./scripts/railway_env.sh
 ./scripts/railway_redeploy.sh
 ```
 
-`railway_env.sh` reads `.env.production` and sets each variable on the Railway service. It handles multiline values like PEM keys and is safe to run repeatedly.
+After this change, `railway_env.sh` reads the remaining values from `.env.production` and sets them on the Railway service. It is safe to run repeatedly.
 
   </Step>
 </Steps>

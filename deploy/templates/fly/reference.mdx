@@ -16,7 +16,7 @@ Fly app names are global, so `up.sh` generates a unique name (`agentos-<suffix>`
 | Resize the machine | Edit `[[vm]]` in `fly.toml`, then `./scripts/fly/redeploy.sh` |
 | Tear down | `./scripts/fly/down.sh` (add `--yes` to skip the confirmation) |
 
-The platform runs one machine by design. Both deploy scripts pass `fly deploy --ha=false` because the Fly default creates two machines, which doubles cost and runs two in-process schedulers double-firing every cron. `fly.toml` keeps the machine warm with `auto_stop_machines = "off"` and `min_machines_running = 1`; with scale-to-zero, scheduled jobs silently stop firing.
+The platform runs one machine by design. Both deploy scripts pass `fly deploy --ha=false` because the Fly default creates two machines and doubles the app cost. Shared PostgreSQL serializes normal schedule claims across replicas. Agno does not renew the 300-second claim while a job runs, and the same machine can reclaim a long-running job. Keep longer targets idempotent or use an external scheduler. `fly.toml` keeps the machine warm with `auto_stop_machines = "off"` and `min_machines_running = 1`; with scale-to-zero, scheduled jobs silently stop firing.
 
 ## Production auth
 
@@ -24,7 +24,7 @@ Token-Based Authorization is on by default. Production startup requires `JWT_VER
 
 Token-Based Auth gives you three things:
 
-1. **No public access.** The server rejects requests without a valid token.
+1. **Protected application routes.** AgentOS routes require a valid token. The operational and documentation routes `/`, `/health`, `/info`, `/docs`, `/redoc`, `/openapi.json`, and `/docs/oauth2-redirect` remain public.
 2. **Per-request identity.** Middleware validates the token and exposes its `user_id`, optional `session_id`, scopes, and claims to the request.
 3. **Scope-based permissions.** Token scopes control access to AgentOS routes and resources.
 
@@ -67,7 +67,7 @@ Register it in `app/main.py`:
 from agents.my_agent import my_agent
 
 agent_os = AgentOS(
-    ...
+    ...,
     agents=[agent_builder, platform_manager, web_search, my_agent],
 )
 ```
@@ -106,7 +106,7 @@ Agno ships 100+ toolkits. See [Toolkits](/tools/toolkits/overview).
 from agno.tools.slack import SlackTools
 
 my_agent = Agent(
-    ...
+    ...,
     tools=[SlackTools()],
 )
 ```
@@ -215,7 +215,7 @@ The stock `postgres-flex` image has no pgvector; sessions and memory are unaffec
   <Accordion title="Scheduled jobs never fire">
 `AGENTOS_URL` may still be the localhost default. `up.sh` sets it to `https://<app>.fly.dev` automatically; for a custom domain or tunnel, set it by hand and run `./scripts/fly/env-sync.sh`. Re-running `up.sh` resets a hand-set value to the generated fly.dev URL, so re-pin it afterwards. The other cause is the machine scaling to zero: keep `auto_stop_machines = "off"` and `min_machines_running = 1` in `fly.toml`.
   </Accordion>
-  <Accordion title="Every cron fires twice">
-A plain `fly deploy` created a second machine, and each runs its own scheduler. Deploy with the scripts; they pass `--ha=false`.
+  <Accordion title="A long scheduled run overlaps">
+Schedule claims expire after 300 seconds and are not renewed while the target runs. Keep targets idempotent. Use an external queue or scheduler when a run can exceed five minutes. The deployment scripts also pass `--ha=false` to keep the app on one machine.
   </Accordion>
 </AccordionGroup>

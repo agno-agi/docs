@@ -27,7 +27,7 @@ The rest need a venv with agno installed; run them with that venv's python:
 | Script | Venv needs |
 |--------|-----------|
 | `reference_drift.py` | `agno` importable. `agno[os,mcp]` plus provider SDKs widen runtime-introspection coverage; unimportable modules fall back to pure-AST extraction. |
-| `make_openapi.py` | `agno[os,mcp,telegram,agui,a2a,slack]` and `pyyaml`. Missing interface extras exclude their routes and are reported in the diff output. |
+| `make_openapi.py` | A clean Agno v2.7.4 checkout selected with `AGNO_REPO`, plus `agno[os,mcp,telegram,agui,a2a,slack]` dependencies and `pyyaml`. Missing interface extras exclude their routes and are reported in the diff output. |
 | `check_imports.py` | `agno` installed. Statements failing only on missing third-party deps still pass via the static source check. |
 
 ## Environment variables
@@ -55,12 +55,9 @@ the release tag:
    reports.
 5. `python scripts/reference_drift.py`, then work through
    `out/drift-report.json` against the `reference/**` tables.
-6. At GA only: `python scripts/make_openapi.py`, review `out/openapi-diff.md`,
-   copy `out/openapi.yaml` over `reference-api/openapi.yaml`. Re-apply the two
-   Slack enrichment blocks from PR #681 on top (header parameters,
-   form-urlencoded request body, and HITL descriptions for
-   `POST /slack/events` and `POST /slack/interactions`); the generator emits
-   both operations but the Slack router reads headers imperatively, so the
-   enrichment is not derivable. Add stub pages and docs.json nav entries for
-   any new endpoints.
+6. At GA only: `AGNO_REPO=/path/to/sealed-agno python scripts/make_openapi.py`, review `out/openapi-diff.md`,
+   and copy `out/openapi.yaml` over `reference-api/openapi.yaml`. The generator
+   preserves the curated Slack header parameters, form request body, and HITL
+   descriptions because the Slack router reads those values imperatively.
+   Add stub pages and `docs.json` nav entries for any new endpoints.
 7. `python scripts/check_imports.py`, then `mint broken-links`.

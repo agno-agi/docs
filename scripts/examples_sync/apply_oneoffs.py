@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -25,6 +27,7 @@ import generate as gen  # noqa: E402
 
 ROOT = HERE.parents[1]
 DOCS = ROOT / "examples"
+AGNO_ROOT = Path(os.environ.get("AGNO_REPO") or ROOT / "agno")
 GENERATED_DESCRIPTION_OVERRIDES = json.loads(
     (HERE / "description-overrides.json").read_text(encoding="utf-8")
 )
@@ -114,6 +117,8 @@ DESCRIPTION_OVERRIDES = {
 }
 
 TITLE_OVERRIDES = {
+    "examples/agent-os/remote/remote-agent": "Remote Agent",
+    "examples/agent-os/remote/remote-team": "Remote Team",
     "examples/agent-os/rbac/asymmetric/workos-byot": "WorkOS BYOT",
     "examples/agents/tools/tools-with-literal-type-param": "Tools with Literal Type Parameters",
     "examples/integrations/parallel/research-workflow": "Research Workflow",
@@ -1336,6 +1341,90 @@ def normalize_terminal_newlines(path: str, count: int = 1) -> None:
     print(f"  normalized terminal newlines: {path}")
 
 
+def pin_agno_clone_commands() -> None:
+    """Pin tracked MDX clone commands to the sealed docs source tag."""
+    global would_apply
+    old = "git clone https://github.com/agno-agi/agno.git"
+    new = (
+        f"git clone --branch {gen.EXPECTED_AGNO_TAG} --depth 1 "
+        "https://github.com/agno-agi/agno.git"
+    )
+    result = subprocess.run(
+        ["git", "-C", str(ROOT), "ls-files", "*.mdx"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    matches: list[tuple[Path, int]] = []
+    for relative_path in result.stdout.splitlines():
+        path = ROOT / relative_path
+        text = path.read_text(encoding="utf-8")
+        count = text.count(old)
+        if count:
+            matches.append((path, count))
+            if not CHECK:
+                path.write_text(text.replace(old, new), encoding="utf-8")
+    if not matches:
+        print("  Agno clone commands already pinned to v2.7.4")
+        return
+    total = sum(count for _, count in matches)
+    if CHECK:
+        would_apply += len(matches)
+        print(f"  would pin {total} Agno clone commands in {len(matches)} files")
+    else:
+        print(f"  pinned {total} Agno clone commands in {len(matches)} files")
+
+
+AGNO_RELEASE_LINK_RE = re.compile(
+    r"(https://github\.com/agno-agi/agno/(?:blob|tree)/)"
+    r"([^\s)\"'`]+?)(/(?:cookbook|libs/agno)/)"
+)
+
+
+def pin_agno_release_link_revisions(text: str) -> tuple[str, int]:
+    """Return text with release-owned source links pinned and the replacement count."""
+    count = 0
+
+    def replace(match: re.Match[str]) -> str:
+        nonlocal count
+        if match.group(2) == gen.EXPECTED_AGNO_TAG:
+            return match.group(0)
+        count += 1
+        return f"{match.group(1)}{gen.EXPECTED_AGNO_TAG}{match.group(3)}"
+
+    return AGNO_RELEASE_LINK_RE.sub(replace, text), count
+
+
+def pin_agno_release_links() -> None:
+    """Pin tracked MDX cookbook and implementation links to the sealed tag."""
+    global would_apply
+
+    result = subprocess.run(
+        ["git", "-C", str(ROOT), "ls-files", "*.mdx"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    matches: list[tuple[Path, int]] = []
+    for relative_path in result.stdout.splitlines():
+        path = ROOT / relative_path
+        text = path.read_text(encoding="utf-8")
+        pinned_text, count = pin_agno_release_link_revisions(text)
+        if count:
+            matches.append((path, count))
+            if not CHECK:
+                path.write_text(pinned_text, encoding="utf-8")
+    if not matches:
+        print(f"  Agno release links already pinned to {gen.EXPECTED_AGNO_TAG}")
+        return
+    total = sum(count for _, count in matches)
+    if CHECK:
+        would_apply += len(matches)
+        print(f"  would pin {total} Agno release links in {len(matches)} files")
+    else:
+        print(f"  pinned {total} Agno release links in {len(matches)} files")
+
+
 def docs_path(slug: str) -> Path:
     assert slug.startswith("examples/"), f"not an example slug: {slug}"
     return ROOT / f"{slug}.mdx"
@@ -1805,8 +1894,55 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--check", action="store_true", help="report fix state without writing")
     CHECK = ap.parse_args().check
+    gen.validate_agno_source(AGNO_ROOT)
 
     # Source-backed corrections identified by the generated-example review.
+    pin_agno_clone_commands()
+    sub(
+        "tools/mcp/parallel.mdx",
+        "Web search using Parallel's MCP server. API key is optional (keyless access is rate-limited).",
+        """Web search using Parallel's MCP server. API key is optional (keyless access is rate-limited).
+
+<Warning>
+  Anthropic retired `claude-sonnet-4-20250514` on June 15, 2026. Replace it with `claude-sonnet-4-6` before running. See [Claude model deprecations](https://platform.claude.com/docs/en/about-claude/model-deprecations).
+</Warning>""",
+    )
+    sub(
+        "tools/mcp/parallel.mdx",
+        """  <Step title="Run the example">
+    ```bash
+    python cookbook/91_tools/mcp/parallel.py""",
+        """  <Step title="Update the Claude model">
+    Replace `claude-sonnet-4-20250514` with `claude-sonnet-4-6` in the saved file.
+  </Step>
+  <Step title="Run the example">
+    ```bash
+    python cookbook/91_tools/mcp/parallel.py""",
+    )
+    sub(
+        "agent-os/factories/agent/jwt-role-factory.mdx",
+        "---\n\n```python 03_jwt_role_factory.py",
+        """---
+
+<Warning>
+  The pinned source reads authorization decisions from `ctx.trusted.claims` while `JWTMiddleware(validate=False)` disables signature verification. A caller can forge the role claim until validation is enabled.
+</Warning>
+
+```python 03_jwt_role_factory.py""",
+    )
+    sub(
+        "agent-os/factories/agent/jwt-role-factory.mdx",
+        """  <Snippet file="run-pgvector-step.mdx" />
+
+  <Step title="Run the example">""",
+        """  <Snippet file="run-pgvector-step.mdx" />
+
+  <Step title="Enable JWT signature verification">
+    Change `validate=False` to `validate=True`. Replace the hard-coded `JWT_SECRET` assignment with `JWT_SECRET = os.environ["JWT_VERIFICATION_KEY"]`, add `import os`, and export a unique 32-byte secret before starting the server.
+  </Step>
+
+  <Step title="Run the example">""",
+    )
     sub(
         "reasoning/models/vertex-ai/basic-reasoning-stream.mdx",
         'title: "Basic Reasoning Stream"',
@@ -2027,7 +2163,7 @@ uv pip install -U mem0ai
 python cookbook/91_tools/mem0_tools.py""",
     )
 
-    # 6. Post-tag static pages that are outside the pinned cookbook generator.
+    # 6. Curated fixes outside the cookbook generator.
     root_sub(
         "database/providers/valkey/usage/valkey-for-agent.mdx",
         """## Usage
@@ -2163,7 +2299,7 @@ Valkey vector search requires""",
         """**Returns:** `List[Span]`
 
 <Warning>
-  In Agno v2.7.2, synchronous `SqliteDb.get_spans()` does not accept `limit`. Omit `limit` when using SQLite. The other filters and the SQLite example below work as shown.
+  In Agno v2.7.4, synchronous `SqliteDb.get_spans()` does not accept `limit`. Omit `limit` when using SQLite. The other filters and the SQLite example below work as shown.
 </Warning>
 
 <Note>""",
@@ -2178,13 +2314,13 @@ openapi: get /approvals/count
 ---
 
 <Warning>
-  This endpoint counts pending approvals. With user isolation enabled, non-admin requests are scoped to the user ID in the JWT even when `user_id` is supplied. Authentication failures can return `401`, and databases without approval support can return `503`; the current OpenAPI operation declares only `200` and `422`.
+  This endpoint counts pending approvals. With user isolation enabled, non-admin requests are scoped to the user ID in the JWT even when `user_id` is supplied. Authentication and authorization failures can return `401` or `403`. Databases without approval support return `503`.
 </Warning>""",
     )
     root_sub(
         "examples/tools/dalle-tools.mdx",
         "The pinned source expected the `openai` package and an `OPENAI_API_KEY`. Its `DalleTools` calls no longer run against the current OpenAI API.",
-        "This example expected the `openai` package and an `OPENAI_API_KEY`. Its `DalleTools` calls no longer run against the current OpenAI API.",
+        "This example expected the `openai` package and an `OPENAI_API_KEY`. Its `DalleTools` calls no longer run because DALL-E 2 and DALL-E 3 were removed from the OpenAI API on May 12, 2026.",
     )
     root_sub(
         "tools/toolkits/models/azure-openai.mdx",
@@ -2265,154 +2401,6 @@ from agno.workflow.step import Step""",
         """tools=[WebSearchTools()],
     role="Search the web for the latest news and trends",""",
     )
-    sub(
-        "storage/valkey/valkey-for-team.mdx",
-        "Run `uv pip install ddgs valkey-glide-sync` to install dependencies.",
-        "Run `uv pip install ddgs openai valkey-glide-sync` to install dependencies.",
-    )
-    valkey_descriptions = {
-        "agent": "Use Valkey as the storage backend for an agent.",
-        "team": "Use Valkey as the storage backend for a team.",
-        "workflow": "Use ValkeyDb as the session storage backend for a workflow.",
-    }
-    for example_type, description in valkey_descriptions.items():
-        sub(
-            f"storage/valkey/valkey-for-{example_type}.mdx",
-            f'description: "{description}"\n---',
-            f'description: "{description}"\nsource: cookbook/06_storage/valkey/valkey_for_{example_type}.py\n---',
-        )
-    for example_type in ("agent", "team", "workflow"):
-        filename = f"valkey_for_{example_type}.py"
-        root_sub(
-            f"examples/storage/valkey/valkey-for-{example_type}.mdx",
-            f"""## Run the Example
-```bash
-# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/06_storage/valkey
-
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
-
-python {filename}
-```""",
-            f"""## Run the Example
-
-<Steps>
-  <Step title="Clone Agno">
-    Clone the repository and run the remaining commands from its root:
-    ```bash
-    git clone https://github.com/agno-agi/agno.git
-    cd agno
-    ```
-  </Step>
-
-  <Step title="Set up the demo environment">
-    ```bash
-    ./scripts/demo_setup.sh
-    source .venvs/demo/bin/activate
-    uv pip install -U ddgs openai valkey-glide-sync
-    ```
-  </Step>
-
-  <Step title="Export your OpenAI API key">
-    <CodeGroup>
-    ```bash Mac/Linux
-    export OPENAI_API_KEY="your_openai_api_key_here"
-    ```
-
-    ```bash Windows
-    $Env:OPENAI_API_KEY="your_openai_api_key_here"
-    ```
-    </CodeGroup>
-  </Step>
-
-  <Step title="Run Valkey">
-    ```bash
-    docker run -d --name my-valkey -p 6379:6379 valkey/valkey-bundle
-    ```
-  </Step>
-
-  <Step title="Run the example">
-    ```bash
-    python cookbook/06_storage/valkey/{filename}
-    ```
-  </Step>
-</Steps>""",
-        )
-    sub(
-        "agent-os/dbs/valkey-db.mdx",
-        "```python\n",
-        "```python valkey_db.py\n",
-    )
-    sub(
-        "agent-os/dbs/valkey-db.mdx",
-        'description: "Setup the Valkey database."\n---',
-        'description: "Setup the Valkey database."\nsource: cookbook/05_agent_os/dbs/valkey_db.py\n---',
-    )
-    sub(
-        "agent-os/dbs/valkey-db.mdx",
-        """## Run the Example
-```bash
-# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/05_agent_os/dbs
-
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
-
-python valkey_db.py
-```""",
-        """## Run the Example
-
-<Steps>
-  <Step title="Clone Agno">
-    Clone the repository and run the remaining commands from its root:
-    ```bash
-    git clone https://github.com/agno-agi/agno.git
-    cd agno
-    ```
-  </Step>
-
-  <Step title="Set up the demo environment">
-    ```bash
-    ./scripts/demo_setup.sh
-    source .venvs/demo/bin/activate
-    uv pip install -U valkey-glide-sync
-    ```
-  </Step>
-
-  <Step title="Export your OpenAI API key">
-    <CodeGroup>
-    ```bash Mac/Linux
-    export OPENAI_API_KEY="your_openai_api_key_here"
-    ```
-
-    ```bash Windows
-    $Env:OPENAI_API_KEY="your_openai_api_key_here"
-    ```
-    </CodeGroup>
-  </Step>
-
-  <Step title="Run Valkey">
-    ```bash
-    docker run -d --name my-valkey -p 6379:6379 valkey/valkey-bundle
-    ```
-  </Step>
-
-  <Step title="Run the example">
-    Run the example from the repository root:
-    ```bash
-    python cookbook/05_agent_os/dbs/valkey_db.py
-    ```
-  </Step>
-</Steps>
-
-Full source: [cookbook/05_agent_os/dbs/valkey_db.py](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/dbs/valkey_db.py)""",
-    )
-
     root_sub(
         "knowledge/vector-stores/mongodb/usage/mongo-db-hybrid-search.mdx",
         """  </Step>
@@ -2544,7 +2532,7 @@ The agent writes 24 kHz, mono, 16-bit PCM audio to `tmp/response_stream.wav`. Th
         """## Current Status
 
 <Warning>
-  This v2.7.2 example uses Pipedream's retired per-app SSE URL. It cannot connect to the current Pipedream MCP service without code and authentication changes. See [Pipedream MCP](https://pipedream.com/docs/connect/mcp) for the current end-user and developer flows.
+  This v2.7.4 example uses Pipedream's retired per-app SSE URL. It cannot connect to the current Pipedream MCP service without code and authentication changes. See [Pipedream MCP](https://pipedream.com/docs/connect/mcp) for the current end-user and developer flows.
 </Warning>""",
     )
 
@@ -2634,7 +2622,7 @@ $Env:OPENAI_API_KEY="your_openai_api_key_here"
         """~~~
 
 <Warning>
-  The v2.7.2 cookbook uses the deprecated `gpt-4o` model. The source-fidelity fence above preserves those three model IDs. Replace all three with `gpt-5.4-mini` before running. See [GPT-4o](https://developers.openai.com/api/docs/models/gpt-4o) and [GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini).
+  The v2.7.4 cookbook uses the deprecated `gpt-4o` model. The source-fidelity fence above preserves those three model IDs. Replace all three with `gpt-5.4-mini` before running. See [GPT-4o](https://developers.openai.com/api/docs/models/gpt-4o) and [GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini).
 </Warning>
 
 ## Run the Example""",
@@ -2644,7 +2632,7 @@ $Env:OPENAI_API_KEY="your_openai_api_key_here"
         """## Run the Example
 ```bash
 # Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
+git clone --branch v2.7.4 --depth 1 https://github.com/agno-agi/agno.git
 cd agno/cookbook/06_storage/mongo
 
 # Create and activate virtual environment
@@ -2659,7 +2647,7 @@ python mongodb_for_team.py
   <Step title="Clone Agno">
     Clone the repository and run the remaining commands from its root:
     ```bash
-    git clone https://github.com/agno-agi/agno.git
+    git clone --branch v2.7.4 --depth 1 https://github.com/agno-agi/agno.git
     cd agno
     ```
   </Step>
@@ -2710,7 +2698,7 @@ Setup for each provider""",
         """| **MCP** | Registered in `scout/contexts.py` | One `query_mcp_<slug>` per server. |
 
 <Warning>
-  Scout intends Slack access to be read-only, but the pinned template does not pass `write=False` when it creates `SlackContextProvider`. Configuring Slack currently exposes `update_slack`. Leave write scopes ungranted until the template enforces its intended boundary.
+  Scout intends Slack context access to be read-only, but the pinned template does not pass `write=False` when it creates `SlackContextProvider`. Configuring `SLACK_BOT_TOKEN` currently exposes `update_slack`. To enforce a read-only context provider, set `write=False` in `scout/contexts.py` before deployment. The linked Slack manifest grants write scopes because the separate Slack interface uses the same bot token to reply.
 </Warning>
 
 Setup for each provider""",
@@ -2733,7 +2721,7 @@ Setup for each provider""",
         """---
 
 <Warning>
-  This v2.7.2 source cannot run as written. It references an input file that is not provided, uses Groq's retired `playai-tts` default, asks for music even though the tool generates speech, and saves WAV bytes with an `.mp3` extension. Provide a real input file, select a current TTS model and voice, change the prompt to request speech, and save the output as `.wav`. See [Groq model deprecations](https://console.groq.com/docs/deprecations) and [Groq text to speech](https://console.groq.com/docs/text-to-speech/).
+  This v2.7.4 source cannot run as written. It references an input file that is not provided, uses Groq's retired `playai-tts` default, asks for music even though the tool generates speech, and saves WAV bytes with an `.mp3` extension. Provide a real input file, select a current TTS model and voice, change the prompt to request speech, and save the output as `.wav`. See [Groq model deprecations](https://console.groq.com/docs/deprecations) and [Groq text to speech](https://console.groq.com/docs/text-to-speech/).
 </Warning>
 
 ## Code""",
@@ -2767,7 +2755,7 @@ Setup for each provider""",
 </Steps>""",
         """## Prepare a corrected copy
 
-The source fence is preserved for v2.7.2 fidelity. These packages and API keys cover its imports. Apply every change in the warning above before running it.
+The source fence is preserved for v2.7.4 fidelity. These packages and API keys cover its imports. Apply every change in the warning above before running it.
 
 <Steps>
   <Step title="Install dependencies">
@@ -2902,7 +2890,7 @@ After starting an example, [connect the AgentOS UI](/agent-os/connect-your-os) t
     sub(
         "agents/approvals/approval-team.mdx",
         """# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
+git clone --branch v2.7.4 --depth 1 https://github.com/agno-agi/agno.git
 cd agno/cookbook/02_agents/11_approvals
 
 # Create and activate virtual environment
@@ -2911,7 +2899,7 @@ source .venvs/demo/bin/activate
 
 python team_level_approval.py""",
         """# Clone and set up the repo
-git clone https://github.com/agno-agi/agno.git
+git clone --branch v2.7.4 --depth 1 https://github.com/agno-agi/agno.git
 cd agno
 
 # Create and activate the demo virtual environment
@@ -2925,7 +2913,7 @@ python cookbook/05_agent_os/approvals/team/team_level_approval.py""",
     sub(
         "agents/approvals/approval-team.mdx",
         """# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
+git clone --branch v2.7.4 --depth 1 https://github.com/agno-agi/agno.git
 cd agno/cookbook/02_agents/11_approvals
 
 # Create and activate virtual environment
@@ -2934,7 +2922,7 @@ source .venvs/demo/bin/activate
 
 python member_agent_level_approval.py""",
         """# Clone and set up the repo
-git clone https://github.com/agno-agi/agno.git
+git clone --branch v2.7.4 --depth 1 https://github.com/agno-agi/agno.git
 cd agno
 
 # Create and activate the demo virtual environment
@@ -2948,7 +2936,7 @@ python cookbook/05_agent_os/approvals/team/member_agent_level_approval.py""",
     sub(
         "agents/approvals/approval-team.mdx",
         """# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
+git clone --branch v2.7.4 --depth 1 https://github.com/agno-agi/agno.git
 cd agno/cookbook/02_agents/11_approvals
 
 # Create and activate virtual environment
@@ -2957,7 +2945,7 @@ source .venvs/demo/bin/activate
 
 python team_and_member_agent_both_level_approval.py""",
         """# Clone and set up the repo
-git clone https://github.com/agno-agi/agno.git
+git clone --branch v2.7.4 --depth 1 https://github.com/agno-agi/agno.git
 cd agno
 
 # Create and activate the demo virtual environment
@@ -2975,15 +2963,185 @@ python cookbook/05_agent_os/approvals/team/team_and_member_agent_both_level_appr
 
 ## Developer Resources
 
-- [Team-level approval source](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/approvals/team/team_level_approval.py)
-- [Member-level approval source](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/approvals/team/member_agent_level_approval.py)
-- [Team and member approval source](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/approvals/team/team_and_member_agent_both_level_approval.py)""",
+- [Team-level approval source](https://github.com/agno-agi/agno/blob/v2.7.4/cookbook/05_agent_os/approvals/team/team_level_approval.py)
+- [Member-level approval source](https://github.com/agno-agi/agno/blob/v2.7.4/cookbook/05_agent_os/approvals/team/member_agent_level_approval.py)
+- [Team and member approval source](https://github.com/agno-agi/agno/blob/v2.7.4/cookbook/05_agent_os/approvals/team/team_and_member_agent_both_level_approval.py)""",
     )
 
     sub(
         "models/huggingface/overview.mdx",
         "[Hugging Face Llama Essay Writer](/examples/models/huggingface/llama-essay-writer)",
         "[Hugging Face GPT-OSS Essay Writer](/examples/models/huggingface/llama-essay-writer)",
+    )
+
+    sub(
+        "agent-os/rbac/symmetric/user-isolation.mdx",
+        """---
+
+Build on [Symmetric RBAC Basic]""",
+        """---
+
+<Warning>
+  The isolation matrix in this v2.7.4 source example has one incorrect row. Because JWT authorization is configured, a request without a token returns `401`. It does not bypass isolation or gain access to stored data.
+</Warning>
+
+Build on [Symmetric RBAC Basic]""",
+    )
+    sub(
+        "knowledge/production/ssrf-allowed-hosts.mdx",
+        """---
+
+```python ssrf_allowed_hosts.py""",
+        """---
+
+<Warning>
+  In v2.7.4, `WebsiteReader`, `LLMsTxtReader`, and `WebSearchReader` validate redirect targets through their HTTP request hooks. `FirecrawlReader` and `DoclingReader` validate the submitted URL, then delegate the fetch. Their `allowed_hosts` checks do not validate every downstream redirect.
+</Warning>
+
+```python ssrf_allowed_hosts.py""",
+    )
+    sub(
+        "agent-os/interfaces/a2a/multi-agent-a2a/weather-agent.mdx",
+        """---
+
+```python weather_agent.py""",
+        """---
+
+<Warning>
+  The URLs in this v2.7.4 source docstring omit the default `/a2a` prefix. Use `/a2a/agents/{id}/v1/message:send`, `/a2a/agents/{id}/v1/message:stream`, and `/a2a/agents/{id}/.well-known/agent-card.json`.
+</Warning>
+
+```python weather_agent.py""",
+    )
+    sub(
+        "agent-os/rbac/symmetric/advanced-scopes.mdx",
+        """---
+
+Issue HS256 tokens""",
+        """---
+
+<Warning>
+  This v2.7.4 source says it verifies token audiences, but `verify_audience` remains disabled and the issued tokens have no `aud` claim. To reject tokens created for another AgentOS, set `verify_audience=True` in `AuthorizationConfig` and add `\"aud\": \"my-agent-os\"` to the token payload. Until then, another instance using the same HMAC secret can accept these tokens.
+</Warning>
+
+Issue HS256 tokens""",
+    )
+    sub(
+        "models/openai/chat/image-agent-bytes.mdx",
+        """  <Step title="Add the sample image">
+    Place a JPEG named `sample.jpg` in the same directory as the saved Python file.
+  </Step>
+""",
+        """  <Step title="Use the downloaded image">
+    The script downloads `sample.jpg` beside the saved Python file. No input image is required. An existing file with that name is overwritten.
+  </Step>
+""",
+    )
+    sub(
+        "integrations/rag/agentic-rag-infinity-reranker.mdx",
+        """Demonstrates agentic RAG with an Infinity reranker backend (relocated integration example).
+
+```python agentic_rag_infinity_reranker.py""",
+        """Demonstrates agentic RAG with an Infinity reranker backend (relocated integration example).
+
+<Warning>
+  Anthropic retired `claude-3-7-sonnet-latest` on February 19, 2026. Replace it with `claude-sonnet-4-6` before running. See [Claude model deprecations](https://platform.claude.com/docs/en/about-claude/model-deprecations).
+</Warning>
+
+```python agentic_rag_infinity_reranker.py""",
+    )
+    sub(
+        "integrations/rag/agentic-rag-infinity-reranker.mdx",
+        """  <Step title="Run the example">
+    Save the code above as `agentic_rag_infinity_reranker.py`, then run:""",
+        """  <Step title="Update the Claude model">
+    Replace `claude-3-7-sonnet-latest` with `claude-sonnet-4-6` in the saved file.
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `agentic_rag_infinity_reranker.py`, then run:""",
+    )
+    sub(
+        "integrations/rag/agentic-rag-infinity-reranker.mdx",
+        "https://github.com/agno-agi/agno/blob/main/cookbook/07_knowledge/05_integrations/rag/agentic_rag_infinity_reranker.py",
+        "https://github.com/agno-agi/agno/blob/v2.7.4/cookbook/07_knowledge/05_integrations/rag/agentic_rag_infinity_reranker.py",
+    )
+    sub(
+        "models/openrouter/responses/structured-output.mdx",
+        """cd agno/cookbook/90_models/openrouter/responses
+
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+# Export relevant API keys
+export OPENROUTER_API_KEY="***"
+
+python structured_output.py""",
+        """cd agno
+
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+# Export relevant API keys
+export OPENROUTER_API_KEY="***"
+
+python cookbook/90_models/openrouter/responses/structured_output.py""",
+    )
+    sub(
+        "storage/mongo/mongodb-for-agent.mdx",
+        """cd agno/cookbook/06_storage/mongo
+
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+python mongodb_for_agent.py""",
+        """cd agno
+
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+uv pip install pymongo
+./cookbook/scripts/run_mongodb.sh
+
+python cookbook/06_storage/mongo/mongodb_for_agent.py
+
+docker rm -f local-mongo""",
+    )
+    sub(
+        "tools/superserve-tools.mdx",
+        """cd agno/cookbook/91_tools
+
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+python superserve_tools.py""",
+        """cd agno
+
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+python cookbook/91_tools/superserve_tools.py""",
+    )
+    sub(
+        "tools/superserve-tools.mdx",
+        "https://github.com/agno-agi/agno/blob/main/cookbook/91_tools/superserve_tools.py",
+        "https://github.com/agno-agi/agno/blob/v2.7.4/cookbook/91_tools/superserve_tools.py",
+    )
+    root_sub(
+        "other/cursor-rules.mdx",
+        "https://raw.githubusercontent.com/agno-agi/agno/main/.cursorrules",
+        "https://raw.githubusercontent.com/agno-agi/agno/v2.7.4/.cursorrules",
+    )
+    root_sub(
+        "other/cursor-rules.mdx",
+        "https://github.com/agno-agi/agno/blob/main/.cursorrules",
+        "https://github.com/agno-agi/agno/blob/v2.7.4/.cursorrules",
     )
 
     root_sub(
@@ -3262,7 +3420,7 @@ async def handle_stripe(event: dict):
     root_sub(
         "models/providers/native/google/usage/interactions-antigravity.mdx",
         "Unlike Deep Research, Antigravity runs in the foreground. The model still forces `store=True` so the interaction is retrievable.",
-        "`GeminiInteractions` in Agno 2.7.2 sends Antigravity requests in the foreground and forces `store=True` so each interaction is retrievable. The Google API also supports background Antigravity execution. Use the Google Gen AI SDK directly when you need background execution.",
+        "`GeminiInteractions` in Agno 2.7.4 sends Antigravity requests in the foreground and forces `store=True` so each interaction is retrievable. Antigravity also runs in the foreground through the Google Gen AI SDK, which rejects `background=True` for this managed agent. Use [streaming](/models/providers/native/google/usage/interactions-antigravity-streaming) to receive progress while the connection stays open.",
     )
 
     root_sub(
@@ -3561,7 +3719,7 @@ $Env:LANGDB_API_BASE_URL="https://api.langdb.ai"
     )
 
     # Sample 29: require an explicit current Nebius model because both the
-    # retired cookbook ID and the pinned Agno 2.7.2 default are unavailable.
+    # retired cookbook ID and the pinned Agno 2.7.4 default are unavailable.
     root_sub(
         "models/providers/gateways/nebius/overview.mdx",
         """Nebius Token Factory is a platform from Nebius that simplifies the process of building applications using AI models. It provides a suite of tools and services for developers to easily test, integrate and fine-tune various AI models, including those for text and image generation.
@@ -3655,12 +3813,12 @@ $Env:NEBIUS_MODEL_ID="your_current_text_model_id"
         """See the [Nebius usage examples](/models/providers/gateways/nebius/usage/basic-stream).
 
 <Warning>
-  The pinned Agno 2.7.2 default, `openai/gpt-oss-20b`, is retired from serverless inference. Set `id` to an explicit current model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
+  The pinned Agno 2.7.4 default, `openai/gpt-oss-20b`, is retired from serverless inference. Set `id` to an explicit current model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
 </Warning>""",
         """See the [Nebius usage examples](/models/providers/gateways/nebius/usage/basic-stream).
 
 <Warning>
-  The pinned Agno 2.7.2 default, `openai/gpt-oss-20b`, is retired from serverless inference. Set `id` to an explicit current text-generation model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
+  The pinned Agno 2.7.4 default, `openai/gpt-oss-20b`, is retired from serverless inference. Set `id` to an explicit current text-generation model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
 </Warning>""",
         required=False,
     )
@@ -3669,12 +3827,12 @@ $Env:NEBIUS_MODEL_ID="your_current_text_model_id"
         """See the [Nebius usage examples](/models/providers/gateways/nebius/usage/basic-stream).
 
 <Warning>
-  The pinned Agno 2.7.2 default, `openai/gpt-oss-20b`, is retired. Set `id` to an explicit current model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
+  The pinned Agno 2.7.4 default, `openai/gpt-oss-20b`, is retired. Set `id` to an explicit current model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
 </Warning>""",
         """See the [Nebius usage examples](/models/providers/gateways/nebius/usage/basic-stream).
 
 <Warning>
-  The pinned Agno 2.7.2 default, `openai/gpt-oss-20b`, is retired from serverless inference. Set `id` to an explicit current text-generation model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
+  The pinned Agno 2.7.4 default, `openai/gpt-oss-20b`, is retired from serverless inference. Set `id` to an explicit current text-generation model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
 </Warning>""",
         required=False,
     )
@@ -3684,7 +3842,7 @@ $Env:NEBIUS_MODEL_ID="your_current_text_model_id"
         """See the [Nebius usage examples](/models/providers/gateways/nebius/usage/basic-stream).
 
 <Warning>
-  The pinned Agno 2.7.2 default, `openai/gpt-oss-20b`, is retired from serverless inference. Set `id` to an explicit current text-generation model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
+  The pinned Agno 2.7.4 default, `openai/gpt-oss-20b`, is retired from serverless inference. Set `id` to an explicit current text-generation model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
 </Warning>""",
     )
 
@@ -3963,7 +4121,7 @@ Select a text-generation model with [function-calling support](https://docs.toke
         """---
 
 <Warning>
-Together retires serverless model IDs on a rolling schedule. The Agno 2.7.2 cookbook examples may reference retired IDs. Before running an example, choose a current model from the [serverless catalog](https://docs.together.ai/docs/serverless/models) and verify the capabilities required by that example.
+Together retires serverless model IDs on a rolling schedule. The Agno 2.7.4 cookbook examples may reference retired IDs. Before running an example, choose a current model from the [serverless catalog](https://docs.together.ai/docs/serverless/models) and verify the capabilities required by that example.
 </Warning>
 
 | Example | Description |""",
@@ -4155,7 +4313,7 @@ uv pip install -U agno ddgs openai
     root_sub(
         spotify_page,
         "| `get_user_playlists`          | Get playlists for a specific user                   |",
-        "| `get_user_playlists`          | Unavailable to Development Mode apps in Agno 2.7.2 because it expects the earlier response fields |",
+        "| `get_user_playlists`          | Unavailable to Development Mode apps in Agno 2.7.4 because it expects the earlier response fields |",
     )
     root_sub(
         spotify_page,
@@ -4192,7 +4350,7 @@ export ANTHROPIC_API_KEY=***
 ```
 
 <Warning>
-Spotify changed several endpoints and response fields for Development Mode apps in February 2026. Extended Quota Mode apps are unaffected. Agno 2.7.2 still uses the earlier paths and fields, so the affected methods below are unavailable to Development Mode apps. Use the read-only example until `SpotifyTools` is updated. See Spotify's [February 2026 migration guide](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide).
+Spotify changed several endpoints and response fields for Development Mode apps in February 2026. Extended Quota Mode apps are unaffected. Agno 2.7.4 still uses the earlier paths and fields, so the affected methods below are unavailable to Development Mode apps. Use the read-only example until `SpotifyTools` is updated. See Spotify's [February 2026 migration guide](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide).
 </Warning>
 
 ## Example""",
@@ -4238,7 +4396,7 @@ Spotify changed several endpoints and response fields for Development Mode apps 
     root_sub(
         spotify_page,
         "| `search_playlists`            | Search for playlists on Spotify                     |",
-        "| `search_playlists`            | Unavailable to Development Mode apps in Agno 2.7.2 because it expects the earlier playlist response fields |",
+        "| `search_playlists`            | Unavailable to Development Mode apps in Agno 2.7.4 because it expects the earlier playlist response fields |",
     )
     root_sub(
         spotify_page,
@@ -4248,12 +4406,12 @@ Spotify changed several endpoints and response fields for Development Mode apps 
     root_sub(
         spotify_page,
         "| `create_playlist`             | Create a new playlist for the user                  |",
-        "| `create_playlist`             | Unavailable to Development Mode apps in Agno 2.7.2 because it calls the removed user-specific endpoint |",
+        "| `create_playlist`             | Unavailable to Development Mode apps in Agno 2.7.4 because it calls the removed user-specific endpoint |",
     )
     root_sub(
         spotify_page,
         "| `add_tracks_to_playlist`      | Add tracks to an existing playlist                  |",
-        "| `add_tracks_to_playlist`      | Unavailable to Development Mode apps in Agno 2.7.2 because it calls the removed `/tracks` endpoint |",
+        "| `add_tracks_to_playlist`      | Unavailable to Development Mode apps in Agno 2.7.4 because it calls the removed `/tracks` endpoint |",
     )
     root_sub(
         spotify_page,
@@ -4263,7 +4421,7 @@ Spotify changed several endpoints and response fields for Development Mode apps 
     root_sub(
         spotify_page,
         "| `remove_tracks_from_playlist` | Remove tracks from an existing playlist             |",
-        "| `remove_tracks_from_playlist` | Unavailable to Development Mode apps in Agno 2.7.2 because it calls the removed `/tracks` endpoint |",
+        "| `remove_tracks_from_playlist` | Unavailable to Development Mode apps in Agno 2.7.4 because it calls the removed `/tracks` endpoint |",
     )
 
     root_sub(
@@ -4320,6 +4478,11 @@ The source uses the retired `imagen-4.0-generate-preview-05-20` model, the remov
     # 12. Restore post-tag toolkit cards that shipped in navigation without
     #     corresponding entries in the hand-maintained complete index.
     repair_toolkit_index()
+
+    # Keep every tracked cookbook and implementation link on the same sealed
+    # source as its code fence and clone command. Run this after fixes that add
+    # resource links.
+    pin_agno_release_links()
 
     # 13. Preserve the reviewed byte-level terminal-newline convention after
     #     deterministic reconstruction.
