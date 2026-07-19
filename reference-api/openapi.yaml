@@ -242,7 +242,8 @@ paths:
           description: Agent run executed successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/RunSchema'
             text/event-stream:
               examples:
                 event_stream:
@@ -251,6 +252,12 @@ paths:
                     event: RunStarted
                     data: {"content": "Hello!", "run_id": "123..."}
 
+        '202':
+          description: Background run accepted when `background=true` and `stream=false`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BackgroundRunResponse'
         '400':
           description: Invalid request or unsupported file type
           content:
@@ -774,7 +781,8 @@ paths:
           description: Run output retrieved successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/RunSchema'
         '400':
           description: Bad Request
           content:
@@ -1056,12 +1064,19 @@ paths:
           description: Team run executed successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/TeamRunSchema'
             text/event-stream:
               example: |+
                 event: RunStarted
                 data: {"content": "Hello!", "run_id": "123..."}
 
+        '202':
+          description: Background run accepted when `background=true` and `stream=false`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BackgroundRunResponse'
         '400':
           description: Invalid request or unsupported file type
           content:
@@ -1277,11 +1292,9 @@ paths:
         '200':
           description: SSE stream of catch-up and/or live events
           content:
-            application/json:
-              schema: {}
             text/event-stream: {}
         '400':
-          description: Not supported for remote teams
+          description: Stream resumption is unavailable for remote and factory teams. Non-admin callers must provide `session_id`.
           content:
             application/json:
               schema:
@@ -1293,7 +1306,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/UnauthenticatedResponse'
         '404':
-          description: Team not found
+          description: Team or run not found
           content:
             application/json:
               schema:
@@ -1731,7 +1744,8 @@ paths:
           description: Run output retrieved successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/TeamRunSchema'
         '400':
           description: Bad Request
           content:
@@ -2071,12 +2085,19 @@ paths:
           description: Workflow executed successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/WorkflowRunSchema'
             text/event-stream:
               example: |+
                 event: RunStarted
                 data: {"content": "Hello!", "run_id": "123..."}
 
+        '202':
+          description: Background run accepted when `background=true` and `stream=false`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BackgroundRunResponse'
         '400':
           description: Invalid input data or workflow configuration
           content:
@@ -2320,7 +2341,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/UnauthenticatedResponse'
         '404':
-          description: Workflow or run not found
+          description: Workflow not found, or the requested run was not found in the caller's session
           content:
             application/json:
               schema:
@@ -2460,7 +2481,8 @@ paths:
           description: Run output retrieved successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/WorkflowRunSchema'
         '400':
           description: Bad Request
           content:
@@ -4773,12 +4795,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UnauthenticatedResponse'
-        '404':
-          description: Memory not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NotFoundResponse'
         '422':
           description: Validation Error
           content:
@@ -6183,24 +6199,12 @@ paths:
       responses:
         '204':
           description: Successful Response
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BadRequestResponse'
         '401':
           description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/UnauthenticatedResponse'
-        '404':
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NotFoundResponse'
         '422':
           description: Validation Error
           content:
@@ -6208,7 +6212,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidationErrorResponse'
         '500':
-          description: Failed to delete evaluation runs
+          description: Deletion failed. In Agno 2.7.4, failures including invalid database or table selections surface as 500 responses.
           content:
             application/json:
               schema:
@@ -6665,24 +6669,12 @@ paths:
                   date: '2025-08-12T00:00:00Z'
                   created_at: '2025-08-12T08:01:47Z'
                   updated_at: '2025-08-12T08:01:47Z'
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BadRequestResponse'
         '401':
           description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/UnauthenticatedResponse'
-        '404':
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NotFoundResponse'
         '422':
           description: Validation Error
           content:
@@ -6690,7 +6682,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidationErrorResponse'
         '500':
-          description: Failed to refresh metrics
+          description: Refresh failed. In Agno 2.7.4, failures including invalid database or table selections surface as 500 responses.
           content:
             application/json:
               schema:
@@ -7055,7 +7047,7 @@ paths:
       tags:
         - Knowledge
       summary: Update Content
-      description: Update content properties such as name, description, metadata, or processing configuration. Allows modification of existing content without re-uploading.
+      description: Update content name, description, or metadata without re-uploading it. In Agno 2.7.4, this endpoint accepts `reader_id`. Local knowledge validates the value, but the content patch does not apply or persist the reader change.
       operationId: update_content
       security:
         - HTTPBearer: []
@@ -10248,10 +10240,9 @@ paths:
         - Service Accounts
       summary: Revoke Service Account
       description: |-
-        Revoke a service account. Idempotent.
+        Revoke an existing service account.
 
-        Takes effect immediately on this worker (the local verification cache entry is
-        evicted) and within the cache TTL on other workers.
+        Takes effect immediately on this worker (the local verification cache entry is evicted) and within the cache TTL on other workers.
       operationId: revoke_service_account_service_accounts__service_account_id__delete
       security:
         - HTTPBearer: []
@@ -10265,12 +10256,36 @@ paths:
       responses:
         '204':
           description: Successful Response
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Service account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: Service account could not be revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: Service accounts are not supported by the configured database
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailableResponse'
   /registry:
     get:
       tags:
@@ -10953,6 +10968,26 @@ components:
         - source
       title: AudioInputContent
       description: An audio input content fragment.
+    BackgroundRunResponse:
+      properties:
+        run_id:
+          type: string
+          title: Run Id
+          description: Unique identifier for the background run.
+        session_id:
+          type: string
+          title: Session Id
+          description: Session that contains the background run.
+        status:
+          type: string
+          title: Status
+          description: Initial run status.
+      type: object
+      required:
+        - run_id
+        - session_id
+        - status
+      title: BackgroundRunResponse
     BadRequestResponse:
       properties:
         detail:
@@ -11396,7 +11431,7 @@ components:
             - type: string
             - type: 'null'
           title: Reader Id
-          description: ID of the reader to use for processing
+          description: Reader ID. In Agno 2.7.4, local knowledge validates the value, but the content patch does not apply or persist the reader change.
       type: object
       title: Body_update_content
     Body_upload_content:
@@ -15082,6 +15117,18 @@ components:
         - created_at
       title: ServiceAccountResponse
       description: Service account metadata. Never includes the token hash or plaintext.
+    ServiceUnavailableResponse:
+      properties:
+        detail:
+          type: string
+          title: Detail
+          description: Error detail message
+      type: object
+      required:
+        - detail
+      title: ServiceUnavailableResponse
+      example:
+        detail: Service accounts not supported by the configured database
     SessionConfig:
       properties:
         display_name:

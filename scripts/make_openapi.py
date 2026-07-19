@@ -197,6 +197,8 @@ def build_app():
 
 def apply_runtime_description_enrichments(spec: dict) -> dict:
     """Document runtime branches that the pinned route metadata omits."""
+    schemas = spec["components"]["schemas"]
+
     config_example = spec["paths"]["/config"]["get"]["responses"]["200"]["content"]["application/json"][
         "example"
     ]
@@ -208,6 +210,188 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
     delete_component["description"] = (
         "Soft-delete a component by ID. Component configs and links remain stored."
     )
+
+    assert "BackgroundRunResponse" not in schemas
+    schemas["BackgroundRunResponse"] = {
+        "properties": {
+            "run_id": {
+                "type": "string",
+                "title": "Run Id",
+                "description": "Unique identifier for the background run.",
+            },
+            "session_id": {
+                "type": "string",
+                "title": "Session Id",
+                "description": "Session that contains the background run.",
+            },
+            "status": {
+                "type": "string",
+                "title": "Status",
+                "description": "Initial run status.",
+            },
+        },
+        "type": "object",
+        "required": ["run_id", "session_id", "status"],
+        "title": "BackgroundRunResponse",
+    }
+
+    run_endpoints = (
+        ("agents", "agent_id", "RunSchema"),
+        ("teams", "team_id", "TeamRunSchema"),
+        ("workflows", "workflow_id", "WorkflowRunSchema"),
+    )
+    for component, id_parameter, run_schema in run_endpoints:
+        assert run_schema in schemas
+
+        create_run = spec["paths"][f"/{component}/{{{id_parameter}}}/runs"]["post"]
+        create_responses = create_run["responses"]
+        create_json_schema = create_responses["200"]["content"]["application/json"]["schema"]
+        assert create_json_schema == {}
+        create_json_schema["$ref"] = f"#/components/schemas/{run_schema}"
+        assert "202" not in create_responses
+        create_responses["202"] = {
+            "description": "Background run accepted when `background=true` and `stream=false`.",
+            "content": {
+                "application/json": {
+                    "schema": {"$ref": "#/components/schemas/BackgroundRunResponse"},
+                }
+            },
+        }
+        create_run["responses"] = dict(sorted(create_responses.items(), key=lambda item: int(item[0])))
+
+        get_run = spec["paths"][f"/{component}/{{{id_parameter}}}/runs/{{run_id}}"]["get"]
+        get_json_schema = get_run["responses"]["200"]["content"]["application/json"]["schema"]
+        assert get_json_schema == {}
+        get_json_schema["$ref"] = f"#/components/schemas/{run_schema}"
+
+    update_content = spec["paths"]["/knowledge/content/{content_id}"]["patch"]
+    assert update_content["description"] == (
+        "Update content properties such as name, description, metadata, or processing configuration. "
+        "Allows modification of existing content without re-uploading."
+    )
+    update_content["description"] = (
+        "Update content name, description, or metadata without re-uploading it. "
+        "In Agno 2.7.4, this endpoint accepts `reader_id`. Local knowledge validates the value, "
+        "but the content patch does not apply or persist the reader change."
+    )
+    reader_id = schemas["Body_update_content"]["properties"]["reader_id"]
+    assert reader_id["description"] == "ID of the reader to use for processing"
+    reader_id["description"] = (
+        "Reader ID. In Agno 2.7.4, local knowledge validates the value, but the content patch "
+        "does not apply or persist the reader change."
+    )
+
+    delete_eval_runs = spec["paths"]["/eval-runs"]["delete"]
+    eval_responses = delete_eval_runs["responses"]
+    assert eval_responses["400"]["description"] == "Bad Request"
+    assert eval_responses["404"]["description"] == "Not Found"
+    del eval_responses["400"]
+    del eval_responses["404"]
+    assert eval_responses["500"]["description"] == "Failed to delete evaluation runs"
+    eval_responses["500"]["description"] = (
+        "Deletion failed. In Agno 2.7.4, failures including invalid database or table selections "
+        "surface as 500 responses."
+    )
+
+    refresh_metrics = spec["paths"]["/metrics/refresh"]["post"]
+    metrics_responses = refresh_metrics["responses"]
+    assert metrics_responses["400"]["description"] == "Bad Request"
+    assert metrics_responses["404"]["description"] == "Not Found"
+    del metrics_responses["400"]
+    del metrics_responses["404"]
+    assert metrics_responses["500"]["description"] == "Failed to refresh metrics"
+    metrics_responses["500"]["description"] = (
+        "Refresh failed. In Agno 2.7.4, failures including invalid database or table selections "
+        "surface as 500 responses."
+    )
+
+    revoke_service_account = spec["paths"]["/service-accounts/{service_account_id}"]["delete"]
+    assert revoke_service_account["description"] == (
+        "Revoke a service account. Idempotent.\n\n"
+        "Takes effect immediately on this worker (the local verification cache entry is\n"
+        "evicted) and within the cache TTL on other workers."
+    )
+    revoke_service_account["description"] = (
+        "Revoke an existing service account.\n\n"
+        "Takes effect immediately on this worker (the local verification cache entry is "
+        "evicted) and within the cache TTL on other workers."
+    )
+    assert "ServiceUnavailableResponse" not in schemas
+    schemas["ServiceUnavailableResponse"] = {
+        "properties": {
+            "detail": {
+                "type": "string",
+                "title": "Detail",
+                "description": "Error detail message",
+            },
+        },
+        "type": "object",
+        "required": ["detail"],
+        "title": "ServiceUnavailableResponse",
+        "example": {"detail": "Service accounts not supported by the configured database"},
+    }
+    revoke_responses = revoke_service_account["responses"]
+    assert set(revoke_responses) == {"204", "422"}
+    revoke_responses.update(
+        {
+            "401": {
+                "description": "Unauthorized",
+                "content": {
+                    "application/json": {
+                        "schema": {"$ref": "#/components/schemas/UnauthenticatedResponse"},
+                    }
+                },
+            },
+            "404": {
+                "description": "Service account not found",
+                "content": {
+                    "application/json": {
+                        "schema": {"$ref": "#/components/schemas/NotFoundResponse"},
+                    }
+                },
+            },
+            "500": {
+                "description": "Service account could not be revoked",
+                "content": {
+                    "application/json": {
+                        "schema": {"$ref": "#/components/schemas/InternalServerErrorResponse"},
+                    }
+                },
+            },
+            "503": {
+                "description": "Service accounts are not supported by the configured database",
+                "content": {
+                    "application/json": {
+                        "schema": {"$ref": "#/components/schemas/ServiceUnavailableResponse"},
+                    }
+                },
+            },
+        }
+    )
+    revoke_service_account["responses"] = dict(sorted(revoke_responses.items(), key=lambda item: int(item[0])))
+
+    resume_team = spec["paths"]["/teams/{team_id}/runs/{run_id}/resume"]["post"]
+    team_success_content = resume_team["responses"]["200"]["content"]
+    assert team_success_content["application/json"]["schema"] == {}
+    assert "text/event-stream" in team_success_content
+    del team_success_content["application/json"]
+    assert resume_team["responses"]["400"]["description"] == "Not supported for remote teams"
+    resume_team["responses"]["400"]["description"] = (
+        "Stream resumption is unavailable for remote and factory teams. "
+        "Non-admin callers must provide `session_id`."
+    )
+    assert resume_team["responses"]["404"]["description"] == "Team not found"
+    resume_team["responses"]["404"]["description"] = "Team or run not found"
+
+    cancel_workflow = spec["paths"]["/workflows/{workflow_id}/runs/{run_id}/cancel"]["post"]
+    assert cancel_workflow["responses"]["404"]["description"] == "Workflow or run not found"
+    cancel_workflow["responses"]["404"]["description"] = (
+        "Workflow not found, or the requested run was not found in the caller's session"
+    )
+
+    delete_memory = spec["paths"]["/memories/{memory_id}"]["delete"]
+    assert delete_memory["responses"]["404"]["description"] == "Memory not found"
+    del delete_memory["responses"]["404"]
 
     resume_workflow = spec["paths"]["/workflows/{workflow_id}/runs/{run_id}/resume"]["post"]
     bad_request = resume_workflow["responses"]["400"]
@@ -240,6 +424,8 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         ]["200"]["content"]["application/json"]["schema"]
         assert response_schema == {}
         response_schema.update(deepcopy(fork_response_schema))
+
+    spec["components"]["schemas"] = dict(sorted(schemas.items()))
     return spec
 
 
@@ -435,7 +621,7 @@ def main() -> int:
     spec = apply_runtime_description_enrichments(app.openapi())
     spec = preserve_curated_slack_metadata(spec)
 
-    NEW_JSON.write_text(json.dumps(spec, indent=2) + "\n")
+    NEW_JSON.write_text(json.dumps(spec, separators=(",", ":")) + "\n")
     dump_yaml(spec, NEW_YAML)
 
     old = yaml.safe_load(OLD_YAML.read_text())
