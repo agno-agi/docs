@@ -464,6 +464,7 @@ SERVICE_TRIGGERS = {
     "qdrant": ("agno.vectordb.qdrant", "qdrant_client"),
     "redis": ("agno.db.redis", "agno.vectordb.redis", "redis"),
     "surrealdb": ("agno.db.surrealdb", "agno.vectordb.surrealdb", "surrealdb"),
+    "valkey": ("agno.db.valkey", "agno.vectordb.valkey", "glide_sync"),
 }
 SERVICE_STEPS = {
     "mysql": (
@@ -478,6 +479,7 @@ SERVICE_STEPS = {
         "Run SurrealDB",
         "docker run -d --rm --name surrealdb --pull always -p 8000:8000 surrealdb/surrealdb:latest start --user root --pass root",
     ),
+    "valkey": ("Run Valkey", "docker run -d --name my-valkey -p 6379:6379 valkey/valkey-bundle"),
 }
 
 # Casing fixes for filename-derived titles.
@@ -879,7 +881,6 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "suppress_intro": True,
     },
     "02_agents/12_multimodal/media_input_for_tool.py": {
-        "package_remove": {"openai"},
         "env_remove": {"OPENAI_API_KEY"},
         "provider_remove": {"OpenAI"},
     },
@@ -1771,6 +1772,31 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "replacement_only": True,
         "replacement_heading": "Current Alternative",
         "run_replacement": "Use [Gemini Knowledge](/examples/models/google/gemini/knowledge), which constructs `Knowledge` with `PgVector` and inserts the PDF URL through `knowledge.insert(...)`.",
+    },
+    "90_models/vertexai/claude/adaptive_thinking.py": {
+        "pre_code_warning": "The pinned v2.7.4 source imports `Claude` from the empty `agno.models.vertexai` package root. Use the released module path before running.",
+        "pre_run_steps": [
+            (
+                "Fix the Claude import",
+                "Replace `from agno.models.vertexai import Claude` with `from agno.models.vertexai.claude import Claude` in the saved file.",
+                None,
+            )
+        ],
+    },
+    "07_knowledge/04_advanced/07_per_user_isolation/valkey_db.py": {
+        "package_add": {"openai"},
+        "env_add": {"OPENAI_API_KEY"},
+    },
+    "07_knowledge/05_integrations/vector_dbs/05_scylladb.py": {
+        "package_remove": {"cassandra"},
+        "package_add": {"cassio", "scylla-driver"},
+        "pre_run_steps": [
+            (
+                "Run ScyllaDB",
+                "Start a local ScyllaDB node with CassIO compatibility:",
+                "docker run -d --name scylla -p 9042:9042 scylladb/scylla:latest --developer-mode=1 --enable-cassio-compatibility=1",
+            )
+        ],
     },
     "90_models/openai/chat/custom_role_map.py": {
         "env_remove": {"OPENAI_API_KEY"},
@@ -4766,16 +4792,40 @@ def apply_source_render_override(
         override["replacement_only"] = True
         override["replacement_heading"] = "Current Alternative"
         override["run_replacement"] = INVALID_MODEL_RETRY_REPLACEMENT
-    if rel == "90_models/cohere/retry.py":
+    retry_import_replacements = {
+        "90_models/cohere/retry.py": (
+            "from agno.models.cohere import CohereChat",
+            "from agno.models.cohere import Cohere",
+        ),
+        "90_models/sambanova/retry.py": (
+            "from agno.models.sambanova import SambaNova",
+            "from agno.models.sambanova import Sambanova",
+        ),
+        "90_models/siliconflow/retry.py": (
+            "from agno.models.siliconflow import SiliconFlow",
+            "from agno.models.siliconflow import Siliconflow",
+        ),
+        "90_models/vertexai/retry.py": (
+            "from agno.models.vertexai import Claude",
+            "from agno.models.vertexai.claude import Claude",
+        ),
+        "90_models/vllm/retry.py": (
+            "from agno.models.vllm import vLLM",
+            "from agno.models.vllm import VLLM",
+        ),
+    }
+    retry_import_replacement = retry_import_replacements.get(rel)
+    if retry_import_replacement:
+        bad_import, current_import = retry_import_replacement
         override["pre_code_warning"] = (
-            "The pinned v2.7.4 source imports the removed `CohereChat` class and fails before "
-            "testing retries. It also assumes an invalid model ID reaches the retry path, while "
-            "invalid-model responses commonly use terminal 400 or 404 statuses."
+            f"The pinned v2.7.4 source uses the unavailable import `{bad_import}` and fails "
+            "before testing retries. It also assumes an invalid model ID reaches the retry path, "
+            "while invalid-model responses commonly use terminal 400 or 404 statuses."
         )
         override["run_replacement"] = (
-            "Use the released `Cohere` class shown in "
-            "[Cohere Knowledge](/examples/models/cohere/knowledge). Configure `retries`, "
-            "`delay_between_retries`, and `exponential_backoff` as shown in "
+            f"Replace `{bad_import}` with `{current_import}` and update the constructor name "
+            "when its capitalization changed. Configure `retries`, `delay_between_retries`, and "
+            "`exponential_backoff` as shown in "
             "[Retry Model Requests](/models/overview#retry-model-requests), then test with a "
             "controlled transient 429, connection failure, or 5xx response."
         )
