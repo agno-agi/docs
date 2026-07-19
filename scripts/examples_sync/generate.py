@@ -838,6 +838,17 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "intro_override": "Configure GoogleBigQueryTools with a Google Cloud project, location, and dataset.",
         "pre_code_warning": "The pinned source docstring names `BQTools`, and its Agent instruction names `run_sql`. The imported toolkit is `GoogleBigQueryTools`; its registered SQL function is `run_sql_query`.",
     },
+    "91_tools/google/gmail/draft_reply.py": {
+        "intro_override": "Read a Gmail conversation and create a contextual reply draft for human review.",
+        "pre_code_warning": "The source's draft-only instruction is prompt guidance. `GmailTools()` exposes `send_email` and `send_email_reply` by default. Disable the send tools before running.",
+        "pre_run_steps": [
+            (
+                "Disable send tools",
+                "Replace `GmailTools()` with `GmailTools(send_email=False, send_email_reply=False, send_draft=False)`.",
+                None,
+            )
+        ],
+    },
     "02_agents/01_quickstart/agent_with_tools.py": {
         "suppress_intro": True,
     },

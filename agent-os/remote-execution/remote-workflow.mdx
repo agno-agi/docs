@@ -36,24 +36,29 @@ asyncio.run(main())
 Stream workflow responses in real-time:
 
 ```python
+import asyncio
+
 from agno.workflow import RemoteWorkflow
 
-workflow = RemoteWorkflow(
-    base_url="http://localhost:7778",  # Running on localhost for this example
-    workflow_id="story-workflow",
-)
+async def main():
+    workflow = RemoteWorkflow(
+        base_url="http://localhost:7778",  # Running on localhost for this example
+        workflow_id="story-workflow",
+    )
 
-print("Workflow Response: ", end="", flush=True)
-async for event in workflow.arun(
-    "Write a story about space exploration",
-    stream=True,
-):
-    # Handle content from agent steps or workflow completion
-    if event.event == "RunContent" and hasattr(event, "content"):
-        print(event.content, end="", flush=True)
-    elif event.event == "WorkflowAgentCompleted" and hasattr(event, "content"):
-        if event.content:
+    print("Workflow Response: ", end="", flush=True)
+    async for event in workflow.arun(
+        "Write a story about space exploration",
+        stream=True,
+    ):
+        # Handle content from agent steps or workflow completion
+        if event.event == "RunContent" and hasattr(event, "content"):
             print(event.content, end="", flush=True)
+        elif event.event == "WorkflowAgentCompleted" and hasattr(event, "content"):
+            if event.content:
+                print(event.content, end="", flush=True)
+
+asyncio.run(main())
 ```
 
 ## Passing Additional Data
@@ -61,20 +66,25 @@ async for event in workflow.arun(
 Send additional structured data to the workflow:
 
 ```python
+import asyncio
+
 from agno.workflow import RemoteWorkflow
 
-workflow = RemoteWorkflow(
-    base_url="http://localhost:7778",  # Running on localhost for this example
-    workflow_id="analysis-workflow",
-)
+async def main():
+    workflow = RemoteWorkflow(
+        base_url="http://localhost:7778",  # Running on localhost for this example
+        workflow_id="analysis-workflow",
+    )
 
-response = await workflow.arun(
-    "Analyze the data",
-    additional_data={
-        "metrics": {"revenue": 1000000, "growth": 0.15},
-        "period": "Q4 2024",
-    },
-)
+    await workflow.arun(
+        "Analyze the data",
+        additional_data={
+            "metrics": {"revenue": 1000000, "growth": 0.15},
+            "period": "Q4 2024",
+        },
+    )
+
+asyncio.run(main())
 ```
 
 ## Configuration Access
@@ -82,22 +92,27 @@ response = await workflow.arun(
 Access the remote workflow's configuration:
 
 ```python
+import asyncio
+
 from agno.workflow import RemoteWorkflow
 
-workflow = RemoteWorkflow(
-    base_url="http://localhost:7778",  # Running on localhost for this example
-    workflow_id="qa-workflow",
-)
+async def main():
+    workflow = RemoteWorkflow(
+        base_url="http://localhost:7778",  # Running on localhost for this example
+        workflow_id="qa-workflow",
+    )
 
-# Access cached properties
-print(f"Name: {workflow.name}")
-print(f"Description: {workflow.description}")
+    # Access cached properties
+    print(f"Name: {workflow.name}")
+    print(f"Description: {workflow.description}")
 
-# Get fresh configuration
-config = await workflow.get_workflow_config()
+    # Get fresh configuration
+    await workflow.get_workflow_config()
 
-# Force refresh cache
-await workflow.refresh_config()
+    # Force refresh cache
+    await workflow.refresh_config()
+
+asyncio.run(main())
 ```
 
 ## Using in Gateway
@@ -127,35 +142,45 @@ if __name__ == "__main__":
 For authenticated AgentOS instances:
 
 ```python
+import asyncio
+
 from agno.workflow import RemoteWorkflow
 
-workflow = RemoteWorkflow(
-    base_url="http://localhost:7777",
-    workflow_id="qa-workflow",
-)
+async def main():
+    workflow = RemoteWorkflow(
+        base_url="http://localhost:7777",
+        workflow_id="qa-workflow",
+    )
 
-response = await workflow.arun(
-    "Process this request",
-    auth_token="your-jwt-token",
-)
+    await workflow.arun(
+        "Process this request",
+        auth_token="your-jwt-token",
+    )
+
+asyncio.run(main())
 ```
 
 ## Error Handling
 
 ```python
+import asyncio
+
 from agno.workflow import RemoteWorkflow
 from agno.exceptions import RemoteServerUnavailableError
 
-workflow = RemoteWorkflow(
-    base_url="http://localhost:7777",
-    workflow_id="qa-workflow",
-)
+async def main():
+    workflow = RemoteWorkflow(
+        base_url="http://localhost:7777",
+        workflow_id="qa-workflow",
+    )
 
-try:
-    response = await workflow.arun("Hello")
-except RemoteServerUnavailableError as e:
-    print(f"Cannot connect to server: {e.message}")
-    # Handle fallback logic
+    try:
+        await workflow.arun("Hello")
+    except RemoteServerUnavailableError as e:
+        print(f"Cannot connect to server: {e.message}")
+        # Handle fallback logic
+
+asyncio.run(main())
 ```
 
 ## A2A Protocol Support
@@ -165,21 +190,26 @@ except RemoteServerUnavailableError as e:
 ### Connecting to Agno AgentOS via A2A interface
 
 ```python
+import asyncio
+
 from agno.workflow import RemoteWorkflow
 
-workflow = RemoteWorkflow(
-    base_url="http://localhost:7778/a2a/workflows/my-workflow",  # Running on localhost for this example
-    workflow_id="my-workflow",
-    protocol="a2a",
-)
+async def main():
+    workflow = RemoteWorkflow(
+        base_url="http://localhost:7778/a2a/workflows/my-workflow",  # Running on localhost for this example
+        workflow_id="my-workflow",
+        protocol="a2a",
+    )
 
-response = await workflow.arun("Write a story about space exploration")
-print(response.content)
+    response = await workflow.arun("Write a story about space exploration")
+    print(response.content)
 
-# Streaming is also supported
-async for event in workflow.arun("Run the workflow", stream=True):
-    if event.event == "RunContent" and hasattr(event, "content"):
-        print(event.content, end="", flush=True)
+    # Streaming is also supported
+    async for event in workflow.arun("Run the workflow", stream=True):
+        if event.event == "RunContent" and hasattr(event, "content"):
+            print(event.content, end="", flush=True)
+
+asyncio.run(main())
 ```
 
 ## Reference
