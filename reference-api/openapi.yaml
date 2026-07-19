@@ -9,19 +9,30 @@ paths:
       tags:
         - Home
       summary: API Information
-      description: |-
-        Get basic information about this AgentOS API instance, including:
-
-        - API metadata and version
-        - Available capabilities overview
-        - Links to key endpoints and documentation
+      description: Return the AgentOS instance name, ID, and version.
       operationId: get_api_info
       responses:
         '200':
           description: API information retrieved successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                properties:
+                  name:
+                    type: string
+                    title: Name
+                  id:
+                    type: string
+                    title: Id
+                  version:
+                    type: string
+                    title: Version
+                type: object
+                required:
+                  - name
+                  - id
+                  - version
+                title: ApiInfoResponse
               examples:
                 home:
                   summary: Example home response
@@ -339,17 +350,21 @@ paths:
             anyOf:
               - type: string
               - type: 'null'
-            description: Filter by run status (PENDING, RUNNING, COMPLETED, ERROR)
+            description: 'Filter by run status: PENDING, RUNNING, COMPLETED, PAUSED, CANCELLED, ERROR, or REGENERATED'
             title: Status
-          description: Filter by run status (PENDING, RUNNING, COMPLETED, ERROR)
+          description: 'Filter by run status: PENDING, RUNNING, COMPLETED, PAUSED, CANCELLED, ERROR, or REGENERATED'
       responses:
         '200':
           description: List of runs retrieved successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                items:
+                  $ref: '#/components/schemas/RunSchema'
+                type: array
+                title: Response List Agent Runs
         '400':
-          description: Bad Request
+          description: Run listing is unavailable for remote agents
           content:
             application/json:
               schema:
@@ -367,7 +382,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ForbiddenResponse'
         '404':
-          description: Agent not found
+          description: Agent or session not found
           content:
             application/json:
               schema:
@@ -379,11 +394,17 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidationErrorResponse'
         '500':
-          description: Internal Server Error
+          description: Agent resolution failed
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '501':
+          description: The selected agent does not support run listing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotImplementedResponse'
   /agents/{agent_id}/runs/{run_id}/cancel:
     post:
       tags:
@@ -2723,8 +2744,29 @@ paths:
                 title: Response Slack Events Simple Agent
         '400':
           description: Missing Slack headers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
         '403':
           description: Invalid Slack signature
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForbiddenResponse'
+        '500':
+          description: Slack signing is not configured, or the event body is not valid JSON
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
       parameters:
         - name: X-Slack-Request-Timestamp
           in: header
@@ -2770,9 +2812,23 @@ paths:
               schema:
                 $ref: '#/components/schemas/SlackEventResponse'
         '400':
-          description: Malformed interaction payload
+          description: Missing Slack headers or malformed interaction payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
         '403':
           description: Invalid Slack signature
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForbiddenResponse'
+        '500':
+          description: Slack signing is not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
       parameters:
         - name: X-Slack-Request-Timestamp
           in: header
@@ -2786,6 +2842,12 @@ paths:
           schema:
             type: string
           description: HMAC signature for request verification (v0=hash)
+        - name: X-Slack-Retry-Num
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Retry attempt number. Retried interactions return 200 without reprocessing.
       requestBody:
         required: true
         content:
@@ -2809,7 +2871,17 @@ paths:
           description: Successful Response
           content:
             application/json:
-              schema: {}
+              schema:
+                properties:
+                  status:
+                    type: string
+                    title: Status
+                type: object
+                required:
+                  - status
+                title: WhatsAppStatusResponse
+                example:
+                  status: available
   /whatsapp/webhook:
     get:
       tags:
@@ -2819,10 +2891,49 @@ paths:
       operationId: whatsapp_verify_simple_agent
       responses:
         '200':
-          description: Successful Response
+          description: Webhook challenge accepted
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: challenge-token
+        '400':
+          description: No challenge was provided
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '403':
+          description: Invalid verify token or mode
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForbiddenResponse'
+        '500':
+          description: Webhook verification is not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+      parameters:
+        - name: hub.mode
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Webhook verification mode. Meta sends `subscribe`.
+        - name: hub.verify_token
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Verification token configured for the WhatsApp interface.
+        - name: hub.challenge
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Challenge returned as plain text after successful verification.
     post:
       tags:
         - Whatsapp
@@ -7150,12 +7261,6 @@ paths:
                     date: '2025-07-31T00:00:00Z'
                     created_at: '2025-07-31T12:38:52Z'
                     updated_at: '2025-07-31T12:49:01Z'
-        '400':
-          description: Invalid date range parameters
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BadRequestResponse'
         '401':
           description: Unauthorized
           content:
@@ -7168,12 +7273,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ForbiddenResponse'
-        '404':
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NotFoundResponse'
         '422':
           description: Validation Error
           content:
@@ -7181,7 +7280,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidationErrorResponse'
         '500':
-          description: Failed to retrieve metrics
+          description: Metrics retrieval failed. In Agno 2.7.4, invalid or ambiguous database selections surface as 500 responses.
           content:
             application/json:
               schema:
@@ -9420,9 +9519,40 @@ paths:
           description: All databases migrated successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                properties:
+                  message:
+                    type: string
+                    title: Message
+                type: object
+                required:
+                  - message
+                title: MigrationResponse
               example:
                 message: All databases migrated successfully to version 3.0.0
+        '207':
+          description: Some database migrations failed
+          content:
+            application/json:
+              schema:
+                properties:
+                  message:
+                    type: string
+                    title: Message
+                  failed:
+                    type: object
+                    additionalProperties:
+                      type: string
+                    title: Failed
+                type: object
+                required:
+                  - message
+                  - failed
+                title: PartialMigrationResponse
+              example:
+                message: Migrated 2/3 databases to latest version
+                failed:
+                  archive-db: Migration failed
         '400':
           description: Bad Request
           content:
@@ -9488,7 +9618,15 @@ paths:
           description: Database migrated successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                properties:
+                  message:
+                    type: string
+                    title: Message
+                type: object
+                required:
+                  - message
+                title: MigrationResponse
               example:
                 message: Database migrated successfully to version 3.0.0
         '400':
@@ -10073,7 +10211,7 @@ paths:
         - Components
       summary: Get Config Version
       description: Get a specific config version by number.
-      operationId: get_config
+      operationId: get_config_version
       security:
         - HTTPBearer: []
       parameters:
@@ -11405,6 +11543,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '503':
+          description: Service accounts are not supported by the configured database
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailableResponse'
   /service-accounts/{service_account_id}:
     delete:
       tags:

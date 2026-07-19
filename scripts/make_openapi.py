@@ -254,6 +254,33 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
     assert config_example.get("id") == "demo" and "os_id" not in config_example
     config_example["os_id"] = config_example.pop("id")
 
+    home = spec["paths"]["/"]["get"]
+    assert home["description"] == (
+        "Get basic information about this AgentOS API instance, including:\n\n"
+        "- API metadata and version\n"
+        "- Available capabilities overview\n"
+        "- Links to key endpoints and documentation"
+    )
+    home["description"] = "Return the AgentOS instance name, ID, and version."
+    home_schema = home["responses"]["200"]["content"]["application/json"]["schema"]
+    assert home_schema == {}
+    home_schema.update(
+        {
+            "properties": {
+                "name": {"type": "string", "title": "Name"},
+                "id": {"type": "string", "title": "Id"},
+                "version": {"type": "string", "title": "Version"},
+            },
+            "type": "object",
+            "required": ["name", "id", "version"],
+            "title": "ApiInfoResponse",
+        }
+    )
+
+    component_config = spec["paths"]["/components/{component_id}/configs/{version}"]["get"]
+    assert component_config["operationId"] == "get_config"
+    component_config["operationId"] = "get_config_version"
+
     delete_component = spec["paths"]["/components/{component_id}"]["delete"]
     assert delete_component["description"] == "Delete a component by ID."
     delete_component["description"] = (
@@ -342,6 +369,18 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         "surface as 500 responses."
     )
 
+    get_metrics = spec["paths"]["/metrics"]["get"]
+    metrics_get_responses = get_metrics["responses"]
+    assert metrics_get_responses["400"]["description"] == "Invalid date range parameters"
+    assert metrics_get_responses["404"]["description"] == "Not Found"
+    del metrics_get_responses["400"]
+    del metrics_get_responses["404"]
+    assert metrics_get_responses["500"]["description"] == "Failed to retrieve metrics"
+    metrics_get_responses["500"]["description"] = (
+        "Metrics retrieval failed. In Agno 2.7.4, invalid or ambiguous database selections "
+        "surface as 500 responses."
+    )
+
     refresh_metrics = spec["paths"]["/metrics/refresh"]["post"]
     metrics_responses = refresh_metrics["responses"]
     assert metrics_responses["400"]["description"] == "Bad Request"
@@ -353,6 +392,44 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         "Refresh failed. In Agno 2.7.4, failures including invalid database or table selections "
         "surface as 500 responses."
     )
+
+    list_agent_runs = spec["paths"]["/agents/{agent_id}/runs"]["get"]
+    list_runs_schema = list_agent_runs["responses"]["200"]["content"]["application/json"]["schema"]
+    assert list_runs_schema == {}
+    list_runs_schema.update(
+        {
+            "items": {"$ref": "#/components/schemas/RunSchema"},
+            "type": "array",
+            "title": "Response List Agent Runs",
+        }
+    )
+    status_parameters = [
+        parameter for parameter in list_agent_runs["parameters"] if parameter["name"] == "status"
+    ]
+    assert len(status_parameters) == 1
+    status_parameter = status_parameters[0]
+    old_status_description = "Filter by run status (PENDING, RUNNING, COMPLETED, ERROR)"
+    new_status_description = (
+        "Filter by run status: PENDING, RUNNING, COMPLETED, PAUSED, CANCELLED, ERROR, or REGENERATED"
+    )
+    assert status_parameter["description"] == old_status_description
+    assert status_parameter["schema"]["description"] == old_status_description
+    status_parameter["description"] = new_status_description
+    status_parameter["schema"]["description"] = new_status_description
+    list_run_responses = list_agent_runs["responses"]
+    assert list_run_responses["400"]["description"] == "Bad Request"
+    list_run_responses["400"]["description"] = "Run listing is unavailable for remote agents"
+    assert list_run_responses["404"]["description"] == "Agent not found"
+    list_run_responses["404"]["description"] = "Agent or session not found"
+    assert list_run_responses["500"]["description"] == "Internal Server Error"
+    list_run_responses["500"]["description"] = "Agent resolution failed"
+    add_response(
+        list_agent_runs,
+        "501",
+        "The selected agent does not support run listing",
+        "NotImplementedResponse",
+    )
+    sort_responses(list_agent_runs)
 
     revoke_service_account = spec["paths"]["/service-accounts/{service_account_id}"]["delete"]
     assert revoke_service_account["description"] == (
@@ -432,6 +509,16 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         "ServiceUnavailableResponse",
     )
     sort_responses(create_service_account)
+
+    list_service_accounts = spec["paths"]["/service-accounts"]["get"]
+    assert set(list_service_accounts["responses"]) == {"200", "422"}
+    add_response(
+        list_service_accounts,
+        "503",
+        "Service accounts are not supported by the configured database",
+        "ServiceUnavailableResponse",
+    )
+    sort_responses(list_service_accounts)
 
     schedule_operations = (
         ("/schedules", "get", "200", (("503", "Scheduler storage is unavailable", "ServiceUnavailableResponse"),)),
@@ -531,6 +618,50 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
             add_response(operation, status, description, schema_name)
         sort_responses(operation)
 
+    for migration_path, schema_title in (
+        ("/databases/all/migrate", "MigrationResponse"),
+        ("/databases/{db_id}/migrate", "MigrationResponse"),
+    ):
+        migration = spec["paths"][migration_path]["post"]
+        success_schema = migration["responses"]["200"]["content"]["application/json"]["schema"]
+        assert success_schema == {}
+        success_schema.update(
+            {
+                "properties": {"message": {"type": "string", "title": "Message"}},
+                "type": "object",
+                "required": ["message"],
+                "title": schema_title,
+            }
+        )
+
+    migrate_all_databases = spec["paths"]["/databases/all/migrate"]["post"]
+    assert "207" not in migrate_all_databases["responses"]
+    migrate_all_databases["responses"]["207"] = {
+        "description": "Some database migrations failed",
+        "content": {
+            "application/json": {
+                "schema": {
+                    "properties": {
+                        "message": {"type": "string", "title": "Message"},
+                        "failed": {
+                            "type": "object",
+                            "additionalProperties": {"type": "string"},
+                            "title": "Failed",
+                        },
+                    },
+                    "type": "object",
+                    "required": ["message", "failed"],
+                    "title": "PartialMigrationResponse",
+                },
+                "example": {
+                    "message": "Migrated 2/3 databases to latest version",
+                    "failed": {"archive-db": "Migration failed"},
+                },
+            }
+        },
+    }
+    sort_responses(migrate_all_databases)
+
     optimize_memories = spec["paths"]["/optimize-memories"]["post"]
     assert optimize_memories["description"] == (
         "Optimize all memories for a given user using the default summarize strategy. This operation "
@@ -570,6 +701,63 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
 
     whatsapp_path = spec["paths"].get("/whatsapp/webhook")
     if whatsapp_path is not None:
+        whatsapp_status = spec["paths"]["/whatsapp/status"]["get"]
+        status_schema = whatsapp_status["responses"]["200"]["content"]["application/json"]["schema"]
+        assert status_schema == {}
+        status_schema.update(
+            {
+                "properties": {"status": {"type": "string", "title": "Status"}},
+                "type": "object",
+                "required": ["status"],
+                "title": "WhatsAppStatusResponse",
+                "example": {"status": "available"},
+            }
+        )
+
+        whatsapp_verify = whatsapp_path["get"]
+        assert whatsapp_verify.get("parameters") in (None, [])
+        whatsapp_verify["parameters"] = [
+            {
+                "name": "hub.mode",
+                "in": "query",
+                "required": True,
+                "schema": {"type": "string"},
+                "description": "Webhook verification mode. Meta sends `subscribe`.",
+            },
+            {
+                "name": "hub.verify_token",
+                "in": "query",
+                "required": True,
+                "schema": {"type": "string"},
+                "description": "Verification token configured for the WhatsApp interface.",
+            },
+            {
+                "name": "hub.challenge",
+                "in": "query",
+                "required": True,
+                "schema": {"type": "string"},
+                "description": "Challenge returned as plain text after successful verification.",
+            },
+        ]
+        verify_success = whatsapp_verify["responses"]["200"]
+        assert verify_success["content"] == {"application/json": {"schema": {}}}
+        verify_success["description"] = "Webhook challenge accepted"
+        verify_success["content"] = {
+            "text/plain": {
+                "schema": {"type": "string"},
+                "example": "challenge-token",
+            }
+        }
+        add_response(whatsapp_verify, "400", "No challenge was provided", "BadRequestResponse")
+        add_response(whatsapp_verify, "403", "Invalid verify token or mode", "ForbiddenResponse")
+        add_response(
+            whatsapp_verify,
+            "500",
+            "Webhook verification is not configured",
+            "InternalServerErrorResponse",
+        )
+        sort_responses(whatsapp_verify)
+
         whatsapp_webhook = whatsapp_path["post"]
         assert whatsapp_webhook["description"] == "Process incoming WhatsApp messages"
         assert "requestBody" not in whatsapp_webhook
@@ -603,6 +791,49 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
             "InternalServerErrorResponse",
         )
         sort_responses(whatsapp_webhook)
+
+    slack_events_path = spec["paths"].get("/slack/events")
+    if slack_events_path is not None:
+        slack_events = slack_events_path["post"]
+        assert set(slack_events["responses"]) == {"200", "400", "403"}
+        assert "requestBody" not in slack_events
+        slack_events["requestBody"] = {
+            "required": True,
+            "content": {
+                "application/json": {
+                    "schema": {"type": "object", "additionalProperties": True},
+                }
+            },
+        }
+        assert slack_events["responses"]["400"] == {"description": "Missing Slack headers"}
+        slack_events["responses"]["400"] = response_ref("Missing Slack headers", "BadRequestResponse")
+        assert slack_events["responses"]["403"] == {"description": "Invalid Slack signature"}
+        slack_events["responses"]["403"] = response_ref("Invalid Slack signature", "ForbiddenResponse")
+        add_response(
+            slack_events,
+            "500",
+            "Slack signing is not configured, or the event body is not valid JSON",
+            "InternalServerErrorResponse",
+        )
+        sort_responses(slack_events)
+
+        slack_interactions = spec["paths"]["/slack/interactions"]["post"]
+        assert set(slack_interactions["responses"]) == {"200", "400", "403"}
+        assert slack_interactions["responses"]["400"] == {"description": "Malformed interaction payload"}
+        slack_interactions["responses"]["400"] = response_ref(
+            "Missing Slack headers or malformed interaction payload", "BadRequestResponse"
+        )
+        assert slack_interactions["responses"]["403"] == {"description": "Invalid Slack signature"}
+        slack_interactions["responses"]["403"] = response_ref(
+            "Invalid Slack signature", "ForbiddenResponse"
+        )
+        add_response(
+            slack_interactions,
+            "500",
+            "Slack signing is not configured",
+            "InternalServerErrorResponse",
+        )
+        sort_responses(slack_interactions)
 
     agui_path = spec["paths"].get("/agui")
     if agui_path is not None:
@@ -828,6 +1059,24 @@ def preserve_curated_slack_metadata(spec: dict) -> dict:
 
         assert ACTION_CHECK_STATUS == "check_status"
         interactions = spec["paths"]["/slack/interactions"]["post"]
+        interaction_parameter_names = [parameter["name"] for parameter in interactions["parameters"]]
+        retry_parameter = {
+            "name": "X-Slack-Retry-Num",
+            "in": "header",
+            "required": False,
+            "schema": {"type": "string"},
+            "description": "Retry attempt number. Retried interactions return 200 without reprocessing.",
+        }
+        if "X-Slack-Retry-Num" not in interaction_parameter_names:
+            assert interaction_parameter_names == ["X-Slack-Request-Timestamp", "X-Slack-Signature"]
+            interactions["parameters"].append(retry_parameter)
+        else:
+            assert interaction_parameter_names == [
+                "X-Slack-Request-Timestamp",
+                "X-Slack-Signature",
+                "X-Slack-Retry-Num",
+            ]
+            assert interactions["parameters"][-1] == retry_parameter
         old_actions = (
             "- `row_approve` - Approve a pending tool call\n"
             "- `row_reject` - Reject a pending tool call\n"
