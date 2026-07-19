@@ -2937,8 +2937,8 @@ $Env:OPENAI_API_KEY="your_openai_api_key_here"
 
     root_sub(
         "deploy/templates/modal/reference.mdx",
-        "| Tail logs | `modal app logs agentos` |",
         "| Tail logs | `modal app logs agentos --follow` |",
+        "| Tail logs | `modal app logs agentos` |",
     )
     root_sub(
         "deploy/templates/modal/reference.mdx",
