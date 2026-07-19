@@ -1652,7 +1652,15 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "91_tools/mcp/mcp_toolbox_for_db.py": {
         "repo_layout": True,
-        "pre_run_steps": [MCP_TOOLBOX_STEP],
+        "pre_code_warning": "The source's manual-loading path constructs `MCPToolbox` without a selector, so its first `load_toolset()` call fails. In v2.7.4, `auth_token_getters` and `bound_params` are also discarded when the loaded core tools are mapped to Agno MCP functions. Apply the correction below before running that path.",
+        "pre_run_steps": [
+            MCP_TOOLBOX_STEP,
+            (
+                "Correct manual toolset selection",
+                "In `run_agent_manual_loading`, initialize `MCPToolbox` with `toolsets=[\"hotel-management\", \"booking-system\"]`. Remove `auth_token_getters` and `bound_params` from both `load_toolset()` calls because v2.7.4 does not apply them when invoking the returned MCP functions.",
+                None,
+            ),
+        ],
     },
     "11_memory/integrations/dakera_integration.py": {
         "intro_override": "The source-fidelity example stores memory in self-hosted Dakera, then sends recalled memory to OpenAI as agent context. Its pinned client targets an older Dakera API and requires migration before use.",
@@ -2167,7 +2175,15 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "91_tools/mcp/mcp_toolbox_demo/agent.py": {
         "repo_layout": True,
-        "pre_run_steps": [MCP_TOOLBOX_STEP],
+        "pre_code_warning": "The source's manual-loading path constructs `MCPToolbox` without a selector, so its first `load_toolset()` call fails. In v2.7.4, `auth_token_getters` and `bound_params` are also discarded when the loaded core tools are mapped to Agno MCP functions. Apply the correction below before running that path.",
+        "pre_run_steps": [
+            MCP_TOOLBOX_STEP,
+            (
+                "Correct manual toolset selection",
+                "In `run_agent_manual_loading`, initialize `MCPToolbox` with `toolsets=[\"hotel-management\", \"booking-system\"]`. Remove `auth_token_getters` and `bound_params` from both `load_toolset()` calls because v2.7.4 does not apply them when invoking the returned MCP functions.",
+                None,
+            ),
+        ],
     },
     "91_tools/mcp/mcp_toolbox_demo/hotel_management_typesafe.py": {
         "repo_layout": True,
