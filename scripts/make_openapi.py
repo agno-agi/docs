@@ -316,6 +316,139 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         "title": "BackgroundRunResponse",
     }
 
+    for schema_name in (
+        "RunCheckpointEntry",
+        "RunCheckpointListResponse",
+        "RunCheckpointSnapshotResponse",
+    ):
+        assert schema_name not in schemas
+
+    def nullable_string_schema() -> dict:
+        return {"anyOf": [{"type": "string"}, {"type": "null"}]}
+
+    schemas["RunCheckpointEntry"] = {
+        "properties": {
+            "checkpoint_id": {
+                **nullable_string_schema(),
+                "title": "Checkpoint Id",
+                "description": "One-based display ID, or null when the requested boundary is not on the checkpoint timeline.",
+            },
+            "run_id": {
+                **nullable_string_schema(),
+                "title": "Run Id",
+                "description": "Run that contains the checkpoint.",
+            },
+            "session_id": {
+                **nullable_string_schema(),
+                "title": "Session Id",
+                "description": "Session that contains the run.",
+            },
+            "message_index": {
+                "type": "integer",
+                "minimum": 0,
+                "title": "Message Index",
+                "description": "Message boundary represented by the checkpoint.",
+            },
+            "continue_from": {
+                "type": "integer",
+                "minimum": 0,
+                "title": "Continue From",
+                "description": "Value to send as continue_from when continuing the run.",
+            },
+            "status": {
+                **nullable_string_schema(),
+                "title": "Status",
+                "description": "Checkpoint status or current run status.",
+            },
+            "reason": {
+                "type": "string",
+                "title": "Reason",
+                "description": "Why this boundary was returned.",
+            },
+            "created_at": {
+                "anyOf": [{"type": "integer"}, {"type": "null"}],
+                "title": "Created At",
+                "description": "Unix timestamp for the checkpoint or run.",
+            },
+            "message_id": {
+                **nullable_string_schema(),
+                "title": "Message Id",
+                "description": "Message ID at the checkpoint boundary.",
+            },
+            "message_role": {
+                **nullable_string_schema(),
+                "title": "Message Role",
+                "description": "Role of the message at the checkpoint boundary.",
+            },
+            "message_preview": {
+                **nullable_string_schema(),
+                "title": "Message Preview",
+                "description": "Truncated message content at the checkpoint boundary.",
+            },
+            "is_latest": {
+                "type": "boolean",
+                "title": "Is Latest",
+                "description": "Whether this is the final message boundary in the stored run.",
+            },
+        },
+        "type": "object",
+        "required": [
+            "checkpoint_id",
+            "run_id",
+            "session_id",
+            "message_index",
+            "continue_from",
+            "status",
+            "reason",
+            "created_at",
+            "message_id",
+            "message_role",
+            "message_preview",
+            "is_latest",
+        ],
+        "title": "RunCheckpointEntry",
+        "description": "A continuation boundary derived from a stored run transcript.",
+    }
+    schemas["RunCheckpointListResponse"] = {
+        "properties": {
+            "run_id": {
+                "type": "string",
+                "title": "Run Id",
+                "description": "Run whose checkpoints were listed.",
+            },
+            "session_id": {
+                "type": "string",
+                "title": "Session Id",
+                "description": "Session that contains the run.",
+            },
+            "checkpoints": {
+                "type": "array",
+                "items": {"$ref": "#/components/schemas/RunCheckpointEntry"},
+                "title": "Checkpoints",
+                "description": "Checkpoint boundaries in message order.",
+            },
+        },
+        "type": "object",
+        "required": ["run_id", "session_id", "checkpoints"],
+        "title": "RunCheckpointListResponse",
+    }
+    schemas["RunCheckpointSnapshotResponse"] = {
+        "properties": {
+            "checkpoint": {"$ref": "#/components/schemas/RunCheckpointEntry"},
+            "snapshot": {
+                "anyOf": [
+                    {"$ref": "#/components/schemas/RunSchema"},
+                    {"$ref": "#/components/schemas/TeamRunSchema"},
+                ],
+                "title": "Snapshot",
+                "description": "Agent or team run serialized at the requested message boundary.",
+            },
+        },
+        "type": "object",
+        "required": ["checkpoint", "snapshot"],
+        "title": "RunCheckpointSnapshotResponse",
+    }
+
     run_endpoints = (
         ("agents", "agent_id", "RunSchema"),
         ("teams", "team_id", "TeamRunSchema"),
@@ -354,6 +487,18 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         continue_sse = continue_run["responses"]["200"]["content"]["text/event-stream"]
         assert "schema" not in continue_sse
         continue_sse["schema"] = {"type": "string"}
+
+    for component, id_parameter in (("agents", "agent_id"), ("teams", "team_id")):
+        checkpoint_root = f"/{component}/{{{id_parameter}}}/runs/{{run_id}}/checkpoints"
+        list_checkpoints = spec["paths"][checkpoint_root]["get"]
+        list_schema = list_checkpoints["responses"]["200"]["content"]["application/json"]["schema"]
+        assert list_schema == {}
+        list_schema["$ref"] = "#/components/schemas/RunCheckpointListResponse"
+
+        checkpoint_snapshot = spec["paths"][f"{checkpoint_root}/{{message_index}}"]["get"]
+        snapshot_schema = checkpoint_snapshot["responses"]["200"]["content"]["application/json"]["schema"]
+        assert snapshot_schema == {}
+        snapshot_schema["$ref"] = "#/components/schemas/RunCheckpointSnapshotResponse"
 
     continue_agent_run = spec["paths"]["/agents/{agent_id}/runs/{run_id}/continue"]["post"]
     continue_agent_responses = continue_agent_run["responses"]
@@ -1394,7 +1539,7 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         for family, label in a2a_families:
             card_operation = spec["paths"][f"/a2a/{family}/{{id}}/.well-known/agent-card.json"]["get"]
             assert card_operation.get("security") is None
-            card_operation["security"] = [{"HTTPBearer": []}]
+            card_operation["security"] = [{}, {"HTTPBearer": []}]
             card_success = card_operation["responses"]["200"]
             assert card_success == {
                 "description": "Successful Response",
@@ -1426,7 +1571,7 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
                         " Scoped non-admin callers must identify the task's session with `params.contextId`."
                     )
                 assert operation.get("security") is None
-                operation["security"] = [{"HTTPBearer": []}]
+                operation["security"] = [{}, {"HTTPBearer": []}]
                 assert "requestBody" not in operation
                 operation["requestBody"] = {
                     "required": True,
@@ -1498,7 +1643,7 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
                 path = f"/a2a/{family}/{{id}}/v1/message:{action}"
                 operation = spec["paths"][path]["post"]
                 assert operation.get("security") is None
-                operation["security"] = [{"HTTPBearer": []}]
+                operation["security"] = [{}, {"HTTPBearer": []}]
                 assert [parameter["name"] for parameter in operation["parameters"]] == ["id"]
                 operation["parameters"].append(
                     {
@@ -1578,7 +1723,7 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
             assert operation.get("deprecated") is None
             operation["deprecated"] = True
             assert operation.get("security") is None
-            operation["security"] = [{"HTTPBearer": []}]
+            operation["security"] = [{}, {"HTTPBearer": []}]
             assert "parameters" not in operation
             operation["parameters"] = [
                 {

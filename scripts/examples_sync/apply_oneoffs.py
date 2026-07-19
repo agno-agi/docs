@@ -2840,6 +2840,70 @@ python cookbook/05_agent_os/approvals/team/team_and_member_agent_both_level_appr
         "[Hugging Face GPT-OSS Essay Writer](/examples/models/huggingface/llama-essay-writer)",
     )
 
+    sub(
+        "agent-os/rbac/symmetric/user-isolation.mdx",
+        """---
+
+Build on [Symmetric RBAC Basic]""",
+        """---
+
+<Warning>
+  The isolation matrix in this v2.7.4 source example has one incorrect row. Because JWT authorization is configured, a request without a token returns `401`. It does not bypass isolation or gain access to stored data.
+</Warning>
+
+Build on [Symmetric RBAC Basic]""",
+    )
+    sub(
+        "knowledge/production/ssrf-allowed-hosts.mdx",
+        """---
+
+```python ssrf_allowed_hosts.py""",
+        """---
+
+<Warning>
+  In v2.7.4, `WebsiteReader`, `LLMsTxtReader`, and `WebSearchReader` validate redirect targets through their HTTP request hooks. `FirecrawlReader` and `DoclingReader` validate the submitted URL, then delegate the fetch. Their `allowed_hosts` checks do not validate every downstream redirect.
+</Warning>
+
+```python ssrf_allowed_hosts.py""",
+    )
+    sub(
+        "agent-os/interfaces/a2a/multi-agent-a2a/weather-agent.mdx",
+        """---
+
+```python weather_agent.py""",
+        """---
+
+<Warning>
+  The URLs in this v2.7.4 source docstring omit the default `/a2a` prefix. Use `/a2a/agents/{id}/v1/message:send`, `/a2a/agents/{id}/v1/message:stream`, and `/a2a/agents/{id}/.well-known/agent-card.json`.
+</Warning>
+
+```python weather_agent.py""",
+    )
+    sub(
+        "agent-os/rbac/symmetric/advanced-scopes.mdx",
+        """---
+
+Issue HS256 tokens""",
+        """---
+
+<Warning>
+  This v2.7.4 source says it verifies token audiences, but `verify_audience` remains disabled and the issued tokens have no `aud` claim. To reject tokens created for another AgentOS, set `verify_audience=True` in `AuthorizationConfig` and add `\"aud\": \"my-agent-os\"` to the token payload. Until then, another instance using the same HMAC secret can accept these tokens.
+</Warning>
+
+Issue HS256 tokens""",
+    )
+    sub(
+        "models/openai/chat/image-agent-bytes.mdx",
+        """  <Step title="Add the sample image">
+    Place a JPEG named `sample.jpg` in the same directory as the saved Python file.
+  </Step>
+""",
+        """  <Step title="Use the downloaded image">
+    The script downloads `sample.jpg` beside the saved Python file. No input image is required. An existing file with that name is overwritten.
+  </Step>
+""",
+    )
+
     root_sub(
         "state/agent/last-n-session-messages.mdx",
         '''title: Last N Messages
