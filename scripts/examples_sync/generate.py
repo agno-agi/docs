@@ -657,12 +657,12 @@ GROQ_MODEL_MIGRATIONS: dict[str, tuple[str, str, str]] = {
         "Replace `llama-3.3-70b-versatile` with `openai/gpt-oss-120b` in the saved file.",
     ),
     "qwen/qwen3-32b": (
-        "For free and developer tiers, Groq will shut down `qwen/qwen3-32b` on July 17, 2026. Replace it with `qwen/qwen3.6-27b` before that date.",
+        "Groq shut down `qwen/qwen3-32b` for free and developer tiers on July 17, 2026. Replace it with `qwen/qwen3.6-27b`.",
         "Replace Qwen3 32B",
         "Replace `qwen/qwen3-32b` with `qwen/qwen3.6-27b` in the saved file.",
     ),
     "meta-llama/llama-4-scout-17b-16e-instruct": (
-        "For free and developer tiers, Groq will shut down `meta-llama/llama-4-scout-17b-16e-instruct` on July 17, 2026. Replace it with the vision-capable `qwen/qwen3.6-27b` before that date.",
+        "Groq shut down `meta-llama/llama-4-scout-17b-16e-instruct` for free and developer tiers on July 17, 2026. Replace it with the vision-capable `qwen/qwen3.6-27b`.",
         "Replace Llama 4 Scout",
         "Replace `meta-llama/llama-4-scout-17b-16e-instruct` with `qwen/qwen3.6-27b` in the saved file.",
     ),
@@ -4769,6 +4769,19 @@ def source_link(cookbook_rel: str, render_override: dict[str, object], agno_root
     return f"https://github.com/agno-agi/agno/blob/{ref}/{cookbook_rel}"
 
 
+def missing_docstring_cookbook_paths(docstring: str, agno_root: Path) -> list[str]:
+    """Return cookbook run paths named by the docstring that no longer exist."""
+    paths = sorted(
+        set(
+            re.findall(
+                r"\bpython\s+`?(cookbook/[A-Za-z0-9_./-]+\.py)`?",
+                docstring,
+            )
+        )
+    )
+    return [path for path in paths if not (agno_root / path).is_file()]
+
+
 def render(
     source_path: Path, cookbook_rel: str, src: str, agno_root: Path, slug: str | None = None
 ) -> str:
@@ -4792,6 +4805,18 @@ def render(
     all_srcs = [src] + [s for _, s in sibling_srcs]
     req = derive_requirements(all_srcs, agno_root, skip_modules)
     render_override = apply_source_render_override(req, cookbook_rel, all_srcs)
+    missing_run_paths = missing_docstring_cookbook_paths(docstring or "", agno_root)
+    if missing_run_paths and not render_override.get("pre_code_warning"):
+        formatted_paths = [f"`{path}`" for path in missing_run_paths]
+        if len(formatted_paths) == 1:
+            path_text = formatted_paths[0]
+            warning = f"This example's source docstring names a removed cookbook path: {path_text}."
+        else:
+            path_text = ", ".join(formatted_paths[:-1]) + f", and {formatted_paths[-1]}"
+            warning = f"This example's source docstring names removed cookbook paths: {path_text}."
+        render_override["pre_code_warning"] = (
+            f"{warning} Follow the generated Run step below."
+        )
     full_source_url = source_link(cookbook_rel, render_override, agno_root)
     if "intro_override" in render_override:
         intro_override = render_override["intro_override"]
