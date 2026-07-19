@@ -114,13 +114,17 @@ Production requires a `JWT_VERIFICATION_KEY` from AgentOS. You need the Railway 
 2. Open [os.agno.com](https://os.agno.com) and log in.
 3. Click **Connect OS**, choose **Live**, and paste your Railway URL.
 4. Go to **Settings** → **OS & Security** and turn on **Token-Based Authorization (JWT)**. The UI generates a key pair and shows you the public key.
-5. Add the public key to `.env.production` without surrounding quotes:
+5. Leave `JWT_VERIFICATION_KEY` unset in `.env.production`. Set it directly on the `dash` service, preserving the PEM line breaks:
 
 ```bash
-JWT_VERIFICATION_KEY=-----BEGIN PUBLIC KEY-----
+railway variables --set "JWT_VERIFICATION_KEY=-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkq...
------END PUBLIC KEY-----
+-----END PUBLIC KEY-----" --service dash
 ```
+
+<Warning>
+  The current Dash scripts cannot safely share a multiline PEM through `.env.production`. `railway_up.sh` sources the file and requires shell quoting, while `railway_env.sh` leaves a trailing quote in a quoted multiline value.
+</Warning>
 
   </Step>
 
@@ -131,7 +135,7 @@ MIIBIjANBgkq...
 ./scripts/railway_redeploy.sh
 ```
 
-`railway_env.sh` reads `.env.production` and sets each variable on the Railway service. It handles multiline values like PEM keys and is safe to run repeatedly.
+`railway_env.sh` reads the remaining values from `.env.production` and sets them on the Railway service. It is safe to run repeatedly.
 
   </Step>
 </Steps>
