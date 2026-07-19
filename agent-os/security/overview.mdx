@@ -1,18 +1,18 @@
 ---
 title: "Security & Auth"
 sidebarTitle: "Security & Auth"
-description: "Authentication modes, service account tokens, and the single auth layer covering every AgentOS surface."
+description: "Authentication modes, service account tokens, and how AgentOS protects each surface."
 ---
 
-AgentOS installs one auth layer that covers the REST API, the MCP server at `/mcp`, interfaces (A2A, AG-UI), and WebSockets. The layer runs in one of three authentication modes:
+AgentOS applies the parent authentication mode to REST, WebSockets, non-self-authenticating interfaces, and `/mcp` when MCP OAuth is not configured. Self-authenticating webhook interfaces verify their own requests. With `mcp_auth`, the mounted `/mcp` app uses its own OAuth provider. The parent surfaces have three modes:
 
 | Mode | Active when | Behavior |
 |------|-------------|----------|
-| `jwt` | `authorization=True`, JWT env vars (`JWT_VERIFICATION_KEY` / `JWT_JWKS_FILE`), or a manually installed `JWTMiddleware` | JWTs prove identity and scopes control permissions per endpoint. Recommended for production. |
+| `jwt` | `authorization=True`, JWT env vars (`JWT_VERIFICATION_KEY` / `JWT_JWKS_FILE`), or a manually installed `JWTMiddleware` | JWTs prove identity. With authorization enabled, scopes control permissions per endpoint. Recommended for production. |
 | `security_key` | `OS_SECURITY_KEY` is set and no JWT source is configured | A shared key proves identity. No per-endpoint permissions. |
-| `none` | Neither is configured | All requests pass. Development only. |
+| `none` | Neither is configured | Anonymous requests pass. `/mcp` is also open unless `mcp_auth` is configured. Development only. |
 
-JWT configuration takes precedence over the security key. Service account tokens authenticate in all three modes.
+JWT configuration takes precedence over the security key. A database-backed verifier lets protected surfaces accept service account tokens and enforce their scopes. A database alone does not enable the parent authentication layer or close `none` mode.
 
 ## Authorization (JWT)
 
@@ -42,7 +42,7 @@ curl -X POST http://localhost:7777/agents/my-agent/runs \
   -d "message=hello" -d "stream=false"
 ```
 
-Service account scopes are ACL data stored in your database, so they are enforced in every authentication mode, including `security_key` and `none`.
+Service account scopes are ACL data stored in your database. REST routes enforce them in every parent authentication mode, including `security_key` and `none`.
 
 See [Service Accounts](/agent-os/security/authorization/service-accounts) for minting, scoping, and revocation.
 

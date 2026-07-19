@@ -154,23 +154,26 @@ Combine `tools=[...]` with `enable_builtin_tools=False` to expose a single purpo
 
 ## Authentication
 
-Authentication is enforced on `/mcp` in every mode. One auth layer covers the REST routes and the MCP server: any credential that works against the API works against `/mcp`, passed as a Bearer token.
+When `mcp_auth` is unset, `/mcp` follows the parent AgentOS authentication mode. JWT and security-key modes require bearer credentials. The `none` mode permits anonymous MCP requests. When `mcp_auth` is set, the configured FastMCP provider protects the mounted app and the parent middleware exempts its OAuth paths.
 
 | Mode | Server setup | Client credential |
 |------|--------------|-------------------|
 | Security key | `export OS_SECURITY_KEY="your-key"` | `Authorization: Bearer <security key>` |
-| Service account token | Issue via `POST /service-accounts` (requires a database) | `Authorization: Bearer agno_pat_...` |
 | JWT | `AgentOS(authorization=True, ...)` | `Authorization: Bearer <JWT>` |
+| MCP OAuth | `AgentOS(mcp_auth=...)` | Credential accepted by the configured FastMCP provider |
+| Open | No JWT source, security key, or `mcp_auth` | No credential required |
+
+When the parent authentication layer is active and database-backed verification is available, it also accepts valid service account tokens and enforces their scopes. A database alone does not activate authentication on an otherwise open `none` deployment. On that open `/mcp` endpoint, bearer values are ignored and the request remains anonymous.
 
 With `authorization=True`, each tool call is checked against the scopes of its equivalent REST route: `run_agent` requires the same scopes as `POST /agents/{id}/runs`, `get_sessions` the same as `GET /sessions`. See [Security & Auth](/agent-os/security/overview).
 
-The `authorize` gate on `MCPServerConfig` layers on top of authentication: it receives the verified `user_id` and can reject callers per request. Without `authorization=True` no JWT layer resolves the caller, so the gate is called with `user_id=None`. Make sure your gate handles `None`, and return `False` if you want to reject unauthenticated callers.
+The `authorize` gate on `MCPServerConfig` runs after the configured authentication path. It receives the caller's `user_id` when parent authentication, MCP OAuth, or a valid service account token establishes one. On an open endpoint, anonymous calls pass `user_id=None`. Make sure your gate handles `None`, and return `False` to reject unauthenticated callers.
 
 ## Transport Security
 
 fastmcp's built-in Host/Origin guard is disabled on `/mcp`, so `MCPServerConfig.allowed_hosts` acts as the transport guard instead:
 
-- Left unset, the default depends on your auth mode. A server with authentication (a security key or JWT) skips host validation, because every request already has to prove itself. An open server gets localhost-only validation, since that is exactly the setup DNS rebinding attacks target.
+- Left unset, the default depends on your auth mode. A server with authentication (a security key, JWT, or MCP OAuth) skips host validation, because every request already has to prove itself. An open server gets localhost-only validation, since that is exactly the setup DNS rebinding attacks target.
 - When set, the request `Host` (and `Origin`, when present) must match your list or the localhost defaults (`localhost`, `127.0.0.1`, `[::1]`). Anything else is rejected with 400 before it reaches the MCP machinery. `*.example.com` wildcard patterns are supported.
 
 This is DNS-rebinding protection: it stops a malicious web page from driving an always-on local MCP server through a rebound DNS name. List only your deploy or tunnel host; localhost works out of the box.
