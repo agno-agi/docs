@@ -2186,7 +2186,7 @@ openapi: get /approvals/count
     root_sub(
         "examples/tools/dalle-tools.mdx",
         "The pinned source expected the `openai` package and an `OPENAI_API_KEY`. Its `DalleTools` calls no longer run against the current OpenAI API.",
-        "This example expected the `openai` package and an `OPENAI_API_KEY`. Its `DalleTools` calls no longer run against the current OpenAI API.",
+        "This example expected the `openai` package and an `OPENAI_API_KEY`. Its `DalleTools` calls no longer run because DALL-E 2 and DALL-E 3 were removed from the OpenAI API on May 12, 2026.",
     )
     root_sub(
         "tools/toolkits/models/azure-openai.mdx",
@@ -2939,8 +2939,8 @@ $Env:OPENAI_API_KEY="your_openai_api_key_here"
 
     root_sub(
         "deploy/templates/modal/reference.mdx",
-        "| Tail logs | `modal app logs agentos --follow` |",
         "| Tail logs | `modal app logs agentos` |",
+        "| Tail logs | `modal app logs agentos --follow` |",
     )
     root_sub(
         "deploy/templates/modal/reference.mdx",

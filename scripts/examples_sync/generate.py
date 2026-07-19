@@ -2082,6 +2082,9 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "05_agent_os/interfaces/agui/reasoning_agent.py": {
         "source_link_ref": "pinned-tag",
     },
+    "05_agent_os/interfaces/agui/tool_confirmation.py": {
+        "run_note": "This helper is imported by [AG-UI Showcase](/examples/agent-os/interfaces/agui/showcase), which mounts it at `/tool_confirmation` and serves on port 9001. Run the showcase entry point instead.",
+    },
     "05_agent_os/interfaces/telegram/reasoning_agent.py": {
         "intro_override": "Run a Telegram bot with structured reasoning, DuckDuckGo web search, and SQLite session persistence.",
     },
