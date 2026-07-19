@@ -1,0 +1,91 @@
+---
+title: AgentOS Control Plane
+description: "Test, inspect, and manage an AgentOS runtime from a web interface."
+---
+
+The AgentOS Control Plane is the web interface for working with the agents, teams, and workflows served by your AgentOS runtime.
+
+<Frame caption="AgentOS Control Plane">
+  <img
+    src="/images/agentos-full-screenshot.png"
+    alt="AgentOS Control Plane showing agents, teams, workflows, and connected runtimes"
+    style={{ borderRadius: "0.5rem" }}
+  />
+</Frame>
+
+Start a local runtime with a database, tracing, and the scheduler:
+
+```bash
+uv pip install -U "agno[openai,os,sqlite]"
+export OPENAI_API_KEY=***
+```
+
+```python control_plane.py
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIResponses
+from agno.os import AgentOS
+
+db = SqliteDb(db_file="tmp/agent.db")
+
+agent = Agent(
+    id="assistant",
+    model=OpenAIResponses(id="gpt-5.5"),
+    db=db,
+)
+
+agent_os = AgentOS(
+    agents=[agent],
+    db=db,
+    tracing=True,
+    scheduler=True,
+)
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="control_plane:app", reload=True)
+```
+
+Open [os.agno.com](https://os.agno.com), add a local AgentOS, and connect `http://localhost:7777`.
+
+## What you can do
+
+| Developer task | Control Plane capability |
+|----------------|--------------------------|
+| Test components | Chat with registered agents and teams, run workflows, and follow streamed output |
+| Debug runs | Browse sessions and inspect model, tool, agent, team, and workflow spans when tracing is enabled |
+| Manage context | Search knowledge content and view or update memories exposed by the runtime |
+| Build in Studio | Compose and version agents, teams, and workflows from a registered component catalog |
+| Review approvals | Inspect and resolve approval records created by approval-enabled tools |
+| Operate schedules | Create, enable, disable, trigger, and inspect schedules backed by the AgentOS database |
+
+Studio uses a `Registry` and an AgentOS `db`. Approvals and schedules also require an AgentOS `db`. Set `scheduler=True` to run enabled cron schedules automatically.
+
+## How the connection works
+
+| Layer | Responsibility |
+|-------|----------------|
+| Browser | Loads the control plane and sends requests to the AgentOS endpoint you connect |
+| AgentOS runtime | Runs components, exposes FastAPI endpoints, and applies the authentication and authorization you configure |
+| Configured databases | Store the sessions, memories, traces, approvals, schedules, and Studio component versions available through the runtime |
+
+Runtime records shown in the control plane are read through your AgentOS API. Model providers, tools, telemetry, interfaces, and custom exporters follow their own configuration and data paths.
+
+For production, serve AgentOS over HTTPS and configure [Security & Auth](/agent-os/security/overview) before connecting the endpoint.
+
+## Development workflow
+
+1. Register your agents, teams, and workflows with AgentOS.
+2. Start the runtime and connect its endpoint.
+3. Run representative inputs from the chat interface.
+4. Inspect the session and trace when a result needs attention.
+5. Update the component in Python or Studio, then run it again.
+6. Connect the deployed runtime and apply its production access controls.
+
+## Developer Resources
+
+- [Full Control Plane guide](/agent-os/control-plane)
+- [Build and version components in Studio](/agent-os/studio/introduction)
+- [Configure AgentOS tracing](/agent-os/tracing/overview)
+- [Review and resolve approvals](/agent-os/approvals/overview)
+- [Configure Security & Auth](/agent-os/security/overview)
