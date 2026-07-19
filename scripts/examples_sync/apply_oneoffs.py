@@ -1375,14 +1375,14 @@ def pin_agno_clone_commands() -> None:
         print(f"  pinned {total} Agno clone commands in {len(matches)} files")
 
 
-AGNO_COOKBOOK_LINK_RE = re.compile(
+AGNO_RELEASE_LINK_RE = re.compile(
     r"(https://github\.com/agno-agi/agno/(?:blob|tree)/)"
-    r"([^\s)\"'`]+?)(/cookbook/)"
+    r"([^\s)\"'`]+?)(/(?:cookbook|libs/agno)/)"
 )
 
 
-def pin_agno_cookbook_link_revisions(text: str) -> tuple[str, int]:
-    """Return text with every cookbook link pinned and the replacement count."""
+def pin_agno_release_link_revisions(text: str) -> tuple[str, int]:
+    """Return text with release-owned source links pinned and the replacement count."""
     count = 0
 
     def replace(match: re.Match[str]) -> str:
@@ -1392,11 +1392,11 @@ def pin_agno_cookbook_link_revisions(text: str) -> tuple[str, int]:
         count += 1
         return f"{match.group(1)}{gen.EXPECTED_AGNO_TAG}{match.group(3)}"
 
-    return AGNO_COOKBOOK_LINK_RE.sub(replace, text), count
+    return AGNO_RELEASE_LINK_RE.sub(replace, text), count
 
 
-def pin_agno_cookbook_links() -> None:
-    """Pin tracked MDX cookbook links to the sealed docs source tag."""
+def pin_agno_release_links() -> None:
+    """Pin tracked MDX cookbook and implementation links to the sealed tag."""
     global would_apply
 
     result = subprocess.run(
@@ -1409,20 +1409,20 @@ def pin_agno_cookbook_links() -> None:
     for relative_path in result.stdout.splitlines():
         path = ROOT / relative_path
         text = path.read_text(encoding="utf-8")
-        pinned_text, count = pin_agno_cookbook_link_revisions(text)
+        pinned_text, count = pin_agno_release_link_revisions(text)
         if count:
             matches.append((path, count))
             if not CHECK:
                 path.write_text(pinned_text, encoding="utf-8")
     if not matches:
-        print(f"  Agno cookbook links already pinned to {gen.EXPECTED_AGNO_TAG}")
+        print(f"  Agno release links already pinned to {gen.EXPECTED_AGNO_TAG}")
         return
     total = sum(count for _, count in matches)
     if CHECK:
         would_apply += len(matches)
-        print(f"  would pin {total} Agno cookbook links in {len(matches)} files")
+        print(f"  would pin {total} Agno release links in {len(matches)} files")
     else:
-        print(f"  pinned {total} Agno cookbook links in {len(matches)} files")
+        print(f"  pinned {total} Agno release links in {len(matches)} files")
 
 
 def docs_path(slug: str) -> Path:
@@ -4474,9 +4474,10 @@ The source uses the retired `imagen-4.0-generate-preview-05-20` model, the remov
     #     corresponding entries in the hand-maintained complete index.
     repair_toolkit_index()
 
-    # Keep every tracked cookbook link on the same sealed source as its code
-    # fence and clone command. Run this after fixes that add resource links.
-    pin_agno_cookbook_links()
+    # Keep every tracked cookbook and implementation link on the same sealed
+    # source as its code fence and clone command. Run this after fixes that add
+    # resource links.
+    pin_agno_release_links()
 
     # 13. Preserve the reviewed byte-level terminal-newline convention after
     #     deterministic reconstruction.
