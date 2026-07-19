@@ -3,7 +3,7 @@ title: "Invoices and receipts"
 description: "Header fields, line items, and the path from PDF to a database row."
 ---
 
-The shape AP teams need: a header (vendor, totals, dates) and a list of line items. The schema is the contract with downstream systems.
+Accounts payable systems usually need invoice header fields and a list of line items. Define that contract as a Pydantic schema before writing the result downstream.
 
 ```python
 from typing import List, Optional
@@ -54,11 +54,11 @@ invoice = agent.run(
 #         quantity=12, unit_price=99.0, amount=1188.0), LineItem(...)])
 ```
 
-The hard part is the missing-field discipline. A hallucinated `total` corrupts the AP ledger. Two lines in the instructions carry that discipline: "Null for missing fields" and "Do not invent line items". Without them, a model asked for a complete object tends to fill the gaps in a noisy scan with plausible values.
+Handle missing fields explicitly. The instructions tell the agent to return `null` for absent values and prohibit invented line items. Check the resulting `None` values before writing the invoice to the AP ledger.
 
 ## Persist the row
 
-The agent's job ends at a validated `Invoice`. The next step is a normal INSERT. Pydantic `.model_dump()` gives you a dict you can hand to any driver.
+A validated `Invoice` is ready for persistence. Pydantic `.model_dump()` gives you a dictionary you can pass to any database driver.
 
 ```python
 from sqlalchemy import create_engine, text
@@ -89,11 +89,11 @@ with engine.begin() as conn:
         )
 ```
 
-One insert for the header and one per line item. The schema decides the table layout; the agent decides the values.
+Insert the header once, then insert each line item with the returned invoice ID. The schema maps cleanly to separate header and line tables.
 
 ## Receipts
 
-Receipts are invoices with a thinner header: merchant, purchase date, currency, total. Keep the same line-item shape. The same agent and the same instructions work; only `output_schema` changes.
+For receipts, use a smaller header with the merchant, purchase date, currency, and total. Keep the same line-item shape and change `output_schema` to `Receipt`.
 
 ```python
 class Receipt(BaseModel):

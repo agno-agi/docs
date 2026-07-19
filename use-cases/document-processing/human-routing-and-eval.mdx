@@ -1,9 +1,9 @@
 ---
 title: "Human routing and eval"
-description: "Confidence-gated approval and accuracy tracking against a golden set."
+description: "Route low-confidence fields for approval and track extraction accuracy against a golden set."
 ---
 
-Two production concerns the labeling docs leave open: routing low-confidence fields to a human, and tracking accuracy as the system runs over time. Both are short patterns on top of the same extraction agent.
+Document processing pipelines need a review path for low-confidence fields and a way to measure extraction quality over time. Add both to the same extraction agent.
 
 ## Per-field confidence
 
@@ -55,7 +55,7 @@ invoice = agent.run(
 
 ## Route on low confidence
 
-The trigger is plain Python. Walk the fields, find anything below threshold, and decide what to do with it.
+Walk the extracted fields, find values below the confidence threshold, and route the document in application code.
 
 ```python
 def low_confidence_fields(invoice: Invoice) -> list[str]:
@@ -73,11 +73,11 @@ else:
     write_to_database(invoice)
 ```
 
-The model returns confidence. Your code decides the threshold and the action.
+Treat confidence as an agent-provided routing signal. Application code sets the threshold and chooses the action.
 
 ## Gate the next action with `requires_confirmation`
 
-For a tighter loop, wrap the downstream action (the database write, the ERP push) in a tool that requires approval. Every call to the tool pauses the run until a human confirms it, so nothing posts to the ERP without sign-off.
+Wrap a downstream action, such as a database write or ERP push, in a tool that requires approval. Every call pauses the run until a human confirms it. This places approval at the system boundary.
 
 ```python
 from agno.agent import Agent
@@ -124,7 +124,7 @@ The pause is persisted in `db`. A different process can reconstruct the same Age
 
 ## Accuracy against a golden set
 
-Confidence routes individual documents. A representative golden set lets you compare extraction behavior across prompt or model changes.
+A representative golden set compares extraction behavior across prompt or model changes.
 
 ```python
 from agno.agent import Agent
@@ -187,7 +187,7 @@ for doc in golden_set:
 
 Passing `db=db` stores each evaluation result. Compare model-judge scores across repeated runs with a fixed judge configuration, and add deterministic field checks for invoice numbers, dates, totals, and line items. See the [evals cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/09_evals/accuracy) for database logging and the team variant.
 
-## Three patterns, one job
+## Review controls
 
 | Pattern | What it answers | When it fires |
 |---------|------------------|---------------|
@@ -195,7 +195,7 @@ Passing `db=db` stores each evaluation result. Compare model-judge scores across
 | Approval-gated tools | "Should we let the agent take the next action?" | At a specific tool boundary |
 | AccuracyEval over a golden set | "How does a model judge compare these outputs?" | After a prompt or model change, or on a schedule |
 
-The first two gate a single document. The third records a model-judge signal for comparing configurations.
+Confidence routing and approval-gated tools act on one document. `AccuracyEval` records a model-judge signal for comparing configurations.
 
 ## Next steps
 
