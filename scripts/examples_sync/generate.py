@@ -4737,7 +4737,7 @@ def apply_source_render_override(
 
 def source_link(cookbook_rel: str, render_override: dict[str, object], agno_root: Path) -> str:
     """Build a source link, optionally pinned to the exact Agno source tag."""
-    ref = render_override.get("source_link_ref", "main")
+    ref = render_override.get("source_link_ref", "pinned-tag")
     assert isinstance(ref, str), f"{cookbook_rel}: source_link_ref must be a string"
     if ref == "pinned-tag":
         result = subprocess.run(

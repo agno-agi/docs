@@ -6,9 +6,6 @@ missing third-party deps are statically verified against the agno source tree
 (module + names must exist). Reports REAL failures (agno-side module/name
 missing) grouped by statement; exits 1 if any.
 
-Imports introduced by docs merged after the pinned source tag are accepted
-only for an exact reviewed statement and file set.
-
 Agno repo defaults to the ./agno symlink at the repo root; override with the
 AGNO_REPO env var.
 
@@ -51,26 +48,6 @@ LEGACY_BLOCK_MARKERS = {
     os.path.join(DOCS_ROOT, "other", "workflows-migration.mdx"): (
         "from agno.storage.sqlite import SqliteStorage",
     ),
-}
-
-POST_TAG_IMPORT_FILES = {
-    "from agno.tools.plivo import PlivoTools": {
-        "tools/toolkits/social/plivo.mdx",
-    },
-    "from agno.tools.superserve import SuperserveTools": {
-        "tools/toolkits/others/superserve.mdx",
-    },
-    "from agno.db.valkey import ValkeyDb": {
-        "database/providers/valkey/overview.mdx",
-        "database/providers/valkey/usage/valkey-for-agent.mdx",
-        "database/providers/valkey/usage/valkey-for-team.mdx",
-        "database/providers/valkey/usage/valkey-for-workflow.mdx",
-    },
-    "from agno.vectordb.valkey import ValkeyDB": {
-        "knowledge/vector-stores/valkey/overview.mdx",
-        "knowledge/vector-stores/valkey/usage/async-valkey-db.mdx",
-        "knowledge/vector-stores/valkey/usage/valkey-db.mdx",
-    },
 }
 
 CODEBLOCK_RE = re.compile(r"```(\w+)?[^\n]*\n(.*?)```", re.DOTALL)
@@ -223,7 +200,6 @@ def main():
 
     real_failures = {}
     dep_only = 0
-    post_tag = 0
     ok_count = 0
     for stmt in sorted(stmt_files):
         r = subprocess.run([VENV_PY, "-c", stmt], capture_output=True, text=True)
@@ -232,14 +208,6 @@ def main():
             continue
         err = r.stderr.strip().split("\n")[-1]
         if REAL_FAIL_RE.search(err):
-            expected_files = POST_TAG_IMPORT_FILES.get(stmt)
-            actual_files = {
-                os.path.relpath(path, DOCS_ROOT)
-                for path in stmt_files[stmt]
-            }
-            if expected_files is not None and actual_files == expected_files:
-                post_tag += 1
-                continue
             real_failures[stmt] = {"error": err, "files": sorted(stmt_files[stmt])}
             continue
         # dependency-blocked: verify statically against source
@@ -251,7 +219,7 @@ def main():
 
     print(
         f"OK: {ok_count}  dep-only (verified in source): {dep_only}  "
-        f"post-tag (reviewed): {post_tag}  REAL FAIL: {len(real_failures)}",
+        f"REAL FAIL: {len(real_failures)}",
         file=sys.stderr,
     )
     print(json.dumps(real_failures, indent=2))

@@ -127,35 +127,10 @@ PRESERVED_TRACKED_PAGE_SLUGS = {
     "examples/reasoning/models/xai/overview",
 }
 
-# These examples landed on docs main after the pinned v2.7.2 source tag. Keep
-# their shipped pages while this sync remains pinned to that tag. The strict
-# source-field and navigation assertions make a renamed or replaced page fail
-# closed instead of silently bypassing source validation.
-POST_TAG_CURATED_SOURCE_OVERRIDES = {
-    "examples/agent-os/dbs/valkey-db": "05_agent_os/dbs/valkey_db.py",
-    "examples/integrations/observability/the-context-company": "observability/the_context_company.py",
-    "examples/storage/valkey/valkey-for-agent": "06_storage/valkey/valkey_for_agent.py",
-    "examples/storage/valkey/valkey-for-team": "06_storage/valkey/valkey_for_team.py",
-    "examples/storage/valkey/valkey-for-workflow": "06_storage/valkey/valkey_for_workflow.py",
-    "examples/tools/tavily-tools-advanced": "91_tools/tavily_tools_advanced.py",
-}
-
-# These generated examples were updated on docs main after the pinned source
-# tag while their cookbook paths continued to exist. Preserve the shipped
-# pages until the sync target advances past v2.7.2, otherwise regeneration
-# would restore the older callback API from the pinned source.
-POST_TAG_EXISTING_SOURCE_OVERRIDES = {
-    "examples/agent-os/workflow/customer-research-workflow-parallel":
-        "05_agent_os/workflow/customer_research_workflow_parallel.py",
-    "examples/workflows/advanced-concepts/session-state/state-in-condition":
-        "04_workflows/06_advanced_concepts/session_state/state_in_condition.py",
-    "examples/workflows/advanced-concepts/session-state/state-in-function":
-        "04_workflows/06_advanced_concepts/session_state/state_in_function.py",
-    "examples/workflows/advanced-concepts/session-state/state-in-router":
-        "04_workflows/06_advanced_concepts/session_state/state_in_router.py",
-    "examples/workflows/cel-expressions/condition/cel-session-state":
-        "04_workflows/07_cel_expressions/condition/cel_session_state.py",
-}
+# Every previously post-tag source ships in v2.7.4. Classify those pages
+# against the sealed cookbook like every other generated example.
+POST_TAG_CURATED_SOURCE_OVERRIDES = {}
+POST_TAG_EXISTING_SOURCE_OVERRIDES = {}
 
 # ---------------------------------------------------------------------------
 # Parsing helpers
