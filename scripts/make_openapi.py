@@ -18,6 +18,7 @@ excluded from the app and reported in the generator notes.
 import json
 import os
 import sys
+from copy import deepcopy
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -196,6 +197,12 @@ def build_app():
 
 def apply_runtime_description_enrichments(spec: dict) -> dict:
     """Document runtime branches that the pinned route metadata omits."""
+    config_example = spec["paths"]["/config"]["get"]["responses"]["200"]["content"]["application/json"][
+        "example"
+    ]
+    assert config_example.get("id") == "demo" and "os_id" not in config_example
+    config_example["os_id"] = config_example.pop("id")
+
     delete_component = spec["paths"]["/components/{component_id}"]["delete"]
     assert delete_component["description"] == "Delete a component by ID."
     delete_component["description"] = (
@@ -209,6 +216,30 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         "Stream resumption is unavailable for remote and factory workflows. "
         "Non-admin callers must provide `session_id`."
     )
+
+    fork_response_schema = {
+        "properties": {
+            "session_id": {
+                "type": "string",
+                "title": "Session Id",
+                "description": "ID of the new independent session.",
+            },
+            "forked_from_session_id": {
+                "type": "string",
+                "title": "Forked From Session Id",
+                "description": "ID of the source session.",
+            },
+        },
+        "type": "object",
+        "required": ["session_id", "forked_from_session_id"],
+        "title": "ForkSessionResponse",
+    }
+    for component in ("agents", "teams"):
+        response_schema = spec["paths"][f"/{component}/{{{component[:-1]}_id}}/sessions/{{session_id}}/fork"]["post"][
+            "responses"
+        ]["200"]["content"]["application/json"]["schema"]
+        assert response_schema == {}
+        response_schema.update(deepcopy(fork_response_schema))
     return spec
 
 
@@ -220,6 +251,9 @@ def preserve_curated_slack_metadata(spec: dict) -> dict:
         "/slack/interactions": ("description", "parameters", "requestBody"),
     }
     for path, names in fields.items():
+        if path not in spec["paths"]:
+            NOTES.append(f"curated Slack metadata: skipped {path} (Slack interface excluded)")
+            continue
         current_post = spec["paths"][path]["post"]
         curated_post = old["paths"][path]["post"]
         for name in names:
