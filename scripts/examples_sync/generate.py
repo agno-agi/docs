@@ -1887,6 +1887,13 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "91_tools/mcp/airbnb.py": {
         "intro_override": "Connect an OpenAI `gpt-4o` agent to the Airbnb MCP server over stdio and search property listings.",
     },
+    "91_tools/mcp/multiple_servers.py": {
+        "pre_code_warning": (
+            "The pinned source docstring names AccuWeather and `ACCUWEATHER_API_KEY`, but the code "
+            "starts Airbnb and Brave MCP servers and reads `BRAVE_API_KEY`. Follow the generated "
+            "environment steps below; no AccuWeather credential is used."
+        ),
+    },
     "91_tools/google/gmail/daily_digest.py": {
         "intro_override": "Group recent emails by category and record a priority for each message in a structured daily digest.",
     },

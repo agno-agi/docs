@@ -340,6 +340,55 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         assert get_json_schema == {}
         get_json_schema["$ref"] = f"#/components/schemas/{run_schema}"
 
+        continue_run = spec["paths"][f"/{component}/{{{id_parameter}}}/runs/{{run_id}}/continue"]["post"]
+        continue_json_schema = continue_run["responses"]["200"]["content"]["application/json"][
+            "schema"
+        ]
+        assert continue_json_schema == {}
+        continue_json_schema["$ref"] = f"#/components/schemas/{run_schema}"
+        continue_sse = continue_run["responses"]["200"]["content"]["text/event-stream"]
+        assert "schema" not in continue_sse
+        continue_sse["schema"] = {"type": "string"}
+
+    continue_team_run = spec["paths"]["/teams/{team_id}/runs/{run_id}/continue"]["post"]
+    continue_team_responses = continue_team_run["responses"]
+    assert continue_team_responses["200"]["description"] == "Team run continued successfully"
+    continue_team_responses["200"]["description"] = (
+        "A non-streaming run response or a server-sent event stream. Streaming execution failures "
+        "are delivered as events after the stream starts."
+    )
+    assert continue_team_responses["400"]["description"] == (
+        "Invalid JSON in requirements field or invalid requirement structure"
+    )
+    continue_team_responses["400"]["description"] = (
+        "Invalid requirements or continuation boundary, missing local session ID, rejected input, "
+        "or background streaming requested for a remote team"
+    )
+    assert continue_team_responses["403"] == {
+        "description": "Run has a pending admin approval and cannot be continued by the user yet."
+    }
+    continue_team_responses["403"] = response_ref(
+        "Team run access denied, or a required admin approval is unresolved",
+        "ForbiddenResponse",
+    )
+    assert continue_team_responses["404"]["description"] == "Team not found"
+    continue_team_responses["404"]["description"] = "Team, session, or run not found"
+    assert continue_team_responses["409"] == {
+        "description": (
+            "Run is not paused (e.g. run is already running, continued, or errored). "
+            "Only PAUSED runs can be continued."
+        )
+    }
+    continue_team_responses["409"] = response_ref(
+        "Run is not paused and cannot be continued",
+        "ConflictResponse",
+    )
+    continue_team_validation = continue_team_responses["422"]["content"]["application/json"][
+        "schema"
+    ]
+    assert continue_team_validation == {"$ref": "#/components/schemas/ValidationErrorResponse"}
+    continue_team_validation["$ref"] = "#/components/schemas/HTTPValidationError"
+
     update_content = spec["paths"]["/knowledge/content/{content_id}"]["patch"]
     assert update_content["description"] == (
         "Update content properties such as name, description, metadata, or processing configuration. "
@@ -519,6 +568,98 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         "ServiceUnavailableResponse",
     )
     sort_responses(list_service_accounts)
+
+    approval_operations = (
+        (
+            "/approvals",
+            "get",
+            "200",
+            (
+                (
+                    "503",
+                    "Approvals are not supported by the configured database",
+                    "ServiceUnavailableResponse",
+                ),
+                ("500", "Approvals could not be listed", "InternalServerErrorResponse"),
+            ),
+        ),
+        (
+            "/approvals/count",
+            "get",
+            "200",
+            (
+                (
+                    "503",
+                    "Approvals are not supported by the configured database",
+                    "ServiceUnavailableResponse",
+                ),
+                ("500", "Approval count could not be retrieved", "InternalServerErrorResponse"),
+            ),
+        ),
+        (
+            "/approvals/{approval_id}/status",
+            "get",
+            "200",
+            (
+                ("404", "Approval not found or not visible to the caller", "NotFoundResponse"),
+                ("500", "Approval status could not be retrieved", "InternalServerErrorResponse"),
+                (
+                    "503",
+                    "Approvals are not supported by the configured database",
+                    "ServiceUnavailableResponse",
+                ),
+            ),
+        ),
+        (
+            "/approvals/{approval_id}",
+            "get",
+            "200",
+            (
+                ("404", "Approval not found or not visible to the caller", "NotFoundResponse"),
+                ("500", "Approval could not be retrieved", "InternalServerErrorResponse"),
+                (
+                    "503",
+                    "Approvals are not supported by the configured database",
+                    "ServiceUnavailableResponse",
+                ),
+            ),
+        ),
+        (
+            "/approvals/{approval_id}/resolve",
+            "post",
+            "200",
+            (
+                ("404", "Approval not found or not available to the caller", "NotFoundResponse"),
+                ("409", "Approval has already been resolved", "ConflictResponse"),
+                ("500", "Approval could not be resolved", "InternalServerErrorResponse"),
+                (
+                    "503",
+                    "Approvals are not supported by the configured database",
+                    "ServiceUnavailableResponse",
+                ),
+            ),
+        ),
+        (
+            "/approvals/{approval_id}",
+            "delete",
+            "204",
+            (
+                ("404", "Approval is not available to the caller", "NotFoundResponse"),
+                ("500", "Approval could not be deleted", "InternalServerErrorResponse"),
+                (
+                    "503",
+                    "Approvals are not supported by the configured database",
+                    "ServiceUnavailableResponse",
+                ),
+            ),
+        ),
+    )
+    for path, method, success_status, additions in approval_operations:
+        operation = spec["paths"][path][method]
+        assert set(operation["responses"]) == {success_status, "422"}, operation["operationId"]
+        for status, description, schema_name in additions:
+            add_response(operation, status, description, schema_name)
+        sort_responses(operation)
 
     schedule_operations = (
         ("/schedules", "get", "200", (("503", "Scheduler storage is unavailable", "ServiceUnavailableResponse"),)),
@@ -967,11 +1108,26 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
                     )
                 sort_responses(operation)
 
+        deprecated_stream = spec["paths"]["/a2a/message/stream"]["post"]
+        deprecated_stream_content = deprecated_stream["responses"]["200"]["content"]
+        assert deprecated_stream_content["application/json"]["schema"] == {}
+        assert "text/event-stream" in deprecated_stream_content
+        del deprecated_stream_content["application/json"]
+        deprecated_stream_content["text/event-stream"]["schema"] = {"type": "string"}
+
+    resume_paths = (
+        "/agents/{agent_id}/runs/{run_id}/resume",
+        "/teams/{team_id}/runs/{run_id}/resume",
+        "/workflows/{workflow_id}/runs/{run_id}/resume",
+    )
+    for path in resume_paths:
+        resume_content = spec["paths"][path]["post"]["responses"]["200"]["content"]
+        assert resume_content["application/json"]["schema"] == {}
+        assert "text/event-stream" in resume_content
+        del resume_content["application/json"]
+        resume_content["text/event-stream"]["schema"] = {"type": "string"}
+
     resume_team = spec["paths"]["/teams/{team_id}/runs/{run_id}/resume"]["post"]
-    team_success_content = resume_team["responses"]["200"]["content"]
-    assert team_success_content["application/json"]["schema"] == {}
-    assert "text/event-stream" in team_success_content
-    del team_success_content["application/json"]
     assert resume_team["responses"]["400"]["description"] == "Not supported for remote teams"
     resume_team["responses"]["400"]["description"] = (
         "Stream resumption is unavailable for remote and factory teams. "

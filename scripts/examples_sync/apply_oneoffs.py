@@ -2180,7 +2180,7 @@ openapi: get /approvals/count
 ---
 
 <Warning>
-  This endpoint counts pending approvals. With user isolation enabled, non-admin requests are scoped to the user ID in the JWT even when `user_id` is supplied. Authentication failures can return `401`, and databases without approval support can return `503`; the current OpenAPI operation declares only `200` and `422`.
+  This endpoint counts pending approvals. With user isolation enabled, non-admin requests are scoped to the user ID in the JWT even when `user_id` is supplied. Authentication and authorization failures can return `401` or `403`. Databases without approval support return `503`.
 </Warning>""",
     )
     root_sub(

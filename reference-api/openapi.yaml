@@ -524,12 +524,15 @@ paths:
           description: Agent run continued successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/RunSchema'
             text/event-stream:
               example: |+
                 event: RunContent
                 data: {"created_at": 1757348314, "run_id": "123..."}
 
+              schema:
+                type: string
         '400':
           description: Invalid JSON in tools field or invalid tool structure
           content:
@@ -1080,9 +1083,9 @@ paths:
         '200':
           description: SSE stream of catch-up and/or live events
           content:
-            application/json:
-              schema: {}
-            text/event-stream: {}
+            text/event-stream:
+              schema:
+                type: string
         '400':
           description: Not supported for remote agents
           content:
@@ -1403,7 +1406,9 @@ paths:
         '200':
           description: SSE stream of catch-up and/or live events
           content:
-            text/event-stream: {}
+            text/event-stream:
+              schema:
+                type: string
         '400':
           description: Stream resumption is unavailable for remote and factory teams. Non-admin callers must provide `session_id`.
           content:
@@ -1479,17 +1484,20 @@ paths:
               $ref: '#/components/schemas/Body_continue_team_run'
       responses:
         '200':
-          description: Team run continued successfully
+          description: A non-streaming run response or a server-sent event stream. Streaming execution failures are delivered as events after the stream starts.
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/TeamRunSchema'
             text/event-stream:
               example: |+
                 event: RunContent
                 data: {"created_at": 1757348314, "run_id": "123..."}
 
+              schema:
+                type: string
         '400':
-          description: Invalid JSON in requirements field or invalid requirement structure
+          description: Invalid requirements or continuation boundary, missing local session ID, rejected input, or background streaming requested for a remote team
           content:
             application/json:
               schema:
@@ -1501,21 +1509,29 @@ paths:
               schema:
                 $ref: '#/components/schemas/UnauthenticatedResponse'
         '403':
-          description: Run has a pending admin approval and cannot be continued by the user yet.
+          description: Team run access denied, or a required admin approval is unresolved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForbiddenResponse'
         '404':
-          description: Team not found
+          description: Team, session, or run not found
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/NotFoundResponse'
         '409':
-          description: Run is not paused (e.g. run is already running, continued, or errored). Only PAUSED runs can be continued.
+          description: Run is not paused and cannot be continued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConflictResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ValidationErrorResponse'
+                $ref: '#/components/schemas/HTTPValidationError'
         '500':
           description: Internal Server Error
           content:
@@ -2427,12 +2443,15 @@ paths:
           description: Workflow run continued successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/WorkflowRunSchema'
             text/event-stream:
               example: |+
                 event: StepCompleted
                 data: {"step_name": "step1"}
 
+              schema:
+                type: string
         '400':
           description: Invalid JSON in requirements field
           content:
@@ -2589,9 +2608,9 @@ paths:
         '200':
           description: SSE stream of catch-up and/or live events
           content:
-            application/json:
-              schema: {}
-            text/event-stream: {}
+            text/event-stream:
+              schema:
+                type: string
         '400':
           description: Stream resumption is unavailable for remote and factory workflows. Non-admin callers must provide `session_id`.
           content:
@@ -3700,8 +3719,6 @@ paths:
         '200':
           description: Streaming response with task updates
           content:
-            application/json:
-              schema: {}
             text/event-stream:
               example: |+
                 event: TaskStatusUpdateEvent
@@ -3710,6 +3727,8 @@ paths:
                 event: Message
                 data: {"jsonrpc":"2.0","id":"request-123","result":{"messageId":"msg-1","role":"agent","parts":[{"kind":"text","text":"Response"}]}}
 
+              schema:
+                type: string
         '400':
           description: Invalid request or unsupported method
         '404':
@@ -11204,6 +11223,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: Approvals could not be listed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: Approvals are not supported by the configured database
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailableResponse'
   /approvals/count:
     get:
       tags:
@@ -11246,6 +11277,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: Approval count could not be retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: Approvals are not supported by the configured database
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailableResponse'
   /approvals/{approval_id}/status:
     get:
       tags:
@@ -11280,12 +11323,30 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ForbiddenResponse'
+        '404':
+          description: Approval not found or not visible to the caller
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: Approval status could not be retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: Approvals are not supported by the configured database
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailableResponse'
   /approvals/{approval_id}:
     get:
       tags:
@@ -11320,12 +11381,30 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ForbiddenResponse'
+        '404':
+          description: Approval not found or not visible to the caller
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: Approval could not be retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: Approvals are not supported by the configured database
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailableResponse'
     delete:
       tags:
         - Approvals
@@ -11355,12 +11434,30 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ForbiddenResponse'
+        '404':
+          description: Approval is not available to the caller
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: Approval could not be deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: Approvals are not supported by the configured database
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailableResponse'
   /approvals/{approval_id}/resolve:
     post:
       tags:
@@ -11401,12 +11498,36 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ForbiddenResponse'
+        '404':
+          description: Approval not found or not available to the caller
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '409':
+          description: Approval has already been resolved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConflictResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '500':
+          description: Approval could not be resolved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: Approvals are not supported by the configured database
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailableResponse'
   /service-accounts:
     post:
       tags:
