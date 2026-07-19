@@ -350,6 +350,48 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         assert "schema" not in continue_sse
         continue_sse["schema"] = {"type": "string"}
 
+    continue_agent_run = spec["paths"]["/agents/{agent_id}/runs/{run_id}/continue"]["post"]
+    continue_agent_responses = continue_agent_run["responses"]
+    assert continue_agent_responses["200"]["description"] == "Agent run continued successfully"
+    continue_agent_responses["200"]["description"] = (
+        "A non-streaming run response or a server-sent event stream. Streaming execution failures "
+        "are delivered as events after the stream starts."
+    )
+    assert continue_agent_responses["400"]["description"] == (
+        "Invalid JSON in tools field or invalid tool structure"
+    )
+    continue_agent_responses["400"]["description"] = (
+        "Invalid tools or continuation boundary, missing local session ID, rejected input, "
+        "or background streaming requested for a remote agent"
+    )
+    assert continue_agent_responses["403"] == {
+        "description": "Run has a pending admin approval and cannot be continued by the user yet."
+    }
+    continue_agent_responses["403"] = response_ref(
+        "Agent run access denied, or a required admin approval is unresolved",
+        "ForbiddenResponse",
+    )
+    assert continue_agent_responses["404"]["description"] == "Agent not found"
+    continue_agent_responses["404"]["description"] = "Agent, session, or run not found"
+    add_response(
+        continue_agent_run,
+        "409",
+        "Run is in a state that cannot be continued",
+        "ConflictResponse",
+    )
+    continue_agent_validation = continue_agent_responses["422"]["content"]["application/json"][
+        "schema"
+    ]
+    assert continue_agent_validation == {"$ref": "#/components/schemas/ValidationErrorResponse"}
+    continue_agent_validation["$ref"] = "#/components/schemas/HTTPValidationError"
+    add_response(
+        continue_agent_run,
+        "503",
+        "Remote agent is unavailable",
+        "ServiceUnavailableResponse",
+    )
+    sort_responses(continue_agent_run)
+
     continue_team_run = spec["paths"]["/teams/{team_id}/runs/{run_id}/continue"]["post"]
     continue_team_responses = continue_team_run["responses"]
     assert continue_team_responses["200"]["description"] == "Team run continued successfully"
@@ -395,6 +437,34 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         "ServiceUnavailableResponse",
     )
     sort_responses(continue_team_run)
+
+    continue_workflow_run = spec["paths"]["/workflows/{workflow_id}/runs/{run_id}/continue"]["post"]
+    continue_workflow_responses = continue_workflow_run["responses"]
+    assert continue_workflow_responses["200"]["description"] == "Workflow run continued successfully"
+    continue_workflow_responses["200"]["description"] = (
+        "A non-streaming run response or a server-sent event stream. Streaming execution failures "
+        "are delivered as events after the stream starts."
+    )
+    assert continue_workflow_responses["400"]["description"] == "Invalid JSON in requirements field"
+    continue_workflow_responses["400"]["description"] = (
+        "Invalid step requirements or factory input, missing required session ID, rejected input, "
+        "or remote workflow continuation requested"
+    )
+    assert continue_workflow_responses["404"]["description"] == "Workflow not found"
+    continue_workflow_responses["404"]["description"] = "Workflow, session, or run not found"
+    assert continue_workflow_responses["409"] == {
+        "description": "Run is not paused. Only PAUSED runs can be continued."
+    }
+    continue_workflow_responses["409"] = response_ref(
+        "Run is not paused and cannot be continued",
+        "ConflictResponse",
+    )
+    continue_workflow_validation = continue_workflow_responses["422"]["content"]["application/json"][
+        "schema"
+    ]
+    assert continue_workflow_validation == {"$ref": "#/components/schemas/ValidationErrorResponse"}
+    continue_workflow_validation["$ref"] = "#/components/schemas/HTTPValidationError"
+    sort_responses(continue_workflow_run)
 
     update_content = spec["paths"]["/knowledge/content/{content_id}"]["patch"]
     assert update_content["description"] == (
@@ -1121,6 +1191,12 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         assert "text/event-stream" in deprecated_stream_content
         del deprecated_stream_content["application/json"]
         deprecated_stream_content["text/event-stream"]["schema"] = {"type": "string"}
+        deprecated_stream_description = deprecated_stream["description"]
+        assert "Returns real-time updates as newline-delimited JSON (NDJSON)." in deprecated_stream_description
+        deprecated_stream["description"] = deprecated_stream_description.replace(
+            "Returns real-time updates as newline-delimited JSON (NDJSON).",
+            "Returns real-time updates as Server-Sent Events (SSE).",
+        )
 
     resume_paths = (
         "/agents/{agent_id}/runs/{run_id}/resume",

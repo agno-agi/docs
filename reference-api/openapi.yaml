@@ -521,7 +521,7 @@ paths:
               $ref: '#/components/schemas/Body_continue_agent_run'
       responses:
         '200':
-          description: Agent run continued successfully
+          description: A non-streaming run response or a server-sent event stream. Streaming execution failures are delivered as events after the stream starts.
           content:
             application/json:
               schema:
@@ -534,7 +534,7 @@ paths:
               schema:
                 type: string
         '400':
-          description: Invalid JSON in tools field or invalid tool structure
+          description: Invalid tools or continuation boundary, missing local session ID, rejected input, or background streaming requested for a remote agent
           content:
             application/json:
               schema:
@@ -546,25 +546,41 @@ paths:
               schema:
                 $ref: '#/components/schemas/UnauthenticatedResponse'
         '403':
-          description: Run has a pending admin approval and cannot be continued by the user yet.
+          description: Agent run access denied, or a required admin approval is unresolved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForbiddenResponse'
         '404':
-          description: Agent not found
+          description: Agent, session, or run not found
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/NotFoundResponse'
+        '409':
+          description: Run is in a state that cannot be continued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConflictResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ValidationErrorResponse'
+                $ref: '#/components/schemas/HTTPValidationError'
         '500':
           description: Internal Server Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: Remote agent is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailableResponse'
   /agents/{agent_id}/sessions/{session_id}/fork:
     post:
       tags:
@@ -2446,7 +2462,7 @@ paths:
               $ref: '#/components/schemas/Body_continue_workflow_run'
       responses:
         '200':
-          description: Workflow run continued successfully
+          description: A non-streaming run response or a server-sent event stream. Streaming execution failures are delivered as events after the stream starts.
           content:
             application/json:
               schema:
@@ -2459,7 +2475,7 @@ paths:
               schema:
                 type: string
         '400':
-          description: Invalid JSON in requirements field
+          description: Invalid step requirements or factory input, missing required session ID, rejected input, or remote workflow continuation requested
           content:
             application/json:
               schema:
@@ -2477,19 +2493,23 @@ paths:
               schema:
                 $ref: '#/components/schemas/ForbiddenResponse'
         '404':
-          description: Workflow not found
+          description: Workflow, session, or run not found
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/NotFoundResponse'
         '409':
-          description: Run is not paused. Only PAUSED runs can be continued.
+          description: Run is not paused and cannot be continued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConflictResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ValidationErrorResponse'
+                $ref: '#/components/schemas/HTTPValidationError'
         '500':
           description: Internal Server Error
           content:
@@ -3719,7 +3739,7 @@ paths:
       tags:
         - A2A
       summary: Stream Message
-      description: '[DEPRECATED] Stream a message to an Agno Agent, Team, or Workflow. The Agent, Team or Workflow is identified via the ''agentId'' field in params.message or X-Agent-ID header. Optional: Pass user ID via X-User-ID header (recommended) or ''userId'' in params.message.metadata. Returns real-time updates as newline-delimited JSON (NDJSON).'
+      description: '[DEPRECATED] Stream a message to an Agno Agent, Team, or Workflow. The Agent, Team or Workflow is identified via the ''agentId'' field in params.message or X-Agent-ID header. Optional: Pass user ID via X-User-ID header (recommended) or ''userId'' in params.message.metadata. Returns real-time updates as Server-Sent Events (SSE).'
       operationId: stream_message
       responses:
         '200':
