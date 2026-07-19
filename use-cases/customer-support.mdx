@@ -1,0 +1,113 @@
+---
+title: Customer Support Agents
+description: "Resolve customer requests with specialist routing, product knowledge, controlled actions, and human escalation."
+---
+
+A support system needs persistent conversation history, access to approved information, and clear boundaries for customer-impacting actions.
+
+```python support_team.py
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.team import Team
+
+model = "openai:gpt-5.5"
+
+billing = Agent(
+    name="Billing Support",
+    role="Answer questions about invoices, payments, subscriptions, and refunds.",
+    model=model,
+)
+
+technical = Agent(
+    name="Technical Support",
+    role="Diagnose product errors and provide troubleshooting steps.",
+    model=model,
+)
+
+support_team = Team(
+    name="Customer Support",
+    model=model,
+    members=[billing, technical],
+    db=SqliteDb(db_file="tmp/support.db"),
+    add_history_to_context=True,
+    num_history_runs=5,
+    instructions=[
+        "Route each request to the relevant specialist.",
+        "Consult both specialists when an issue crosses billing and product behavior.",
+    ],
+)
+
+support_team.print_response(
+    "My card was charged twice after checkout returned HTTP 500.",
+    user_id="customer-42",
+    session_id="ticket-1842",
+)
+```
+
+Create a virtual environment, install the OpenAI and SQLite integrations, and set `OPENAI_API_KEY` before running the team:
+
+```bash
+uv venv --python 3.12
+uv pip install -U "agno[openai,sqlite]"
+uv run python support_team.py
+```
+
+The team can consult both specialists for this request. Reuse the `session_id` for later messages on the same ticket and the `user_id` for the same customer. This example routes requests and stores session history. Add confirmation-required tools before permitting account changes or refunds.
+
+## Build the resolution path
+
+| Stage | Agno capability | Purpose |
+|-------|-----------------|---------|
+| Receive | [AgentOS API](/features/api) or [interfaces](/features/interfaces) | Accept requests from a product, Slack, WhatsApp, or another service. |
+| Identify | [Sessions](/sessions/overview) and [authorization](/agent-os/security/overview) | Associate the request with a customer, preserve its conversation history, and establish the caller's identity. |
+| Ground | [Knowledge](/knowledge/overview) and [context providers](/context-providers/overview) | Search approved product content and retrieve current account or order data. |
+| Route | [Teams](/teams/overview) or [workflows](/workflows/overview) | Select a specialist or follow a fixed triage policy. |
+| Act | [Tools](/tools/overview) and [human-in-the-loop](/hitl/overview) | Create tickets, update records, or request approval for sensitive work. |
+| Improve | [Learning](/learning/overview), [evaluation](/features/evaluation), and [observability](/features/observability) | Reuse resolved cases, measure quality, and inspect failures. |
+
+## Choose the execution model
+
+| Requirement | Use |
+|-------------|-----|
+| One support policy and one set of tools | [Agent](/agents/overview) |
+| Dynamic routing among billing, technical, and account specialists | [Team](/teams/overview) |
+| Deterministic triage, service-level rules, or escalation steps | [Workflow](/workflows/overview) |
+
+Teams let the model choose the relevant specialist. Workflows encode branches and required steps in code. A support system can use a workflow for intake and escalation, with a team inside a step for specialist investigation.
+
+## Set action boundaries
+
+| Action | Boundary |
+|--------|----------|
+| Answer from approved product documentation | Give the agent read-only knowledge. |
+| Read an order, subscription, or account | Establish the caller's identity, enforce account-level access inside the provider or tool, and keep it read-only. |
+| Change a plan, issue a refund, or cancel an order | Require [confirmation](/hitl/user-confirmation) before the tool runs. |
+| Create an engineering ticket with missing fields | Request [user input](/hitl/user-input) before the tool runs. |
+| Send an external message | Gate the send tool and record the action in the run history. |
+
+## Serve support channels
+
+| Channel | Guide |
+|---------|-------|
+| Product UI or backend | [Serve as an API](/use-cases/product-agents/serve-as-an-api) |
+| Slack | [Support team](/agent-os/usage/interfaces/slack/support-team) |
+| WhatsApp | [WhatsApp interface](/agent-os/interfaces/whatsapp/introduction) |
+| Custom clients | [AgentOS client](/agent-os/client/overview) |
+
+## Improve from resolved requests
+
+| Goal | Pattern |
+|------|---------|
+| Preserve the current ticket | Reuse its `session_id` and store session history. |
+| Remember customer preferences | Store user-scoped [memory](/memory/overview). |
+| Reuse successful resolutions | Start with the [support learning pattern](/examples/learning/patterns/support-agent). Configure a tenant-scoped namespace for every shared production store. |
+| Monitor response quality | Run [background output evaluation](/agent-os/usage/background-output-evaluation). |
+| Prevent regressions | Add support conversations to an [eval suite](/evals/suite/overview). |
+
+## Next steps
+
+| Task | Guide |
+|------|-------|
+| Route technical and general requests through fixed branches | [Conditional workflow example](/examples/workflows/conditional-execution/condition-with-else) |
+| Collect ticket fields from a Slack requester | [Human input example](/examples/agent-os/interfaces/slack/hitl-user-input) |
+| Connect live customer systems | [Connecting your data](/use-cases/product-agents/connecting-your-data) |

@@ -1,0 +1,73 @@
+---
+title: Agent Evaluation
+description: "Measure agent and team quality with accuracy, reliability, performance, and agent-as-judge evals."
+---
+
+Run eval cases during development and in CI:
+
+```python evals.py
+import sys
+
+from agno.agent import Agent
+from agno.eval import Case, cli
+from agno.tools.calculator import CalculatorTools
+
+calculator = Agent(
+    id="calculator",
+    model="openai:gpt-5.5",
+    tools=[CalculatorTools()],
+    instructions="Use the calculator tools for every calculation.",
+)
+
+CASES = (
+    Case(
+        name="factorial_uses_calculator",
+        agent=calculator,
+        input="What is 10 factorial?",
+        criteria="States that 10 factorial equals 3,628,800.",
+        expected_tool_calls=("factorial",),
+    ),
+)
+
+if __name__ == "__main__":
+    sys.exit(cli(CASES))
+```
+
+Create a virtual environment, install the OpenAI integration, and set `OPENAI_API_KEY` before running the suite:
+
+```bash
+uv venv --python 3.12
+uv pip install -U "agno[openai]"
+```
+
+```bash
+uv run python evals.py --json-output tmp/evals.json
+```
+
+The case checks the response against a quality criterion and verifies the expected tool call. The CLI returns a nonzero exit code when a case fails, so the suite can gate CI.
+
+## Evaluation types
+
+| Type | Measures | Guide |
+|------|----------|-------|
+| Accuracy | Correctness against an expected answer | [Accuracy evals](/evals/accuracy/overview) |
+| Agent as judge | Custom quality criteria scored by an evaluator model | [Agent-as-judge evals](/evals/agent-as-judge/overview) |
+| Reliability | Expected tool calls and arguments | [Reliability evals](/evals/reliability/overview) |
+| Performance | Runtime latency and memory use | [Performance evals](/evals/performance/overview) |
+
+## Where evals run
+
+| Stage | Pattern |
+|-------|---------|
+| Local development | Run one case while changing an agent. |
+| CI | Run tagged [eval suites](/evals/suite/overview) and keep the JSON report. |
+| Production | Evaluate selected outputs with a synchronous or [background post-hook](/agent-os/usage/background-output-evaluation). |
+| AgentOS | Store eval results in a configured database and manage them through the AgentOS API. |
+
+## Next steps
+
+| Task | Guide |
+|------|-------|
+| Build an eval suite | [Eval suites](/evals/suite/overview) |
+| Add evals to an agent platform | [Agent platform evals](/agent-platform/evals) |
+| Inspect the API surface | [Agent API](/features/api) |
