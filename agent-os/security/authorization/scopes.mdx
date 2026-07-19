@@ -1,10 +1,10 @@
 ---
 title: "Scopes"
 sidebarTitle: "Scopes"
-description: "Scope format and the full permission reference for every AgentOS endpoint."
+description: "Scope formats and built-in permission mappings for AgentOS routes."
 ---
 
-Scopes are permission strings carried by the caller's credential: the JWT `scopes` claim, or the stored scopes of a [service account](/agent-os/security/authorization/service-accounts) token. Each AgentOS endpoint requires one or more scopes; requests with insufficient scopes return `403 Forbidden`.
+Scopes are permission strings carried by the caller's credential: the JWT `scopes` claim, or the stored scopes of a [service account](/agent-os/security/authorization/service-accounts) token. When authorization is enabled, protected routes compare these scopes with their permission requirements. Requests with insufficient scopes return `403 Forbidden`.
 
 ## Scope Format
 
@@ -15,19 +15,21 @@ Scopes are hierarchical:
 | `resource:action` | `agents:read` | Access all resources of a type |
 | `resource:<id>:action` | `agents:my-agent:run` | Access a specific resource |
 | `resource:*:action` | `agents:*:read` | Wildcard (equivalent to global) |
-| `agent_os:admin` | - | Full access to all endpoints |
+| `agent_os:admin` | - | Satisfies every required AgentOS scope |
 
 ## Scope Reference
 
-Scopes are enforced at two layers. Control plane scopes are enforced by the AgentOS control plane at `os.agno.com`. AgentOS scopes are enforced by your deployed AgentOS service on every API request.
+Scopes are enforced at two layers. Control plane scopes are enforced by the AgentOS control plane at `os.agno.com`. AgentOS scopes are enforced by your deployed AgentOS service on protected API requests.
 
-Any `agents:action`, `teams:action`, or `workflows:action` scope also accepts a `resource:<id>:action` form to limit access to a specific resource. For example, `agents:web-agent:run` grants run access only to the `web-agent`. Use `*` as the id (`agents:*:run`) to match every resource of that type. See [Scope Format](#scope-format).
+The tables below summarize the built-in mappings for public AgentOS routes in Agno 2.7.4. Interfaces, custom routes, and custom prefixes can add mappings. Check `/openapi.json` on your deployed AgentOS for its active route list.
+
+The `agents:read`, `agents:run`, `teams:read`, `teams:run`, `workflows:read`, and `workflows:run` scopes also accept a `resource:<id>:action` form. For example, `agents:web-agent:run` grants run access only to the `web-agent`. Use `*` as the ID (`agents:*:run`) to match every resource of that type. See [Scope Format](#scope-format).
 
 <Note>
 **Per-resource scoping applies to `agents`, `teams`, and `workflows` only.** All other resource types (sessions, memories, knowledge, traces, etc.) use global scopes only. The `resource:<id>:action` form is not honored for them.
 </Note>
 
-The `agent_os:admin` scope grants full access to every AgentOS endpoint below.
+The `agent_os:admin` scope satisfies every required AgentOS scope below.
 
 ### AgentOS Control Plane Scopes
 
@@ -68,6 +70,8 @@ The `agent_os:admin` scope grants full access to every AgentOS endpoint below.
   </Tab>
 
   <Tab title="Components">
+    Studio stores agent, team, and workflow definitions and their config versions through `/components`. Use these scopes for stored component CRUD. The `/agents`, `/teams`, and `/workflows` routes expose registered resources and run operations.
+
     | Scope | Endpoint | Description |
     |-------|----------|-------------|
     | `components:read` | `GET /components` | List components |
@@ -84,43 +88,32 @@ The `agent_os:admin` scope grants full access to every AgentOS endpoint below.
     | `components:delete` | `DELETE /components/*/configs/*` | Delete a component config |
   </Tab>
 
-  <Tab title="Agents">
-    | Scope | Endpoint | Description |
-    |-------|----------|-------------|
-    | `agents:read` | `GET /agents` | List agents |
-    | `agents:read` | `GET /agents/*` | View an agent |
-    | `agents:write` | `POST /agents` | Create an agent |
-    | `agents:write` | `PATCH /agents/*` | Update an agent |
-    | `agents:delete` | `DELETE /agents/*` | Delete an agent |
-    | `agents:run` | `POST /agents/*/runs` | Run an agent |
-    | `agents:run` | `POST /agents/*/runs/*/continue` | Continue a paused run |
-    | `agents:run` | `POST /agents/*/runs/*/cancel` | Cancel a run |
-  </Tab>
+  <Tab title="Agents, Teams, Workflows">
+    These routes discover registered resources and execute them. Stored component CRUD uses `/components`.
 
-  <Tab title="Teams">
-    | Scope | Endpoint | Description |
-    |-------|----------|-------------|
-    | `teams:read` | `GET /teams` | List teams |
-    | `teams:read` | `GET /teams/*` | View a team |
-    | `teams:write` | `POST /teams` | Create a team |
-    | `teams:write` | `PATCH /teams/*` | Update a team |
-    | `teams:delete` | `DELETE /teams/*` | Delete a team |
-    | `teams:run` | `POST /teams/*/runs` | Run a team |
-    | `teams:run` | `POST /teams/*/runs/*/continue` | Continue a paused run |
-    | `teams:run` | `POST /teams/*/runs/*/cancel` | Cancel a run |
-  </Tab>
+    | Resource | Scope | Operation | Endpoint pattern |
+    |----------|-------|-----------|------------------|
+    | Agents | `agents:read` | List agents | `GET /agents` |
+    | Agents | `agents:read` | Get agent details | `GET /agents/{agent_id}` |
+    | Agents | `agents:run` | Create a run | `POST /agents/{agent_id}/runs` |
+    | Agents | `agents:read` and `agents:run` | List or get runs | `GET /agents/{agent_id}/runs`, `GET /agents/{agent_id}/runs/{run_id}` |
+    | Agents | `agents:read` and `agents:run` | List checkpoints or get a checkpoint snapshot | `GET /agents/{agent_id}/runs/{run_id}/checkpoints`, `GET /agents/{agent_id}/runs/{run_id}/checkpoints/{message_index}` |
+    | Agents | `agents:run` | Cancel, continue, or resume a run | `POST /agents/{agent_id}/runs/{run_id}/cancel`, `POST /agents/{agent_id}/runs/{run_id}/continue`, `POST /agents/{agent_id}/runs/{run_id}/resume` |
+    | Agents | `agents:run` | Fork a session | `POST /agents/{agent_id}/sessions/{session_id}/fork` |
+    | Teams | `teams:read` | List teams | `GET /teams` |
+    | Teams | `teams:read` | Get team details | `GET /teams/{team_id}` |
+    | Teams | `teams:run` | Create a run | `POST /teams/{team_id}/runs` |
+    | Teams | `teams:read` and `teams:run` | List or get runs | `GET /teams/{team_id}/runs`, `GET /teams/{team_id}/runs/{run_id}` |
+    | Teams | `teams:read` and `teams:run` | List checkpoints or get a checkpoint snapshot | `GET /teams/{team_id}/runs/{run_id}/checkpoints`, `GET /teams/{team_id}/runs/{run_id}/checkpoints/{message_index}` |
+    | Teams | `teams:run` | Cancel, continue, or resume a run | `POST /teams/{team_id}/runs/{run_id}/cancel`, `POST /teams/{team_id}/runs/{run_id}/continue`, `POST /teams/{team_id}/runs/{run_id}/resume` |
+    | Teams | `teams:run` | Fork a session | `POST /teams/{team_id}/sessions/{session_id}/fork` |
+    | Workflows | `workflows:read` | List workflows | `GET /workflows` |
+    | Workflows | `workflows:read` | Get workflow details | `GET /workflows/{workflow_id}` |
+    | Workflows | `workflows:run` | Create a run | `POST /workflows/{workflow_id}/runs` |
+    | Workflows | `workflows:read` and `workflows:run` | List or get runs | `GET /workflows/{workflow_id}/runs`, `GET /workflows/{workflow_id}/runs/{run_id}` |
+    | Workflows | `workflows:run` | Cancel, continue, or resume a run | `POST /workflows/{workflow_id}/runs/{run_id}/cancel`, `POST /workflows/{workflow_id}/runs/{run_id}/continue`, `POST /workflows/{workflow_id}/runs/{run_id}/resume` |
 
-  <Tab title="Workflows">
-    | Scope | Endpoint | Description |
-    |-------|----------|-------------|
-    | `workflows:read` | `GET /workflows` | List workflows |
-    | `workflows:read` | `GET /workflows/*` | View a workflow |
-    | `workflows:write` | `POST /workflows` | Create a workflow |
-    | `workflows:write` | `PATCH /workflows/*` | Update a workflow |
-    | `workflows:delete` | `DELETE /workflows/*` | Delete a workflow |
-    | `workflows:run` | `POST /workflows/*/runs` | Run a workflow |
-    | `workflows:run` | `POST /workflows/*/runs/*/continue` | Continue a paused run |
-    | `workflows:run` | `POST /workflows/*/runs/*/cancel` | Cancel a run |
+    The nested `GET` run and checkpoint routes have a `:run` route dependency. The default `GET /agents/*`, `GET /teams/*`, and `GET /workflows/*` middleware mappings also apply the matching `:read` scope, so the table lists both requirements for those routes.
   </Tab>
 
   <Tab title="Sessions">
