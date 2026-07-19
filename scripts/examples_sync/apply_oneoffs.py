@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -26,6 +27,7 @@ import generate as gen  # noqa: E402
 
 ROOT = HERE.parents[1]
 DOCS = ROOT / "examples"
+AGNO_ROOT = Path(os.environ.get("AGNO_REPO") or ROOT / "agno")
 GENERATED_DESCRIPTION_OVERRIDES = json.loads(
     (HERE / "description-overrides.json").read_text(encoding="utf-8")
 )
@@ -1343,7 +1345,10 @@ def pin_agno_clone_commands() -> None:
     """Pin tracked MDX clone commands to the sealed docs source tag."""
     global would_apply
     old = "git clone https://github.com/agno-agi/agno.git"
-    new = "git clone --branch v2.7.4 --depth 1 https://github.com/agno-agi/agno.git"
+    new = (
+        f"git clone --branch {gen.EXPECTED_AGNO_TAG} --depth 1 "
+        "https://github.com/agno-agi/agno.git"
+    )
     result = subprocess.run(
         ["git", "-C", str(ROOT), "ls-files", "*.mdx"],
         check=True,
@@ -1368,6 +1373,49 @@ def pin_agno_clone_commands() -> None:
         print(f"  would pin {total} Agno clone commands in {len(matches)} files")
     else:
         print(f"  pinned {total} Agno clone commands in {len(matches)} files")
+
+
+def pin_agno_cookbook_links() -> None:
+    """Pin tracked MDX cookbook links to the sealed docs source tag."""
+    global would_apply
+    replacements = (
+        (
+            "https://github.com/agno-agi/agno/blob/main/cookbook/",
+            "https://github.com/agno-agi/agno/blob/"
+            f"{gen.EXPECTED_AGNO_TAG}/cookbook/",
+        ),
+        (
+            "https://github.com/agno-agi/agno/tree/main/cookbook/",
+            "https://github.com/agno-agi/agno/tree/"
+            f"{gen.EXPECTED_AGNO_TAG}/cookbook/",
+        ),
+    )
+    result = subprocess.run(
+        ["git", "-C", str(ROOT), "ls-files", "*.mdx"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    matches: list[tuple[Path, int]] = []
+    for relative_path in result.stdout.splitlines():
+        path = ROOT / relative_path
+        text = path.read_text(encoding="utf-8")
+        count = sum(text.count(old) for old, _ in replacements)
+        if count:
+            matches.append((path, count))
+            if not CHECK:
+                for old, new in replacements:
+                    text = text.replace(old, new)
+                path.write_text(text, encoding="utf-8")
+    if not matches:
+        print(f"  Agno cookbook links already pinned to {gen.EXPECTED_AGNO_TAG}")
+        return
+    total = sum(count for _, count in matches)
+    if CHECK:
+        would_apply += len(matches)
+        print(f"  would pin {total} Agno cookbook links in {len(matches)} files")
+    else:
+        print(f"  pinned {total} Agno cookbook links in {len(matches)} files")
 
 
 def docs_path(slug: str) -> Path:
@@ -1839,6 +1887,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--check", action="store_true", help="report fix state without writing")
     CHECK = ap.parse_args().check
+    gen.validate_agno_source(AGNO_ROOT)
 
     # Source-backed corrections identified by the generated-example review.
     pin_agno_clone_commands()
@@ -2907,9 +2956,9 @@ python cookbook/05_agent_os/approvals/team/team_and_member_agent_both_level_appr
 
 ## Developer Resources
 
-- [Team-level approval source](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/approvals/team/team_level_approval.py)
-- [Member-level approval source](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/approvals/team/member_agent_level_approval.py)
-- [Team and member approval source](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/approvals/team/team_and_member_agent_both_level_approval.py)""",
+- [Team-level approval source](https://github.com/agno-agi/agno/blob/v2.7.4/cookbook/05_agent_os/approvals/team/team_level_approval.py)
+- [Member-level approval source](https://github.com/agno-agi/agno/blob/v2.7.4/cookbook/05_agent_os/approvals/team/member_agent_level_approval.py)
+- [Team and member approval source](https://github.com/agno-agi/agno/blob/v2.7.4/cookbook/05_agent_os/approvals/team/team_and_member_agent_both_level_approval.py)""",
     )
 
     sub(
@@ -4417,6 +4466,10 @@ The source uses the retired `imagen-4.0-generate-preview-05-20` model, the remov
     # 12. Restore post-tag toolkit cards that shipped in navigation without
     #     corresponding entries in the hand-maintained complete index.
     repair_toolkit_index()
+
+    # Keep every tracked cookbook link on the same sealed source as its code
+    # fence and clone command. Run this after fixes that add resource links.
+    pin_agno_cookbook_links()
 
     # 13. Preserve the reviewed byte-level terminal-newline convention after
     #     deterministic reconstruction.

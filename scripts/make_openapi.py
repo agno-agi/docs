@@ -51,6 +51,11 @@ from agno.team import Team  # noqa: E402
 from agno.workflow import Workflow  # noqa: E402
 from agno.workflow.step import Step  # noqa: E402
 
+EXPECTED_AGNO_VERSION = "2.7.4"
+assert agno_version == EXPECTED_AGNO_VERSION, (
+    f"OpenAPI generator imported Agno {agno_version}, expected {EXPECTED_AGNO_VERSION}"
+)
+
 NOTES = []  # inclusion/exclusion notes surfaced at the end of the run
 
 # Interface imports are optional: each pulls in an extra (a2a-sdk, ag-ui-protocol,
@@ -1927,10 +1932,22 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         assert response_schema == {}
         response_schema.update(deepcopy(fork_response_schema))
 
+    normalized_bearer_operations: list[tuple[str, str]] = []
     for path, path_item in spec["paths"].items():
         for method in ("get", "post", "put", "patch", "delete", "head", "options", "trace"):
             operation = path_item.get(method)
-            if not isinstance(operation, dict) or not operation.get("security"):
+            if not isinstance(operation, dict):
+                continue
+            security = operation.get("security")
+            if security == [{"HTTPBearer": []}]:
+                # The dependency accepts anonymous requests when AgentOS runs
+                # without a security key or JWT configuration. Authentication
+                # becomes required when the deployment enables either mode.
+                operation["security"] = [{}, {"HTTPBearer": []}]
+                normalized_bearer_operations.append((path, method))
+            elif security:
+                assert security == [{}, {"HTTPBearer": []}], (path, method, security)
+            if not operation.get("security"):
                 continue
             if "401" not in operation["responses"]:
                 add_response(operation, "401", "Unauthorized", "UnauthenticatedResponse")
@@ -1939,6 +1956,7 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
             if (path, method) != ("/status", "get") and "403" not in operation["responses"]:
                 add_response(operation, "403", "Forbidden", "ForbiddenResponse")
             sort_responses(operation)
+    assert len(normalized_bearer_operations) == 115, len(normalized_bearer_operations)
 
     spec["components"]["schemas"] = dict(sorted(schemas.items()))
     return spec

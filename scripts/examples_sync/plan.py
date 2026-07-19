@@ -360,6 +360,7 @@ def main() -> None:
     ap.add_argument("--out", type=Path, default=OUT_DIR)
     args = ap.parse_args()
     docs, agno, out = args.docs_root, args.agno_root, args.out
+    generate.validate_agno_source(agno)
     out.mkdir(parents=True, exist_ok=True)
 
     # ---- inputs ----------------------------------------------------------

@@ -41,6 +41,35 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+EXPECTED_AGNO_TAG = "v2.7.4"
+EXPECTED_AGNO_SHA = "d1b3a6dc0ed532ac734efb58eb1206bb3bedff09"
+
+
+def validate_agno_source(agno_root: Path) -> str:
+    """Require the clean Agno release checkout targeted by this sync pipeline."""
+    root = agno_root.resolve()
+
+    def git(*args: str) -> str:
+        result = subprocess.run(
+            ["git", "-C", str(root), *args],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return result.stdout.strip()
+
+    head = git("rev-parse", "HEAD")
+    tag_head = git("rev-parse", f"refs/tags/{EXPECTED_AGNO_TAG}^{{commit}}")
+    status = git("status", "--porcelain=v1")
+    assert head == EXPECTED_AGNO_SHA, (
+        f"Agno source HEAD {head} does not match {EXPECTED_AGNO_TAG} "
+        f"({EXPECTED_AGNO_SHA})"
+    )
+    assert tag_head == EXPECTED_AGNO_SHA, (
+        f"Agno tag {EXPECTED_AGNO_TAG} resolves to {tag_head}, expected {EXPECTED_AGNO_SHA}"
+    )
+    assert not status, f"Agno source checkout is dirty: {root}"
+    return EXPECTED_AGNO_TAG
 
 # ---------------------------------------------------------------------------
 # Curated tables
@@ -5201,6 +5230,9 @@ def source_link(
             f"{cookbook_rel}: source_link_ref requires the Agno source HEAD to have an exact tag"
         )
         ref = result.stdout.strip()
+        assert ref == EXPECTED_AGNO_TAG, (
+            f"{cookbook_rel}: Agno source tag {ref!r} does not match {EXPECTED_AGNO_TAG}"
+        )
     assert re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", ref), (
         f"{cookbook_rel}: invalid source link ref {ref!r}"
     )
@@ -5559,6 +5591,7 @@ def main() -> None:
     agno_root = args.agno_root or Path(
         os.environ.get("AGNO_REPO") or args.docs_root / "agno"
     )
+    validate_agno_source(agno_root)
     src = args.source.read_text(encoding="utf-8")
     rel = cookbook_relative(args.source)
     page = render(args.source, rel, src, agno_root, slug=args.slug)

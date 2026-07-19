@@ -35,6 +35,8 @@ COOKBOOK = AGNO_ROOT / "cookbook"
 OUT_DIR = HERE / "out"
 PLAN_PATH = OUT_DIR / "sync-plan.json"
 
+gen.validate_agno_source(AGNO_ROOT)
+
 if not PLAN_PATH.is_file():
     raise SystemExit(f"error: {PLAN_PATH} not found; run plan.py first")
 plan = json.loads(PLAN_PATH.read_text())
@@ -133,6 +135,10 @@ ref_res = [
 ]
 gen_slugs = {t[0] for t in gen_tasks}
 b_bad_gen, b_bad_other = [], []
+wrong_cookbook_revisions = []
+cookbook_link_re = re.compile(
+    r"github\.com/agno-agi/agno/(?:blob|tree)/([^/\s]+)/(cookbook/[^)\s\"'`]+)"
+)
 all_mdx = sorted((DOCS_ROOT / "examples").rglob("*.mdx"))
 for p in all_mdx:
     slug = str(p.relative_to(DOCS_ROOT)).removesuffix(".mdx")
@@ -144,11 +150,21 @@ for p in all_mdx:
             target = COOKBOOK / tail
             if not (target.is_file() or target.is_dir()):
                 (b_bad_gen if slug in gen_slugs else b_bad_other).append((slug, ref))
+    for revision, ref in cookbook_link_re.findall(text):
+        if revision != gen.EXPECTED_AGNO_TAG:
+            wrong_cookbook_revisions.append((slug, revision, ref.rstrip(".,)")))
 print(f"(b) cookbook refs: {len(all_mdx)} files scanned; "
-      f"{len(b_bad_gen)} dead refs in generated pages, {len(b_bad_other)} in preserved pages")
+      f"{len(b_bad_gen)} dead refs in generated pages, {len(b_bad_other)} in preserved pages, "
+      f"{len(wrong_cookbook_revisions)} wrong revisions")
 for s, r in (b_bad_gen + b_bad_other)[:25]:
     print("   DEAD:", s, "->", r)
+for slug, revision, ref in wrong_cookbook_revisions[:25]:
+    print("   WRONG REVISION:", slug, "->", revision, ref)
 problems += [f"(b) generated {s}: dead ref {r}" for s, r in b_bad_gen]
+problems += [
+    f"(b) {slug}: cookbook ref {ref} uses {revision}, expected {gen.EXPECTED_AGNO_TAG}"
+    for slug, revision, ref in wrong_cookbook_revisions
+]
 
 # ---------------------------------------------------------------------------
 # (c) every generated page carries the complete cookbook source
