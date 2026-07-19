@@ -390,7 +390,22 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         "Remote agent is unavailable",
         "ServiceUnavailableResponse",
     )
+    add_response(
+        continue_agent_run,
+        "501",
+        "The selected agent does not support run continuation",
+        "NotImplementedResponse",
+    )
     sort_responses(continue_agent_run)
+
+    cancel_agent_run = spec["paths"]["/agents/{agent_id}/runs/{run_id}/cancel"]["post"]
+    add_response(
+        cancel_agent_run,
+        "501",
+        "The selected agent does not support run cancellation",
+        "NotImplementedResponse",
+    )
+    sort_responses(cancel_agent_run)
 
     continue_team_run = spec["paths"]["/teams/{team_id}/runs/{run_id}/continue"]["post"]
     continue_team_responses = continue_team_run["responses"]
@@ -465,6 +480,66 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
     assert continue_workflow_validation == {"$ref": "#/components/schemas/ValidationErrorResponse"}
     continue_workflow_validation["$ref"] = "#/components/schemas/HTTPValidationError"
     sort_responses(continue_workflow_run)
+
+    list_teams = spec["paths"]["/teams"]["get"]
+    assert list_teams["summary"] == "List All Teams"
+    list_teams["summary"] = "List Accessible Teams"
+    assert list_teams["description"] == (
+        "Retrieve a comprehensive list of all teams configured in this OS instance.\n\n"
+        "**Returns team information including:**\n"
+        "- Team metadata (ID, name, description, execution mode)\n"
+        "- Model configuration for team coordination\n"
+        "- Team member roster with roles and capabilities\n"
+        "- Knowledge sharing and memory configurations"
+    )
+    list_teams["description"] = (
+        "Retrieve configured team metadata, models, members, knowledge, and memory settings. "
+        "When authorization is enabled, in-memory team registrations are filtered by caller scopes. "
+        "Database-loaded team components are also included."
+    )
+
+    for path, description in (
+        ("/knowledge/remote-content", "Remote content upload is unavailable for remote knowledge bases"),
+        (
+            "/knowledge/{knowledge_id}/sources",
+            "Content source listing is unavailable for remote knowledge bases",
+        ),
+        (
+            "/knowledge/{knowledge_id}/sources/{source_id}/files",
+            "Source file listing is unavailable for remote knowledge bases",
+        ),
+    ):
+        operation = spec["paths"][path]["post" if path == "/knowledge/remote-content" else "get"]
+        add_response(operation, "501", description, "NotImplementedResponse")
+        sort_responses(operation)
+
+    learning_operations = (
+        ("/learnings", "get"),
+        ("/learnings", "post"),
+        ("/learnings/users", "get"),
+        ("/learnings/users/{user_id}", "delete"),
+        ("/learnings/{learning_id}", "get"),
+        ("/learnings/{learning_id}", "patch"),
+        ("/learnings/{learning_id}", "delete"),
+    )
+    for path, method in learning_operations:
+        operation = spec["paths"][path][method]
+        add_response(
+            operation,
+            "501",
+            "Learnings are unavailable for remote or unsupported databases",
+            "NotImplementedResponse",
+        )
+        sort_responses(operation)
+
+    create_learning = spec["paths"]["/learnings"]["post"]
+    add_response(
+        create_learning,
+        "409",
+        "An identity-keyed learning already exists",
+        "ConflictResponse",
+    )
+    sort_responses(create_learning)
 
     update_content = spec["paths"]["/knowledge/content/{content_id}"]["patch"]
     assert update_content["description"] == (
@@ -1077,7 +1152,16 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
     present_a2a_paths = [path for path in a2a_paths if path in spec["paths"]]
     if present_a2a_paths:
         assert present_a2a_paths == a2a_paths
-        from a2a.types import SendMessageRequest, SendMessageSuccessResponse, SendStreamingMessageRequest
+        from a2a.types import (
+            AgentCard,
+            CancelTaskSuccessResponse,
+            CancelTaskRequest,
+            GetTaskSuccessResponse,
+            GetTaskRequest,
+            SendMessageRequest,
+            SendMessageSuccessResponse,
+            SendStreamingMessageRequest,
+        )
 
         for request_model in (SendMessageRequest, SendStreamingMessageRequest):
             request_schema = request_model.model_json_schema(
@@ -1093,6 +1177,61 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
             assert request_model.__name__ not in schemas
             schemas[request_model.__name__] = request_schema
 
+        deprecated_entity_id = schemas["A2ARequest_Message"]["properties"]
+        assert "agentId" not in deprecated_entity_id
+        deprecated_entity_id["agentId"] = {
+            "anyOf": [{"type": "string"}, {"type": "null"}],
+            "default": None,
+            "title": "Agent ID",
+            "description": "Target agent, team, or workflow ID for deprecated dynamic-dispatch endpoints.",
+        }
+
+        card_schema = AgentCard.model_json_schema(ref_template="#/components/schemas/A2ACard_{model}")
+        card_definitions = card_schema.pop("$defs")
+        for definition_name, definition_schema in card_definitions.items():
+            component_name = f"A2ACard_{definition_name}"
+            assert component_name not in schemas
+            schemas[component_name] = definition_schema
+        assert "AgentCard" not in schemas
+        schemas["AgentCard"] = card_schema
+
+        for request_model, params_definition, context_required in (
+            (GetTaskRequest, "TaskQueryParams", True),
+            (CancelTaskRequest, "TaskIdParams", False),
+        ):
+            request_schema = request_model.model_json_schema(
+                ref_template="#/components/schemas/A2ARequest_{model}"
+            )
+            request_definitions = request_schema.pop("$defs")
+            params_schema = request_definitions[params_definition]
+            assert "contextId" not in params_schema["properties"]
+            params_schema["properties"]["contextId"] = {
+                "type": "string",
+                "title": "Context ID",
+                "description": "Agno session ID containing the task.",
+            }
+            if context_required:
+                assert params_schema["required"] == ["id"]
+                params_schema["required"].append("contextId")
+            for definition_name, definition_schema in request_definitions.items():
+                component_name = f"A2ARequest_{definition_name}"
+                assert component_name not in schemas
+                schemas[component_name] = definition_schema
+            assert request_model.__name__ not in schemas
+            schemas[request_model.__name__] = request_schema
+
+        for response_model in (GetTaskSuccessResponse, CancelTaskSuccessResponse):
+            response_schema = response_model.model_json_schema(
+                ref_template="#/components/schemas/{model}"
+            )
+            response_schema.pop("$defs")
+            assert "Task" in schemas
+            assert response_schema["properties"]["result"] == {
+                "$ref": "#/components/schemas/Task"
+            }
+            assert response_model.__name__ not in schemas
+            schemas[response_model.__name__] = response_schema
+
         success_example = SendMessageSuccessResponse.model_validate(
             {
                 "jsonrpc": "2.0",
@@ -1104,6 +1243,117 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
                 },
             }
         ).model_dump(mode="json", by_alias=True, exclude_none=True)
+        get_task_example = {
+            "id": "request-123",
+            "jsonrpc": "2.0",
+            "result": {
+                "contextId": "context-789",
+                "id": "task-456",
+                "kind": "task",
+                "status": {"state": "completed"},
+            },
+        }
+        cancel_task_example = deepcopy(get_task_example)
+        cancel_task_example["result"]["status"]["state"] = "canceled"
+
+        for family, label in a2a_families:
+            card_operation = spec["paths"][f"/a2a/{family}/{{id}}/.well-known/agent-card.json"]["get"]
+            assert card_operation.get("security") is None
+            card_operation["security"] = [{"HTTPBearer": []}]
+            card_success = card_operation["responses"]["200"]
+            assert card_success == {
+                "description": "Successful Response",
+                "content": {"application/json": {"schema": {}}},
+            }
+            card_operation["responses"]["200"] = response_ref(
+                f"{label} card retrieved successfully",
+                "AgentCard",
+            )
+            add_response(card_operation, "404", f"{label} not found", "NotFoundResponse")
+            sort_responses(card_operation)
+
+        for family, label in a2a_families[:2]:
+            for action, request_schema_name in (
+                ("get", "GetTaskRequest"),
+                ("cancel", "CancelTaskRequest"),
+            ):
+                operation = spec["paths"][f"/a2a/{family}/{{id}}/v1/tasks:{action}"]["post"]
+                expected_description = (
+                    f"Get the status and result of {'an' if family == 'agents' else 'a'} {family[:-1]} task by ID."
+                    if action == "get"
+                    else f"Cancel a running {family[:-1]} task."
+                )
+                assert operation["description"] == expected_description
+                if action == "get":
+                    operation["description"] += " `params.contextId` identifies the session containing the task."
+                else:
+                    operation["description"] += (
+                        " Scoped non-admin callers must identify the task's session with `params.contextId`."
+                    )
+                assert operation.get("security") is None
+                operation["security"] = [{"HTTPBearer": []}]
+                assert "requestBody" not in operation
+                operation["requestBody"] = {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": f"#/components/schemas/{request_schema_name}"},
+                            "example": {
+                                "jsonrpc": "2.0",
+                                "id": "request-123",
+                                "method": f"tasks/{action}",
+                                "params": {"id": "task-456", "contextId": "context-789"},
+                            },
+                        }
+                    },
+                }
+                task_success = operation["responses"]["200"]
+                assert task_success == {
+                    "description": "Successful Response",
+                    "content": {"application/json": {"schema": {}}},
+                }
+                response_schema_name = (
+                    "GetTaskSuccessResponse" if action == "get" else "CancelTaskSuccessResponse"
+                )
+                operation["responses"]["200"] = response_ref(
+                    f"{label} task {'retrieved' if action == 'get' else 'canceled'} successfully",
+                    response_schema_name,
+                )
+                operation["responses"]["200"]["content"]["application/json"]["example"] = deepcopy(
+                    get_task_example if action == "get" else cancel_task_example
+                )
+                if action == "get":
+                    bad_request_description = (
+                        f"Missing task or context ID, or task polling requested for a remote {family[:-1]}"
+                    )
+                else:
+                    bad_request_description = (
+                        f"Missing task or required context ID, or task cancellation requested for a remote {family[:-1]}"
+                    )
+                add_response(
+                    operation,
+                    "400",
+                    bad_request_description,
+                    "BadRequestResponse",
+                )
+                add_response(
+                    operation,
+                    "404",
+                    f"{label}, session, or task not found",
+                    "NotFoundResponse",
+                )
+                if family == "agents":
+                    add_response(
+                        operation,
+                        "501",
+                        (
+                            "Task polling is not supported for this agent type"
+                            if action == "get"
+                            else "Task cancellation is not supported for this agent type"
+                        ),
+                        "NotImplementedResponse",
+                    )
+                sort_responses(operation)
 
         for family, label in a2a_families:
             for action, request_schema_name in (
@@ -1185,6 +1435,63 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
                     )
                 sort_responses(operation)
 
+        for action, request_schema_name in (
+            ("send", "SendMessageRequest"),
+            ("stream", "SendStreamingMessageRequest"),
+        ):
+            operation = spec["paths"][f"/a2a/message/{action}"]["post"]
+            assert operation.get("deprecated") is None
+            operation["deprecated"] = True
+            assert operation.get("security") is None
+            operation["security"] = [{"HTTPBearer": []}]
+            assert "parameters" not in operation
+            operation["parameters"] = [
+                {
+                    "name": "X-Agent-ID",
+                    "in": "header",
+                    "required": False,
+                    "schema": {"type": "string"},
+                    "description": "Target agent, team, or workflow ID when `params.message.agentId` is omitted.",
+                },
+                {
+                    "name": "X-User-ID",
+                    "in": "header",
+                    "required": False,
+                    "schema": {"type": "string"},
+                    "description": (
+                        "Optional user ID for anonymous attribution. Authenticated requests use the "
+                        "identity from the credential."
+                    ),
+                },
+            ]
+            assert "requestBody" not in operation
+            operation["requestBody"] = {
+                "required": True,
+                "content": {
+                    "application/json": {
+                        "schema": {"$ref": f"#/components/schemas/{request_schema_name}"},
+                    }
+                },
+            }
+            assert operation["responses"]["400"] == {
+                "description": "Invalid request or unsupported method"
+            }
+            operation["responses"]["400"] = response_ref(
+                "Invalid request or unsupported method",
+                "BadRequestResponse",
+            )
+            assert operation["responses"]["404"] == {
+                "description": "Agent, Team, or Workflow not found"
+            }
+            operation["responses"]["404"] = response_ref(
+                "Agent, team, or workflow not found",
+                "NotFoundResponse",
+            )
+            if action == "send":
+                success_json = operation["responses"]["200"]["content"]["application/json"]
+                assert "task" in success_json["example"]["result"]
+                success_json["example"] = deepcopy(success_example)
+
         deprecated_stream = spec["paths"]["/a2a/message/stream"]["post"]
         deprecated_stream_content = deprecated_stream["responses"]["200"]["content"]
         assert deprecated_stream_content["application/json"]["schema"] == {}
@@ -1197,6 +1504,14 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
             "Returns real-time updates as newline-delimited JSON (NDJSON).",
             "Returns real-time updates as Server-Sent Events (SSE).",
         )
+        add_response(
+            deprecated_stream,
+            "500",
+            "Run could not be started",
+            "InternalServerErrorResponse",
+        )
+        sort_responses(spec["paths"]["/a2a/message/send"]["post"])
+        sort_responses(deprecated_stream)
 
     resume_paths = (
         "/agents/{agent_id}/runs/{run_id}/resume",

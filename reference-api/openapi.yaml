@@ -482,6 +482,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '501':
+          description: The selected agent does not support run cancellation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotImplementedResponse'
   /agents/{agent_id}/runs/{run_id}/continue:
     post:
       tags:
@@ -575,6 +581,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '501':
+          description: The selected agent does not support run continuation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotImplementedResponse'
         '503':
           description: Remote agent is unavailable
           content:
@@ -1653,15 +1665,8 @@ paths:
     get:
       tags:
         - Teams
-      summary: List All Teams
-      description: |-
-        Retrieve a comprehensive list of all teams configured in this OS instance.
-
-        **Returns team information including:**
-        - Team metadata (ID, name, description, execution mode)
-        - Model configuration for team coordination
-        - Team member roster with roles and capabilities
-        - Knowledge sharing and memory configurations
+      summary: List Accessible Teams
+      description: Retrieve configured team metadata, models, members, knowledge, and memory settings. When authorization is enabled, in-memory team registrations are filtered by caller scopes. Database-loaded team components are also included.
       operationId: get_teams
       responses:
         '200':
@@ -3112,16 +3117,37 @@ paths:
             title: Id
       responses:
         '200':
-          description: Successful Response
+          description: Agent card retrieved successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/AgentCard'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForbiddenResponse'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+      security:
+        - HTTPBearer: []
   /a2a/agents/{id}/v1/message:send:
     post:
       tags:
@@ -3205,7 +3231,7 @@ paths:
       tags:
         - A2A
       summary: Get Agent Task
-      description: Get the status and result of an agent task by ID.
+      description: Get the status and result of an agent task by ID. `params.contextId` identifies the session containing the task.
       operationId: get_agent_task
       parameters:
         - name: id
@@ -3216,22 +3242,77 @@ paths:
             title: Id
       responses:
         '200':
-          description: Successful Response
+          description: Agent task retrieved successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/GetTaskSuccessResponse'
+              example:
+                id: request-123
+                jsonrpc: '2.0'
+                result:
+                  contextId: context-789
+                  id: task-456
+                  kind: task
+                  status:
+                    state: completed
+        '400':
+          description: Missing task or context ID, or task polling requested for a remote agent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForbiddenResponse'
+        '404':
+          description: Agent, session, or task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '501':
+          description: Task polling is not supported for this agent type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotImplementedResponse'
+      security:
+        - HTTPBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetTaskRequest'
+            example:
+              jsonrpc: '2.0'
+              id: request-123
+              method: tasks/get
+              params:
+                id: task-456
+                contextId: context-789
   /a2a/agents/{id}/v1/tasks:cancel:
     post:
       tags:
         - A2A
       summary: Cancel Agent Task
-      description: Cancel a running agent task.
+      description: Cancel a running agent task. Scoped non-admin callers must identify the task's session with `params.contextId`.
       operationId: cancel_agent_task
       parameters:
         - name: id
@@ -3242,16 +3323,71 @@ paths:
             title: Id
       responses:
         '200':
-          description: Successful Response
+          description: Agent task canceled successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/CancelTaskSuccessResponse'
+              example:
+                id: request-123
+                jsonrpc: '2.0'
+                result:
+                  contextId: context-789
+                  id: task-456
+                  kind: task
+                  status:
+                    state: canceled
+        '400':
+          description: Missing task or required context ID, or task cancellation requested for a remote agent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForbiddenResponse'
+        '404':
+          description: Agent, session, or task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '501':
+          description: Task cancellation is not supported for this agent type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotImplementedResponse'
+      security:
+        - HTTPBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelTaskRequest'
+            example:
+              jsonrpc: '2.0'
+              id: request-123
+              method: tasks/cancel
+              params:
+                id: task-456
+                contextId: context-789
   /a2a/agents/{id}/v1/message:stream:
     post:
       tags:
@@ -3337,16 +3473,37 @@ paths:
             title: Id
       responses:
         '200':
-          description: Successful Response
+          description: Team card retrieved successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/AgentCard'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForbiddenResponse'
+        '404':
+          description: Team not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+      security:
+        - HTTPBearer: []
   /a2a/teams/{id}/v1/message:send:
     post:
       tags:
@@ -3424,7 +3581,7 @@ paths:
       tags:
         - A2A
       summary: Get Team Task
-      description: Get the status and result of a team task by ID.
+      description: Get the status and result of a team task by ID. `params.contextId` identifies the session containing the task.
       operationId: get_team_task
       parameters:
         - name: id
@@ -3435,22 +3592,71 @@ paths:
             title: Id
       responses:
         '200':
-          description: Successful Response
+          description: Team task retrieved successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/GetTaskSuccessResponse'
+              example:
+                id: request-123
+                jsonrpc: '2.0'
+                result:
+                  contextId: context-789
+                  id: task-456
+                  kind: task
+                  status:
+                    state: completed
+        '400':
+          description: Missing task or context ID, or task polling requested for a remote team
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForbiddenResponse'
+        '404':
+          description: Team, session, or task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+      security:
+        - HTTPBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetTaskRequest'
+            example:
+              jsonrpc: '2.0'
+              id: request-123
+              method: tasks/get
+              params:
+                id: task-456
+                contextId: context-789
   /a2a/teams/{id}/v1/tasks:cancel:
     post:
       tags:
         - A2A
       summary: Cancel Team Task
-      description: Cancel a running team task.
+      description: Cancel a running team task. Scoped non-admin callers must identify the task's session with `params.contextId`.
       operationId: cancel_team_task
       parameters:
         - name: id
@@ -3461,16 +3667,65 @@ paths:
             title: Id
       responses:
         '200':
-          description: Successful Response
+          description: Team task canceled successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/CancelTaskSuccessResponse'
+              example:
+                id: request-123
+                jsonrpc: '2.0'
+                result:
+                  contextId: context-789
+                  id: task-456
+                  kind: task
+                  status:
+                    state: canceled
+        '400':
+          description: Missing task or required context ID, or task cancellation requested for a remote team
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForbiddenResponse'
+        '404':
+          description: Team, session, or task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+      security:
+        - HTTPBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelTaskRequest'
+            example:
+              jsonrpc: '2.0'
+              id: request-123
+              method: tasks/cancel
+              params:
+                id: task-456
+                contextId: context-789
   /a2a/teams/{id}/v1/message:stream:
     post:
       tags:
@@ -3556,16 +3811,37 @@ paths:
             title: Id
       responses:
         '200':
-          description: Successful Response
+          description: Workflow card retrieved successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/AgentCard'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForbiddenResponse'
+        '404':
+          description: Workflow not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+      security:
+        - HTTPBearer: []
   /a2a/workflows/{id}/v1/message:send:
     post:
       tags:
@@ -3717,23 +3993,60 @@ paths:
               schema:
                 $ref: '#/components/schemas/SendMessageSuccessResponse'
               example:
-                jsonrpc: '2.0'
                 id: request-123
+                jsonrpc: '2.0'
                 result:
-                  task:
-                    id: task-456
-                    context_id: context-789
-                    status: completed
-                    history:
-                      - message_id: msg-1
-                        role: agent
-                        parts:
-                          - kind: text
-                            text: Response from agent
+                  contextId: context-789
+                  id: task-456
+                  kind: task
+                  status:
+                    state: completed
         '400':
           description: Invalid request or unsupported method
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForbiddenResponse'
         '404':
-          description: Agent, Team, or Workflow not found
+          description: Agent, team, or workflow not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+      deprecated: true
+      security:
+        - HTTPBearer: []
+      parameters:
+        - name: X-Agent-ID
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Target agent, team, or workflow ID when `params.message.agentId` is omitted.
+        - name: X-User-ID
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Optional user ID for anonymous attribution. Authenticated requests use the identity from the credential.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
   /a2a/message/stream:
     post:
       tags:
@@ -3757,8 +4070,56 @@ paths:
                 type: string
         '400':
           description: Invalid request or unsupported method
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForbiddenResponse'
         '404':
-          description: Agent, Team, or Workflow not found
+          description: Agent, team, or workflow not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '500':
+          description: Run could not be started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+      deprecated: true
+      security:
+        - HTTPBearer: []
+      parameters:
+        - name: X-Agent-ID
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Target agent, team, or workflow ID when `params.message.agentId` is omitted.
+        - name: X-User-ID
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Optional user ID for anonymous attribution. Authenticated requests use the identity from the credential.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendStreamingMessageRequest'
   /sessions:
     get:
       tags:
@@ -6128,6 +6489,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '501':
+          description: Learnings are unavailable for remote or unsupported databases
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotImplementedResponse'
     post:
       tags:
         - Learnings
@@ -6194,6 +6561,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NotFoundResponse'
+        '409':
+          description: An identity-keyed learning already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConflictResponse'
         '422':
           description: Validation Error
           content:
@@ -6206,6 +6579,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '501':
+          description: Learnings are unavailable for remote or unsupported databases
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotImplementedResponse'
   /learnings/users:
     get:
       tags:
@@ -6341,6 +6720,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '501':
+          description: Learnings are unavailable for remote or unsupported databases
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotImplementedResponse'
   /learnings/users/{user_id}:
     delete:
       tags:
@@ -6428,6 +6813,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '501':
+          description: Learnings are unavailable for remote or unsupported databases
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotImplementedResponse'
   /learnings/{learning_id}:
     get:
       tags:
@@ -6509,6 +6900,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '501':
+          description: Learnings are unavailable for remote or unsupported databases
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotImplementedResponse'
     patch:
       tags:
         - Learnings
@@ -6595,6 +6992,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '501':
+          description: Learnings are unavailable for remote or unsupported databases
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotImplementedResponse'
     delete:
       tags:
         - Learnings
@@ -6671,6 +7074,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '501':
+          description: Learnings are unavailable for remote or unsupported databases
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotImplementedResponse'
   /eval-runs:
     get:
       tags:
@@ -7799,6 +8208,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '501':
+          description: Remote content upload is unavailable for remote knowledge bases
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotImplementedResponse'
   /knowledge/content/{content_id}:
     patch:
       tags:
@@ -8691,6 +9106,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '501':
+          description: Content source listing is unavailable for remote knowledge bases
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotImplementedResponse'
   /knowledge/{knowledge_id}/sources/{source_id}/files:
     get:
       tags:
@@ -8829,6 +9250,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '501':
+          description: Source file listing is unavailable for remote knowledge bases
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotImplementedResponse'
   /traces:
     get:
       tags:
@@ -11850,6 +12277,443 @@ paths:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
 components:
   schemas:
+    A2ACard_APIKeySecurityScheme:
+      description: Defines a security scheme using an API key.
+      properties:
+        description:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Description
+        in:
+          $ref: '#/components/schemas/A2ACard_In'
+        name:
+          title: Name
+          type: string
+        type:
+          const: apiKey
+          default: apiKey
+          title: Type
+          type: string
+      required:
+        - in
+        - name
+      title: APIKeySecurityScheme
+      type: object
+    A2ACard_AgentCapabilities:
+      description: Defines optional capabilities supported by an agent.
+      properties:
+        extensions:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/A2ACard_AgentExtension'
+              type: array
+            - type: 'null'
+          default: null
+          title: Extensions
+        pushNotifications:
+          anyOf:
+            - type: boolean
+            - type: 'null'
+          default: null
+          title: Pushnotifications
+        stateTransitionHistory:
+          anyOf:
+            - type: boolean
+            - type: 'null'
+          default: null
+          title: Statetransitionhistory
+        streaming:
+          anyOf:
+            - type: boolean
+            - type: 'null'
+          default: null
+          title: Streaming
+      title: AgentCapabilities
+      type: object
+    A2ACard_AgentCardSignature:
+      description: |-
+        AgentCardSignature represents a JWS signature of an AgentCard.
+        This follows the JSON format of an RFC 7515 JSON Web Signature (JWS).
+      properties:
+        header:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          default: null
+          title: Header
+        protected:
+          title: Protected
+          type: string
+        signature:
+          title: Signature
+          type: string
+      required:
+        - protected
+        - signature
+      title: AgentCardSignature
+      type: object
+    A2ACard_AgentExtension:
+      description: A declaration of a protocol extension supported by an Agent.
+      properties:
+        description:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Description
+        params:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          default: null
+          title: Params
+        required:
+          anyOf:
+            - type: boolean
+            - type: 'null'
+          default: null
+          title: Required
+        uri:
+          title: Uri
+          type: string
+      required:
+        - uri
+      title: AgentExtension
+      type: object
+    A2ACard_AgentInterface:
+      description: |-
+        Declares a combination of a target URL and a transport protocol for interacting with the agent.
+        This allows agents to expose the same functionality over multiple transport mechanisms.
+      properties:
+        transport:
+          examples:
+            - JSONRPC
+            - GRPC
+            - HTTP+JSON
+          title: Transport
+          type: string
+        url:
+          examples:
+            - https://api.example.com/a2a/v1
+            - https://grpc.example.com/a2a
+            - https://rest.example.com/v1
+          title: Url
+          type: string
+      required:
+        - transport
+        - url
+      title: AgentInterface
+      type: object
+    A2ACard_AgentProvider:
+      description: Represents the service provider of an agent.
+      properties:
+        organization:
+          title: Organization
+          type: string
+        url:
+          title: Url
+          type: string
+      required:
+        - organization
+        - url
+      title: AgentProvider
+      type: object
+    A2ACard_AgentSkill:
+      description: Represents a distinct capability or function that an agent can perform.
+      properties:
+        description:
+          title: Description
+          type: string
+        examples:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: 'null'
+          default: null
+          examples:
+            - - I need a recipe for bread
+          title: Examples
+        id:
+          title: Id
+          type: string
+        inputModes:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: 'null'
+          default: null
+          title: Inputmodes
+        name:
+          title: Name
+          type: string
+        outputModes:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: 'null'
+          default: null
+          title: Outputmodes
+        security:
+          anyOf:
+            - items:
+                additionalProperties:
+                  items:
+                    type: string
+                  type: array
+                type: object
+              type: array
+            - type: 'null'
+          default: null
+          examples:
+            - - google:
+                  - oidc
+          title: Security
+        tags:
+          examples:
+            - - cooking
+              - customer support
+              - billing
+          items:
+            type: string
+          title: Tags
+          type: array
+      required:
+        - description
+        - id
+        - name
+        - tags
+      title: AgentSkill
+      type: object
+    A2ACard_AuthorizationCodeOAuthFlow:
+      description: Defines configuration details for the OAuth 2.0 Authorization Code flow.
+      properties:
+        authorizationUrl:
+          title: Authorizationurl
+          type: string
+        refreshUrl:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Refreshurl
+        scopes:
+          additionalProperties:
+            type: string
+          title: Scopes
+          type: object
+        tokenUrl:
+          title: Tokenurl
+          type: string
+      required:
+        - authorizationUrl
+        - scopes
+        - tokenUrl
+      title: AuthorizationCodeOAuthFlow
+      type: object
+    A2ACard_ClientCredentialsOAuthFlow:
+      description: Defines configuration details for the OAuth 2.0 Client Credentials flow.
+      properties:
+        refreshUrl:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Refreshurl
+        scopes:
+          additionalProperties:
+            type: string
+          title: Scopes
+          type: object
+        tokenUrl:
+          title: Tokenurl
+          type: string
+      required:
+        - scopes
+        - tokenUrl
+      title: ClientCredentialsOAuthFlow
+      type: object
+    A2ACard_HTTPAuthSecurityScheme:
+      description: Defines a security scheme using HTTP authentication.
+      properties:
+        bearerFormat:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Bearerformat
+        description:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Description
+        scheme:
+          title: Scheme
+          type: string
+        type:
+          const: http
+          default: http
+          title: Type
+          type: string
+      required:
+        - scheme
+      title: HTTPAuthSecurityScheme
+      type: object
+    A2ACard_ImplicitOAuthFlow:
+      description: Defines configuration details for the OAuth 2.0 Implicit flow.
+      properties:
+        authorizationUrl:
+          title: Authorizationurl
+          type: string
+        refreshUrl:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Refreshurl
+        scopes:
+          additionalProperties:
+            type: string
+          title: Scopes
+          type: object
+      required:
+        - authorizationUrl
+        - scopes
+      title: ImplicitOAuthFlow
+      type: object
+    A2ACard_In:
+      description: The location of the API key.
+      enum:
+        - cookie
+        - header
+        - query
+      title: In
+      type: string
+    A2ACard_MutualTLSSecurityScheme:
+      description: Defines a security scheme using mTLS authentication.
+      properties:
+        description:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Description
+        type:
+          const: mutualTLS
+          default: mutualTLS
+          title: Type
+          type: string
+      title: MutualTLSSecurityScheme
+      type: object
+    A2ACard_OAuth2SecurityScheme:
+      description: Defines a security scheme using OAuth 2.0.
+      properties:
+        description:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Description
+        flows:
+          $ref: '#/components/schemas/A2ACard_OAuthFlows'
+        oauth2MetadataUrl:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Oauth2Metadataurl
+        type:
+          const: oauth2
+          default: oauth2
+          title: Type
+          type: string
+      required:
+        - flows
+      title: OAuth2SecurityScheme
+      type: object
+    A2ACard_OAuthFlows:
+      description: Defines the configuration for the supported OAuth 2.0 flows.
+      properties:
+        authorizationCode:
+          anyOf:
+            - $ref: '#/components/schemas/A2ACard_AuthorizationCodeOAuthFlow'
+            - type: 'null'
+          default: null
+        clientCredentials:
+          anyOf:
+            - $ref: '#/components/schemas/A2ACard_ClientCredentialsOAuthFlow'
+            - type: 'null'
+          default: null
+        implicit:
+          anyOf:
+            - $ref: '#/components/schemas/A2ACard_ImplicitOAuthFlow'
+            - type: 'null'
+          default: null
+        password:
+          anyOf:
+            - $ref: '#/components/schemas/A2ACard_PasswordOAuthFlow'
+            - type: 'null'
+          default: null
+      title: OAuthFlows
+      type: object
+    A2ACard_OpenIdConnectSecurityScheme:
+      description: Defines a security scheme using OpenID Connect.
+      properties:
+        description:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Description
+        openIdConnectUrl:
+          title: Openidconnecturl
+          type: string
+        type:
+          const: openIdConnect
+          default: openIdConnect
+          title: Type
+          type: string
+      required:
+        - openIdConnectUrl
+      title: OpenIdConnectSecurityScheme
+      type: object
+    A2ACard_PasswordOAuthFlow:
+      description: Defines configuration details for the OAuth 2.0 Resource Owner Password flow.
+      properties:
+        refreshUrl:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Refreshurl
+        scopes:
+          additionalProperties:
+            type: string
+          title: Scopes
+          type: object
+        tokenUrl:
+          title: Tokenurl
+          type: string
+      required:
+        - scopes
+        - tokenUrl
+      title: PasswordOAuthFlow
+      type: object
+    A2ACard_SecurityScheme:
+      anyOf:
+        - $ref: '#/components/schemas/A2ACard_APIKeySecurityScheme'
+        - $ref: '#/components/schemas/A2ACard_HTTPAuthSecurityScheme'
+        - $ref: '#/components/schemas/A2ACard_OAuth2SecurityScheme'
+        - $ref: '#/components/schemas/A2ACard_OpenIdConnectSecurityScheme'
+        - $ref: '#/components/schemas/A2ACard_MutualTLSSecurityScheme'
+      title: SecurityScheme
     A2ARequest_DataPart:
       description: Represents a structured data segment (e.g., JSON) within a message or artifact.
       properties:
@@ -11996,6 +12860,13 @@ components:
             - type: 'null'
           default: null
           title: Taskid
+        agentId:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Agent ID
+          description: Target agent, team, or workflow ID for deprecated dynamic-dispatch endpoints.
       required:
         - messageId
         - parts
@@ -12113,6 +12984,55 @@ components:
         - user
       title: Role
       type: string
+    A2ARequest_TaskIdParams:
+      description: Defines parameters containing a task ID, used for simple task operations.
+      properties:
+        id:
+          title: Id
+          type: string
+        metadata:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          default: null
+          title: Metadata
+        contextId:
+          type: string
+          title: Context ID
+          description: Agno session ID containing the task.
+      required:
+        - id
+      title: TaskIdParams
+      type: object
+    A2ARequest_TaskQueryParams:
+      description: Defines parameters for querying a task, with an option to limit history length.
+      properties:
+        historyLength:
+          anyOf:
+            - type: integer
+            - type: 'null'
+          default: null
+          title: Historylength
+        id:
+          title: Id
+          type: string
+        metadata:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          default: null
+          title: Metadata
+        contextId:
+          type: string
+          title: Context ID
+          description: Agno session ID containing the task.
+      required:
+        - id
+        - contextId
+      title: TaskQueryParams
+      type: object
     A2ARequest_TextPart:
       description: Represents a text segment within a message or artifact.
       properties:
@@ -12160,6 +13080,140 @@ components:
         - content
       title: ActivityMessage
       description: An activity progress message emitted between chat messages.
+    AgentCard:
+      description: |-
+        The AgentCard is a self-describing manifest for an agent. It provides essential
+        metadata including the agent's identity, capabilities, skills, supported
+        communication methods, and security requirements.
+      properties:
+        additionalInterfaces:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/A2ACard_AgentInterface'
+              type: array
+            - type: 'null'
+          default: null
+          title: Additionalinterfaces
+        capabilities:
+          $ref: '#/components/schemas/A2ACard_AgentCapabilities'
+        defaultInputModes:
+          items:
+            type: string
+          title: Defaultinputmodes
+          type: array
+        defaultOutputModes:
+          items:
+            type: string
+          title: Defaultoutputmodes
+          type: array
+        description:
+          examples:
+            - Agent that helps users with recipes and cooking.
+          title: Description
+          type: string
+        documentationUrl:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Documentationurl
+        iconUrl:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Iconurl
+        name:
+          examples:
+            - Recipe Agent
+          title: Name
+          type: string
+        preferredTransport:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: JSONRPC
+          examples:
+            - JSONRPC
+            - GRPC
+            - HTTP+JSON
+          title: Preferredtransport
+        protocolVersion:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: 0.3.0
+          title: Protocolversion
+        provider:
+          anyOf:
+            - $ref: '#/components/schemas/A2ACard_AgentProvider'
+            - type: 'null'
+          default: null
+        security:
+          anyOf:
+            - items:
+                additionalProperties:
+                  items:
+                    type: string
+                  type: array
+                type: object
+              type: array
+            - type: 'null'
+          default: null
+          examples:
+            - - oauth:
+                  - read
+              - api-key: []
+                mtls: []
+          title: Security
+        securitySchemes:
+          anyOf:
+            - additionalProperties:
+                $ref: '#/components/schemas/A2ACard_SecurityScheme'
+              type: object
+            - type: 'null'
+          default: null
+          title: Securityschemes
+        signatures:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/A2ACard_AgentCardSignature'
+              type: array
+            - type: 'null'
+          default: null
+          title: Signatures
+        skills:
+          items:
+            $ref: '#/components/schemas/A2ACard_AgentSkill'
+          title: Skills
+          type: array
+        supportsAuthenticatedExtendedCard:
+          anyOf:
+            - type: boolean
+            - type: 'null'
+          default: null
+          title: Supportsauthenticatedextendedcard
+        url:
+          examples:
+            - https://api.example.com/a2a/v1
+          title: Url
+          type: string
+        version:
+          examples:
+            - 1.0.0
+          title: Version
+          type: string
+      required:
+        - capabilities
+        - defaultInputModes
+        - defaultOutputModes
+        - description
+        - name
+        - skills
+        - url
+        - version
+      title: AgentCard
+      type: object
     AgentResponse:
       properties:
         id:
@@ -13321,6 +14375,52 @@ components:
         - config_id
         - path
       title: Body_upload_remote_content
+    CancelTaskRequest:
+      description: Represents a JSON-RPC request for the `tasks/cancel` method.
+      properties:
+        id:
+          anyOf:
+            - type: string
+            - type: integer
+          title: Id
+        jsonrpc:
+          const: '2.0'
+          default: '2.0'
+          title: Jsonrpc
+          type: string
+        method:
+          const: tasks/cancel
+          default: tasks/cancel
+          title: Method
+          type: string
+        params:
+          $ref: '#/components/schemas/A2ARequest_TaskIdParams'
+      required:
+        - id
+        - params
+      title: CancelTaskRequest
+      type: object
+    CancelTaskSuccessResponse:
+      description: Represents a successful JSON-RPC response for the `tasks/cancel` method.
+      properties:
+        id:
+          anyOf:
+            - type: string
+            - type: integer
+            - type: 'null'
+          default: null
+          title: Id
+        jsonrpc:
+          const: '2.0'
+          default: '2.0'
+          title: Jsonrpc
+          type: string
+        result:
+          $ref: '#/components/schemas/Task'
+      required:
+        - result
+      title: CancelTaskSuccessResponse
+      type: object
     ChatConfig:
       properties:
         quick_prompts:
@@ -14728,6 +15828,52 @@ components:
         - arguments
       title: FunctionCall
       description: Name and arguments of a function call.
+    GetTaskRequest:
+      description: Represents a JSON-RPC request for the `tasks/get` method.
+      properties:
+        id:
+          anyOf:
+            - type: string
+            - type: integer
+          title: Id
+        jsonrpc:
+          const: '2.0'
+          default: '2.0'
+          title: Jsonrpc
+          type: string
+        method:
+          const: tasks/get
+          default: tasks/get
+          title: Method
+          type: string
+        params:
+          $ref: '#/components/schemas/A2ARequest_TaskQueryParams'
+      required:
+        - id
+        - params
+      title: GetTaskRequest
+      type: object
+    GetTaskSuccessResponse:
+      description: Represents a successful JSON-RPC response for the `tasks/get` method.
+      properties:
+        id:
+          anyOf:
+            - type: string
+            - type: integer
+            - type: 'null'
+          default: null
+          title: Id
+        jsonrpc:
+          const: '2.0'
+          default: '2.0'
+          title: Jsonrpc
+          type: string
+        result:
+          $ref: '#/components/schemas/Task'
+      required:
+        - result
+      title: GetTaskSuccessResponse
+      type: object
     HTTPValidationError:
       properties:
         detail:
