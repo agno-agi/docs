@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -1338,6 +1339,37 @@ def normalize_terminal_newlines(path: str, count: int = 1) -> None:
     print(f"  normalized terminal newlines: {path}")
 
 
+def pin_agno_clone_commands() -> None:
+    """Pin tracked MDX clone commands to the sealed docs source tag."""
+    global would_apply
+    old = "git clone https://github.com/agno-agi/agno.git"
+    new = "git clone --branch v2.7.4 --depth 1 https://github.com/agno-agi/agno.git"
+    result = subprocess.run(
+        ["git", "-C", str(ROOT), "ls-files", "*.mdx"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    matches: list[tuple[Path, int]] = []
+    for relative_path in result.stdout.splitlines():
+        path = ROOT / relative_path
+        text = path.read_text(encoding="utf-8")
+        count = text.count(old)
+        if count:
+            matches.append((path, count))
+            if not CHECK:
+                path.write_text(text.replace(old, new), encoding="utf-8")
+    if not matches:
+        print("  Agno clone commands already pinned to v2.7.4")
+        return
+    total = sum(count for _, count in matches)
+    if CHECK:
+        would_apply += len(matches)
+        print(f"  would pin {total} Agno clone commands in {len(matches)} files")
+    else:
+        print(f"  pinned {total} Agno clone commands in {len(matches)} files")
+
+
 def docs_path(slug: str) -> Path:
     assert slug.startswith("examples/"), f"not an example slug: {slug}"
     return ROOT / f"{slug}.mdx"
@@ -1809,6 +1841,52 @@ def main() -> None:
     CHECK = ap.parse_args().check
 
     # Source-backed corrections identified by the generated-example review.
+    pin_agno_clone_commands()
+    sub(
+        "tools/mcp/parallel.mdx",
+        "Web search using Parallel's MCP server. API key is optional (keyless access is rate-limited).",
+        """Web search using Parallel's MCP server. API key is optional (keyless access is rate-limited).
+
+<Warning>
+  Anthropic retired `claude-sonnet-4-20250514` on June 15, 2026. Replace it with `claude-sonnet-4-6` before running. See [Claude model deprecations](https://platform.claude.com/docs/en/about-claude/model-deprecations).
+</Warning>""",
+    )
+    sub(
+        "tools/mcp/parallel.mdx",
+        """  <Step title="Run the example">
+    ```bash
+    python cookbook/91_tools/mcp/parallel.py""",
+        """  <Step title="Update the Claude model">
+    Replace `claude-sonnet-4-20250514` with `claude-sonnet-4-6` in the saved file.
+  </Step>
+  <Step title="Run the example">
+    ```bash
+    python cookbook/91_tools/mcp/parallel.py""",
+    )
+    sub(
+        "agent-os/factories/agent/jwt-role-factory.mdx",
+        "---\n\n```python 03_jwt_role_factory.py",
+        """---
+
+<Warning>
+  The pinned source reads authorization decisions from `ctx.trusted.claims` while `JWTMiddleware(validate=False)` disables signature verification. A caller can forge the role claim until validation is enabled.
+</Warning>
+
+```python 03_jwt_role_factory.py""",
+    )
+    sub(
+        "agent-os/factories/agent/jwt-role-factory.mdx",
+        """  <Snippet file="run-pgvector-step.mdx" />
+
+  <Step title="Run the example">""",
+        """  <Snippet file="run-pgvector-step.mdx" />
+
+  <Step title="Enable JWT signature verification">
+    Change `validate=False` to `validate=True`. Replace the hard-coded `JWT_SECRET` assignment with `JWT_SECRET = os.environ["JWT_VERIFICATION_KEY"]`, add `import os`, and export a unique 32-byte secret before starting the server.
+  </Step>
+
+  <Step title="Run the example">""",
+    )
     sub(
         "reasoning/models/vertex-ai/basic-reasoning-stream.mdx",
         'title: "Basic Reasoning Stream"',
@@ -2498,7 +2576,7 @@ $Env:OPENAI_API_KEY="your_openai_api_key_here"
         """## Run the Example
 ```bash
 # Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
+git clone --branch v2.7.4 --depth 1 https://github.com/agno-agi/agno.git
 cd agno/cookbook/06_storage/mongo
 
 # Create and activate virtual environment
@@ -2513,7 +2591,7 @@ python mongodb_for_team.py
   <Step title="Clone Agno">
     Clone the repository and run the remaining commands from its root:
     ```bash
-    git clone https://github.com/agno-agi/agno.git
+    git clone --branch v2.7.4 --depth 1 https://github.com/agno-agi/agno.git
     cd agno
     ```
   </Step>
@@ -2756,7 +2834,7 @@ After starting an example, [connect the AgentOS UI](/agent-os/connect-your-os) t
     sub(
         "agents/approvals/approval-team.mdx",
         """# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
+git clone --branch v2.7.4 --depth 1 https://github.com/agno-agi/agno.git
 cd agno/cookbook/02_agents/11_approvals
 
 # Create and activate virtual environment
@@ -2765,7 +2843,7 @@ source .venvs/demo/bin/activate
 
 python team_level_approval.py""",
         """# Clone and set up the repo
-git clone https://github.com/agno-agi/agno.git
+git clone --branch v2.7.4 --depth 1 https://github.com/agno-agi/agno.git
 cd agno
 
 # Create and activate the demo virtual environment
@@ -2779,7 +2857,7 @@ python cookbook/05_agent_os/approvals/team/team_level_approval.py""",
     sub(
         "agents/approvals/approval-team.mdx",
         """# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
+git clone --branch v2.7.4 --depth 1 https://github.com/agno-agi/agno.git
 cd agno/cookbook/02_agents/11_approvals
 
 # Create and activate virtual environment
@@ -2788,7 +2866,7 @@ source .venvs/demo/bin/activate
 
 python member_agent_level_approval.py""",
         """# Clone and set up the repo
-git clone https://github.com/agno-agi/agno.git
+git clone --branch v2.7.4 --depth 1 https://github.com/agno-agi/agno.git
 cd agno
 
 # Create and activate the demo virtual environment
@@ -2802,7 +2880,7 @@ python cookbook/05_agent_os/approvals/team/member_agent_level_approval.py""",
     sub(
         "agents/approvals/approval-team.mdx",
         """# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
+git clone --branch v2.7.4 --depth 1 https://github.com/agno-agi/agno.git
 cd agno/cookbook/02_agents/11_approvals
 
 # Create and activate virtual environment
@@ -2811,7 +2889,7 @@ source .venvs/demo/bin/activate
 
 python team_and_member_agent_both_level_approval.py""",
         """# Clone and set up the repo
-git clone https://github.com/agno-agi/agno.git
+git clone --branch v2.7.4 --depth 1 https://github.com/agno-agi/agno.git
 cd agno
 
 # Create and activate the demo virtual environment
@@ -2902,6 +2980,107 @@ Issue HS256 tokens""",
     The script downloads `sample.jpg` beside the saved Python file. No input image is required. An existing file with that name is overwritten.
   </Step>
 """,
+    )
+    sub(
+        "integrations/rag/agentic-rag-infinity-reranker.mdx",
+        """Demonstrates agentic RAG with an Infinity reranker backend (relocated integration example).
+
+```python agentic_rag_infinity_reranker.py""",
+        """Demonstrates agentic RAG with an Infinity reranker backend (relocated integration example).
+
+<Warning>
+  Anthropic retired `claude-3-7-sonnet-latest` on February 19, 2026. Replace it with `claude-sonnet-4-6` before running. See [Claude model deprecations](https://platform.claude.com/docs/en/about-claude/model-deprecations).
+</Warning>
+
+```python agentic_rag_infinity_reranker.py""",
+    )
+    sub(
+        "integrations/rag/agentic-rag-infinity-reranker.mdx",
+        """  <Step title="Run the example">
+    Save the code above as `agentic_rag_infinity_reranker.py`, then run:""",
+        """  <Step title="Update the Claude model">
+    Replace `claude-3-7-sonnet-latest` with `claude-sonnet-4-6` in the saved file.
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `agentic_rag_infinity_reranker.py`, then run:""",
+    )
+    sub(
+        "integrations/rag/agentic-rag-infinity-reranker.mdx",
+        "https://github.com/agno-agi/agno/blob/main/cookbook/07_knowledge/05_integrations/rag/agentic_rag_infinity_reranker.py",
+        "https://github.com/agno-agi/agno/blob/v2.7.4/cookbook/07_knowledge/05_integrations/rag/agentic_rag_infinity_reranker.py",
+    )
+    sub(
+        "models/openrouter/responses/structured-output.mdx",
+        """cd agno/cookbook/90_models/openrouter/responses
+
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+# Export relevant API keys
+export OPENROUTER_API_KEY="***"
+
+python structured_output.py""",
+        """cd agno
+
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+# Export relevant API keys
+export OPENROUTER_API_KEY="***"
+
+python cookbook/90_models/openrouter/responses/structured_output.py""",
+    )
+    sub(
+        "storage/mongo/mongodb-for-agent.mdx",
+        """cd agno/cookbook/06_storage/mongo
+
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+python mongodb_for_agent.py""",
+        """cd agno
+
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+python cookbook/06_storage/mongo/mongodb_for_agent.py""",
+    )
+    sub(
+        "tools/superserve-tools.mdx",
+        """cd agno/cookbook/91_tools
+
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+python superserve_tools.py""",
+        """cd agno
+
+# Create and activate virtual environment
+./scripts/demo_setup.sh
+source .venvs/demo/bin/activate
+
+python cookbook/91_tools/superserve_tools.py""",
+    )
+    sub(
+        "tools/superserve-tools.mdx",
+        "https://github.com/agno-agi/agno/blob/main/cookbook/91_tools/superserve_tools.py",
+        "https://github.com/agno-agi/agno/blob/v2.7.4/cookbook/91_tools/superserve_tools.py",
+    )
+    root_sub(
+        "other/cursor-rules.mdx",
+        "https://raw.githubusercontent.com/agno-agi/agno/main/.cursorrules",
+        "https://raw.githubusercontent.com/agno-agi/agno/v2.7.4/.cursorrules",
+    )
+    root_sub(
+        "other/cursor-rules.mdx",
+        "https://github.com/agno-agi/agno/blob/main/.cursorrules",
+        "https://github.com/agno-agi/agno/blob/v2.7.4/.cursorrules",
     )
 
     root_sub(

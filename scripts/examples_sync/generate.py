@@ -721,6 +721,16 @@ CLIENT_SERVER_STEP = (
     "In another terminal, start the [client example server](/examples/agent-os/client/server) on port 7777:",
     "python cookbook/05_agent_os/client/server.py",
 )
+A2A_CLIENT_SERVER_STEP = (
+    "Start the A2A server",
+    "In another terminal, start the [Agno A2A server](/examples/agent-os/client-a2a/servers/agno-server) on port 7003:",
+    "python cookbook/05_agent_os/client_a2a/servers/agno_server.py",
+)
+REMOTE_AGENTOS_SERVER_STEP = (
+    "Start the remote AgentOS",
+    "In another terminal, start the [remote AgentOS server](/examples/agent-os/remote/server) on port 7778:",
+    "python cookbook/05_agent_os/remote/server.py",
+)
 AUTHENTICATED_MONGODB_STEP = (
     "Run MongoDB",
     None,
@@ -961,13 +971,37 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "env_remove": {"LANCEDB_API_KEY"},
     },
     "03_teams/22_metrics/06_loop_team_and_member_metrics.py": {
-        # The Azure endpoint and key are optional OpenAI-compatible overrides.
-        "env_remove": {"AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT"},
+        "env_add": {"AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT"},
+        "env_remove": {"OPENAI_API_KEY"},
+        "pre_code_warning": "The v2.7.4 source uses the retired Azure model name `gpt-5-chat` for the leader and both members. Deploy a supported Azure chat model and update the IDs before running. See [Azure OpenAI model retirements](https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/model-retirement-schedule?view=foundry-classic).",
+        "pre_run_steps": [
+            (
+                "Select a supported Azure deployment",
+                "Deploy a current Azure chat model, then replace all three `id=\"gpt-5-chat\"` values with that Azure deployment name. Microsoft lists `gpt-chat-latest` as the replacement for `gpt-5-chat`.",
+                None,
+            )
+        ],
+    },
+    "03_teams/14_run_control/remote_team.py": {
+        "repo_layout": True,
+        "extra_add": {"os"},
+        "package_add": {"chromadb", "ddgs", "openai", "sqlalchemy"},
+        "env_add": {"OPENAI_API_KEY"},
+        "pre_run_steps": [REMOTE_AGENTOS_SERVER_STEP],
     },
     "03_teams/23_checkpointing/01_crash_recovery.py": {
         # CRASH_DB is an internal parent-to-worker handoff with a default.
         "env_remove": {"CRASH_DB"},
         "suppress_intro": True,
+    },
+    "03_teams/23_remote_agents/01_basic_remote_member.py": {
+        "pre_run_steps": [
+            (
+                "Configure the remote agent",
+                "Start an AgentOS server that registers an agent you can call. Replace `http://localhost:7777` and `explorer` in the saved file with that server's base URL and agent ID. The v2.7.4 cookbook does not include a matching `explorer` server.",
+                None,
+            )
+        ],
     },
     "03_teams/25_time_travel/01_continue_from.py": {
         "intro_override": "Continue a completed team run from a selected message boundary with `acontinue_run()`.",
@@ -1374,19 +1408,21 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "env_add": {"LITELLM_API_KEY", "OPENAI_API_KEY"},
         "pre_run_steps": [LITELLM_STEP],
     },
+    "05_agent_os/remote/01_remote_agent.py": {
+        "repo_layout": True,
+        "extra_add": {"os"},
+        "package_add": {"chromadb", "ddgs", "openai", "sqlalchemy"},
+        "env_add": {"OPENAI_API_KEY"},
+        "pre_code_warning": "The pinned source docstring names removed `agent_os_setup.py` and `AgentOSRunner`. Start `server.py` in the generated Run step below; this example uses `RemoteAgent`.",
+        "pre_run_steps": [REMOTE_AGENTOS_SERVER_STEP],
+    },
     "05_agent_os/remote/02_remote_team.py": {
         "repo_layout": True,
         "extra_add": {"os"},
         "package_add": {"chromadb", "ddgs", "openai", "sqlalchemy"},
         "env_add": {"OPENAI_API_KEY"},
         "pre_code_warning": "The pinned source docstring names removed `agent_os_setup.py` and `AgentOSRunner`. Start `server.py` in the generated Run step below; this example uses `RemoteTeam`.",
-        "pre_run_steps": [
-            (
-                "Start the remote AgentOS",
-                "In another terminal, start the server on port 7778:",
-                "python cookbook/05_agent_os/remote/server.py",
-            )
-        ],
+        "pre_run_steps": [REMOTE_AGENTOS_SERVER_STEP],
     },
     "05_agent_os/remote/06_remote_agent_as_team_member.py": {
         "repo_layout": True,
@@ -1734,6 +1770,22 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "07_knowledge/05_integrations/cloud/01_aws.py": {
         "env_add": {"AWS_S3_BUCKET"},
+        "pre_run_steps": [
+            (
+                "Add the S3 report",
+                "Upload a readable PDF as `reports/quarterly-report.pdf` in `AWS_S3_BUCKET`, or update both hard-coded `reports/quarterly-report.pdf` and `reports/` paths in the saved file to match your bucket.",
+                None,
+            )
+        ],
+    },
+    "07_knowledge/05_integrations/cloud/02_azure.py": {
+        "pre_run_steps": [
+            (
+                "Add the Blob Storage documents",
+                "Upload a readable PDF as `reports/annual-report.pdf` and at least one supported file under `documents/` in `AZURE_CONTAINER_NAME`, or update both hard-coded paths in the saved file to match your container.",
+                None,
+            )
+        ],
     },
     "07_knowledge/05_integrations/cloud/05_github_dynamic_repo.py": {
         "env_remove": {"GITHUB_TOKEN"},
@@ -1763,13 +1815,137 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "intro_override": "Download a PNG locally and pass its filepath to Claude as an image input.",
     },
     "90_models/anthropic/image_input_file_upload.py": {
-        "intro_override": "Upload a PNG through the Anthropic Files API and pass the returned file handle to Claude as an image input.",
+        "description_override": "Migrate the v2.7.4 Anthropic image upload example to a supported model and local image input.",
+        "intro_override": "Preserve the released Files API source, then apply the required model and image-input changes before running it.",
+        "pre_code_warning": "The source passes an Anthropic uploaded `FileMetadata` object to `Image.content`, which accepts bytes in Agno v2.7.4. Use the downloaded local file path directly before running.",
+        "pre_run_steps": [
+            (
+                "Use the local image directly",
+                "Remove the direct `Anthropic` client import and the Files API upload block. Replace `Image(content=uploaded_file)` with `Image(filepath=img_path)` and run the agent without the `if uploaded_file is not None` wrapper.",
+                None,
+            )
+        ],
     },
     "90_models/anthropic/skills/agent_with_documents.py": {
         "pre_code_warning": "The pinned v2.7.4 source imports `file_download_helper`, but that module is absent from the released cookbook. The source cannot run as a single saved file.",
         "replacement_only": True,
         "replacement_heading": "Missing Source Helper",
         "run_replacement": "Add a local `file_download_helper.py` that provides `download_skill_files`, or wait for the cookbook to include the helper before running this source.",
+    },
+    "90_models/anthropic/skills/agent_with_excel.py": {
+        "pre_code_warning": "The pinned v2.7.4 source imports `file_download_helper`, but that module is absent from the released cookbook. The source cannot run as a single saved file.",
+        "replacement_only": True,
+        "replacement_heading": "Missing Source Helper",
+        "run_replacement": "Add a local `file_download_helper.py` that provides `download_skill_files`, or wait for the cookbook to include the helper before running this source.",
+    },
+    "90_models/anthropic/skills/agent_with_powerpoint.py": {
+        "pre_code_warning": "The pinned v2.7.4 source imports `file_download_helper`, but that module is absent from the released cookbook. The source cannot run as a single saved file.",
+        "replacement_only": True,
+        "replacement_heading": "Missing Source Helper",
+        "run_replacement": "Add a local `file_download_helper.py` that provides `download_skill_files`, or wait for the cookbook to include the helper before running this source.",
+    },
+    "90_models/anthropic/skills/multi_skill_agent.py": {
+        "pre_code_warning": "The pinned v2.7.4 source imports `file_download_helper`, but that module is absent from the released cookbook. The source cannot run as a single saved file.",
+        "replacement_only": True,
+        "replacement_heading": "Missing Source Helper",
+        "run_replacement": "Add a local `file_download_helper.py` that provides `download_skill_files`, or wait for the cookbook to include the helper before running this source.",
+    },
+    "90_models/google/gemini/audio_input_file_upload.py": {
+        "pre_code_warning": "The source passes a Google uploaded `File` object to `Audio.content`, which accepts bytes in Agno v2.7.4. Use the local file path directly before running.",
+        "pre_run_steps": [
+            (
+                "Use the local audio directly",
+                "Remove the `UploadFileConfig` import and the remote file lookup and upload block. Replace `Audio(content=audio_file)` with `Audio(filepath=audio_path)`.",
+                None,
+            ),
+            (
+                "Add the sample audio",
+                "Place an MP3 named `sample.mp3` next to the saved script, or update `audio_path` to point to your audio file.",
+                None,
+            )
+        ],
+    },
+    "90_models/google/gemini/audio_input_local_file_upload.py": {
+        "pre_run_steps": [
+            (
+                "Add the sample audio",
+                "Place an MP3 named `sample.mp3` next to the saved script, or update `audio_path` to point to your audio file.",
+                None,
+            )
+        ],
+    },
+    "90_models/google/gemini/image_input_file_upload.py": {
+        "package_remove": {"google-generativeai"},
+        "pre_code_warning": "Google has shut down `gemini-2.0-flash-exp`. The source also passes a legacy uploaded `File` object to `Image.content`, which accepts bytes in Agno v2.7.4. Apply both edits below before running. See [Gemini 2.0 Flash model status](https://ai.google.dev/gemini-api/docs/models/gemini-2.0-flash).",
+        "pre_run_steps": [
+            (
+                "Update the Gemini model",
+                "Replace `gemini-2.0-flash-exp` with `gemini-3.5-flash` in the saved file.",
+                None,
+            ),
+            (
+                "Use the local image directly",
+                "Remove `from google.generativeai import upload_file`, `from google.generativeai.types import file_types`, and the `image_file = upload_file(image_path)` assignment and print. Replace `Image(content=image_file)` with `Image(filepath=image_path)`.",
+                None,
+            ),
+            (
+                "Download the sample image",
+                "Download the image expected by the saved script:",
+                "python -c \"from urllib.request import urlretrieve; urlretrieve('https://upload.wikimedia.org/wikipedia/commons/b/bf/Krakow_-_Kosciol_Mariacki.jpg', 'Krakow_-_Kosciol_Mariacki.jpg')\"",
+            )
+        ],
+    },
+    "90_models/google/gemini/image_input.py": {
+        "pre_code_warning": "Google has shut down `gemini-2.0-flash-exp`. Replace it with `gemini-3.5-flash` before running. See [Gemini 2.0 Flash model status](https://ai.google.dev/gemini-api/docs/models/gemini-2.0-flash).",
+        "pre_run_steps": [
+            (
+                "Update the Gemini model",
+                "Replace `gemini-2.0-flash-exp` with `gemini-3.5-flash` in the saved file.",
+                None,
+            )
+        ],
+    },
+    "90_models/google/gemini/pdf_input_file_upload.py": {
+        "pre_run_steps": [
+            (
+                "Download the sample PDF",
+                "Download `ThaiRecipes.pdf` next to the saved script:",
+                "python -c \"from urllib.request import urlretrieve; urlretrieve('https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf', 'ThaiRecipes.pdf')\"",
+            )
+        ],
+    },
+    "90_models/google/gemini/video_input_file_upload.py": {
+        "pre_code_warning": "The source passes a Google uploaded `File` object to `Video.content`, which accepts bytes in Agno v2.7.4. Use the local file path directly before running.",
+        "pre_run_steps": [
+            (
+                "Use the local video directly",
+                "Remove the `UploadFileConfig` import and the remote file lookup and upload block. Replace `Video(content=video_file)` with `Video(filepath=video_path)`.",
+                None,
+            ),
+            (
+                "Download the sample video",
+                "Download the video expected by the saved script:",
+                "python -c \"from urllib.request import urlretrieve; urlretrieve('https://storage.googleapis.com/generativeai-downloads/images/GreatRedSpot.mp4', 'GreatRedSpot.mp4')\"",
+            )
+        ],
+    },
+    "90_models/google/gemini/video_input_local_file_upload.py": {
+        "pre_run_steps": [
+            (
+                "Add the sample video",
+                "Place an MP4 named `sample_video.mp4` next to the saved script, or update `video_path` to point to your video file.",
+                None,
+            )
+        ],
+    },
+    "90_models/google/gemini/file_search_image_upload.py": {
+        "pre_run_steps": [
+            (
+                "Set the image path",
+                "Replace `path/to/your/image.jpeg` in `IMAGE_PATH` with the path to a local JPEG or PNG file.",
+                None,
+            )
+        ],
     },
     "90_models/google/gemini/storage_and_memory.py": {
         "pre_code_warning": "The pinned v2.7.4 source imports `PDFUrlKnowledgeBase`, which is not exported or defined in the release. The source fails at import time.",
@@ -1852,6 +2028,16 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
             (
                 "Plan the File Search store lifecycle",
                 "Each run creates a persistent File Search store. Reuse a populated store for repeated queries, and delete demo stores you no longer need in Google AI Studio or with the [File Search API](https://ai.google.dev/gemini-api/docs/file-search).",
+                None,
+            )
+        ],
+    },
+    "90_models/google/gemini_interactions/deep_research_mcp.py": {
+        "pre_code_warning": "The pinned source uses the placeholder MCP host `mcp.example.com` and the placeholder bearer token `my-token`. It cannot contact a real MCP server unchanged.",
+        "pre_run_steps": [
+            (
+                "Configure the MCP server",
+                "Replace `https://mcp.example.com/mcp` with your remote MCP endpoint and replace `Bearer my-token` with the credential that server expects. Remove the `headers` entry if the server does not require it.",
                 None,
             )
         ],
@@ -2168,6 +2354,22 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "05_agent_os/mcp_demo/oauth_builtin_example.py": {
         "intro_override": "Run AgentOS as its own OAuth authorization server for the MCP endpoint. Connecting requires the deployer secret on a consent page.",
+    },
+    "05_agent_os/tracing/dbs/basic_agent_with_sqlite.py": {
+        "pre_code_warning": "The pinned source tells Uvicorn to import `basic_agent_with_postgresdb:app`, but the saved module is `basic_agent_with_sqlite.py`. Replace the module name before running.",
+        "pre_run_steps": [
+            (
+                "Fix the application module",
+                "Replace `basic_agent_with_postgresdb:app` with `basic_agent_with_sqlite:app` in the saved file.",
+                None,
+            )
+        ],
+    },
+    "05_agent_os/mcp_demo/custom_mcp_tool_example.py": {
+        "pre_code_warning": "The pinned source defines an owner-only `authorize` callback without configuring JWT or MCP OAuth. Agno v2.7.4 therefore supplies `user_id=None` and rejects every MCP tool call.",
+        "replacement_only": True,
+        "replacement_heading": "Add MCP Authentication",
+        "run_replacement": "Start with [Built-in OAuth](/examples/agent-os/mcp-demo/oauth-builtin-example) or [WorkOS AuthKit OAuth](/examples/agent-os/mcp-demo/oauth-authkit-example). Add this source's custom `tools`, `enable_builtin_tools=False`, and `authorize` settings only after the MCP auth provider supplies a verified caller ID that matches `OWNER_IDS`.",
     },
     "05_agent_os/os_config/basic.py": {
         "pre_run_steps": [
@@ -2751,10 +2953,11 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "05_agent_os/rbac/asymmetric/workos_byot.py": {
         "env_add": {"WORKOS_API_KEY", "WORKOS_CLIENT_ID"},
+        "pre_code_warning": "Run this source only in an isolated WorkOS environment. It overwrites the permissions for the generic `admin`, `member`, and `viewer` roles. It also creates or reuses three fixed demo email addresses and resets their passwords to a published demo value.",
         "pre_run_steps": [
             (
-                "Configure WorkOS",
-                "In the WorkOS dashboard, enable RBAC and Email + Password authentication. Use `WORKOS_API_KEY` and `WORKOS_CLIENT_ID` from the same WorkOS environment.",
+                "Configure an isolated WorkOS environment",
+                "Use a disposable environment that contains no shared roles or users. Enable RBAC and Email + Password authentication, then use `WORKOS_API_KEY` and `WORKOS_CLIENT_ID` from that same environment.",
                 None,
             )
         ],
@@ -3181,6 +3384,27 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
             )
         ],
     },
+    "91_tools/mcp/mem0.py": {
+        "env_add": {"MEM0_API_KEY"},
+        "pre_code_warning": "The v2.7.4 source targets the archived local Mem0 MCP SSE server. Mem0's maintained service is an authenticated Streamable HTTP endpoint. Update the connection before running. See [Mem0 MCP](https://docs.mem0.ai/platform/mem0-mcp).",
+        "pre_run_steps": [
+            (
+                "Use the maintained Mem0 MCP endpoint",
+                "Add `import os`, set `mcp_server_url = \"https://mcp.mem0.ai/mcp\"`, change the `MCPTools` transport to `streamable-http`, and add `header_provider=lambda: {\"Authorization\": f\"Bearer {os.environ['MEM0_API_KEY']}\"}`.",
+                None,
+            )
+        ],
+    },
+    "91_tools/mcp/streamable_http_transport/client.py": {
+        "repo_layout": True,
+        "pre_run_steps": [
+            (
+                "Start the Streamable HTTP server",
+                "In another terminal, start the released sibling MCP server on port 8000:",
+                "python cookbook/91_tools/mcp/streamable_http_transport/server.py",
+            )
+        ],
+    },
     "91_tools/crawl4ai_tools.py": {
         "description_override": "Define three Crawl4aiTools configurations and execute the two pruning configurations.",
         "intro_override": "The source defines three Crawl4aiTools agents. It runs the default pruning agent and the explicit `enable_crawl` agent; the raw no-pruning agent is configured but not executed.",
@@ -3200,12 +3424,62 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
 }
 
+for _trusted_claims_example in (
+    "05_agent_os/factories/agent/04_tiered_model_factory.py",
+    "05_agent_os/factories/team/02_tiered_team_factory.py",
+    "05_agent_os/factories/workflow/02_tiered_workflow_factory.py",
+):
+    SOURCE_RENDER_OVERRIDES[_trusted_claims_example] = {
+        "pre_code_warning": "The pinned source reads authorization decisions from `ctx.trusted.claims` while `JWTMiddleware(validate=False)` disables signature verification. A caller can forge the role or tier claim until validation is enabled.",
+        "env_add": {"JWT_VERIFICATION_KEY"},
+        "pre_run_steps": [
+            (
+                "Enable JWT signature verification",
+                "Change `validate=False` to `validate=True`. Replace the hard-coded `JWT_SECRET` assignment with `JWT_SECRET = os.environ[\"JWT_VERIFICATION_KEY\"]`, add `import os`, and export a unique 32-byte secret before starting the server.",
+                None,
+            )
+        ],
+    }
+
+for _nexus_example in ("basic.py", "tool_use.py"):
+    SOURCE_RENDER_OVERRIDES[f"90_models/nexus/{_nexus_example}"] = {
+        "env_add": {"ANTHROPIC_API_KEY"},
+        "env_title": "Export your Anthropic API key",
+        "pre_code_warning": "The v2.7.4 source requests `claude-sonnet-4-20250514`, which Anthropic retired on June 15, 2026. Replace it with `claude-sonnet-4-6` before running. See [Claude model deprecations](https://platform.claude.com/docs/en/about-claude/model-deprecations).",
+        "pre_run_steps": [
+            (
+                "Start the Nexus gateway",
+                "Install and start Nexus on `http://localhost:8000` using the [Nexus setup guide](https://nexusrouter.com/docs). Configure its Anthropic provider with `ANTHROPIC_API_KEY` and explicitly register `claude-sonnet-4-6`. Replace `anthropic/claude-sonnet-4-20250514` in the saved file with `anthropic/claude-sonnet-4-6`.",
+                None,
+            )
+        ],
+    }
+
+for _a2a_client_example in (
+    "01_basic_messaging.py",
+    "02_streaming.py",
+    "03_multi_turn.py",
+    "04_error_handling.py",
+):
+    SOURCE_RENDER_OVERRIDES[f"05_agent_os/client_a2a/{_a2a_client_example}"] = {
+        "repo_layout": True,
+        "needs_agno": True,
+        "extra_add": {"a2a", "os"},
+        "package_add": {"openai", "uvicorn"},
+        "env_add": {"OPENAI_API_KEY"},
+        "pre_run_steps": [A2A_CLIENT_SERVER_STEP],
+    }
+
 for _client_example in (
     "01_basic_client.py",
+    "02_run_agents.py",
     "03_memory_operations.py",
     "04_session_management.py",
     "05_knowledge_search.py",
+    "06_run_teams.py",
+    "07_run_workflows.py",
     "08_run_evals.py",
+    "09_upload_content.py",
     "10_sse_reconnect.py",
     "11_team_sse_reconnect.py",
     "13_workflow_sse_reconnect.py",
@@ -4639,6 +4913,47 @@ def apply_source_render_override(
     """Apply reviewed source-specific metadata and return rendering controls."""
     rel = cookbook_rel.removeprefix("cookbook/")
     override = dict(SOURCE_RENDER_OVERRIDES.get(rel, {}))
+    if any(
+        'os.getenv("JWT_VERIFICATION_KEY", "your-secret-key-at-least-256-bits-long")'
+        in source
+        for source in srcs
+    ):
+        override.setdefault(
+            "run_warning",
+            "The source falls back to a public demonstration secret. Local demos can use it, but before exposing this server set `JWT_VERIFICATION_KEY` to a private random value of at least 32 bytes and use the same value to sign tokens.",
+        )
+    retired_claude_models = (
+        ("claude-sonnet-4-20250514", "claude-sonnet-4-6", "June 15, 2026"),
+        ("claude-opus-4-20250514", "claude-opus-4-8", "June 15, 2026"),
+        ("claude-3-7-sonnet-20250219", "claude-sonnet-4-6", "February 19, 2026"),
+        ("claude-3-7-sonnet-latest", "claude-sonnet-4-6", "February 19, 2026"),
+        ("claude-3-5-sonnet-20241022", "claude-sonnet-4-6", "October 28, 2025"),
+        ("claude-3-5-sonnet-latest", "claude-sonnet-4-6", "October 28, 2025"),
+    )
+    for retired_model, replacement_model, retirement_date in retired_claude_models:
+        if not any(retired_model in source for source in srcs):
+            continue
+        retired_claude_warning = (
+            f"Anthropic retired `{retired_model}` on {retirement_date}. "
+            f"Replace it with `{replacement_model}` before running. See "
+            "[Claude model deprecations](https://platform.claude.com/docs/en/about-claude/model-deprecations)."
+        )
+        current_warning = override.get("pre_code_warning")
+        if not current_warning:
+            override["pre_code_warning"] = retired_claude_warning
+        elif replacement_model not in str(current_warning):
+            override["pre_code_warning"] = f"{current_warning} {retired_claude_warning}"
+        current_steps = list(override.get("pre_run_steps", []))
+        if not any(replacement_model in str(step) for step in current_steps):
+            current_steps.insert(
+                0,
+                (
+                    "Update the Claude model",
+                    f"Replace `{retired_model}` with `{replacement_model}` in the saved file.",
+                    None,
+                ),
+            )
+        override["pre_run_steps"] = current_steps
     sample_image_match = re.search(
         r'\.joinpath\(["\'](sample\.jpe?g)["\']\)',
         srcs[0],
@@ -4869,8 +5184,10 @@ def apply_source_render_override(
     return override
 
 
-def source_link(cookbook_rel: str, render_override: dict[str, object], agno_root: Path) -> str:
-    """Build a source link, optionally pinned to the exact Agno source tag."""
+def source_link(
+    cookbook_rel: str, render_override: dict[str, object], agno_root: Path
+) -> tuple[str, str]:
+    """Build a source link and return its validated Agno revision."""
     ref = render_override.get("source_link_ref", "pinned-tag")
     assert isinstance(ref, str), f"{cookbook_rel}: source_link_ref must be a string"
     if ref == "pinned-tag":
@@ -4887,7 +5204,7 @@ def source_link(cookbook_rel: str, render_override: dict[str, object], agno_root
     assert re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", ref), (
         f"{cookbook_rel}: invalid source link ref {ref!r}"
     )
-    return f"https://github.com/agno-agi/agno/blob/{ref}/{cookbook_rel}"
+    return f"https://github.com/agno-agi/agno/blob/{ref}/{cookbook_rel}", ref
 
 
 def missing_docstring_cookbook_paths(docstring: str, agno_root: Path) -> list[str]:
@@ -4938,7 +5255,7 @@ def render(
         render_override["pre_code_warning"] = (
             f"{warning} Follow the generated Run step below."
         )
-    full_source_url = source_link(cookbook_rel, render_override, agno_root)
+    full_source_url, source_ref = source_link(cookbook_rel, render_override, agno_root)
     if "intro_override" in render_override:
         intro_override = render_override["intro_override"]
         assert isinstance(intro_override, str) and intro_override.strip(), (
@@ -5141,7 +5458,9 @@ def render(
         parts.append('  <Step title="Clone Agno">')
         parts.append("    Clone the repository and run the remaining commands from its root:")
         parts.append("    ```bash")
-        parts.append("    git clone https://github.com/agno-agi/agno.git")
+        parts.append(
+            f"    git clone --branch {source_ref} --depth 1 https://github.com/agno-agi/agno.git"
+        )
         parts.append("    cd agno")
         parts.append("    ```")
         parts.append("  </Step>")

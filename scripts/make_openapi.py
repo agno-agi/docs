@@ -1412,12 +1412,20 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
     if agui_path is not None:
         agui_run = agui_path["post"]
         assert agui_run.get("security") is None
-        agui_run["security"] = [{"HTTPBearer": []}]
+        # AgentOS accepts anonymous interface requests until authorization is
+        # configured. A bearer token becomes required only in an authenticated
+        # deployment, so the OpenAPI security alternatives must include the
+        # anonymous case.
+        agui_run["security"] = [{}, {"HTTPBearer": []}]
         agui_success = agui_run["responses"]["200"]
         assert agui_success["description"] == "Successful Response"
         assert agui_success["content"] == {"application/json": {"schema": {}}}
         agui_success["description"] = "Server-sent event stream"
         agui_success["content"] = {"text/event-stream": {"schema": {"type": "string"}}}
+
+        agui_status = spec["paths"]["/status"]["get"]
+        assert agui_status.get("security") is None
+        agui_status["security"] = [{}, {"HTTPBearer": []}]
 
     a2a_families = (
         ("agents", "Agent"),
@@ -1919,14 +1927,16 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         assert response_schema == {}
         response_schema.update(deepcopy(fork_response_schema))
 
-    for path_item in spec["paths"].values():
+    for path, path_item in spec["paths"].items():
         for method in ("get", "post", "put", "patch", "delete", "head", "options", "trace"):
             operation = path_item.get(method)
             if not isinstance(operation, dict) or not operation.get("security"):
                 continue
             if "401" not in operation["responses"]:
                 add_response(operation, "401", "Unauthorized", "UnauthenticatedResponse")
-            if "403" not in operation["responses"]:
+            # AG-UI status requires authentication when AgentOS auth is enabled,
+            # but it has no scope check and therefore cannot return 403.
+            if (path, method) != ("/status", "get") and "403" not in operation["responses"]:
                 add_response(operation, "403", "Forbidden", "ForbiddenResponse")
             sort_responses(operation)
 
