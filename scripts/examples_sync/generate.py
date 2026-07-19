@@ -1760,6 +1760,18 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "90_models/anthropic/image_input_file_upload.py": {
         "intro_override": "Upload a PNG through the Anthropic Files API and pass the returned file handle to Claude as an image input.",
     },
+    "90_models/anthropic/skills/agent_with_documents.py": {
+        "pre_code_warning": "The pinned v2.7.4 source imports `file_download_helper`, but that module is absent from the released cookbook. The source cannot run as a single saved file.",
+        "replacement_only": True,
+        "replacement_heading": "Missing Source Helper",
+        "run_replacement": "Add a local `file_download_helper.py` that provides `download_skill_files`, or wait for the cookbook to include the helper before running this source.",
+    },
+    "90_models/google/gemini/storage_and_memory.py": {
+        "pre_code_warning": "The pinned v2.7.4 source imports `PDFUrlKnowledgeBase`, which is not exported or defined in the release. The source fails at import time.",
+        "replacement_only": True,
+        "replacement_heading": "Current Alternative",
+        "run_replacement": "Use [Gemini Knowledge](/examples/models/google/gemini/knowledge), which constructs `Knowledge` with `PgVector` and inserts the PDF URL through `knowledge.insert(...)`.",
+    },
     "90_models/openai/chat/custom_role_map.py": {
         "env_remove": {"OPENAI_API_KEY"},
         "provider_remove": {"OpenAI"},
@@ -4597,6 +4609,26 @@ def apply_source_render_override(
     """Apply reviewed source-specific metadata and return rendering controls."""
     rel = cookbook_rel.removeprefix("cookbook/")
     override = dict(SOURCE_RENDER_OVERRIDES.get(rel, {}))
+    sample_image_match = re.search(
+        r'\.joinpath\(["\'](sample\.jpe?g)["\']\)',
+        srcs[0],
+        re.IGNORECASE,
+    )
+    if sample_image_match:
+        sample_image = sample_image_match.group(1)
+        pre_run_steps = list(override.get("pre_run_steps", []))
+        if not any(
+            sample_image in " ".join(str(part) for part in step)
+            for step in pre_run_steps
+        ):
+            pre_run_steps.append(
+                (
+                    "Add the sample image",
+                    f"Place a JPEG named `{sample_image}` in the same directory as the saved Python file.",
+                    None,
+                )
+            )
+        override["pre_run_steps"] = pre_run_steps
     if rel.startswith("05_agent_os/interfaces/slack/"):
         pre_run_steps = list(override.get("pre_run_steps", []))
         if not any(step[0] == "Configure Slack" for step in pre_run_steps):
@@ -4734,6 +4766,19 @@ def apply_source_render_override(
         override["replacement_only"] = True
         override["replacement_heading"] = "Current Alternative"
         override["run_replacement"] = INVALID_MODEL_RETRY_REPLACEMENT
+    if rel == "90_models/cohere/retry.py":
+        override["pre_code_warning"] = (
+            "The pinned v2.7.4 source imports the removed `CohereChat` class and fails before "
+            "testing retries. It also assumes an invalid model ID reaches the retry path, while "
+            "invalid-model responses commonly use terminal 400 or 404 statuses."
+        )
+        override["run_replacement"] = (
+            "Use the released `Cohere` class shown in "
+            "[Cohere Knowledge](/examples/models/cohere/knowledge). Configure `retries`, "
+            "`delay_between_retries`, and `exponential_backoff` as shown in "
+            "[Retry Model Requests](/models/overview#retry-model-requests), then test with a "
+            "controlled transient 429, connection failure, or 5xx response."
+        )
     package_remove = {
         requirement_key(str(package)) for package in override.get("package_remove", set())
     }
