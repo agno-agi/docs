@@ -3,7 +3,7 @@ title: "Safe data access"
 description: "Enforce read and write boundaries with database permissions and transaction settings."
 ---
 
-A prompt that says "only run SELECT" is a suggestion. A connection that cannot write is a guarantee. A production data agent answers from a read-only connection and isolates any writes to a schema it owns. The boundary holds even when the model goes off-script.
+Enforce read-only access with database roles and grants. Use a separate connection with schema-scoped permissions for approved write operations. These controls remain in effect when model output is unexpected.
 
 ```bash
 uv pip install "agno[openai,psycopg,sql]"
@@ -28,11 +28,11 @@ analyst = Agent(
 )
 ```
 
-Create the `readonly` role without write grants before using this connection. The `default_transaction_read_only=on` setting blocks ordinary write statements, but it is a configurable session default. Database ownership and grants remain the security boundary.
+Create the `readonly` role without write grants before using this connection. The `default_transaction_read_only=on` setting blocks ordinary write statements. This setting is a configurable session default. Database ownership and grants remain the security boundary.
 
 ## Split the roles
 
-Most data-agent questions are read-only. Writes (building a summary table, recording a correction) are rarer and riskier. Separate them into different agents on different connections.
+Most data-agent questions are read-only. Separate approved writes, such as building a summary table or recording a correction, into agents with dedicated connections.
 
 | Member | Connection | Can do | Cannot do |
 |--------|-----------|--------|-----------|
@@ -56,7 +56,7 @@ def materialize_view(name: str, sql: str) -> str:
     ...
 ```
 
-For a dedicated writer built on `SQLTools`, set `requires_confirmation_tools=["run_sql_query"]`. That pauses every call to the tool, reads included, so a narrow custom write tool gives finer control. Gate the irreversible actions and leave reads ungated, so approval fatigue does not set in.
+For a dedicated writer built on `SQLTools`, set `requires_confirmation_tools=["run_sql_query"]`. This pauses every call to the tool, including reads. A narrow custom write tool gives finer control. Gate irreversible actions and leave reads ungated so approval fatigue does not set in.
 
 ## Layers of defense
 
