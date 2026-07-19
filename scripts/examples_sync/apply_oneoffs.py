@@ -114,6 +114,7 @@ DESCRIPTION_OVERRIDES = {
 }
 
 TITLE_OVERRIDES = {
+    "examples/agent-os/remote/remote-agent": "Remote Agent",
     "examples/agent-os/remote/remote-team": "Remote Team",
     "examples/agent-os/rbac/asymmetric/workos-byot": "WorkOS BYOT",
     "examples/agents/tools/tools-with-literal-type-param": "Tools with Literal Type Parameters",

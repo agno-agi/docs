@@ -508,6 +508,7 @@ SMALL_WORDS = {"a", "an", "and", "as", "at", "for", "in", "of", "on", "or", "the
 # Titles the docstring cannot yield in docs voice, keyed by docs slug.
 # Consulted at render time, before description/intro derivation.
 TITLE_OVERRIDES = {
+    "examples/agent-os/remote/remote-agent": "Remote Agent",
     "examples/agent-os/remote/remote-team": "Remote Team",
     "examples/agent-os/background-tasks/background-hooks-team": "Background Hooks Team",
     "examples/agent-os/background-tasks/background-hooks-workflow": "Background Hooks Workflow",
