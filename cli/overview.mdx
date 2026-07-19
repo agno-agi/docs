@@ -12,7 +12,9 @@ agno up
 agno connect
 ```
 
-The `agno` command scaffolds AgentOS projects, runs them with Docker Compose, connects your coding agents over MCP, and manages service-account tokens. Every command takes `--json` and emits a single JSON document on stdout, so coding agents and scripts can drive it.
+This quickstart assumes `agno` 2.7 or later is installed. The `agno` command scaffolds AgentOS projects, runs them with Docker Compose, connects your coding agents over MCP, and manages service-account tokens.
+
+Every subcommand listed below accepts `--json` and emits one JSON document for command-level results after argument parsing succeeds. Typer usage errors exit with code `2`, write diagnostics to stderr, and do not emit JSON.
 
 ## Install
 
@@ -22,7 +24,7 @@ The CLI ships with the SDK, so installing `agno` 2.7 or later puts the `agno` co
 pip install -U agno
 ```
 
-The CLI is also published standalone as `agnoctl`. It depends on `typer`, `rich`, and `httpx` only, so it runs on machines without the SDK:
+The CLI is also published standalone as `agnoctl`. It depends on `typer`, `rich`, and `httpx`, plus `tomli` on Python versions below 3.11, so it runs on machines without the SDK:
 
 ```bash
 uvx agnoctl connect
@@ -43,7 +45,7 @@ uvx agnoctl connect
 
 ## How the CLI Finds Your AgentOS
 
-`connect`, `status`, and `tokens` need a running AgentOS. They resolve its URL in this order:
+`status`, `tokens`, and non-interactive `connect` runs need a running AgentOS. They resolve one target in this order:
 
 | Priority | Source | Example |
 |----------|--------|---------|
@@ -53,6 +55,8 @@ uvx agnoctl connect
 | 4 | Localhost probe | Ports 7777, 7778, 7779, 8000 |
 
 The probe covers `AgentOS.serve()`'s default port (7777), common bump-up ports, and a bare uvicorn setup (8000). If your AgentOS runs on any other host or port, point the CLI at it with `--url` or `AGENTOS_URL`.
+
+Interactive `agno connect` behaves differently when neither `--url` nor an exported `AGENTOS_URL` selects one target. It probes every live env-file and localhost candidate, adds AgentOS URLs found in existing client configurations, and asks you which one to connect. `--json` and other non-interactive runs use the deterministic priority order above.
 
 ## Developer Resources
 

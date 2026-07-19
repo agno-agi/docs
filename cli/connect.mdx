@@ -8,7 +8,7 @@ description: "Connect Claude Code, Claude Desktop, Codex, and Cursor to a runnin
 agno connect
 ```
 
-`agno connect` finds your running AgentOS, mints one service-account token per coding agent when the AgentOS has authorization enabled, writes each client's MCP configuration, and verifies every entry with a real MCP handshake. Your coding agents can then run your agents, teams, and workflows through the [AgentOS MCP server](/agent-os/mcp/mcp).
+`agno connect` finds your running AgentOS, configures authentication for each client, writes the client's MCP configuration, and verifies entries it can authenticate immediately. Token-protected endpoints use service-account tokens. OAuth endpoints use client sign-in. Your coding agents can then run your agents, teams, and workflows through the [AgentOS MCP server](/agent-os/mcp/mcp).
 
 The AgentOS must have its MCP server enabled:
 
@@ -25,11 +25,11 @@ agent_os = AgentOS(
 
 ## The Execution Flow
 
-1. **Discover.** Resolve the AgentOS from `--url`, `AGENTOS_URL` (the environment variable, or a project `.env.production` / `.env` file), or a localhost probe, then read its version, MCP path, and auth mode from `GET /info`.
-2. **Authenticate.** When authorization is enabled, resolve an admin credential from `AGNO_ADMIN_TOKEN` or `OS_SECURITY_KEY`, or prompt for it.
-3. **Mint.** When authorization is enabled, create one service account per client (named `claude-code`, `cursor`, and so on) with the server's default run and read scopes and a 90-day expiry. An unsecured AgentOS connects without credentials.
+1. **Discover.** An interactive run offers a choice across live env-file, localhost, and previously configured AgentOS URLs. `--url`, an exported `AGENTOS_URL`, and non-interactive runs select one deterministic target. The CLI then reads its version, MCP path, and auth mode from `GET /info`.
+2. **Choose authentication.** OAuth-protected MCP endpoints write tokenless entries for one-time client sign-in. Service-account mode resolves an admin credential from `AGNO_ADMIN_TOKEN` or `OS_SECURITY_KEY`, or prompts for it.
+3. **Mint when needed.** Service-account mode creates one account per client (named `claude-code`, `cursor`, and so on) with the server's default run and read scopes and a 90-day expiry. An unsecured AgentOS connects without credentials. Pass `--pat` to use service-account tokens with an OAuth-protected endpoint.
 4. **Write.** Add an MCP server entry, named after your AgentOS (`agentos` when it has no name), to each client's own config file.
-5. **Verify.** Read the entry back the way the client would resolve it, then complete an MCP `initialize` and `tools/list` call against the AgentOS with the configured token.
+5. **Verify.** Read the entry back the way the client would resolve it. Service-account and unsecured entries complete an MCP `initialize` and `tools/list` call. OAuth entries report `sign in` for the client to complete.
 6. **Report.** Print per-client results: `connected`, `sign in`, `already ok`, `skipped`, `action needed`, or `failed`.
 
 When the MCP endpoint is OAuth-protected, nothing is minted: entries are written without tokens and each app completes a one-time sign-in (`sign in` in the report). Pass `--pat` to mint tokens anyway, for headless clients.
@@ -54,7 +54,7 @@ agno connect --clients claude-code,cursor
 | ChatGPT | `chatgpt` | None. Prints manual Connector setup steps. |
 
 <Note>
-Claude Desktop speaks MCP over stdio only, so its entry launches the `mcp-remote` proxy with `npx`. Node.js must be installed for that entry to start.
+The Claude Desktop entry written by `agno connect` launches the `mcp-remote` bridge over stdio. Node.js must be installed for that entry to start.
 </Note>
 
 ## claude.ai and ChatGPT
@@ -68,8 +68,8 @@ agno connect --clients claude-ai,chatgpt
 Requirements:
 
 - The AgentOS must be on a public HTTPS URL. A local AgentOS is unreachable from the apps' clouds; deploy it or expose it through a tunnel first.
-- Both apps' Connectors UIs authenticate with OAuth, not bearer tokens, so the AgentOS must be public or OAuth-enabled. A token-protected AgentOS cannot be added from the UI yet.
-- In the app, go to Settings -> Connectors -> Add custom connector and paste the printed MCP URL. Custom connectors need a paid plan.
+- The MCP endpoint must either allow unauthenticated access or expose OAuth. These hosted UIs do not accept an Agno service-account bearer token.
+- Paste the printed MCP URL into the app's custom connector or custom app flow. Menu names, plan requirements, and workspace controls vary by provider. Follow the current [Claude custom connector guide](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp) or [ChatGPT MCP app guide](https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt-beta).
 
 When discovery lands on a public HTTPS AgentOS with authorization disabled, or with an OAuth-protected MCP endpoint, `connect` prints these steps automatically, without `--clients`.
 
@@ -118,7 +118,7 @@ agno disconnect
 
 ## Scripting
 
-`--json` prints one JSON document with the discovered OS, per-client results, and the exit code. Exit codes: `0` all connected, `1` nothing connected, `2` usage error, `3` partial success. In `--json` mode the CLI never prompts, so set `AGNO_ADMIN_TOKEN` before you run it.
+After command-line parsing succeeds, `--json` prints one JSON document with the discovered OS, per-client results, and the exit code. Exit codes: `0` all connected, `1` nothing connected, `2` usage error, `3` partial success. Typer parse errors write to stderr without JSON. JSON mode never prompts. When a run needs to mint or rotate service accounts, export `AGNO_ADMIN_TOKEN` or `OS_SECURITY_KEY` first.
 
 ## Developer Resources
 

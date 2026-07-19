@@ -4,18 +4,19 @@ sidebarTitle: "Deploy"
 description: "Run AgentOS locally using Docker and deploy to production on Render."
 ---
 
-AgentOS is a secure, scalable platform for running agents. The [agentos-render](https://github.com/agno-agi/agentos-render) codebase runs AgentOS locally using Docker and deploys to production on Render. It comes with:
+Choose Render when your team wants a Blueprint-driven AgentOS deployment with managed PostgreSQL. The [agentos-render](https://github.com/agno-agi/agentos-render) template uses Docker locally and deploys one paid, always-on web service for production.
 
-- **2 platform agents** that build and run the platform for you. **Agent Builder** creates agents, teams, and workflows. **Platform Manager** understands, monitors, and explains the platform.
-- **5 [skills](/deploy/templates/improve-agents)** that let coding agents build, test, and improve the platform for you.
+- **Agent Builder**, which creates agents, teams, and workflows when prompted.
+- **Platform Manager**, which inspects registered agents, eval history, deployment checks, and schedules.
+- **Six [skills](/deploy/templates/improve-agents)**. `setup-platform` configures the local platform. Five lifecycle skills create, extend, improve, evaluate, and review it.
 
-Because the trace data, agent code, evals, and system logs all live in one place, the platform can inspect and improve itself automatically.
+Coding agents can use the repository skills, live AgentOS API, evals, and container logs to inspect and improve the platform.
 
 Deployment is Blueprint-driven: Render provisions everything from `render.yaml` when you connect your repo, and one wiring script finishes the setup.
 
 ## Get started
 
-The fastest way to get started is using a coding agent. Copy the prompt below into Claude Code, Cursor or Codex and it'll take you from zero to a running platform.
+Copy the prompt below into Claude Code, Cursor, or Codex to clone the template, start AgentOS locally, and build your first agent.
 
 <Snippet file="setup-prompt-render.mdx" />
 
@@ -79,7 +80,7 @@ Prints `MCP OK` with the tool count and a real agent answer through the MCP endp
 
 ## Deploy to production
 
-**Prerequisites:** A [Render](https://render.com) account with your copy of the repo reachable from Render. A `RENDER_API_KEY` (dashboard → **Account Settings** → **API Keys**) for the scripts.
+**Prerequisites:** Python 3 and OpenSSL. A [Render](https://render.com) account with your copy of the repo reachable from Render. A `RENDER_API_KEY` (dashboard → **Account Settings** → **API Keys**) for the scripts.
 
 <Steps>
   <Step title="Create a production env">
@@ -93,7 +94,7 @@ Edit `.env.production` with production values: a different OpenAI key, productio
   <Step title="Launch the Blueprint">
 Open [dashboard.render.com](https://dashboard.render.com) → **New +** → **Blueprint**, connect your copy of the repo, and apply. Render reads `render.yaml`, prompts for `OPENAI_API_KEY`, builds the Dockerfile, and creates the `basic-256mb` Postgres. The first build takes about 10 minutes.
 
-The web service runs on the `starter` plan, the cheapest that never sleeps, which the in-process scheduler and MCP streams require. It runs as a single instance by design; two instances double-fire every cron.
+The web service runs on the `starter` plan, the cheapest that never sleeps. This keeps scheduled work and MCP streams available. The template uses one instance and has been validated with that topology. Validate schedule registration and MCP streams before scaling it.
   </Step>
 
   <Step title="Wire the rest">
@@ -127,7 +128,12 @@ For claude.ai and ChatGPT on the web: add `https://<onrender-domain>/mcp` as a c
   </Step>
 
   <Step title="Confirm it's live">
-The script prints your service URL. Open `https://<onrender-domain>/docs` to confirm the API is serving. Logs live in the dashboard: `agent-os` → **Logs**.
+```bash
+curl -o /dev/null -w '%{http_code}\n' "https://<onrender-domain>/health"  # 200
+curl -o /dev/null -w '%{http_code}\n' "https://<onrender-domain>/agents"  # 401
+```
+
+The script prints your service URL. `/health` and `/docs` remain public. Protected AgentOS routes such as `/agents` require a valid token. Logs live in the dashboard: `agent-os` → **Logs**.
   </Step>
 </Steps>
 

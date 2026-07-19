@@ -1,46 +1,14 @@
 ---
 title: "Scout"
-sidebarTitle: "Scout"
+sidebarTitle: "Scout: Knowledge Agent"
 description: "Open-source company intelligence agent that navigates web, Slack, Drive, and MCP sources and builds its own wiki and CRM as it learns about your company."
 ---
 
-**Scout is an open-source company intelligence agent.** It navigates live information sources (web, Slack, Drive, wiki, CRM, MCP servers) to assemble context on demand, and it builds its own wiki and CRM as it learns about your company. The code is public at [agno-agi/scout](https://github.com/agno-agi/scout).
+**Scout gives teams an open-source company intelligence agent for finding answers across web, Slack, Drive, wiki, CRM, and MCP sources.**
 
-The default move when working with knowledge sources is to ingest everything into a vector database, chunk, embed, and pray. Coding agents figured out the right approach. They navigate: `ls`, `grep`, open the file, follow the import. Scout does the same thing across Slack, Drive, and the rest. It searches the channel, opens the doc, expands the thread, and assembles context at question time from the live source.
+Company knowledge changes across systems with different search APIs and access rules. Scout navigates those live sources at request time: it searches a channel, opens a document, expands a thread, and assembles the relevant context for the answer.
 
-## How it works
-
-Scout is a single agent with multiple **context providers**. Each provider exposes two natural-language tools: `query_<source>` for reads and `update_<source>` for writes, where the source supports them. This thin layer solves three problems that hit any agent with a diverse tool surface: context pollution from too many tools, degrading performance from overlapping scopes, and the main agent forgetting its job because its context is all tool quirks.
-
-A sub-agent behind each provider owns the source's quirks. Scout sees `query_slack`. Behind it, a sub-agent knows to paginate by cursor and prefer `conversations.replies` for threads. Scout's context never sees any of that.
-
-| Provider | Active when | Tools |
-|----------|-------------|-------|
-| **Web** | Always on | `query_web`. Uses the Parallel SDK when `PARALLEL_API_KEY` is set, otherwise Parallel's free MCP server. |
-| **Workspace** | Always on | `query_workspace`. Rooted at the Scout repo, so Scout can answer questions about its own codebase. |
-| **CRM** | Always on | `query_crm`, `update_crm`. Contacts, projects, notes, follow-ups. |
-| **Knowledge wiki** | Always on | `query_knowledge`, `update_knowledge`. Scout's prose memory. |
-| **Voice wiki** | Always on | `query_voice`. A code-managed style guide for emails, Slack, X, and long-form writing. |
-| **Slack** | `SLACK_BOT_TOKEN` | Intended to expose `query_slack` for read-only access. The pinned template also exposes `update_slack`; see the warning below. |
-| **Google Drive** | `GOOGLE_SERVICE_ACCOUNT_FILE` | `query_gdrive`. Read-only access to files, folders, and contents. |
-| **MCP** | Registered in `scout/contexts.py` | One `query_mcp_<slug>` per server. |
-
-<Warning>
-  Scout intends Slack access to be read-only, but the pinned template does not pass `write=False` when it creates `SlackContextProvider`. Configuring Slack currently exposes `update_slack`. Leave write scopes ungranted until the template enforces its intended boundary.
-</Warning>
-
-Setup for each provider is covered in the Scout README's [Context Providers](https://github.com/agno-agi/scout#context-providers) section.
-
-### Self-building knowledge
-
-Most information Scout learns from working with you is perfect for a wiki and a CRM, so it maintains both.
-
-| System | Purpose |
-|--------|---------|
-| **Wiki** | Scout's prose memory: pages about your company, projects, and runbooks |
-| **CRM** | People and relationships: contacts, projects, notes, follow-ups |
-
-Both start empty and grow with use. Mention that Josh from Anthropic shared a new RLM paper, and Scout adds Josh to the CRM, parses the paper into the wiki, and links them. See [How Scout works](https://github.com/agno-agi/scout#how-scout-works) in the README for how both systems work.
+Agno context providers give each source its own sub-agent and expose a small query or update interface to Scout. Run it locally, then ask a question that requires information from two configured sources. The code is public at [agno-agi/scout](https://github.com/agno-agi/scout).
 
 ## Run locally
 
@@ -62,6 +30,40 @@ Scout is now running at `http://localhost:8000`. The [Scout README](https://gith
 1. Open [os.agno.com](https://os.agno.com) and log in.
 2. Click **Add OS**, choose **Local**, enter `http://localhost:8000`, then **Connect**.
 3. Try the pre-configured prompts.
+
+## How it works
+
+Scout is a single agent with multiple **context providers**. Each provider exposes two natural-language tools: `query_<source>` for reads and `update_<source>` for writes, where the source supports them. This thin layer solves three problems that hit any agent with a diverse tool surface: context pollution from too many tools, degrading performance from overlapping scopes, and the main agent forgetting its job because its context is all tool quirks.
+
+A sub-agent behind each provider owns the source's quirks. Scout sees `query_slack`. Behind it, a sub-agent knows to paginate by cursor and prefer `conversations.replies` for threads. Scout's context never sees any of that.
+
+| Provider | Active when | Tools |
+|----------|-------------|-------|
+| **Web** | Always on | `query_web`. Uses the Parallel SDK when `PARALLEL_API_KEY` is set, otherwise Parallel's free MCP server. |
+| **Workspace** | Always on | `query_workspace`. Rooted at the Scout repo, so Scout can answer questions about its own codebase. |
+| **CRM** | Always on | `query_crm`, `update_crm`. Contacts, projects, notes, follow-ups. |
+| **Knowledge wiki** | Always on | `query_knowledge`, `update_knowledge`. Scout's prose memory. |
+| **Voice wiki** | Always on | `query_voice`. A code-managed style guide for emails, Slack, X, and long-form writing. |
+| **Slack** | `SLACK_BOT_TOKEN` | Intended to expose `query_slack` for read-only access. The pinned template also exposes `update_slack`; see the warning below. |
+| **Google Drive** | `GOOGLE_SERVICE_ACCOUNT_FILE` | `query_gdrive`. Read-only access to files, folders, and contents. |
+| **MCP** | Registered in `scout/contexts.py` | One `query_mcp_<slug>` per server. |
+
+<Warning>
+  Configuring Slack currently exposes both `query_slack` and `update_slack`. The Slack interface needs `chat:write` to reply, so removing write scopes does not provide a practical boundary. Set `write=False` on `SlackContextProvider` in `scout/contexts.py` before connecting a workspace that should remain read-only.
+</Warning>
+
+Setup for each provider is covered in the Scout README's [Context Providers](https://github.com/agno-agi/scout#context-providers) section.
+
+### Self-building knowledge
+
+Most information Scout learns from working with you is perfect for a wiki and a CRM, so it maintains both.
+
+| System | Purpose |
+|--------|---------|
+| **Wiki** | Scout's prose memory: pages about your company, projects, and runbooks |
+| **CRM** | People and relationships: contacts, projects, notes, follow-ups |
+
+Both start empty and grow with use. Mention that Josh from Anthropic shared a new RLM paper, and Scout adds Josh to the CRM, parses the paper into the wiki, and links them. See [How Scout works](https://github.com/agno-agi/scout#how-scout-works) in the README for how both systems work.
 
 ## Deploy to Railway
 

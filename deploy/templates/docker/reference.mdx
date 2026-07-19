@@ -18,17 +18,17 @@ The Compose services are `agentos-api` (the app) and `agentos-db` (Postgres with
 
 ## Production auth
 
-Token-Based Authorization is on by default. Production startup requires `JWT_VERIFICATION_KEY` or a readable JWKS file at the container path in `JWT_JWKS_FILE`; otherwise the process exits.
+Token-Based Authorization protects AgentOS routes by default in production. Startup requires `JWT_VERIFICATION_KEY` or a readable JWKS file at the container path in `JWT_JWKS_FILE`; otherwise the process exits.
 
 Token-Based Auth gives you three things:
 
-1. **No public access.** The server rejects requests without a valid token.
+1. **Protected API access.** Requests to protected AgentOS routes require a valid token. `/`, `/health`, `/info`, `/docs`, `/redoc`, `/openapi.json`, and `/docs/oauth2-redirect` remain public.
 2. **Per-request identity.** Middleware validates the token and exposes its `user_id`, optional `session_id`, scopes, and claims to the request.
 3. **Scope-based permissions.** Token scopes control access to AgentOS routes and resources.
 
 The templates do not enable per-user data isolation. To scope non-admin session, memory, trace, and run access to the JWT subject, pass `authorization_config=AuthorizationConfig(user_isolation=True)` to `AgentOS`. See [User Isolation](/agent-os/security/authorization/user-isolation).
 
-To opt out (not recommended), set `authorization=False` in `app/main.py` and restart. Use this only inside a private network behind another auth layer. Without it, anyone who finds your public URL can access your platform.
+To disable JWT authentication, set `authorization=False` in `app/main.py`, remove `JWT_VERIFICATION_KEY` and `JWT_JWKS_FILE` from the production env file, and recreate the container. `authorization=False` disables AgentOS scope enforcement. Configured JWT environment variables continue to enable JWT validation. MCP OAuth remains active when `MCP_CONNECT_SECRET` is set. Only do this when another layer protects the service.
 
 ## Customize
 
@@ -80,10 +80,10 @@ Local containers hot-reload on save. For production, rebuild with `docker compos
 from agno.models.anthropic import Claude
 
 def default_model():
-    return Claude(id="claude-sonnet-5")
+    return Claude(id="claude-sonnet-5-0")
 ```
 
-Add `anthropic` to `pyproject.toml`, set the provider key in your env, and regenerate pins:
+Add `anthropic` to `pyproject.toml`, set `ANTHROPIC_API_KEY` in `.env`, and regenerate pins:
 
 ```bash
 ./scripts/generate_requirements.sh
@@ -153,7 +153,7 @@ source .venv/bin/activate
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `OPENAI_API_KEY` | Yes | - | Models and embeddings. |
-| `RUNTIME_ENV` | No | `prd` | `dev` disables JWT. `compose.yaml` sets `dev` for local; `compose.prod.yaml` sets `prd`. Never hand-set `dev` on a production host, or the platform serves unauthenticated. |
+| `RUNTIME_ENV` | No | `prd` | `dev` sets `authorization=False`, which disables AgentOS scope enforcement. Configured JWT environment variables continue to enable JWT validation. `compose.yaml` sets `dev` locally; `compose.prod.yaml` sets `prd`. |
 | `JWT_VERIFICATION_KEY` | Production | - | Public key from os.agno.com. Quote the value so the multi-line PEM parses as one variable. |
 | `JWT_JWKS_FILE` | Production | - | Path inside the container to a JWKS file. Production Compose does not mount this file. Add a read-only bind mount, or bake the file into the image and rebuild. |
 | `MCP_CONNECT_SECRET` | No | - | OAuth consent secret (16+ chars) for connecting claude.ai and ChatGPT to `/mcp`. Set it yourself in `.env`, e.g. `openssl rand -base64 32`. Dev reads the same file, so it gates the local `/mcp` too. |
@@ -182,7 +182,7 @@ The first build takes a few minutes. Read `docker compose logs agentos-api` and 
 The production override uses Compose merge tags that need Docker Compose v2.24.4 or newer. Upgrade Docker Compose and rerun.
   </Accordion>
   <Accordion title="App fails to start in production">
-JWT auth is on whenever `RUNTIME_ENV` is not `dev`. Set `JWT_VERIFICATION_KEY` in `.env` and recreate the container. For `JWT_JWKS_FILE`, first add a read-only production bind mount and point the variable at its container path, or bake the file into the image and recreate with `--build`. To opt out inside a private network behind another auth layer, set `authorization=False` in `app/main.py`.
+AgentOS scope enforcement is on whenever `RUNTIME_ENV` is not `dev`. Set `JWT_VERIFICATION_KEY` in `.env` and recreate the container. For `JWT_JWKS_FILE`, first add a read-only production bind mount and point the variable at its container path, or bake the file into the image and recreate with `--build`. To disable JWT, set `authorization=False` in `app/main.py`, remove both JWT variables from the production env file, and recreate the container. MCP OAuth remains active when `MCP_CONNECT_SECRET` is set.
   </Accordion>
   <Accordion title="Changing DB_PASS has no effect">
 Postgres reads the password only when the `pgdata` volume is first initialized. On a host that already ran the dev Compose, the database keeps the old password and the API blocks waiting for it. Change the password in place and set `.env` to match:

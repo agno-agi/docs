@@ -1,60 +1,16 @@
 ---
 title: "Coda"
-sidebarTitle: "Coda"
-description: "A code companion that lives in Slack. It reviews PRs, triages issues, and answers architecture questions."
+sidebarTitle: "Coda: Code Agent"
+description: "Slack-based engineering companion that reviews PRs, triages issues, answers architecture questions, and prepares code changes."
 ---
 
-**Coda is a code companion that lives in Slack.**
+**Coda gives engineering teams a Slack-based companion for work that spans source code, pull requests, and issues.**
 
-Coding agents help us write code faster, but most engineering work is understanding how things work, reviewing PRs, figuring out what broke and why, triaging the backlog, and deciding what's safe to change. That work happens in Slack and GitHub, not in an editor.
+Engineers spend much of their time tracing code, reviewing changes, diagnosing failures, and deciding what to tackle next. Coda brings that work into the Slack threads where the team is already coordinating.
 
-Coda fills that gap. It answers architecture questions like "how does auth work" or "where is the model API call". It reviews PRs and open branches, diffs them against your conventions, and leaves comments. It reads open issues and flags the urgent ones worth tackling next. And it does all of this in Slack, alongside your team.
+Coda uses an Agno team to route each request to a specialist, carries stored conventions into later runs with the Learning Machine, and runs scheduled repo syncs and digests through AgentOS. Start it against one repository, then ask where authentication is implemented or request a review of an open PR.
 
 The code is public at [agno-agi/coda](https://github.com/agno-agi/coda).
-
-## How it works
-
-Coda is a team of five specialist agents coordinated by a leader:
-
-| Agent | Role |
-|-------|------|
-| **Explorer** | Searches code, answers architecture questions, reviews PRs (read-only) |
-| **Coder** | Writes code in isolated worktrees, opens PRs |
-| **Planner** | Breaks features into ordered GitHub issues |
-| **Triager** | Labels, comments on, and closes issues based on code analysis |
-| **Researcher** | Searches the web for docs, APIs, and error messages |
-
-Coda writes code in git worktrees on `coda/*` branches, so your main branch is never touched. It opens PRs; a human merges them. And it runs in your infrastructure, so your code stays on your machines. The only external calls go to your configured LLM provider.
-
-Between them, the agents cover:
-
-| Capability | What it does |
-|------------|--------------|
-| **Architecture Q&A** | Answers "how does auth work" with file paths and line numbers |
-| **PR reviews** | Pulls the diff, checks it against your conventions, leaves inline comments |
-| **Issue triage** | Categorizes, labels, flags duplicates, closes junk |
-| **Planning** | Turns a feature request into ordered, well-scoped GitHub issues |
-| **Web research** | Brings back framework docs, library APIs, and error explanations with sources |
-| **Code writing** | Ships changes from isolated worktrees as PRs |
-
-### Scheduled tasks
-
-Coda also shows up on its own. Two background tasks register at startup:
-
-| Task | What it does |
-|------|--------------|
-| **Daily digest** | Posts a morning summary: what merged, what needs review, what went stale |
-| **Repo sync** | Pulls the latest changes from configured repos every 5 minutes |
-
-Repo sync always runs. The daily digest only registers when both `DIGEST_CHANNEL` and `SLACK_TOKEN` are set in `.env`. Set `DIGEST_CHANNEL` to the Slack channel ID the summary should post to (right-click a channel in Slack, then View details to copy the ID).
-
-### Self-learning
-
-Coda gets sharper the more you use it. It picks up your coding standards, conventions, and patterns. The learning is powered by Agno's [Learning Machines](/learning/overview):
-
-| Week 1 | Week 4 |
-|--------|--------|
-| Writes working code using generic patterns | Follows your service layer conventions, uses your team's error handling pattern, matches your naming style |
 
 ## Run locally
 
@@ -67,7 +23,7 @@ cp example.env .env
 # Edit .env: add OPENAI_API_KEY and GITHUB_ACCESS_TOKEN
 ```
 
-`OPENAI_API_KEY` comes from [platform.openai.com](https://platform.openai.com/api-keys). For `GITHUB_ACCESS_TOKEN`, create a fine-grained Personal Access Token with Contents (read and write), Pull requests (read and write), Issues (read and write), and Metadata (read). The full walkthrough is in [docs/GITHUB_ACCESS.md](https://github.com/agno-agi/coda/blob/main/docs/GITHUB_ACCESS.md). `PARALLEL_API_KEY` (from [parallel.ai](https://parallel.ai)) is optional; it enables the Researcher agent. Without it the team runs with no web research.
+`OPENAI_API_KEY` comes from [platform.openai.com](https://platform.openai.com/api-keys). For `GITHUB_ACCESS_TOKEN`, create a fine-grained Personal Access Token with Contents (read and write), Pull requests (read and write), Issues (read and write), and Metadata (read). The full walkthrough is in [docs/GITHUB_ACCESS.md](https://github.com/agno-agi/coda/blob/main/docs/GITHUB_ACCESS.md). `PARALLEL_API_KEY` (from [parallel.ai](https://parallel.ai)) adds the optional Researcher agent.
 
 Tell Coda which repos to learn by editing `repos.yaml`:
 
@@ -77,7 +33,7 @@ repos:
     branch: main
 ```
 
-The agno repo makes a good starting point, so you have some test questions to play around with.
+Use the Agno repository as a test target if you need one.
 
 Then start Coda (Docker needs to be running):
 
@@ -93,6 +49,37 @@ Confirm it's up at [localhost:8000/docs](http://localhost:8000/docs).
 2. Click **Connect OS** → **Local** and enter `http://localhost:8000`.
 
 This gives you a web UI to chat with Coda directly, plus sessions, traces, metrics, memory, and evaluations.
+
+## How it works
+
+Coda coordinates four core specialists and an optional Researcher:
+
+| Agent | Role |
+|-------|------|
+| **Explorer** | Searches code, answers architecture questions, reviews PRs (read-only) |
+| **Coder** | Writes code in isolated worktrees, opens PRs |
+| **Planner** | Breaks features into ordered GitHub issues |
+| **Triager** | Labels, comments on, and closes issues based on code analysis |
+| **Researcher** | Searches the web for docs, APIs, and error messages when `PARALLEL_API_KEY` is set |
+
+Coda's instructions direct the Coder to use git worktrees on `coda/*` branches. Its git tool refuses to push any other branch, and a human merges the resulting PR. Worktree use for local edits remains an agent instruction, so review each diff and PR before merging.
+
+Coda runs in your infrastructure and connects to services you configure. These can include your model provider, GitHub, Slack, and Parallel for optional web research. Review those services' data-handling settings before connecting private repositories.
+
+### Scheduled tasks
+
+Coda also shows up on its own. Two background tasks register at startup:
+
+| Task | What it does |
+|------|--------------|
+| **Daily digest** | Posts a morning summary: what merged, what needs review, what went stale |
+| **Repo sync** | Pulls the latest changes from configured repos every 5 minutes |
+
+Repo sync always runs. The daily digest only registers when both `DIGEST_CHANNEL` and `SLACK_TOKEN` are set in `.env`. Set `DIGEST_CHANNEL` to the Slack channel ID the summary should post to (right-click a channel in Slack, then View details to copy the ID).
+
+### Self-learning
+
+Each specialist uses Agno's [Learning Machine](/learning/overview) to store reusable conventions and add them to later context. These learnings can cover service-layer patterns, error handling, and naming rules. Review stored learnings as you would other generated project knowledge.
 
 ## Deploy to Railway
 

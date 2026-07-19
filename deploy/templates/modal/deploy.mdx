@@ -4,17 +4,17 @@ sidebarTitle: "Deploy"
 description: "Run AgentOS locally using Docker and deploy to production on Modal."
 ---
 
-The [agentos-modal](https://github.com/agno-agi/agentos-modal) template runs AgentOS locally with Docker and deploys it to Modal. It includes:
+Choose Modal when your Python team wants to run AgentOS as one always-warm Modal container. The [agentos-modal](https://github.com/agno-agi/agentos-modal) template uses Docker locally and connects production to a provisioned Neon database or an existing PostgreSQL database with pgvector.
 
 - **Agent Builder**, which creates agents, teams, and workflows.
 - **Platform Manager**, which reports on evals, deployment checks, and schedules.
-- **5 [skills](/deploy/templates/improve-agents)** for coding-agent development and validation.
+- **Six [skills](/deploy/templates/improve-agents)**. `setup-platform` configures the local platform. Five lifecycle skills create, extend, improve, evaluate, and review it.
 
-The template keeps agent code, evals, traces, and system logs in one project.
+Coding agents can use the repository skills, live AgentOS API, evals, traces in PostgreSQL, and Modal logs to inspect and improve the platform.
 
 ## Get started
 
-Copy the prompt below into Claude Code, Cursor, or Codex to set up the template with a coding agent.
+Copy the prompt below into Claude Code, Cursor, or Codex to clone the template, start AgentOS locally, and build your first agent.
 
 <Snippet file="setup-prompt-modal.mdx" />
 
@@ -80,6 +80,8 @@ Prints `MCP OK` with the tool count and a real agent answer through the MCP endp
 
 **Prerequisites:** Python 3 and OpenSSL. [Modal CLI](https://modal.com/docs/guide) installed with `modal token new` completed. [neonctl](https://neon.tech/docs/reference/neon-cli) installed with `neonctl auth` completed.
 
+<Note>The current script checks Neon authentication even when you supply an external database. External database deployments still need `neonctl auth` until that preflight is conditional.</Note>
+
 <Steps>
   <Step title="Create a production env">
 ```bash
@@ -94,7 +96,7 @@ Edit `.env.production` with production values: a different OpenAI key, productio
 ./scripts/modal/up.sh
 ```
 
-Reuses the `DB_HOST` and `DB_PASS` in your env file when both are set. Otherwise, it creates a Neon Postgres project and saves its connection details. The script writes your config into the `agentos-secrets` Modal secret and deploys `modal_app.py` as one always-warm container. It then sets `AGENTOS_URL` to the stable `https://<workspace>--agentos.modal.run` URL and generates `MCP_CONNECT_SECRET` when your env file does not have one.
+When `DB_HOST` and `DB_PASS` are set, the script reuses the external database. Supply `DB_HOST`, `DB_USER`, `DB_PASS`, and `DB_DATABASE`; `DB_PORT` defaults to `5432`. The database must support pgvector and TLS. When the host or password is missing, the script creates a Neon Postgres project and saves its connection details. The script writes your config into the `agentos-secrets` Modal secret and deploys `modal_app.py` as one always-warm container. It then sets `AGENTOS_URL` to the stable `https://<workspace>--agentos.modal.run` URL and generates `MCP_CONNECT_SECRET` when your env file does not have one.
   </Step>
 
   <Step title="Mint your JWT key">
@@ -121,9 +123,12 @@ For claude.ai and ChatGPT on the web: add `https://<workspace>--agentos.modal.ru
   <Step title="Confirm it's live">
 ```bash
 modal app logs agentos
+
+curl -o /dev/null -w '%{http_code}\n' "https://<workspace>--agentos.modal.run/health"  # 200
+curl -o /dev/null -w '%{http_code}\n' "https://<workspace>--agentos.modal.run/agents"  # 401
 ```
 
-Open `https://<workspace>--agentos.modal.run/docs` to confirm the API is serving.
+`/health` and `/docs` remain public. Protected AgentOS routes such as `/agents` require a valid token.
   </Step>
 </Steps>
 

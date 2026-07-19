@@ -4,33 +4,33 @@ sidebarTitle: "Reference"
 description: "Commands, customization, environment variables, and troubleshooting for the Kubernetes template."
 ---
 
-The scripts install the Helm release `agentos` into the `agentos` namespace. Override with `AGENTOS_RELEASE` and `AGENTOS_NAMESPACE`.
+The scripts install the Helm release `agentos` into the `agentos` namespace. Override with `AGENTOS_RELEASE` and `AGENTOS_NAMESPACE`. Start with [Deploy AgentOS on Kubernetes](/deploy/templates/helm/deploy) for prerequisites and the first deployment.
 
 ## Manage
 
 | Task | Command |
 |------|---------|
-| Roll to a new image tag | `IMAGE_TAG=v2 ./scripts/k8s/redeploy.sh` (build and push the tag first) |
+| Roll to a new image tag | `IMAGE_TAG=v2 ./scripts/k8s/redeploy.sh` after the release points at your registry |
 | Restart pods in place | `./scripts/k8s/redeploy.sh` |
 | Sync supported env variables | `./scripts/k8s/env-sync.sh` (updates nonempty values from a fixed allowlist that includes `RUNTIME_ENV`; defaults to `.env.production`, or pass `.env`) |
-| Tail logs | `kubectl logs deploy/agentos -n agentos -f` |
-| Port-forward the API | `kubectl port-forward svc/agentos 8000:8000 -n agentos` |
-| Roll back a release | `helm rollback agentos -n agentos` |
+| Tail logs | Run the override-aware `kubectl logs` command printed by `up.sh` (default: `kubectl logs deploy/agentos -n agentos -f`) |
+| Port-forward the API | Run the override-aware command printed by `up.sh` (default: `kubectl port-forward svc/agentos 8000:8000 -n agentos`) |
+| Roll back a release | `helm rollback "${AGENTOS_RELEASE:-agentos}" -n "${AGENTOS_NAMESPACE:-agentos}"` |
 | Tear down | `./scripts/k8s/down.sh` (add `--yes` to skip the confirmation) |
 
 ## Production auth
 
-Token-Based Authorization is on by default. Production startup requires `JWT_VERIFICATION_KEY` or a readable JWKS file at the pod path in `JWT_JWKS_FILE`; otherwise the process exits.
+Token-Based Authorization protects AgentOS routes by default in production. Startup requires `JWT_VERIFICATION_KEY` or a readable JWKS file at the pod path in `JWT_JWKS_FILE`; otherwise the process exits.
 
 Token-Based Auth gives you three things:
 
-1. **No public access.** The server rejects requests without a valid token.
+1. **Protected API access.** Requests to protected AgentOS routes require a valid token. `/`, `/health`, `/info`, `/docs`, `/redoc`, `/openapi.json`, and `/docs/oauth2-redirect` remain public.
 2. **Per-request identity.** Middleware validates the token and exposes its `user_id`, optional `session_id`, scopes, and claims to the request.
 3. **Scope-based permissions.** Token scopes control access to AgentOS routes and resources.
 
 The templates do not enable per-user data isolation. To scope non-admin session, memory, trace, and run access to the JWT subject, pass `authorization_config=AuthorizationConfig(user_isolation=True)` to `AgentOS`. See [User Isolation](/agent-os/security/authorization/user-isolation).
 
-To opt out (not recommended), set `authorization=False` in `app/main.py`, then build and push a new image tag and roll to it with `IMAGE_TAG=<tag> ./scripts/k8s/redeploy.sh`. Use this only inside a private VPC behind another auth layer. Without it, anyone who guesses your AgentOS URL can access your platform.
+To disable JWT authentication, set `authorization=False` in `app/main.py`, clear `secrets.jwtVerificationKey` and `jwtJwksFile` in the Helm release, then build and roll out the new image. `authorization=False` disables AgentOS scope enforcement. Configured JWT values continue to enable JWT validation. MCP OAuth remains active when `MCP_CONNECT_SECRET` is set. Only do this when another layer protects the service.
 
 ## Customize
 
@@ -82,23 +82,44 @@ Local containers hot-reload on save. For production, build and push a new image 
 from agno.models.anthropic import Claude
 
 def default_model():
-    return Claude(id="claude-sonnet-5")
+    return Claude(id="claude-sonnet-5-0")
 ```
 
-Add `anthropic` to `pyproject.toml`, set the provider key in your env, and regenerate pins:
+Add `anthropic` to `pyproject.toml`, set `ANTHROPIC_API_KEY` in `.env` for local runs, and regenerate pins:
 
 ```bash
 ./scripts/generate_requirements.sh
 ```
 
-Rebuild locally with `docker compose up -d --build`. For production, build and push a new tag, then roll to it:
+Rebuild locally with `docker compose up -d --build`. For production, export `ANTHROPIC_API_KEY`, build and push a new tag, create a Kubernetes Secret, and add it through `extraEnv` in a small values file:
 
 ```bash
 docker build -t <registry>/agentos:v2 . && docker push <registry>/agentos:v2
-IMAGE_TAG=v2 ./scripts/k8s/redeploy.sh
+kubectl create secret generic agentos-anthropic \
+  --from-literal=ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
+  -n "${AGENTOS_NAMESPACE:-agentos}" \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-`env-sync.sh` uses a fixed allowlist that includes `RUNTIME_ENV`, `AGENTOS_URL`, the `JWT_JWKS_FILE` path, the template's supported secrets, and `DB_PASS`. It does not deliver the referenced JWKS file or sync a new provider key such as `ANTHROPIC_API_KEY`. Provide the JWKS file through a custom image or chart volume. Deliver a new provider key via `extraEnv` and `helm upgrade`.
+```yaml anthropic-values.yaml
+image:
+  repository: <registry>/agentos
+  tag: v2
+extraEnv:
+  - name: ANTHROPIC_API_KEY
+    valueFrom:
+      secretKeyRef:
+        name: agentos-anthropic
+        key: ANTHROPIC_API_KEY
+```
+
+```bash
+helm upgrade "${AGENTOS_RELEASE:-agentos}" charts/agentos \
+  -n "${AGENTOS_NAMESPACE:-agentos}" --reuse-values \
+  -f anthropic-values.yaml
+```
+
+`env-sync.sh` does not deliver arbitrary provider keys or the referenced JWKS file. Provide new provider keys through a Kubernetes Secret as shown above. Provide a JWKS file through a custom image or chart volume.
   </Accordion>
 
   <Accordion title="Add tools">
@@ -160,7 +181,7 @@ source .venv/bin/activate
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `OPENAI_API_KEY` | Yes | - | Models and embeddings. |
-| `RUNTIME_ENV` | No | `prd` | `dev` disables JWT. Compose sets it for local. Never put it in an env file that syncs to a real cluster, or production deploys unauthenticated. |
+| `RUNTIME_ENV` | No | `prd` | `dev` sets `authorization=False`, which disables AgentOS scope enforcement. Configured JWT values continue to enable JWT validation. Compose sets `dev` locally; keep `prd` on a production cluster. |
 | `JWT_VERIFICATION_KEY` | Production | - | Public key from os.agno.com. Quote the value so the multi-line PEM parses as one variable. |
 | `JWT_JWKS_FILE` | Production | - | Path inside the pod to a JWKS file. `up.sh` and `env-sync.sh` set only the `jwtJwksFile` path. The current chart does not mount the file. |
 | `MCP_CONNECT_SECRET` | No | - | OAuth consent secret (16+ chars) for connecting claude.ai and ChatGPT to `/mcp`. `up.sh` generates it into `.env.production` when the deploy has a public URL (`INGRESS_HOST` or `AGENTOS_URL`); set it by hand otherwise. |
@@ -199,7 +220,7 @@ Install [kubectl](https://kubernetes.io/docs/tasks/tools/) and [Helm](https://he
 Expected. Mint the key at [os.agno.com](https://os.agno.com): connect your OS (**Connect OS** → **Live**, enter your AgentOS URL), then turn on **Token-Based Authorization (JWT)** under **Settings** → **OS & Security** and paste the full PEM. To add a PEM later, set `JWT_VERIFICATION_KEY` and run `./scripts/k8s/env-sync.sh`. To use JWKS, first provide the file through a custom image or chart volume, then set `JWT_JWKS_FILE` to its pod path and sync.
   </Accordion>
   <Accordion title="App fails to start in production">
-JWT auth is on whenever `RUNTIME_ENV` is not `dev`. Set `JWT_VERIFICATION_KEY` and sync. `JWT_JWKS_FILE` works only when a custom image or chart mount already provides a readable file at that pod path. To opt out inside a private VPC behind another auth layer, set `authorization=False` in `app/main.py` and roll out your own image build.
+AgentOS scope enforcement is on whenever `RUNTIME_ENV` is not `dev`. Set `JWT_VERIFICATION_KEY` and sync. `JWT_JWKS_FILE` works only when a custom image or chart mount already provides a readable file at that pod path. To disable JWT, set `authorization=False` in `app/main.py`, clear `secrets.jwtVerificationKey` and `jwtJwksFile` in the Helm release, and roll out your image. MCP OAuth remains active when `MCP_CONNECT_SECRET` is set.
   </Accordion>
   <Accordion title="Pods stuck in ImagePullBackOff">
 The cluster can't pull the image. Confirm the tag was pushed and the cluster has access to your registry; for private registries, set `imagePullSecrets` in `charts/agentos/values.yaml`. On kind, `kind load docker-image` the tag and deploy with `IMAGE_PULL_POLICY=Never`.

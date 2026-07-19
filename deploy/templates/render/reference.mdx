@@ -4,7 +4,7 @@ sidebarTitle: "Reference"
 description: "Commands, customization, environment variables, and troubleshooting for the Render template."
 ---
 
-The web service is `agent-os` and the database is `agentos-db`. Every command in `scripts/render/` drives the Render API and needs `RENDER_API_KEY` in your environment or env file.
+The web service is `agent-os` and the database is `agentos-db`. Every command in `scripts/render/` drives the Render API and needs `RENDER_API_KEY` in your environment or env file. Start with [Deploy AgentOS on Render](/deploy/templates/render/deploy) for prerequisites and the first deployment.
 
 ## Manage
 
@@ -36,7 +36,7 @@ Token-Based Auth gives you three things:
 
 The templates do not enable per-user data isolation. To scope non-admin session, memory, trace, and run access to the JWT subject, pass `authorization_config=AuthorizationConfig(user_isolation=True)` to `AgentOS`. See [User Isolation](/agent-os/security/authorization/user-isolation).
 
-To disable JWT authentication, set `authorization=False` in `app/main.py`, remove `JWT_VERIFICATION_KEY` and `JWT_JWKS_FILE` from the Render service, and push. Use this only inside a private VPC behind another auth layer. `authorization=False` disables AgentOS scope enforcement, while configured JWT environment variables still enable JWT validation. MCP OAuth remains active when `MCP_CONNECT_SECRET` is set.
+To disable JWT authentication, set `authorization=False` in `app/main.py`, remove `JWT_VERIFICATION_KEY` and `JWT_JWKS_FILE` from the Render service, and push. `authorization=False` disables AgentOS scope enforcement. Configured JWT environment variables continue to enable JWT validation. MCP OAuth remains active when `MCP_CONNECT_SECRET` is set. Only do this after placing the public service behind another authentication or network boundary.
 
 ## Customize
 
@@ -88,10 +88,10 @@ Local containers hot-reload on save. For production, commit and push; Render reb
 from agno.models.anthropic import Claude
 
 def default_model():
-    return Claude(id="claude-sonnet-5")
+    return Claude(id="claude-sonnet-5-0")
 ```
 
-Add `anthropic` to `pyproject.toml`, set the provider key in your env, and regenerate pins:
+Add `anthropic` to `pyproject.toml`. Set `ANTHROPIC_API_KEY` in `.env` for local runs and `.env.production` for production, then regenerate pins:
 
 ```bash
 ./scripts/generate_requirements.sh
@@ -101,6 +101,8 @@ Rebuild locally with `docker compose up -d --build`. For production, sync the en
 
 ```bash
 ./scripts/render/env-sync.sh
+git add app/settings.py pyproject.toml requirements.txt
+git commit -m "Use Anthropic model"
 git push
 ```
   </Accordion>
@@ -195,7 +197,7 @@ Create one in the dashboard under **Account Settings** → **API Keys**, then ex
 Expected. Mint the key at [os.agno.com](https://os.agno.com): connect your OS (**Connect OS** → **Live**, enter your onrender.com URL), then turn on **Token-Based Authorization (JWT)** under **Settings** → **OS & Security** and paste the full PEM. To add a PEM later, set `JWT_VERIFICATION_KEY` and run `./scripts/render/env-sync.sh`. To use JWKS, commit and push the file into the image build context, or configure a mount. Set `JWT_JWKS_FILE` to its container path, then let auto-deploy rebuild or roll the service. Env sync alone only updates the path.
   </Accordion>
   <Accordion title="App fails to start in production">
-JWT scope enforcement is on whenever `RUNTIME_ENV` is not `dev`. Set `JWT_VERIFICATION_KEY` and sync. For JWKS, verify the file exists inside the container at `JWT_JWKS_FILE`; changing the variable alone does not deliver it. To disable JWT inside a private VPC behind another auth layer, set `authorization=False` in `app/main.py` and remove both JWT environment variables from the Render service. MCP OAuth remains active when `MCP_CONNECT_SECRET` is set.
+JWT scope enforcement is on whenever `RUNTIME_ENV` is not `dev`. Set `JWT_VERIFICATION_KEY` and sync. For JWKS, verify the file exists inside the container at `JWT_JWKS_FILE`; changing the variable alone does not deliver it. To disable JWT, set `authorization=False` in `app/main.py`, remove both JWT environment variables from the Render service, and place the public service behind another authentication or network boundary. MCP OAuth remains active when `MCP_CONNECT_SECRET` is set.
   </Accordion>
   <Accordion title="My code changes didn't deploy">
 Render builds the pushed branch, so local uncommitted changes stay on your machine. Commit, push to your deploy branch, and let `autoDeploy` rebuild. `redeploy.sh` warns when it finds uncommitted changes.

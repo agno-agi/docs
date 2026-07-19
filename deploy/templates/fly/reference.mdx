@@ -4,7 +4,7 @@ sidebarTitle: "Reference"
 description: "Commands, customization, environment variables, and troubleshooting for the Fly.io template."
 ---
 
-Fly app names are global, so `up.sh` generates a unique name (`agentos-<suffix>`), records it in `fly.toml`, and pairs it with a Postgres app named `<app>-db`. Later `fly` commands read the app name from `fly.toml`, so no `--app` flag is needed.
+Fly app names are global, so `up.sh` generates a unique name (`agentos-<suffix>`), records it in `fly.toml`, and pairs it with a Postgres app named `<app>-db`. Later `fly` commands read the app name from `fly.toml`, so no `--app` flag is needed. Start with [Deploy AgentOS on Fly.io](/deploy/templates/fly/deploy) for prerequisites and the first deployment.
 
 ## Manage
 
@@ -16,21 +16,21 @@ Fly app names are global, so `up.sh` generates a unique name (`agentos-<suffix>`
 | Resize the machine | Edit `[[vm]]` in `fly.toml`, then `./scripts/fly/redeploy.sh` |
 | Tear down | `./scripts/fly/down.sh` (add `--yes` to skip the confirmation) |
 
-The platform runs one machine by design. Both deploy scripts pass `fly deploy --ha=false` because the Fly default creates two machines, which doubles cost and runs two in-process schedulers double-firing every cron. `fly.toml` keeps the machine warm with `auto_stop_machines = "off"` and `min_machines_running = 1`; with scale-to-zero, scheduled jobs silently stop firing.
+The platform runs one machine by default. Both deploy scripts pass `fly deploy --ha=false` because Fly otherwise creates two machines and doubles the application cost. `fly.toml` keeps the machine warm with `auto_stop_machines = "off"` and `min_machines_running = 1`; scheduled jobs stop when no machine is running. Validate schedule registration and MCP streams before adding machines.
 
 ## Production auth
 
-Token-Based Authorization is on by default. Production startup requires `JWT_VERIFICATION_KEY` or a readable JWKS file at the container path in `JWT_JWKS_FILE`; otherwise the process exits.
+Token-Based Authorization protects AgentOS routes by default in production. Startup requires `JWT_VERIFICATION_KEY` or a readable JWKS file at the container path in `JWT_JWKS_FILE`; otherwise the process exits.
 
 Token-Based Auth gives you three things:
 
-1. **No public access.** The server rejects requests without a valid token.
+1. **Protected API access.** Requests to protected AgentOS routes require a valid token. `/`, `/health`, `/info`, `/docs`, `/redoc`, `/openapi.json`, and `/docs/oauth2-redirect` remain public.
 2. **Per-request identity.** Middleware validates the token and exposes its `user_id`, optional `session_id`, scopes, and claims to the request.
 3. **Scope-based permissions.** Token scopes control access to AgentOS routes and resources.
 
 The templates do not enable per-user data isolation. To scope non-admin session, memory, trace, and run access to the JWT subject, pass `authorization_config=AuthorizationConfig(user_isolation=True)` to `AgentOS`. See [User Isolation](/agent-os/security/authorization/user-isolation).
 
-To opt out (not recommended), set `authorization=False` in `app/main.py` and redeploy. Use this only inside a private network behind another auth layer. Without it, anyone who guesses your Fly URL can access your platform.
+To disable JWT authentication, set `authorization=False` in `app/main.py`, remove `JWT_VERIFICATION_KEY` and `JWT_JWKS_FILE` from the Fly secrets, and redeploy. `authorization=False` disables AgentOS scope enforcement. Configured JWT environment variables continue to enable JWT validation. MCP OAuth remains active when `MCP_CONNECT_SECRET` is set. Only do this when another layer protects the service.
 
 ## Customize
 
@@ -82,10 +82,10 @@ Local containers hot-reload on save. For production, run `./scripts/fly/redeploy
 from agno.models.anthropic import Claude
 
 def default_model():
-    return Claude(id="claude-sonnet-5")
+    return Claude(id="claude-sonnet-5-0")
 ```
 
-Add `anthropic` to `pyproject.toml`, set the provider key in your env, and regenerate pins:
+Add `anthropic` to `pyproject.toml`. Set `ANTHROPIC_API_KEY` in `.env` for local runs and `.env.production` for production, then regenerate pins:
 
 ```bash
 ./scripts/generate_requirements.sh
@@ -134,14 +134,25 @@ The deployment check runs daily by default (`ENABLE_DEPLOY_CHECK=True`); it is d
   </Accordion>
 
   <Accordion title="Enable pgvector for knowledge bases">
-Fly's stock `postgres-flex` image does not ship pgvector, so sessions and memory work but knowledge bases (RAG) fail at `CREATE EXTENSION` time. The fix is a two-line Dockerfile:
+Fly's stock `postgres-flex` image supports sessions and memory. Knowledge bases fail at `CREATE EXTENSION` until the database image includes pgvector. Build a derivative and publish it to a registry Fly can pull from. The commands below use a public Docker Hub repository:
 
-```dockerfile
+```bash
+mkdir -p postgres-pgvector
+cat > postgres-pgvector/Dockerfile <<'EOF'
 FROM flyio/postgres-flex:17
 RUN apt-get install -y postgresql-17-pgvector
+EOF
+
+docker login
+export PG_IMAGE="<docker-hub-user>/agentos-postgres-pgvector:17"
+docker buildx build --platform linux/amd64 --push \
+  -t "$PG_IMAGE" postgres-pgvector
+
+export FLY_PG_IMAGE="$PG_IMAGE"
+./scripts/fly/up.sh
 ```
 
-Set `FLY_PG_IMAGE` to that image before running `./scripts/fly/up.sh`. The image applies when the Postgres cluster is created; `up.sh` reuses an existing cluster, so switching later means tearing down with `./scripts/fly/down.sh` and provisioning fresh.
+`FLY_PG_IMAGE` applies when the Postgres cluster is created. `up.sh` reuses an existing cluster, so switching later requires `./scripts/fly/down.sh`, which deletes the app, database, and all stored data. Then export `FLY_PG_IMAGE` and provision again.
   </Accordion>
 </AccordionGroup>
 
@@ -167,7 +178,7 @@ source .venv/bin/activate
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `OPENAI_API_KEY` | Yes | - | Models and embeddings. |
-| `RUNTIME_ENV` | No | `prd` | `dev` disables JWT. Compose sets it for local. Never put it in an env file that syncs to Fly, or production deploys unauthenticated. |
+| `RUNTIME_ENV` | No | `prd` | `dev` sets `authorization=False`, which disables AgentOS scope enforcement. Configured JWT environment variables continue to enable JWT validation. Compose sets `dev` locally; keep `prd` on Fly. |
 | `JWT_VERIFICATION_KEY` | Production | - | Public key from os.agno.com. Quote the value so the multi-line PEM parses as one variable. |
 | `JWT_JWKS_FILE` | Production | - | Path inside the Fly Machine to a JWKS file. The Fly scripts sync only this path. Bake the file into the image or configure a Fly mount before deploying. |
 | `MCP_CONNECT_SECRET` | No | generated by `up.sh` | OAuth consent secret (16+ chars) for connecting claude.ai and ChatGPT to `/mcp`. `up.sh` generates one on deploy and writes it to `.env.production`. |
@@ -207,7 +218,7 @@ Expected. Mint the key at [os.agno.com](https://os.agno.com): connect your OS (*
 The script only manages names it generated. A different name means continuing would overwrite `fly.toml` and abandon that app. Restore the `agentos` placeholder (or an `agentos-*` name from a previous run), or tear down first with `./scripts/fly/down.sh`.
   </Accordion>
   <Accordion title="App fails to start in production">
-JWT auth is on whenever `RUNTIME_ENV` is not `dev`. Set `JWT_VERIFICATION_KEY` and sync. To use `JWT_JWKS_FILE`, first bake or mount a readable JWKS file at that container path, then sync the variable. `env-sync.sh` does not upload the file. To opt out inside a private network behind another auth layer, set `authorization=False` in `app/main.py`.
+AgentOS scope enforcement is on whenever `RUNTIME_ENV` is not `dev`. Set `JWT_VERIFICATION_KEY` and sync. To use `JWT_JWKS_FILE`, first bake or mount a readable JWKS file at that container path, then sync the variable. `env-sync.sh` does not upload the file. To disable JWT, set `authorization=False` in `app/main.py`, remove both JWT variables from the Fly secrets, and redeploy. MCP OAuth remains active when `MCP_CONNECT_SECRET` is set.
   </Accordion>
   <Accordion title="Knowledge bases fail at CREATE EXTENSION">
 The stock `postgres-flex` image has no pgvector; sessions and memory are unaffected. Set `FLY_PG_IMAGE` to a pgvector-enabled image and recreate the cluster. `up.sh` reuses an existing cluster, so tear down first with `./scripts/fly/down.sh`. See [Enable pgvector for knowledge bases](#customize).
@@ -215,7 +226,7 @@ The stock `postgres-flex` image has no pgvector; sessions and memory are unaffec
   <Accordion title="Scheduled jobs never fire">
 `AGENTOS_URL` may still be the localhost default. `up.sh` sets it to `https://<app>.fly.dev` automatically; for a custom domain or tunnel, set it by hand and run `./scripts/fly/env-sync.sh`. Re-running `up.sh` resets a hand-set value to the generated fly.dev URL, so re-pin it afterwards. The other cause is the machine scaling to zero: keep `auto_stop_machines = "off"` and `min_machines_running = 1` in `fly.toml`.
   </Accordion>
-  <Accordion title="Every cron fires twice">
-A plain `fly deploy` created a second machine, and each runs its own scheduler. Deploy with the scripts; they pass `--ha=false`.
+  <Accordion title="A second Fly Machine appeared">
+A plain `fly deploy` enables Fly's default HA topology. Deploy with the scripts to keep one machine; they pass `--ha=false`. AgentOS claims due schedules through PostgreSQL. This template has not been validated for simultaneous schedule registration and MCP streams across multiple machines.
   </Accordion>
 </AccordionGroup>
