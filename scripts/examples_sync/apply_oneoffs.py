@@ -2027,7 +2027,7 @@ uv pip install -U mem0ai
 python cookbook/91_tools/mem0_tools.py""",
     )
 
-    # 6. Post-tag static pages that are outside the pinned cookbook generator.
+    # 6. Curated fixes outside the cookbook generator.
     root_sub(
         "database/providers/valkey/usage/valkey-for-agent.mdx",
         """## Usage
@@ -2163,7 +2163,7 @@ Valkey vector search requires""",
         """**Returns:** `List[Span]`
 
 <Warning>
-  In Agno v2.7.2, synchronous `SqliteDb.get_spans()` does not accept `limit`. Omit `limit` when using SQLite. The other filters and the SQLite example below work as shown.
+  In Agno v2.7.4, synchronous `SqliteDb.get_spans()` does not accept `limit`. Omit `limit` when using SQLite. The other filters and the SQLite example below work as shown.
 </Warning>
 
 <Note>""",
@@ -2265,154 +2265,6 @@ from agno.workflow.step import Step""",
         """tools=[WebSearchTools()],
     role="Search the web for the latest news and trends",""",
     )
-    sub(
-        "storage/valkey/valkey-for-team.mdx",
-        "Run `uv pip install ddgs valkey-glide-sync` to install dependencies.",
-        "Run `uv pip install ddgs openai valkey-glide-sync` to install dependencies.",
-    )
-    valkey_descriptions = {
-        "agent": "Use Valkey as the storage backend for an agent.",
-        "team": "Use Valkey as the storage backend for a team.",
-        "workflow": "Use ValkeyDb as the session storage backend for a workflow.",
-    }
-    for example_type, description in valkey_descriptions.items():
-        sub(
-            f"storage/valkey/valkey-for-{example_type}.mdx",
-            f'description: "{description}"\n---',
-            f'description: "{description}"\nsource: cookbook/06_storage/valkey/valkey_for_{example_type}.py\n---',
-        )
-    for example_type in ("agent", "team", "workflow"):
-        filename = f"valkey_for_{example_type}.py"
-        root_sub(
-            f"examples/storage/valkey/valkey-for-{example_type}.mdx",
-            f"""## Run the Example
-```bash
-# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/06_storage/valkey
-
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
-
-python {filename}
-```""",
-            f"""## Run the Example
-
-<Steps>
-  <Step title="Clone Agno">
-    Clone the repository and run the remaining commands from its root:
-    ```bash
-    git clone https://github.com/agno-agi/agno.git
-    cd agno
-    ```
-  </Step>
-
-  <Step title="Set up the demo environment">
-    ```bash
-    ./scripts/demo_setup.sh
-    source .venvs/demo/bin/activate
-    uv pip install -U ddgs openai valkey-glide-sync
-    ```
-  </Step>
-
-  <Step title="Export your OpenAI API key">
-    <CodeGroup>
-    ```bash Mac/Linux
-    export OPENAI_API_KEY="your_openai_api_key_here"
-    ```
-
-    ```bash Windows
-    $Env:OPENAI_API_KEY="your_openai_api_key_here"
-    ```
-    </CodeGroup>
-  </Step>
-
-  <Step title="Run Valkey">
-    ```bash
-    docker run -d --name my-valkey -p 6379:6379 valkey/valkey-bundle
-    ```
-  </Step>
-
-  <Step title="Run the example">
-    ```bash
-    python cookbook/06_storage/valkey/{filename}
-    ```
-  </Step>
-</Steps>""",
-        )
-    sub(
-        "agent-os/dbs/valkey-db.mdx",
-        "```python\n",
-        "```python valkey_db.py\n",
-    )
-    sub(
-        "agent-os/dbs/valkey-db.mdx",
-        'description: "Setup the Valkey database."\n---',
-        'description: "Setup the Valkey database."\nsource: cookbook/05_agent_os/dbs/valkey_db.py\n---',
-    )
-    sub(
-        "agent-os/dbs/valkey-db.mdx",
-        """## Run the Example
-```bash
-# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/05_agent_os/dbs
-
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
-
-python valkey_db.py
-```""",
-        """## Run the Example
-
-<Steps>
-  <Step title="Clone Agno">
-    Clone the repository and run the remaining commands from its root:
-    ```bash
-    git clone https://github.com/agno-agi/agno.git
-    cd agno
-    ```
-  </Step>
-
-  <Step title="Set up the demo environment">
-    ```bash
-    ./scripts/demo_setup.sh
-    source .venvs/demo/bin/activate
-    uv pip install -U valkey-glide-sync
-    ```
-  </Step>
-
-  <Step title="Export your OpenAI API key">
-    <CodeGroup>
-    ```bash Mac/Linux
-    export OPENAI_API_KEY="your_openai_api_key_here"
-    ```
-
-    ```bash Windows
-    $Env:OPENAI_API_KEY="your_openai_api_key_here"
-    ```
-    </CodeGroup>
-  </Step>
-
-  <Step title="Run Valkey">
-    ```bash
-    docker run -d --name my-valkey -p 6379:6379 valkey/valkey-bundle
-    ```
-  </Step>
-
-  <Step title="Run the example">
-    Run the example from the repository root:
-    ```bash
-    python cookbook/05_agent_os/dbs/valkey_db.py
-    ```
-  </Step>
-</Steps>
-
-Full source: [cookbook/05_agent_os/dbs/valkey_db.py](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/dbs/valkey_db.py)""",
-    )
-
     root_sub(
         "knowledge/vector-stores/mongodb/usage/mongo-db-hybrid-search.mdx",
         """  </Step>
@@ -2544,7 +2396,7 @@ The agent writes 24 kHz, mono, 16-bit PCM audio to `tmp/response_stream.wav`. Th
         """## Current Status
 
 <Warning>
-  This v2.7.2 example uses Pipedream's retired per-app SSE URL. It cannot connect to the current Pipedream MCP service without code and authentication changes. See [Pipedream MCP](https://pipedream.com/docs/connect/mcp) for the current end-user and developer flows.
+  This v2.7.4 example uses Pipedream's retired per-app SSE URL. It cannot connect to the current Pipedream MCP service without code and authentication changes. See [Pipedream MCP](https://pipedream.com/docs/connect/mcp) for the current end-user and developer flows.
 </Warning>""",
     )
 
@@ -2634,7 +2486,7 @@ $Env:OPENAI_API_KEY="your_openai_api_key_here"
         """~~~
 
 <Warning>
-  The v2.7.2 cookbook uses the deprecated `gpt-4o` model. The source-fidelity fence above preserves those three model IDs. Replace all three with `gpt-5.4-mini` before running. See [GPT-4o](https://developers.openai.com/api/docs/models/gpt-4o) and [GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini).
+  The v2.7.4 cookbook uses the deprecated `gpt-4o` model. The source-fidelity fence above preserves those three model IDs. Replace all three with `gpt-5.4-mini` before running. See [GPT-4o](https://developers.openai.com/api/docs/models/gpt-4o) and [GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini).
 </Warning>
 
 ## Run the Example""",
@@ -2710,7 +2562,7 @@ Setup for each provider""",
         """| **MCP** | Registered in `scout/contexts.py` | One `query_mcp_<slug>` per server. |
 
 <Warning>
-  Scout intends Slack access to be read-only, but the pinned template does not pass `write=False` when it creates `SlackContextProvider`. Configuring Slack currently exposes `update_slack`. Leave write scopes ungranted until the template enforces its intended boundary.
+  Scout intends Slack context access to be read-only, but the pinned template does not pass `write=False` when it creates `SlackContextProvider`. Configuring `SLACK_BOT_TOKEN` currently exposes `update_slack`. To enforce a read-only context provider, set `write=False` in `scout/contexts.py` before deployment. The linked Slack manifest grants write scopes because the separate Slack interface uses the same bot token to reply.
 </Warning>
 
 Setup for each provider""",
@@ -2733,7 +2585,7 @@ Setup for each provider""",
         """---
 
 <Warning>
-  This v2.7.2 source cannot run as written. It references an input file that is not provided, uses Groq's retired `playai-tts` default, asks for music even though the tool generates speech, and saves WAV bytes with an `.mp3` extension. Provide a real input file, select a current TTS model and voice, change the prompt to request speech, and save the output as `.wav`. See [Groq model deprecations](https://console.groq.com/docs/deprecations) and [Groq text to speech](https://console.groq.com/docs/text-to-speech/).
+  This v2.7.4 source cannot run as written. It references an input file that is not provided, uses Groq's retired `playai-tts` default, asks for music even though the tool generates speech, and saves WAV bytes with an `.mp3` extension. Provide a real input file, select a current TTS model and voice, change the prompt to request speech, and save the output as `.wav`. See [Groq model deprecations](https://console.groq.com/docs/deprecations) and [Groq text to speech](https://console.groq.com/docs/text-to-speech/).
 </Warning>
 
 ## Code""",
@@ -2767,7 +2619,7 @@ Setup for each provider""",
 </Steps>""",
         """## Prepare a corrected copy
 
-The source fence is preserved for v2.7.2 fidelity. These packages and API keys cover its imports. Apply every change in the warning above before running it.
+The source fence is preserved for v2.7.4 fidelity. These packages and API keys cover its imports. Apply every change in the warning above before running it.
 
 <Steps>
   <Step title="Install dependencies">
@@ -3262,7 +3114,7 @@ async def handle_stripe(event: dict):
     root_sub(
         "models/providers/native/google/usage/interactions-antigravity.mdx",
         "Unlike Deep Research, Antigravity runs in the foreground. The model still forces `store=True` so the interaction is retrievable.",
-        "`GeminiInteractions` in Agno 2.7.2 sends Antigravity requests in the foreground and forces `store=True` so each interaction is retrievable. The Google API also supports background Antigravity execution. Use the Google Gen AI SDK directly when you need background execution.",
+        "`GeminiInteractions` in Agno 2.7.4 sends Antigravity requests in the foreground and forces `store=True` so each interaction is retrievable. The Google API also supports background Antigravity execution. Use the Google Gen AI SDK directly when you need background execution.",
     )
 
     root_sub(
@@ -3561,7 +3413,7 @@ $Env:LANGDB_API_BASE_URL="https://api.langdb.ai"
     )
 
     # Sample 29: require an explicit current Nebius model because both the
-    # retired cookbook ID and the pinned Agno 2.7.2 default are unavailable.
+    # retired cookbook ID and the pinned Agno 2.7.4 default are unavailable.
     root_sub(
         "models/providers/gateways/nebius/overview.mdx",
         """Nebius Token Factory is a platform from Nebius that simplifies the process of building applications using AI models. It provides a suite of tools and services for developers to easily test, integrate and fine-tune various AI models, including those for text and image generation.
@@ -3655,12 +3507,12 @@ $Env:NEBIUS_MODEL_ID="your_current_text_model_id"
         """See the [Nebius usage examples](/models/providers/gateways/nebius/usage/basic-stream).
 
 <Warning>
-  The pinned Agno 2.7.2 default, `openai/gpt-oss-20b`, is retired from serverless inference. Set `id` to an explicit current model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
+  The pinned Agno 2.7.4 default, `openai/gpt-oss-20b`, is retired from serverless inference. Set `id` to an explicit current model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
 </Warning>""",
         """See the [Nebius usage examples](/models/providers/gateways/nebius/usage/basic-stream).
 
 <Warning>
-  The pinned Agno 2.7.2 default, `openai/gpt-oss-20b`, is retired from serverless inference. Set `id` to an explicit current text-generation model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
+  The pinned Agno 2.7.4 default, `openai/gpt-oss-20b`, is retired from serverless inference. Set `id` to an explicit current text-generation model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
 </Warning>""",
         required=False,
     )
@@ -3669,12 +3521,12 @@ $Env:NEBIUS_MODEL_ID="your_current_text_model_id"
         """See the [Nebius usage examples](/models/providers/gateways/nebius/usage/basic-stream).
 
 <Warning>
-  The pinned Agno 2.7.2 default, `openai/gpt-oss-20b`, is retired. Set `id` to an explicit current model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
+  The pinned Agno 2.7.4 default, `openai/gpt-oss-20b`, is retired. Set `id` to an explicit current model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
 </Warning>""",
         """See the [Nebius usage examples](/models/providers/gateways/nebius/usage/basic-stream).
 
 <Warning>
-  The pinned Agno 2.7.2 default, `openai/gpt-oss-20b`, is retired from serverless inference. Set `id` to an explicit current text-generation model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
+  The pinned Agno 2.7.4 default, `openai/gpt-oss-20b`, is retired from serverless inference. Set `id` to an explicit current text-generation model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
 </Warning>""",
         required=False,
     )
@@ -3684,7 +3536,7 @@ $Env:NEBIUS_MODEL_ID="your_current_text_model_id"
         """See the [Nebius usage examples](/models/providers/gateways/nebius/usage/basic-stream).
 
 <Warning>
-  The pinned Agno 2.7.2 default, `openai/gpt-oss-20b`, is retired from serverless inference. Set `id` to an explicit current text-generation model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
+  The pinned Agno 2.7.4 default, `openai/gpt-oss-20b`, is retired from serverless inference. Set `id` to an explicit current text-generation model ID from the [Nebius model-list API](https://docs.tokenfactory.nebius.com/api-reference/examples/list-of-models).
 </Warning>""",
     )
 
@@ -3963,7 +3815,7 @@ Select a text-generation model with [function-calling support](https://docs.toke
         """---
 
 <Warning>
-Together retires serverless model IDs on a rolling schedule. The Agno 2.7.2 cookbook examples may reference retired IDs. Before running an example, choose a current model from the [serverless catalog](https://docs.together.ai/docs/serverless/models) and verify the capabilities required by that example.
+Together retires serverless model IDs on a rolling schedule. The Agno 2.7.4 cookbook examples may reference retired IDs. Before running an example, choose a current model from the [serverless catalog](https://docs.together.ai/docs/serverless/models) and verify the capabilities required by that example.
 </Warning>
 
 | Example | Description |""",
@@ -4155,7 +4007,7 @@ uv pip install -U agno ddgs openai
     root_sub(
         spotify_page,
         "| `get_user_playlists`          | Get playlists for a specific user                   |",
-        "| `get_user_playlists`          | Unavailable to Development Mode apps in Agno 2.7.2 because it expects the earlier response fields |",
+        "| `get_user_playlists`          | Unavailable to Development Mode apps in Agno 2.7.4 because it expects the earlier response fields |",
     )
     root_sub(
         spotify_page,
@@ -4192,7 +4044,7 @@ export ANTHROPIC_API_KEY=***
 ```
 
 <Warning>
-Spotify changed several endpoints and response fields for Development Mode apps in February 2026. Extended Quota Mode apps are unaffected. Agno 2.7.2 still uses the earlier paths and fields, so the affected methods below are unavailable to Development Mode apps. Use the read-only example until `SpotifyTools` is updated. See Spotify's [February 2026 migration guide](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide).
+Spotify changed several endpoints and response fields for Development Mode apps in February 2026. Extended Quota Mode apps are unaffected. Agno 2.7.4 still uses the earlier paths and fields, so the affected methods below are unavailable to Development Mode apps. Use the read-only example until `SpotifyTools` is updated. See Spotify's [February 2026 migration guide](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide).
 </Warning>
 
 ## Example""",
@@ -4238,7 +4090,7 @@ Spotify changed several endpoints and response fields for Development Mode apps 
     root_sub(
         spotify_page,
         "| `search_playlists`            | Search for playlists on Spotify                     |",
-        "| `search_playlists`            | Unavailable to Development Mode apps in Agno 2.7.2 because it expects the earlier playlist response fields |",
+        "| `search_playlists`            | Unavailable to Development Mode apps in Agno 2.7.4 because it expects the earlier playlist response fields |",
     )
     root_sub(
         spotify_page,
@@ -4248,12 +4100,12 @@ Spotify changed several endpoints and response fields for Development Mode apps 
     root_sub(
         spotify_page,
         "| `create_playlist`             | Create a new playlist for the user                  |",
-        "| `create_playlist`             | Unavailable to Development Mode apps in Agno 2.7.2 because it calls the removed user-specific endpoint |",
+        "| `create_playlist`             | Unavailable to Development Mode apps in Agno 2.7.4 because it calls the removed user-specific endpoint |",
     )
     root_sub(
         spotify_page,
         "| `add_tracks_to_playlist`      | Add tracks to an existing playlist                  |",
-        "| `add_tracks_to_playlist`      | Unavailable to Development Mode apps in Agno 2.7.2 because it calls the removed `/tracks` endpoint |",
+        "| `add_tracks_to_playlist`      | Unavailable to Development Mode apps in Agno 2.7.4 because it calls the removed `/tracks` endpoint |",
     )
     root_sub(
         spotify_page,
@@ -4263,7 +4115,7 @@ Spotify changed several endpoints and response fields for Development Mode apps 
     root_sub(
         spotify_page,
         "| `remove_tracks_from_playlist` | Remove tracks from an existing playlist             |",
-        "| `remove_tracks_from_playlist` | Unavailable to Development Mode apps in Agno 2.7.2 because it calls the removed `/tracks` endpoint |",
+        "| `remove_tracks_from_playlist` | Unavailable to Development Mode apps in Agno 2.7.4 because it calls the removed `/tracks` endpoint |",
     )
 
     root_sub(

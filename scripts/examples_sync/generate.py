@@ -768,7 +768,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "post_run_steps": [
             (
                 "Test task streaming",
-                "In a second terminal, send form fields to the v2.7.2 team run endpoint:",
+                "In a second terminal, send form fields to the v2.7.4 team run endpoint:",
                 "curl -N -X POST http://localhost:7777/teams/research-team/runs \\\n  -H \"Accept: text/event-stream\" \\\n  -F \"message=What are the key benefits of microservices architecture?\" \\\n  -F \"stream=true\"",
             )
         ],
@@ -1489,7 +1489,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "intro_override": "The source-fidelity example uses Pipedream's retired per-app SSE URL and cannot connect to the current service without code and authentication changes.",
         "replacement_only": True,
         "replacement_heading": "Current Status",
-        "run_replacement": "<Warning>\n  This v2.7.2 example cannot connect to the current Pipedream MCP service as written. End users should use Pipedream's OAuth-authenticated v2 setup. Application developers should use the authenticated v3 endpoint. See [Pipedream MCP for end users](https://pipedream.com/docs/connect/mcp/users) and [Develop with Pipedream MCP](https://pipedream.com/docs/connect/mcp/developers).\n</Warning>",
+        "run_replacement": "<Warning>\n  This v2.7.4 example cannot connect to the current Pipedream MCP service as written. End users should use Pipedream's OAuth-authenticated v2 setup. Application developers should use the authenticated v3 endpoint. See [Pipedream MCP for end users](https://pipedream.com/docs/connect/mcp/users) and [Develop with Pipedream MCP](https://pipedream.com/docs/connect/mcp/developers).\n</Warning>",
     },
     "91_tools/async_generator_tool_with_pydantic_args.py": {
         "pre_code_warning": "The pinned source omits `stream_events=True`, so Agno discards the yielded custom progress events and both final assertions fail. Add the option before running.",
@@ -1936,7 +1936,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "91_tools/models/azure_openai_tools.py": {
         "intro_override": "This source-fidelity example uses `AzureOpenAITools`, whose supported DALL-E models are retired. It is preserved as a legacy reference.",
-        "pre_code_warning": "Azure DALL-E 2 and DALL-E 3 deployments are retired, and the v2.7.2 toolkit supports no current image model. Do not run this source as written.",
+        "pre_code_warning": "Azure DALL-E 2 and DALL-E 3 deployments are retired, and the v2.7.4 toolkit supports no current image model. Do not run this source as written.",
         "replacement_only": True,
         "replacement_heading": "Current Alternatives",
         "run_replacement": "Use a current Azure image-generation client by following [Microsoft's migration guidance](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/dall-e), or use [Image Generation Agent](/models/providers/native/openai/responses/usage/image-generation-agent) with OpenAI GPT Image 2.",
@@ -2193,7 +2193,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         ],
     },
     "03_teams/12_learning/10_team_agentic_learning.py": {
-        "pre_code_warning": "The pinned source imports `LearningMode` from a module that does not exist in Agno v2.7.2. Update the import before running.",
+        "pre_code_warning": "The pinned source imports `LearningMode` from a module that does not exist in Agno v2.7.4. Update the import before running.",
         "pre_run_steps": [
             (
                 "Fix the LearningMode import",
@@ -2337,7 +2337,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "02_agents/08_guardrails/pii_detection.py": {
         "intro_override": "Use `PIIDetectionGuardrail` to reject requests containing PII or replace detected values with masked placeholders.",
-        "pre_code_warning": "The pinned source catches `InputCheckError` around `print_response()`, but Agno v2.7.2 converts that guardrail exception into a run with `RunStatus.error`. The source therefore prints false success messages for blocked inputs. Use the status-checking pattern in the [PII Detection guide](/guardrails/usage/agent/pii-detection) instead.",
+        "pre_code_warning": "The pinned source catches `InputCheckError` around `print_response()`, but Agno v2.7.4 converts that guardrail exception into a run with `RunStatus.error`. The source therefore prints false success messages for blocked inputs. Use the status-checking pattern in the [PII Detection guide](/guardrails/usage/agent/pii-detection) instead.",
         "pre_run_steps": [
             (
                 "Use run status checks",
@@ -2353,7 +2353,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "intro_override": "Run two failure scenarios, then retry the failed team run in place with `Team.acontinue_run()`.",
     },
     "03_teams/15_distributed_rag/03_distributed_rag_with_reranking.py": {
-        "pre_code_warning": "This example passes `url=` to `insert_many()` and `ainsert_many()`. Agno v2.7.2 reads the `urls` argument, so these calls insert no documents. The code fence remains source-exact. Apply the replacement below before running.",
+        "pre_code_warning": "This example passes `url=` to `insert_many()` and `ainsert_many()`. Agno v2.7.4 reads the `urls` argument, so these calls insert no documents. The code fence remains source-exact. Apply the replacement below before running.",
         "pre_run_steps": [
             (
                 "Fix the batch insert arguments",
@@ -2395,7 +2395,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         ],
     },
     "90_models/google/gemini/url_context.py": {
-        "pre_code_warning": "This example's source docstring names the legacy `google-generativeai` package. Agno v2.7.2 uses the Google Gen AI SDK from `google-genai`. Use the generated install step below.",
+        "pre_code_warning": "This example's source docstring names the legacy `google-generativeai` package. Agno v2.7.4 uses the Google Gen AI SDK from `google-genai`. Use the generated install step below.",
     },
     "10_reasoning/models/gemini/basic_reasoning.py": {
         "intro_override": "Compare Gemini 2.5 Flash with thinking disabled against a fixed 1,024-token reasoning model, then inspect the captured reasoning content.",
@@ -2818,7 +2818,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "91_tools/mcp/cli.py": {
         "env_add": {"GITHUB_PERSONAL_ACCESS_TOKEN"},
         "needs_npx": False,
-        "pre_code_warning": "The pinned source starts the retired npm GitHub MCP server. The fence remains byte-matched to v2.7.2. Replace that command in the saved file with [GitHub's maintained MCP server](https://github.com/github/github-mcp-server) before running it.",
+        "pre_code_warning": "The pinned source starts the retired npm GitHub MCP server. The fence remains byte-matched to v2.7.4. Replace that command in the saved file with [GitHub's maintained MCP server](https://github.com/github/github-mcp-server) before running it.",
         "pre_run_steps": [
             (
                 "Use GitHub's maintained MCP server",
@@ -2873,7 +2873,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "91_tools/docling_tools/paths.py": {
         "run_note": "This module defines shared paths for the Docling examples and is not run directly.",
     },
-    # Randomized convergence sample 24. Preserve the v2.7.2 source fences and
+    # Randomized convergence sample 24. Preserve the v2.7.4 source fences and
     # put current migrations plus runnable prerequisites around them.
     "90_models/google/gemini/parallel_grounding.py": {
         "intro_override": "Ground Gemini 3.5 Flash responses with Parallel web search on Vertex AI after configuring a Marketplace subscription or Parallel API key.",
@@ -3008,8 +3008,8 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         ],
     },
     "90_models/azure/ai_foundry/structured_output.py": {
-        "intro_override": "Use Azure OpenAI for the supported Pydantic structured-output pattern. The v2.7.2 Azure AI Foundry source below fails before sending a request.",
-        "pre_code_warning": "Agno v2.7.2's `AzureAIFoundry.get_request_params()` constructs `response_format` as a tuple, so both agents fail before sending a request. The adapter also depends on Microsoft's retired `azure-ai-inference` SDK. Do not run this source as written.",
+        "intro_override": "Use Azure OpenAI for the supported Pydantic structured-output pattern. The v2.7.4 Azure AI Foundry source below fails before sending a request.",
+        "pre_code_warning": "Agno v2.7.4's `AzureAIFoundry.get_request_params()` constructs `response_format` as a tuple, so both agents fail before sending a request. The adapter also depends on Microsoft's retired `azure-ai-inference` SDK. Do not run this source as written.",
         "replacement_only": True,
         "replacement_heading": "Current Alternative",
         "run_replacement": "Use [Azure OpenAI Structured Output](/models/providers/cloud/azure-openai/usage/structured-output) for a supported Pydantic output-schema example.",
@@ -3021,7 +3021,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     # correcting metadata, runtime semantics, and setup around them.
     "02_agents/09_hooks/pre_hook_input.py": {
         "intro_override": "A pre-hook checks relevance, detail, and safety before model execution. Blocked calls return a run output with `RunStatus.error`.",
-        "pre_code_warning": "The source catches `InputCheckError` around blocked `Agent.run()` calls. Agno v2.7.2 converts the pre-hook exception into a run output with `RunStatus.error`, so those `except` blocks are bypassed. Check each blocked response's status instead.",
+        "pre_code_warning": "The source catches `InputCheckError` around blocked `Agent.run()` calls. Agno v2.7.4 converts the pre-hook exception into a run output with `RunStatus.error`, so those `except` blocks are bypassed. Check each blocked response's status instead.",
         "pre_run_steps": [
             (
                 "Check blocked run statuses",
@@ -3057,7 +3057,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "90_models/langdb/agent.py": {
         "env_add": {"LANGDB_API_BASE_URL"},
         "env_values": {"LANGDB_API_BASE_URL": "https://api.langdb.ai"},
-        "pre_code_warning": "Agno v2.7.2 defaults LangDB requests to the legacy regional host `https://api.us-east-1.langdb.ai`. Export `LANGDB_API_BASE_URL=https://api.langdb.ai` to use LangDB's current API host.",
+        "pre_code_warning": "Agno v2.7.4 defaults LangDB requests to the legacy regional host `https://api.us-east-1.langdb.ai`. Export `LANGDB_API_BASE_URL=https://api.langdb.ai` to use LangDB's current API host.",
     },
     "91_tools/tool_hooks/tool_hook_in_toolkit_with_state.py": {
         "intro_override": "Resolve a customer profile from `session_state`, rewrite the tool argument, and then invoke the toolkit function.",
@@ -3078,7 +3078,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
             ),
         ],
     },
-    # Randomized convergence sample 28. Preserve the v2.7.2 source fences and
+    # Randomized convergence sample 28. Preserve the v2.7.4 source fences and
     # put current migrations plus runnable prerequisites around them.
     "09_evals/performance/response_with_storage.py": {
         "description_override": "PerformanceEval invokes the benchmark function separately for runtime and memory measurement, producing four model requests total.",

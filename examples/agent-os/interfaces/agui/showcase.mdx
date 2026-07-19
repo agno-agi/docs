@@ -4,7 +4,7 @@ description: "Single server exposing all AG-UI Dojo demo endpoints."
 source: cookbook/05_agent_os/interfaces/agui/showcase.py
 ---
 
-Single server exposing all AG-UI Dojo demo endpoints. Run this to test AG-UI integration with the Dojo frontend at localhost:3002.
+Single server exposing all AG-UI Dojo demo endpoints. Run this to test AG-UI integration with the Dojo frontend at localhost:3000.
 
 ```python showcase.py
 """
@@ -12,7 +12,7 @@ AG-UI Showcase
 ==============
 
 Single server exposing all AG-UI Dojo demo endpoints.
-Run this to test AG-UI integration with the Dojo frontend at localhost:3002.
+Run this to test AG-UI integration with the Dojo frontend at localhost:3000.
 
 Imports agents from individual files and mounts them at Dojo-compatible paths.
 """
@@ -21,11 +21,14 @@ from agent_with_media import media_agent
 from agentic_chat import agentic_chat_agent
 from agno.os import AgentOS
 from agno.os.interfaces.agui import AGUI
+from backend_feedback import backend_feedback_agent
 from backend_tool_rendering import backend_tool_agent
 from human_in_the_loop import hitl_agent
 from reasoning_agent import chat_agent as reasoning_agent
 from shared_state import shared_state_agent
 from tool_based_generative_ui import generative_ui_agent
+from tool_confirmation import tool_confirmation_agent
+from user_input import user_input_agent
 
 agent_os = AgentOS(
     agents=[
@@ -36,6 +39,9 @@ agent_os = AgentOS(
         shared_state_agent,
         reasoning_agent,
         media_agent,
+        tool_confirmation_agent,
+        user_input_agent,
+        backend_feedback_agent,
     ],
     interfaces=[
         AGUI(agent=agentic_chat_agent, prefix="/agentic_chat"),
@@ -45,6 +51,9 @@ agent_os = AgentOS(
         AGUI(agent=shared_state_agent, prefix="/shared_state"),
         AGUI(agent=reasoning_agent, prefix="/agentic_chat_reasoning"),
         AGUI(agent=media_agent, prefix="/agentic_chat_multimodal"),
+        AGUI(agent=tool_confirmation_agent, prefix="/tool_confirmation"),
+        AGUI(agent=user_input_agent, prefix="/user_input"),
+        AGUI(agent=backend_feedback_agent, prefix="/backend_feedback"),
     ],
 )
 app = agent_os.get_app()
@@ -53,12 +62,15 @@ if __name__ == "__main__":
     print("AG-UI Showcase Server")
     print("Endpoints:")
     print("  /agentic_chat — Chat, Tools, Streaming")
-    print("  /backend_tool_rendering — Agent State, Collaborating")
-    print("  /human_in_the_loop — HITL, Interactivity")
+    print("  /backend_tool_rendering — Backend tool rendering")
+    print("  /human_in_the_loop — Task planning with step selection")
     print("  /tool_based_generative_ui — Generative UI (action), Tools")
     print("  /shared_state — Agent State, Collaborating")
     print("  /agentic_chat_reasoning — Chat, Tools, Streaming, Reasoning")
     print("  /agentic_chat_multimodal — Chat, Multimodal, Streaming")
+    print("  /tool_confirmation — Email/delete with confirmation")
+    print("  /user_input — Text/secret input collection")
+    print("  /backend_feedback — Multiple choice selection")
     agent_os.serve(app="showcase:app", reload=True, port=9001)
 ```
 
@@ -74,6 +86,7 @@ Uses Google Gemini to analyze attached files. Set GOOGLE_API_KEY env var.
 """
 
 from agno.agent.agent import Agent
+from agno.db.sqlite import SqliteDb
 from agno.models.google import Gemini
 from agno.os import AgentOS
 from agno.os.interfaces.agui import AGUI
@@ -85,6 +98,7 @@ from agno.os.interfaces.agui import AGUI
 media_agent = Agent(
     name="Media Agent",
     model=Gemini(id="gemini-2.5-flash"),
+    db=SqliteDb(db_file="/tmp/agui_agent_with_media.db"),
     instructions="Analyze any image, audio, video, or document the user sends and answer their question about it.",
     add_datetime_to_context=True,
     markdown=True,
@@ -199,6 +213,45 @@ Be helpful and use tools when appropriate.""",
 )
 ```
 
+```python backend_feedback.py
+"""
+Backend Feedback — Dojo Demo
+============================
+
+Frontend-provided tool: get_user_choice (via useHumanInTheLoop)
+
+The frontend defines this tool for presenting multiple choices to the user.
+When called, it renders a card with radio buttons for selection.
+"""
+
+from agno.agent.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIResponses
+
+backend_feedback_agent = Agent(
+    name="backend_feedback",
+    model=OpenAIResponses(id="gpt-5.5"),
+    db=SqliteDb(db_file="/tmp/agui_backend_feedback.db"),
+    instructions="""You are an assistant that helps users make decisions.
+
+When you need the user to choose from options:
+- Call get_user_choice with: question, options (array of strings)
+- Wait for user to select an option
+
+Example get_user_choice call:
+{
+  "question": "What type of cuisine would you prefer for dinner?",
+  "options": ["Italian", "Japanese", "Mexican", "Indian", "Thai"]
+}
+
+After receiving the selection:
+- Acknowledge their choice
+- Provide relevant recommendations or next steps based on their selection
+- Ask follow-up questions if needed using get_user_choice again""",
+    markdown=True,
+)
+```
+
 ```python backend_tool_rendering.py
 """
 Backend Tool Rendering — Dojo Demo
@@ -212,6 +265,7 @@ Dojo expects get_weather(location: str) with detailed return:
 """
 
 from agno.agent.agent import Agent
+from agno.db.sqlite import SqliteDb
 from agno.models.openai import OpenAIResponses
 from agno.tools import tool
 
@@ -271,6 +325,7 @@ def get_weather(location: str) -> dict:
 backend_tool_agent = Agent(
     name="backend_tool_rendering",
     model=OpenAIResponses(id="gpt-5.5"),
+    db=SqliteDb(db_file="/tmp/agui_backend_tool_rendering.db"),
     tools=[get_weather],
     instructions="""You help users check weather. When asked about weather, always use the get_weather tool.
 
@@ -284,61 +339,49 @@ The tool returns structured data that the frontend will render as a weather card
 Human in the Loop — Dojo Demo
 ==============================
 
-HITL tool: generate_task_steps (requires_confirmation)
+Frontend-provided tool: generate_task_steps (external_execution)
 
-Dojo expects generate_task_steps that returns:
-- steps: list of {description: str, status: "enabled"|"disabled"|"executing"}
+The frontend defines this tool via useHumanInTheLoop hook. The agent calls it,
+and the frontend renders an interactive step-selector UI where the user can
+toggle steps on/off and confirm.
 
-The frontend renders a step selector UI where user can toggle steps and confirm/reject.
+Backend does NOT define the tool — it comes from the frontend in the request.
 """
 
-from typing import List
-
 from agno.agent.agent import Agent
+from agno.db.sqlite import SqliteDb
 from agno.models.openai import OpenAIResponses
-from agno.tools import tool
-from pydantic import BaseModel, Field
-
-
-class TaskStep(BaseModel):
-    description: str = Field(description="Description of the step")
-    status: str = Field(
-        default="enabled", description="Status: enabled, disabled, or executing"
-    )
-
-
-@tool(requires_confirmation=True)
-def generate_task_steps(steps: List[TaskStep]) -> str:
-    """Generate a list of task steps for the user to review and confirm.
-
-    The frontend will display these steps with checkboxes.
-    User can enable/disable steps before confirming execution.
-    """
-    enabled_steps = [s for s in steps if s.status == "enabled"]
-    return f"Executing {len(enabled_steps)} steps: " + ", ".join(
-        s.description for s in enabled_steps
-    )
-
 
 hitl_agent = Agent(
     name="human_in_the_loop",
     model=OpenAIResponses(id="gpt-5.5"),
-    tools=[generate_task_steps],
-    instructions="""You help users plan tasks that require confirmation.
+    db=SqliteDb(db_file="/tmp/agui_human_in_the_loop.db"),
+    instructions="""You are a task planning assistant. When asked to plan something:
 
-When asked to plan something (trip, recipe, project, etc.):
-1. Break it down into clear steps (5-10 steps typically)
-2. Use the generate_task_steps tool with a list of steps
-3. Each step should have a description and status="enabled"
+1. **IMMEDIATELY call the generate_task_steps tool** with a list of steps
+2. Generate exactly 10 clear, actionable steps
+3. Each step must be an object with:
+   - description: Brief imperative form (e.g., "Research travel options")
+   - status: Set to "enabled" initially
 
-Example: For "plan a trip to Paris", create steps like:
-- Book flights
-- Reserve hotel
-- Plan activities
-- Pack luggage
-- etc.
+Example tool call for "plan a trip to Mars":
+{
+  "steps": [
+    {"description": "Research Mars travel options", "status": "enabled"},
+    {"description": "Prepare necessary equipment", "status": "enabled"},
+    {"description": "Complete health screenings", "status": "enabled"},
+    ...
+  ]
+}
 
-The user will review and confirm which steps to execute.""",
+After calling the tool:
+- Briefly confirm: "I've created a 10-step plan for you!"
+- Don't repeat the steps (they're visible in the UI)
+- Ask the user to review and select which steps to perform
+
+When user provides feedback (after clicking "Perform Steps"):
+- Acknowledge which steps were approved
+- Provide a brief summary of next actions""",
     markdown=True,
 )
 ```
@@ -352,6 +395,7 @@ Demonstrates reasoning agent.
 """
 
 from agno.agent.agent import Agent
+from agno.db.sqlite import SqliteDb
 from agno.models.openai import OpenAIResponses
 from agno.os import AgentOS
 from agno.os.interfaces.agui import AGUI
@@ -364,6 +408,7 @@ from agno.tools.websearch import WebSearchTools
 chat_agent = Agent(
     name="Assistant",
     model=OpenAIResponses(id="o4-mini"),
+    db=SqliteDb(db_file="/tmp/agui_reasoning_agent.db"),
     instructions="You are a helpful AI assistant.",
     add_datetime_to_context=True,
     add_history_to_context=True,
@@ -419,11 +464,13 @@ STATE_DELTA events that the frontend uses to update the recipe UI.
 """
 
 from agno.agent.agent import Agent
+from agno.db.sqlite import SqliteDb
 from agno.models.openai import OpenAIResponses
 
 shared_state_agent = Agent(
     name="shared_state",
     model=OpenAIResponses(id="gpt-5.5"),
+    db=SqliteDb(db_file="/tmp/agui_shared_state.db"),
     session_state={
         "recipe": {
             "title": "Make Your Recipe",
@@ -488,6 +535,7 @@ Valid image names (from Dojo):
 from typing import List
 
 from agno.agent.agent import Agent
+from agno.db.sqlite import SqliteDb
 from agno.models.openai import OpenAIResponses
 from agno.tools import tool
 
@@ -523,6 +571,7 @@ def generate_haiku(
 generative_ui_agent = Agent(
     name="tool_based_generative_ui",
     model=OpenAIResponses(id="gpt-5.5"),
+    db=SqliteDb(db_file="/tmp/agui_tool_based_generative_ui.db"),
     tools=[generate_haiku],
     instructions=f"""You are a haiku poet. When asked to create a haiku:
 
@@ -534,6 +583,108 @@ generative_ui_agent = Agent(
 Example gradient: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
 
 The frontend will render your haiku with the image and gradient as a beautiful card.""",
+    markdown=True,
+)
+```
+
+```python tool_confirmation.py
+"""
+Tool Confirmation — Dojo Demo
+=============================
+
+Frontend-provided tools: send_email, delete_files (via useHumanInTheLoop)
+
+The frontend defines these tools as requiring confirmation before execution.
+When the agent calls them, the frontend renders a confirmation card.
+User can approve or reject the action.
+"""
+
+from agno.agent.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIResponses
+
+tool_confirmation_agent = Agent(
+    name="tool_confirmation",
+    model=OpenAIResponses(id="gpt-5.5"),
+    db=SqliteDb(db_file="/tmp/agui_tool_confirmation.db"),
+    instructions="""You are an assistant that can send emails and delete files.
+Both actions require user confirmation before execution.
+
+When asked to send an email:
+- Call the send_email tool with: to, subject, body
+- Wait for user confirmation
+
+When asked to delete files:
+- Call the delete_files tool with: action, description, details
+- Wait for user confirmation
+
+Example email tool call:
+{
+  "to": "alice@example.com",
+  "subject": "Hello!",
+  "body": "Just wanted to say hi."
+}
+
+Example delete tool call:
+{
+  "action": "Delete temporary files",
+  "description": "Remove all .tmp files from the project",
+  "details": {"count": "15 files", "size": "2.3 MB"}
+}
+
+After user confirms or rejects:
+- Acknowledge the decision
+- If confirmed, confirm the action was taken
+- If rejected, acknowledge and ask if there's anything else""",
+    markdown=True,
+)
+```
+
+```python user_input.py
+"""
+User Input — Dojo Demo
+======================
+
+Frontend-provided tools: get_user_text, get_secret_input (via useHumanInTheLoop)
+
+The frontend defines these tools for collecting user input inline.
+- get_user_text: Shows a text input field
+- get_secret_input: Shows a password-style input for sensitive data
+"""
+
+from agno.agent.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIResponses
+
+user_input_agent = Agent(
+    name="user_input",
+    model=OpenAIResponses(id="gpt-5.5"),
+    db=SqliteDb(db_file="/tmp/agui_user_input.db"),
+    instructions="""You are an assistant that can request input from the user.
+
+When you need text input from the user:
+- Call get_user_text with: prompt, placeholder (optional)
+- Wait for user to provide input
+
+When you need sensitive input (API keys, passwords):
+- Call get_secret_input with: prompt, service (optional)
+- Wait for user to provide input
+
+Example get_user_text call:
+{
+  "prompt": "What would you like to search for?",
+  "placeholder": "Enter search term..."
+}
+
+Example get_secret_input call:
+{
+  "prompt": "Please enter your OpenAI API key",
+  "service": "OpenAI"
+}
+
+After receiving input:
+- Acknowledge what was provided (don't echo secrets)
+- Use the input to complete the user's request""",
     markdown=True,
 )
 ```
@@ -564,11 +715,11 @@ The frontend will render your haiku with the image and gradient as a beautiful c
   </Step>
 
   <Step title="Run the example">
-    Save the code blocks above as `showcase.py`, `agent_with_media.py`, `agentic_chat.py`, `backend_tool_rendering.py`, `human_in_the_loop.py`, `reasoning_agent.py`, `shared_state.py`, `tool_based_generative_ui.py` in the same directory, then run:
+    Save the code blocks above as `showcase.py`, `agent_with_media.py`, `agentic_chat.py`, `backend_feedback.py`, `backend_tool_rendering.py`, `human_in_the_loop.py`, `reasoning_agent.py`, `shared_state.py`, `tool_based_generative_ui.py`, `tool_confirmation.py`, `user_input.py` in the same directory, then run:
     ```bash
     python showcase.py
     ```
   </Step>
 </Steps>
 
-Full source: [cookbook/05_agent_os/interfaces/agui/showcase.py](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/interfaces/agui/showcase.py)
+Full source: [cookbook/05_agent_os/interfaces/agui/showcase.py](https://github.com/agno-agi/agno/blob/v2.7.4/cookbook/05_agent_os/interfaces/agui/showcase.py)
