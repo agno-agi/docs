@@ -380,7 +380,7 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         )
     }
     continue_team_responses["409"] = response_ref(
-        "Run is not paused and cannot be continued",
+        "Run is in a state that cannot be continued",
         "ConflictResponse",
     )
     continue_team_validation = continue_team_responses["422"]["content"]["application/json"][
@@ -388,6 +388,13 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
     ]
     assert continue_team_validation == {"$ref": "#/components/schemas/ValidationErrorResponse"}
     continue_team_validation["$ref"] = "#/components/schemas/HTTPValidationError"
+    add_response(
+        continue_team_run,
+        "503",
+        "Remote team is unavailable",
+        "ServiceUnavailableResponse",
+    )
+    sort_responses(continue_team_run)
 
     update_content = spec["paths"]["/knowledge/content/{content_id}"]["patch"]
     assert update_content["description"] == (
