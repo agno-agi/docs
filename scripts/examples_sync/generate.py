@@ -61,14 +61,18 @@ def validate_agno_source(agno_root: Path) -> str:
     head = git("rev-parse", "HEAD")
     tag_head = git("rev-parse", f"refs/tags/{EXPECTED_AGNO_TAG}^{{commit}}")
     status = git("status", "--porcelain=v1")
-    assert head == EXPECTED_AGNO_SHA, (
-        f"Agno source HEAD {head} does not match {EXPECTED_AGNO_TAG} "
-        f"({EXPECTED_AGNO_SHA})"
-    )
-    assert tag_head == EXPECTED_AGNO_SHA, (
-        f"Agno tag {EXPECTED_AGNO_TAG} resolves to {tag_head}, expected {EXPECTED_AGNO_SHA}"
-    )
-    assert not status, f"Agno source checkout is dirty: {root}"
+    if head != EXPECTED_AGNO_SHA:
+        raise RuntimeError(
+            f"Agno source HEAD {head} does not match {EXPECTED_AGNO_TAG} "
+            f"({EXPECTED_AGNO_SHA})"
+        )
+    if tag_head != EXPECTED_AGNO_SHA:
+        raise RuntimeError(
+            f"Agno tag {EXPECTED_AGNO_TAG} resolves to {tag_head}, "
+            f"expected {EXPECTED_AGNO_SHA}"
+        )
+    if status:
+        raise RuntimeError(f"Agno source checkout is dirty: {root}")
     return EXPECTED_AGNO_TAG
 
 # ---------------------------------------------------------------------------

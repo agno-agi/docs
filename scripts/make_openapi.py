@@ -8,8 +8,9 @@ the checked-in reference-api/openapi.yaml to scripts/out/openapi-diff.md.
 Never touches reference-api/ itself. It carries forward the reviewed Slack
 request metadata that FastAPI cannot derive from the router implementation.
 
-Run with a venv where agno[os,mcp,telegram,agui,a2a,slack] is importable:
-  python scripts/make_openapi.py
+Run with a venv where agno[os,mcp,telegram,agui,a2a,slack] dependencies are
+importable and point AGNO_REPO at the clean, sealed source checkout:
+  AGNO_REPO=/path/to/agno-v2.7.4 python scripts/make_openapi.py
 
 Interfaces whose optional dependency is missing (e.g. a2a-sdk for A2A) are
 excluded from the app and reported in the generator notes.
@@ -28,6 +29,15 @@ NEW_JSON = OUT_DIR / "openapi.json"
 NEW_YAML = OUT_DIR / "openapi.yaml"
 DIFF_MD = OUT_DIR / "openapi-diff.md"
 
+EXAMPLES_SYNC_DIR = REPO_ROOT / "scripts/examples_sync"
+sys.path.insert(0, str(EXAMPLES_SYNC_DIR))
+import generate as sync_generate  # noqa: E402
+
+AGNO_ROOT = Path(os.environ.get("AGNO_REPO") or REPO_ROOT / "agno").resolve()
+sync_generate.validate_agno_source(AGNO_ROOT)
+AGNO_PACKAGE_ROOT = (AGNO_ROOT / "libs/agno").resolve()
+sys.path.insert(0, str(AGNO_PACKAGE_ROOT))
+
 # Fake credentials: everything is constructed offline, nothing is called.
 os.environ.setdefault("OPENAI_API_KEY", "sk-fake-not-a-real-key")
 os.environ.setdefault("SLACK_TOKEN", "xoxb-fake-token")
@@ -40,7 +50,7 @@ os.environ.setdefault("TELEGRAM_WEBHOOK_SECRET_TOKEN", "fake-telegram-webhook-se
 os.environ.setdefault("AGNO_TELEMETRY", "false")
 
 import yaml  # noqa: E402
-from agno import __version__ as agno_version  # noqa: E402
+import agno  # noqa: E402
 from agno.agent import Agent  # noqa: E402
 from agno.db.sqlite import SqliteDb  # noqa: E402
 from agno.knowledge.knowledge import Knowledge  # noqa: E402
@@ -52,9 +62,18 @@ from agno.workflow import Workflow  # noqa: E402
 from agno.workflow.step import Step  # noqa: E402
 
 EXPECTED_AGNO_VERSION = "2.7.4"
-assert agno_version == EXPECTED_AGNO_VERSION, (
-    f"OpenAPI generator imported Agno {agno_version}, expected {EXPECTED_AGNO_VERSION}"
-)
+agno_version = agno.__version__
+if agno_version != EXPECTED_AGNO_VERSION:
+    raise RuntimeError(
+        f"OpenAPI generator imported Agno {agno_version}, "
+        f"expected {EXPECTED_AGNO_VERSION}"
+    )
+imported_agno_path = Path(agno.__file__).resolve()
+if not imported_agno_path.is_relative_to(AGNO_PACKAGE_ROOT):
+    raise RuntimeError(
+        f"OpenAPI generator imported Agno from {imported_agno_path}, "
+        f"expected source under {AGNO_PACKAGE_ROOT}"
+    )
 
 NOTES = []  # inclusion/exclusion notes surfaced at the end of the run
 
@@ -1932,6 +1951,7 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         assert response_schema == {}
         response_schema.update(deepcopy(fork_response_schema))
 
+    always_authenticated_operations = {("/service-accounts", "post")}
     normalized_bearer_operations: list[tuple[str, str]] = []
     for path, path_item in spec["paths"].items():
         for method in ("get", "post", "put", "patch", "delete", "head", "options", "trace"):
@@ -1939,14 +1959,21 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
             if not isinstance(operation, dict):
                 continue
             security = operation.get("security")
-            if security == [{"HTTPBearer": []}]:
+            operation_key = (path, method)
+            if security == [{"HTTPBearer": []}] and operation_key not in always_authenticated_operations:
                 # The dependency accepts anonymous requests when AgentOS runs
                 # without a security key or JWT configuration. Authentication
                 # becomes required when the deployment enables either mode.
                 operation["security"] = [{}, {"HTTPBearer": []}]
                 normalized_bearer_operations.append((path, method))
             elif security:
-                assert security == [{}, {"HTTPBearer": []}], (path, method, security)
+                expected_security = (
+                    [{"HTTPBearer": []}]
+                    if operation_key in always_authenticated_operations
+                    else [{}, {"HTTPBearer": []}]
+                )
+                if security != expected_security:
+                    raise RuntimeError(f"Unexpected security for {method.upper()} {path}: {security}")
             if not operation.get("security"):
                 continue
             if "401" not in operation["responses"]:
@@ -1956,7 +1983,17 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
             if (path, method) != ("/status", "get") and "403" not in operation["responses"]:
                 add_response(operation, "403", "Forbidden", "ForbiddenResponse")
             sort_responses(operation)
-    assert len(normalized_bearer_operations) == 115, len(normalized_bearer_operations)
+    if len(normalized_bearer_operations) != 114:
+        raise RuntimeError(
+            f"Normalized {len(normalized_bearer_operations)} conditionally authenticated "
+            "operations; expected 114"
+        )
+    service_account_create_security = spec["paths"]["/service-accounts"]["post"]["security"]
+    if service_account_create_security != [{"HTTPBearer": []}]:
+        raise RuntimeError(
+            "POST /service-accounts must require bearer authentication because open "
+            "instances reject anonymous credential minting"
+        )
 
     spec["components"]["schemas"] = dict(sorted(schemas.items()))
     return spec

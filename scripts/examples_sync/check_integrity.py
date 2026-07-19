@@ -3,7 +3,8 @@
 
 Reads the plan from out/sync-plan.json (run plan.py first) and verifies:
   (a) frontmatter shape, fence balance, and source field on every generated page
-  (b) every cookbook path referenced under examples/ exists in the cookbook
+  (b) every cookbook path referenced under examples/ exists in the cookbook,
+      and every tracked cookbook link is pinned to the sealed source revision
   (c) every generated page carries the complete, byte-matching cookbook source
   (d) curated_source bindings carry the complete cookbook source
   (e) file inventory report (mdx count, stray non-mdx files, git status summary)
@@ -125,19 +126,19 @@ for s, why in a_bad[:20]:
 problems += [f"(a) {s}: {w}" for s, w in a_bad]
 
 # ---------------------------------------------------------------------------
-# (b) every cookbook path referenced anywhere under examples/ exists
+# (b) every cookbook path referenced anywhere under examples/ exists, and
+#     every tracked GitHub cookbook link resolves at the sealed revision
 # ---------------------------------------------------------------------------
 ref_res = [
     re.compile(r"^source: (cookbook/\S+)$", re.M),
     re.compile(r"^curated_source: (cookbook/\S+)$", re.M),
     re.compile(r"cd agno/(cookbook/[^\s`\"']+)"),
-    re.compile(r"github\.com/agno-agi/agno/(?:blob|tree)/[^/\s]+/(cookbook/[^)\s\"'`]+)"),
 ]
 gen_slugs = {t[0] for t in gen_tasks}
 b_bad_gen, b_bad_other = [], []
-wrong_cookbook_revisions = []
 cookbook_link_re = re.compile(
-    r"github\.com/agno-agi/agno/(?:blob|tree)/([^/\s]+)/(cookbook/[^)\s\"'`]+)"
+    r"github\.com/agno-agi/agno/(?:blob|tree)/"
+    r"([^\s)\"'`]+?)/(cookbook/[^)\s\"'`]+)"
 )
 all_mdx = sorted((DOCS_ROOT / "examples").rglob("*.mdx"))
 for p in all_mdx:
@@ -150,17 +151,41 @@ for p in all_mdx:
             target = COOKBOOK / tail
             if not (target.is_file() or target.is_dir()):
                 (b_bad_gen if slug in gen_slugs else b_bad_other).append((slug, ref))
+
+tracked_result = subprocess.run(
+    ["git", "-C", str(DOCS_ROOT), "ls-files", "*.mdx"],
+    check=True,
+    capture_output=True,
+    text=True,
+)
+tracked_mdx = [DOCS_ROOT / relative for relative in tracked_result.stdout.splitlines()]
+wrong_cookbook_revisions = []
+dead_cookbook_links = []
+tracked_cookbook_links = 0
+for p in tracked_mdx:
+    slug = str(p.relative_to(DOCS_ROOT)).removesuffix(".mdx")
+    text = p.read_text(encoding="utf-8")
     for revision, ref in cookbook_link_re.findall(text):
+        tracked_cookbook_links += 1
+        clean_ref = ref.split("#", 1)[0].split("?", 1)[0].rstrip(".,)")
+        target = AGNO_ROOT / clean_ref
         if revision != gen.EXPECTED_AGNO_TAG:
-            wrong_cookbook_revisions.append((slug, revision, ref.rstrip(".,)")))
-print(f"(b) cookbook refs: {len(all_mdx)} files scanned; "
-      f"{len(b_bad_gen)} dead refs in generated pages, {len(b_bad_other)} in preserved pages, "
-      f"{len(wrong_cookbook_revisions)} wrong revisions")
+            wrong_cookbook_revisions.append((slug, revision, clean_ref))
+        if not (target.is_file() or target.is_dir()):
+            dead_cookbook_links.append((slug, clean_ref))
+
+print(f"(b) cookbook refs: {len(all_mdx)} example files scanned; "
+      f"{len(b_bad_gen)} dead refs in generated pages, {len(b_bad_other)} in preserved pages")
+print(f"    tracked links: {tracked_cookbook_links} across {len(tracked_mdx)} MDX files; "
+      f"{len(dead_cookbook_links)} dead, {len(wrong_cookbook_revisions)} wrong revisions")
 for s, r in (b_bad_gen + b_bad_other)[:25]:
     print("   DEAD:", s, "->", r)
+for s, r in dead_cookbook_links[:25]:
+    print("   DEAD LINK:", s, "->", r)
 for slug, revision, ref in wrong_cookbook_revisions[:25]:
     print("   WRONG REVISION:", slug, "->", revision, ref)
 problems += [f"(b) generated {s}: dead ref {r}" for s, r in b_bad_gen]
+problems += [f"(b) {s}: dead cookbook link {r}" for s, r in dead_cookbook_links]
 problems += [
     f"(b) {slug}: cookbook ref {ref} uses {revision}, expected {gen.EXPECTED_AGNO_TAG}"
     for slug, revision, ref in wrong_cookbook_revisions

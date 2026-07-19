@@ -1375,21 +1375,30 @@ def pin_agno_clone_commands() -> None:
         print(f"  pinned {total} Agno clone commands in {len(matches)} files")
 
 
+AGNO_COOKBOOK_LINK_RE = re.compile(
+    r"(https://github\.com/agno-agi/agno/(?:blob|tree)/)"
+    r"([^\s)\"'`]+?)(/cookbook/)"
+)
+
+
+def pin_agno_cookbook_link_revisions(text: str) -> tuple[str, int]:
+    """Return text with every cookbook link pinned and the replacement count."""
+    count = 0
+
+    def replace(match: re.Match[str]) -> str:
+        nonlocal count
+        if match.group(2) == gen.EXPECTED_AGNO_TAG:
+            return match.group(0)
+        count += 1
+        return f"{match.group(1)}{gen.EXPECTED_AGNO_TAG}{match.group(3)}"
+
+    return AGNO_COOKBOOK_LINK_RE.sub(replace, text), count
+
+
 def pin_agno_cookbook_links() -> None:
     """Pin tracked MDX cookbook links to the sealed docs source tag."""
     global would_apply
-    replacements = (
-        (
-            "https://github.com/agno-agi/agno/blob/main/cookbook/",
-            "https://github.com/agno-agi/agno/blob/"
-            f"{gen.EXPECTED_AGNO_TAG}/cookbook/",
-        ),
-        (
-            "https://github.com/agno-agi/agno/tree/main/cookbook/",
-            "https://github.com/agno-agi/agno/tree/"
-            f"{gen.EXPECTED_AGNO_TAG}/cookbook/",
-        ),
-    )
+
     result = subprocess.run(
         ["git", "-C", str(ROOT), "ls-files", "*.mdx"],
         check=True,
@@ -1400,13 +1409,11 @@ def pin_agno_cookbook_links() -> None:
     for relative_path in result.stdout.splitlines():
         path = ROOT / relative_path
         text = path.read_text(encoding="utf-8")
-        count = sum(text.count(old) for old, _ in replacements)
+        pinned_text, count = pin_agno_cookbook_link_revisions(text)
         if count:
             matches.append((path, count))
             if not CHECK:
-                for old, new in replacements:
-                    text = text.replace(old, new)
-                path.write_text(text, encoding="utf-8")
+                path.write_text(pinned_text, encoding="utf-8")
     if not matches:
         print(f"  Agno cookbook links already pinned to {gen.EXPECTED_AGNO_TAG}")
         return
