@@ -219,6 +219,11 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
             sorted(operation["responses"].items(), key=lambda item: int(item[0]))
         )
 
+    def get_parameter(operation: dict, name: str) -> dict:
+        matches = [parameter for parameter in operation["parameters"] if parameter["name"] == name]
+        assert len(matches) == 1, (operation.get("operationId"), name, len(matches))
+        return matches[0]
+
     for schema_name, title, example in (
         ("ForbiddenResponse", "ForbiddenResponse", {"detail": "Insufficient permissions"}),
         ("ConflictResponse", "ConflictResponse", {"detail": "Resource conflict"}),
@@ -497,6 +502,136 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         "When authorization is enabled, in-memory team registrations are filtered by caller scopes. "
         "Database-loaded team components are also included."
     )
+
+    list_workflows = spec["paths"]["/workflows"]["get"]
+    assert list_workflows["summary"] == "List All Workflows"
+    list_workflows["summary"] = "List Workflows"
+    assert list_workflows["description"] == (
+        "Retrieve a comprehensive list of all workflows configured in this OS instance.\n\n"
+        "**Return Information:**\n"
+        "- Workflow metadata (ID, name, description)\n"
+        "- Input schema requirements\n"
+        "- Step sequence and execution flow\n"
+        "- Associated agents and teams"
+    )
+    list_workflows["description"] = (
+        "Return workflow ID, name, description, database ID, factory metadata, and Builder "
+        "version metadata. When authorization is enabled, caller scopes filter in-memory "
+        "workflow registrations. Database-loaded Builder workflows are appended separately."
+    )
+
+    content_status = spec["paths"]["/knowledge/content/{content_id}/status"]["get"]
+    assert content_status["description"] == (
+        "Retrieve the current processing status of a content item. Useful for monitoring "
+        "asynchronous content processing progress and identifying any processing errors."
+    )
+    content_status["description"] = (
+        "Return the processing status for a content ID. For local knowledge in Agno 2.7.4, "
+        "an unknown content ID returns HTTP 200 with `status=\"failed\"` and "
+        "`status_message=\"Content not found\"`."
+    )
+    content_status_responses = content_status["responses"]
+    assert content_status_responses["200"]["description"] == "Content status retrieved successfully"
+    content_status_responses["200"]["description"] = (
+        'Content status returned. An unknown local content ID is represented by status "failed".'
+    )
+    status_examples = content_status_responses["200"]["content"]["application/json"]["examples"]
+    assert set(status_examples) == {"completed"}
+    status_examples.clear()
+    status_examples.update(
+        {
+            "completed": {
+                "summary": "Completed content",
+                "value": {
+                    "id": "content-123",
+                    "status": "completed",
+                    "status_message": "",
+                },
+            },
+            "content_not_found": {
+                "summary": "Unknown local content ID",
+                "value": {
+                    "id": "missing-content",
+                    "status": "failed",
+                    "status_message": "Content not found",
+                },
+            },
+        }
+    )
+    assert content_status_responses["404"]["description"] == "Content not found"
+    content_status_responses["404"]["description"] = "Selected knowledge base or database ID not found"
+
+    list_content = spec["paths"]["/knowledge/content"]["get"]
+    assert list_content["description"] == (
+        "Retrieve paginated list of all content in the knowledge base with filtering and sorting options. "
+        "Filter by status, content type, or metadata properties."
+    )
+    list_content["description"] = (
+        "Return a paginated, sorted list of content for the selected knowledge base. Use `limit`, "
+        "`page`, `sort_by`, and `sort_order` to control the result. Agno 2.7.4 exposes no status, "
+        "content type, or metadata filter parameters on this endpoint. Named local knowledge "
+        "instances scope rows by the stored `linked_to` value."
+    )
+
+    one_based_page_description = (
+        "1-based page number. Agno 2.7.4 also accepts 0 at request validation, but the "
+        "pagination implementation is 1-based. Use 1 or greater."
+    )
+    zero_accepting_page_parameters = (
+        ("/sessions", "Page number for pagination"),
+        ("/memories", "Page number for pagination"),
+        ("/user_memory_stats", "Page number for pagination"),
+        ("/eval-runs", "Page number"),
+        ("/knowledge/content", "Page number"),
+        ("/traces", "Page number (1-indexed)"),
+    )
+    for path, source_description in zero_accepting_page_parameters:
+        operation = spec["paths"][path]["get"]
+        page_parameter = get_parameter(operation, "page")
+        assert page_parameter["description"] == source_description
+        assert page_parameter["schema"]["description"] == source_description
+        assert page_parameter["schema"]["default"] == 1
+        page_minimum = page_parameter["schema"].get("minimum")
+        if page_minimum is None:
+            page_minimum = page_parameter["schema"]["anyOf"][0]["minimum"]
+        assert page_minimum == 0
+        page_parameter["description"] = one_based_page_description
+        page_parameter["schema"]["description"] = one_based_page_description
+
+    pagination_page = schemas["PaginationInfo"]["properties"]["page"]
+    assert pagination_page["description"] == "Current page number (0-indexed)"
+    assert pagination_page["minimum"] == 0 and pagination_page["default"] == 0
+    pagination_page["description"] = (
+        "Page value returned by the endpoint. AgentOS paginated routes use 1-based page numbers. "
+        "Some Agno 2.7.4 routes accept and echo 0 even though their pagination implementation "
+        "is 1-based."
+    )
+
+    content_properties = schemas["ContentResponseSchema"]["properties"]
+    assert content_properties["linked_to"]["description"] == "ID of related content if linked"
+    content_properties["linked_to"]["description"] = (
+        "Knowledge instance name used for content isolation. Local Agno 2.7.4 responses return "
+        "null because response conversion does not propagate the stored value."
+    )
+    assert content_properties["access_count"]["description"] == (
+        "Number of times content has been accessed"
+    )
+    content_properties["access_count"]["description"] = (
+        "Stored access count. Local Agno 2.7.4 responses return null because response conversion "
+        "does not propagate the stored value."
+    )
+
+    content_examples = (
+        list_content["responses"]["200"]["content"]["application/json"]["example"]["data"][0],
+        spec["paths"]["/knowledge/content/{content_id}"]["patch"]["responses"]["200"]["content"]
+        ["application/json"]["example"],
+        spec["paths"]["/knowledge/content/{content_id}"]["get"]["responses"]["200"]["content"]
+        ["application/json"]["example"],
+    )
+    for example in content_examples:
+        assert example["access_count"] == 1 and "linked_to" not in example
+        example["access_count"] = None
+        example["linked_to"] = None
 
     for path, description in (
         ("/knowledge/remote-content", "Remote content upload is unavailable for remote knowledge bases"),
@@ -1534,11 +1669,74 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
     assert resume_team["responses"]["404"]["description"] == "Team not found"
     resume_team["responses"]["404"]["description"] = "Team or run not found"
 
-    cancel_workflow = spec["paths"]["/workflows/{workflow_id}/runs/{run_id}/cancel"]["post"]
-    assert cancel_workflow["responses"]["404"]["description"] == "Workflow or run not found"
-    cancel_workflow["responses"]["404"]["description"] = (
-        "Workflow not found, or the requested run was not found in the caller's session"
+    cancellation_session_description = (
+        "Session ID used to verify run ownership. Required when the caller is user-scoped: "
+        "service accounts, and non-admin JWT users when user isolation is enabled. Admin and "
+        "otherwise unscoped callers can omit it."
     )
+    cancellation_contracts = (
+        (
+            "/agents/{agent_id}/runs/{run_id}/cancel",
+            "Agent",
+            "Cancel a currently executing agent run. This will attempt to stop the agent's execution "
+            "gracefully.\n\n**Note:** Cancellation may not be immediate for all operations.",
+            "Agent not found",
+            "Request cancellation for `run_id`. After any required ownership check, local and "
+            "factory agents store cancellation intent keyed by run ID. For admins and otherwise "
+            "unscoped callers, this also supports cancel-before-start for an unregistered ID. "
+            "Cancellation is cooperative and may not be immediate. HTTP 200 does not confirm that "
+            "an active run existed or that cancellation was delivered to a remote agent.",
+        ),
+        (
+            "/teams/{team_id}/runs/{run_id}/cancel",
+            "Team",
+            "Cancel a currently executing team run. This will attempt to stop the team's execution "
+            "gracefully.\n\n**Note:** Cancellation may not be immediate for all operations.",
+            "Team not found",
+            "Request cancellation for `run_id`. After any required ownership check, local and "
+            "factory teams store cancellation intent keyed by run ID and mark known member runs for "
+            "cancellation. For admins and otherwise unscoped callers, this also supports "
+            "cancel-before-start for an unregistered ID. Cancellation is cooperative and may not "
+            "be immediate. HTTP 200 does not confirm that an active run existed or that "
+            "cancellation was delivered to a remote team.",
+        ),
+        (
+            "/workflows/{workflow_id}/runs/{run_id}/cancel",
+            "Workflow",
+            "Cancel a currently executing workflow run, stopping all active steps and cleanup.\n"
+            "**Note:** Complex workflows with multiple parallel steps may take time to fully cancel.",
+            "Workflow or run not found",
+            "Request cancellation for `run_id`. After any required ownership check, local and "
+            "factory workflows store cancellation intent keyed by run ID and mark known agent or "
+            "team executor runs for cancellation. For admins and otherwise unscoped callers, this "
+            "also supports cancel-before-start for an unregistered ID. Cancellation is cooperative "
+            "and may not be immediate. HTTP 200 does not confirm that an active run existed or that "
+            "cancellation was delivered to a remote workflow.",
+        ),
+    )
+    for path, component, source_description, source_not_found, description in cancellation_contracts:
+        operation = spec["paths"][path]["post"]
+        assert operation["description"] == source_description
+        operation["description"] = description
+        session_parameter = get_parameter(operation, "session_id")
+        assert session_parameter["description"] == (
+            "Session ID the run belongs to. Required for non-admin JWT users."
+        )
+        assert session_parameter["schema"]["description"] == session_parameter["description"]
+        session_parameter["description"] = cancellation_session_description
+        session_parameter["schema"]["description"] = cancellation_session_description
+        responses = operation["responses"]
+        assert responses["200"]["description"] == "Successful Response"
+        responses["200"]["description"] = (
+            "Cancellation request accepted. The empty response does not confirm run existence or "
+            "remote delivery."
+        )
+        assert responses["400"]["description"] == "Bad Request"
+        responses["400"]["description"] = "A user-scoped caller omitted session_id"
+        assert responses["404"]["description"] == source_not_found
+        responses["404"]["description"] = (
+            f"{component} not found, or the run could not be verified in the caller's session."
+        )
 
     delete_memory = spec["paths"]["/memories/{memory_id}"]["delete"]
     assert delete_memory["responses"]["404"]["description"] == "Memory not found"
