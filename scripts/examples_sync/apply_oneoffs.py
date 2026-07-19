@@ -114,6 +114,7 @@ DESCRIPTION_OVERRIDES = {
 }
 
 TITLE_OVERRIDES = {
+    "examples/agent-os/remote/remote-team": "Remote Team",
     "examples/agent-os/rbac/asymmetric/workos-byot": "WorkOS BYOT",
     "examples/agents/tools/tools-with-literal-type-param": "Tools with Literal Type Parameters",
     "examples/integrations/parallel/research-workflow": "Research Workflow",
@@ -3114,7 +3115,7 @@ async def handle_stripe(event: dict):
     root_sub(
         "models/providers/native/google/usage/interactions-antigravity.mdx",
         "Unlike Deep Research, Antigravity runs in the foreground. The model still forces `store=True` so the interaction is retrievable.",
-        "`GeminiInteractions` in Agno 2.7.4 sends Antigravity requests in the foreground and forces `store=True` so each interaction is retrievable. The Google API also supports background Antigravity execution. Use the Google Gen AI SDK directly when you need background execution.",
+        "`GeminiInteractions` in Agno 2.7.4 sends Antigravity requests in the foreground and forces `store=True` so each interaction is retrievable. Antigravity also runs in the foreground through the Google Gen AI SDK, which rejects `background=True` for this managed agent. Use [streaming](/models/providers/native/google/usage/interactions-antigravity-streaming) to receive progress while the connection stays open.",
     )
 
     root_sub(

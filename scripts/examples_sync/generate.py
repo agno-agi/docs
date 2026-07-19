@@ -487,7 +487,7 @@ ACRONYMS = {
     "e2b": "E2B", "gcp": "GCP", "gcs": "GCS", "github": "GitHub",
     "gitlab": "GitLab", "gpt": "GPT", "hackernews": "HackerNews",
     "hitl": "HITL", "http": "HTTP", "huggingface": "Hugging Face",
-    "ibm": "IBM", "id": "ID", "io": "I/O", "json": "JSON", "jwt": "JWT",
+    "bigquery": "BigQuery", "ibm": "IBM", "id": "ID", "io": "I/O", "json": "JSON", "jwt": "JWT",
     "lancedb": "LanceDB", "litellm": "LiteLLM", "llm": "LLM", "mcp": "MCP",
     "mongodb": "MongoDB", "mysql": "MySQL", "nvidia": "NVIDIA",
     "ocr": "OCR", "openai": "OpenAI", "openrouter": "OpenRouter",
@@ -508,6 +508,7 @@ SMALL_WORDS = {"a", "an", "and", "as", "at", "for", "in", "of", "on", "or", "the
 # Titles the docstring cannot yield in docs voice, keyed by docs slug.
 # Consulted at render time, before description/intro derivation.
 TITLE_OVERRIDES = {
+    "examples/agent-os/remote/remote-team": "Remote Team",
     "examples/agent-os/background-tasks/background-hooks-team": "Background Hooks Team",
     "examples/agent-os/background-tasks/background-hooks-workflow": "Background Hooks Workflow",
     "examples/agent-os/client-a2a/servers/google-adk-server": "Google ADK A2A Server",
@@ -744,6 +745,16 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         # The documented prerequisite runs agent_search_over_knowledge.py,
         # whose URL insert selects WebsiteReader at runtime.
         "package_add": {"beautifulsoup4"},
+    },
+    "02_agents/07_knowledge/knowledge_filters.py": {
+        "pre_code_warning": "The pinned source inserts `ThaiRecipes.pdf` without cuisine metadata, so its static and agentic cuisine filters cannot match that document. Add `metadata={\"cuisine\": \"thai\"}` to `knowledge.insert(...)` before running.",
+    },
+    "06_storage/sqlite/sqlite_for_team.py": {
+        "pre_code_warning": "The pinned source docstring names a removed cookbook path. Use the generated Run step below, which runs `cookbook/06_storage/sqlite/sqlite_for_team.py`.",
+    },
+    "91_tools/google_bigquery_tools.py": {
+        "intro_override": "Configure GoogleBigQueryTools with a Google Cloud project, location, and dataset.",
+        "pre_code_warning": "The pinned source docstring names `BQTools`, and its Agent instruction names `run_sql`. The imported toolkit is `GoogleBigQueryTools`; its registered SQL function is `run_sql_query`.",
     },
     "02_agents/01_quickstart/agent_with_tools.py": {
         "suppress_intro": True,
@@ -1350,6 +1361,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "extra_add": {"os"},
         "package_add": {"chromadb", "ddgs", "openai", "sqlalchemy"},
         "env_add": {"OPENAI_API_KEY"},
+        "pre_code_warning": "The pinned source docstring names removed `agent_os_setup.py` and `AgentOSRunner`. Start `server.py` in the generated Run step below; this example uses `RemoteTeam`.",
         "pre_run_steps": [
             (
                 "Start the remote AgentOS",
