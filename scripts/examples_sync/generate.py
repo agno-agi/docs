@@ -329,6 +329,7 @@ PACKAGE_OVERRIDES = {
     "agno.db.firestore": ["google-cloud-firestore"],
     "agno.db.gcs": ["google-cloud-storage"],
     "agno.db.surrealdb": ["surrealdb"],
+    "agno.db.valkey": ["valkey-glide-sync"],
     "agno.context.calendar": [
         "google-api-python-client",
         "google-auth-httplib2",
@@ -383,6 +384,7 @@ THIRD_PARTY_PACKAGES: dict[str, str | list[str]] = {
     "brave": "brave-search",
     "github": "pygithub",
     "gitlab": "python-gitlab",
+    "glide_sync": "valkey-glide-sync",
     "phoenix": "arize-phoenix",
     "docx": "python-docx",
     "pptx": "python-pptx",
@@ -749,6 +751,16 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "02_agents/07_knowledge/knowledge_filters.py": {
         "pre_code_warning": "The pinned source inserts `ThaiRecipes.pdf` without cuisine metadata, so its static and agentic cuisine filters cannot match that document. Add `metadata={\"cuisine\": \"thai\"}` to `knowledge.insert(...)` before running.",
+    },
+    "90_models/openai/responses/basic.py": {
+        "pre_code_warning": "The pinned source calls `asyncio.run()` twice while reusing one agent. `OpenAIResponses` caches an async client bound to the first event loop, so the second async call can fail with `RuntimeError: Event loop is closed`. Use the one-loop replacement below.",
+        "pre_run_steps": [
+            (
+                "Use one async event loop",
+                "Replace both `asyncio.run(...)` lines with one `async def main()` that awaits the non-streaming call followed by the streaming call, then invoke `asyncio.run(main())` once.",
+                None,
+            )
+        ],
     },
     "06_storage/sqlite/sqlite_for_team.py": {
         "pre_code_warning": "The pinned source docstring names a removed cookbook path. Use the generated Run step below, which runs `cookbook/06_storage/sqlite/sqlite_for_team.py`.",
