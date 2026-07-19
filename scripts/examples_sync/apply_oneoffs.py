@@ -3104,7 +3104,12 @@ python mongodb_for_agent.py""",
 ./scripts/demo_setup.sh
 source .venvs/demo/bin/activate
 
-python cookbook/06_storage/mongo/mongodb_for_agent.py""",
+uv pip install pymongo
+./cookbook/scripts/run_mongodb.sh
+
+python cookbook/06_storage/mongo/mongodb_for_agent.py
+
+docker rm -f local-mongo""",
     )
     sub(
         "tools/superserve-tools.mdx",

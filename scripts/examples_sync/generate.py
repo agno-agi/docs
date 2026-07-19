@@ -787,6 +787,26 @@ SLACK_INTERFACE_STEP = (
 )
 
 SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
+    "09_evals/performance/team_response_with_memory_simple.py": {
+        "pre_code_warning": "The source creates a streaming `Team.arun()` async generator and returns without consuming it. The team never runs, so the memory-growth result is invalid. Update the saved file before running.",
+        "pre_run_steps": [
+            (
+                "Consume the team stream",
+                "Replace the `_ = team.arun(...)` block with `async for _ in team.arun(...): pass`. Preserve the existing arguments and indent `pass` inside the loop.",
+                None,
+            )
+        ],
+    },
+    "09_evals/performance/team_response_with_memory_and_reasoning.py": {
+        "pre_code_warning": "The source calls a streaming team four times without consuming any returned async generator. Those calls never execute, so the evaluation does not build the intended history or memory. Update the saved file before running.",
+        "pre_run_steps": [
+            (
+                "Execute all four team runs",
+                "Set `stream=False` and `stream_events=False` on the `Team`, then replace each `_ = team.arun(` in `run_team_for_user` with `_ = await team.arun(`.",
+                None,
+            )
+        ],
+    },
     "integrations/parallel/07_research_workflow.py": {
         "intro_override": "Run source gathering and cited-brief writing as defined workflow steps. Agent outputs can vary between runs.",
     },
