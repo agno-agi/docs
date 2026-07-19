@@ -1,13 +1,16 @@
 ---
 title: Run on Railway
-description: "Deploy your agent platform to Railway with JWT auth on."
+description: "Deploy AgentOS and Postgres to Railway with JWT authorization and MCP access."
 ---
 
-Your company probably has a set way of running software. Follow that. If you're looking for a place to test this out without going through the full DevOps process, Railway is a good option, and the template includes scripts to:
+Deploy after local probes and release evals pass. The Railway starter provisions AgentOS and Postgres, sets the public URL used by schedules and MCP, and requires JWT verification before serving production traffic.
+
+The template includes scripts to:
 
 - Deploy to Railway: `./scripts/railway/up.sh`
 - Sync environment variables: `./scripts/railway/env-sync.sh`
 - Redeploy the app: `./scripts/railway/redeploy.sh`
+- Tear down the Railway project: `./scripts/railway/down.sh`
 
 ## Prerequisites
 
@@ -16,7 +19,7 @@ Your company probably has a set way of running software. Follow that. If you're 
 
 ## Why JWT is on by default
 
-Token-Based Authorization is **ON** by default. Without a `JWT_VERIFICATION_KEY` (or `JWT_JWKS_FILE`), the app refuses to serve traffic in production. This is why the deploy script stops and asks you for a key.
+Token-Based Authorization is **ON** by default. Production startup requires a `JWT_VERIFICATION_KEY` or `JWT_JWKS_FILE`. The deploy script pauses for the verification key before it serves traffic.
 
 Token-Based Auth gives you three things:
 
@@ -26,6 +29,8 @@ Token-Based Auth gives you three things:
 
 AgentOS leaves its operational and API-documentation routes public: `/`, `/health`, `/info`, `/docs`, `/redoc`, `/openapi.json`, and `/docs/oauth2-redirect`.
 
+Per-user data isolation is opt-in. Set `authorization_config=AuthorizationConfig(user_isolation=True)` to limit non-admin users to their own sessions, memories, traces, and runs. See [User Isolation](/agent-os/security/authorization/user-isolation).
+
 ## Deploy your agent platform to Railway
 
 <Steps>
@@ -34,7 +39,7 @@ AgentOS leaves its operational and API-documentation routes public: `/`, `/healt
     The deploy and sync scripts read `.env.production`. This keeps local and production values separate: different OpenAI keys with different budgets, production-only credentials, a different Slack workspace.
 
     ```bash
-    cp .env .env.production
+    test -f .env.production || cp .env .env.production
     ```
 
     Edit `.env.production` with a production OpenAI key.
@@ -53,8 +58,9 @@ AgentOS leaves its operational and API-documentation routes public: `/`, `/healt
     2. Provisions a Postgres service (with pgvector) and a persistent volume.
     3. Creates the `agent-os` service and forwards the database connection vars.
     4. Issues your public Railway domain and sets `AGENTOS_URL` to it, on Railway and in `.env.production`.
-    5. Pauses and asks for a JWT verification key.
-    6. Builds and deploys from the current directory.
+    5. Generates `MCP_CONNECT_SECRET` for hosted MCP clients and saves it to `.env.production` and Railway.
+    6. Pauses and asks for a JWT verification key.
+    7. Builds and deploys from the current directory.
 
     The domain takes a few minutes to start resolving after the first deploy.
 
@@ -83,6 +89,18 @@ AgentOS leaves its operational and API-documentation routes public: `/`, `/healt
     Once you see successful requests, open `https://<your-app>.up.railway.app/docs` and you're live.
 
   </Step>
+
+  <Step title="Connect MCP clients">
+
+    Register the deployed AgentOS with supported local clients:
+
+    ```bash
+    uvx agno connect --url https://<your-app>.up.railway.app
+    ```
+
+    For ChatGPT or Claude on the web, add `https://<your-app>.up.railway.app/mcp` as a custom connector. Enter the `MCP_CONNECT_SECRET` stored in `.env.production` on the consent page.
+
+  </Step>
 </Steps>
 
 ## Auto-deploys from GitHub
@@ -95,9 +113,9 @@ By default every code update needs `./scripts/railway/redeploy.sh`. To auto-depl
 
 Push to `main` now triggers a build and deploy. `./scripts/railway/env-sync.sh` is still how you push env changes.
 
-## Opting out of JWT (not recommended)
+## External authentication boundary
 
-If you must run production without auth (inside a private VPC behind another auth layer), set `authorization=False` in `app/main.py` and redeploy. Keep authorization on for any deploy holding real data. Without it, anyone who guesses your Railway domain can read your sessions and run your agents.
+Deployments inside a private VPC can set `authorization=False` in `app/main.py` when another trusted layer blocks unauthenticated traffic. Keep AgentOS authorization enabled for internet-accessible deployments and services that hold user data.
 
 ## Scaling
 
@@ -112,12 +130,14 @@ The default deploy is one replica with 4 GiB of memory and 2 vCPU. Change `numRe
 | Run a command with production env vars | `railway run --service agent-os <command>`  |
 | Push env changes                      | `./scripts/railway/env-sync.sh`              |
 | Redeploy without git push             | `./scripts/railway/redeploy.sh`              |
-| Tear everything down                  | Delete the project in the Railway dashboard  |
+| Tear everything down                  | `./scripts/railway/down.sh`                  |
 
 <Warning>
   Deleting the Railway project removes the app, the database, and all data.
 </Warning>
 
+See [Railway Reference](/deploy/templates/railway/reference) for environment variables, scaling, and troubleshooting.
+
 ## Next
 
-[Lock in behavior with evals →](/agent-platform/evals)
+[Next steps →](/agent-platform/next-steps)

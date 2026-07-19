@@ -1,11 +1,9 @@
 ---
 title: Evals
-description: "Lock in agent behavior with regression tests."
+description: "Turn expected agent behavior into repeatable checks for development, CI, and scheduled runs."
 ---
 
-Evals are regression tests for your agents. Rerun the same prompts against the same agents and behavior drift becomes visible.
-
-`/improve-agent` generates probes from an agent's instructions to find new weaknesses. Evals preserve known behavior as repeatable cases.
+Probes help you discover weaknesses. Evals turn the behavior you care about into repeatable checks that can run before release, in CI, and on a schedule.
 
 ## Cases
 
@@ -46,9 +44,17 @@ Add tags to group your cases into suites. The template uses three tags: `smoke`,
 
 ## Run the suite
 
-The suite runs on the host, calls the model, and logs results to your local Postgres through `eval_db`. Start the platform first (`docker compose up -d`) and make sure `.env` has your `OPENAI_API_KEY`.
+The suite imports agents on the host and writes results to Postgres through `eval_db`. Start the database, activate the local virtual environment, and set `OPENAI_API_KEY` in `.env`.
 
 <Steps>
+  <Step title="Start Postgres">
+
+    ```bash
+    docker compose up -d agentos-db
+    ```
+
+  </Step>
+
   <Step title="Create a virtual environment">
 
     The eval suite runs on the host and needs a local virtual environment:
@@ -68,15 +74,18 @@ The suite runs on the host, calls the model, and logs results to your local Post
   <Step title="Run the eval suite">
 
     ```bash
-    python -m evals --tag smoke     # fast suite
-    python -m evals                # full suite
+    python -m evals --tag smoke      # fast checks
+    python -m evals --tag release    # pre-release suite
+    python -m evals --tag live       # checks that depend on live sources
+    python -m evals                  # all cases
     ```
 
     Other options:
 
     ```bash
-    python -m evals -v             # stream the agent run with full panels
-    python -m evals --name <case>  # single case while iterating
+    python -m evals --name <case>                       # one case while iterating
+    python -m evals --tag release --json-output out.json
+    python -m evals -v                                  # stream full run panels
     ```
 
   </Step>
@@ -89,10 +98,10 @@ Results write to Postgres via `eval_db`. The eval history shows up on [os.agno.c
 
 ## Diagnose failures with your coding agent
 
-Open your coding agent and run:
+Open your coding agent and ask it to run:
 
 ```text
-/eval-and-improve
+Run the eval-and-improve skill in .agents/skills.
 ```
 
 The coding agent runs the suite, triages every failure (bad criteria, real regression, flaky LLM judge), and proposes in-scope fixes. It edits the agent or the case and re-runs until the suite is green.
@@ -117,4 +126,4 @@ The template ships a `run_evals` workflow for scheduled checks. Set `ENABLE_SCHE
 
 ## Next
 
-[Next steps →](/agent-platform/next-steps)
+[Run your platform on Railway →](/agent-platform/run-railway)
