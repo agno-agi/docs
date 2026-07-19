@@ -1,26 +1,34 @@
 ---
 title: "Safe data access"
-description: "Enforce read and write boundaries via the database engine, not the prompt."
+description: "Enforce read and write boundaries with database permissions and transaction settings."
 ---
 
-A prompt that says "only run SELECT" is a suggestion. A connection that physically cannot write is a guarantee. A production data agent answers from a read-only engine and isolates any writes to a schema it owns. The boundary holds even when the model goes off-script.
+A prompt that says "only run SELECT" is a suggestion. A connection that cannot write is a guarantee. A production data agent answers from a read-only connection and isolates any writes to a schema it owns. The boundary holds even when the model goes off-script.
+
+```bash
+uv pip install "agno[openai,psycopg,sql]"
+```
 
 ```python
 from agno.agent import Agent
 from agno.models.openai import OpenAIResponses
 from agno.tools.sql import SQLTools
+from sqlalchemy import create_engine
+
+readonly_engine = create_engine(
+    "postgresql+psycopg://readonly@warehouse/analytics",
+    connect_args={"options": "-c default_transaction_read_only=on"},
+)
 
 analyst = Agent(
     name="Analyst",
     model=OpenAIResponses(id="gpt-5.5"),
-    tools=[
-        SQLTools(db_url="postgresql+psycopg://readonly@warehouse/analytics")
-    ],
+    tools=[SQLTools(db_engine=readonly_engine)],
     instructions="Answer questions from the public schema. You cannot write.",
 )
 ```
 
-A connection bound to a read-only database role means a generated `DROP TABLE` fails at the database, before it reaches your data. Defense does not depend on the model behaving.
+Create the `readonly` role without write grants before using this connection. The `default_transaction_read_only=on` setting blocks ordinary write statements, but it is a configurable session default. Database ownership and grants remain the security boundary.
 
 ## Split the roles
 
@@ -32,11 +40,11 @@ Most data-agent questions are read-only. Writes (building a summary table, recor
 | **Engineer** | Read on `public`, read-write on an agent-owned schema | Build views in its own schema | Touch `public` |
 | **Leader** | No direct database access | Route the request, compose the answer | Run SQL itself |
 
-The Engineer's writes are scoped to a schema (for example `dash`) that the Analyst never touches. Even prompted into `DROP TABLE public.users`, its engine refuses, because the connection has no write grant on `public`.
+The Engineer's writes are scoped to a schema (for example `dash`) that the Analyst never touches. The database rejects `DROP TABLE public.users` because the Engineer's role has no write grant on `public`.
 
 ## Gate the writes that remain
 
-For writes you do allow, add a human in the loop. `requires_confirmation` pauses the run until someone approves the action.
+For writes you do allow, add a human in the loop. `requires_confirmation` produces a paused run that the client must continue with an approval before the function executes.
 
 ```python
 from agno.tools import tool
@@ -48,7 +56,7 @@ def materialize_view(name: str, sql: str) -> str:
     ...
 ```
 
-Approval everywhere kills adoption. Gate the irreversible actions, not the reads.
+For a dedicated writer built on `SQLTools`, set `requires_confirmation_tools=["run_sql_query"]`. That pauses every call to the tool, reads included, so a narrow custom write tool gives finer control. Gate the irreversible actions and leave reads ungated, so approval fatigue does not set in.
 
 ## Layers of defense
 

@@ -1,7 +1,7 @@
 ---
 title: Structured Output for Agents
 sidebarTitle: Agent
-description: Get validated Pydantic object from agent instead of raw text.
+description: Get a validated Pydantic object from an agent instead of raw text.
 ---
 
 Structured output constrains an agent's response to match a Pydantic schema. Instead of parsing free-form text, you get a validated object with typed fields.
@@ -41,7 +41,11 @@ When you set `output_schema`, Agno:
 3. Validates the response against your schema
 4. Returns a typed Pydantic object in `response.content`
 
-Most major providers support structured output natively: OpenAI, Anthropic, Google.
+Native schema support depends on the model. Agno requests JSON and parses it into the Pydantic model when native schema output is unavailable.
+
+<Warning>
+Fallback parsing failures are logged and can leave `response.content` as a string. Check its type before accessing schema fields when the model lacks native schema support.
+</Warning>
 
 ## Control `output_schema` Per-Run
 
@@ -94,17 +98,17 @@ print(analysis.recommendation)  # "buy"
 Descriptions guide the model on what to generate:
 ```python
 class Review(BaseModel):
-    # Good: clear guidance
+    # Description tells the model which values to return
     sentiment: str = Field(description="Must be 'positive', 'negative', or 'neutral'")
     confidence: float = Field(ge=0, le=1, description="Confidence score from 0.0 to 1.0")
 
-    # Less effective: no guidance
+    # No field description
     rating: int
 ```
 
 ### Use Constraints
 
-Pydantic validators ensure valid output:
+Pydantic checks field constraints when the response is parsed:
 ```python
 from pydantic import BaseModel, Field
 
@@ -181,12 +185,12 @@ for post in response.content.posts:
     print(f"- {post.title}")
 ```
 
-## Fallback with `use_json_mode`
+## JSON Mode
 
-Enable JSON mode for models that don't support structured output natively:
+Agno uses a JSON fallback automatically when the model lacks native schema support. Set `use_json_mode=True` to force JSON mode for a model that supports native structured output:
 ```python
 agent = Agent(
-    model=SomeModel(),
+    model=OpenAIResponses(id="gpt-5.2"),
     output_schema=MySchema,
     use_json_mode=True,
 )

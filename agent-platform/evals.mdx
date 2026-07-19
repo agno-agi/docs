@@ -3,15 +3,13 @@ title: Evals
 description: "Lock in agent behavior with regression tests."
 ---
 
-Next, let's lock in our agent behavior with evals.
+Evals are regression tests for your agents. Rerun the same prompts against the same agents and behavior drift becomes visible.
 
-Evals are regression tests for your agents. It's the same prompts and the same agents, run on a schedule, so you can see when behavior drifts.
-
-When we run `/improve-agent`, we're looking for out-of-distribution improvements. Evals make sure in-distribution cases continue to pass. The two work together.
+`/improve-agent` generates probes from an agent's instructions to find new weaknesses. Evals preserve known behavior as repeatable cases.
 
 ## Cases
 
-Cases live in `evals/cases.py`. Each case sends one input to an agent and (optionally) checks two things:
+Cases live in `evals/cases.py`. Each case sends one input to an agent (`agent=`) and optionally checks two things:
 
 - **judge**: `AgentAsJudgeEval` scores the response against `criteria` (binary pass/fail) using an LLM.
 - **reliability**: `ReliabilityEval` checks which tools fired against `expected_tool_calls`.
@@ -19,6 +17,11 @@ Cases live in `evals/cases.py`. Each case sends one input to an agent and (optio
 A case looks like this:
 
 ```python evals/cases.py
+from os import getenv
+
+# The WebSearch agent calls parallel_search when PARALLEL_API_KEY is set, web_search otherwise.
+_WEB_SEARCH_TOOL = "parallel_search" if getenv("PARALLEL_API_KEY") else "web_search"
+
 CASES: tuple[Case, ...] = (
     Case(
         name="web_search_recent_anthropic_research",
@@ -39,9 +42,11 @@ CASES: tuple[Case, ...] = (
 
 A case can use either check or both. If both are set, the agent runs once and feeds the same response into both.
 
-Add tags to group your cases into suites. The template comes with three suites: `smoke`, `release`, and `live`. This case is tagged `live` because its answer depends on the open web.
+Add tags to group your cases into suites. The template uses three tags: `smoke`, `release`, and `live`. This case uses the `live` tag because its answer depends on the open web.
 
 ## Run the suite
+
+The suite runs on the host, calls the model, and logs results to your local Postgres through `eval_db`. Start the platform first (`docker compose up -d`) and make sure `.env` has your `OPENAI_API_KEY`.
 
 <Steps>
   <Step title="Create a virtual environment">
@@ -63,7 +68,7 @@ Add tags to group your cases into suites. The template comes with three suites: 
   <Step title="Run the eval suite">
 
     ```bash
-    python -m evals --tag smoke    # fast suite
+    python -m evals --tag smoke     # fast suite
     python -m evals                # full suite
     ```
 
@@ -78,19 +83,19 @@ Add tags to group your cases into suites. The template comes with three suites: 
 
 </Steps>
 
-Each case prints the response, the judge verdict, and the reliability verdict. The run ends with an `Eval Summary` table.
+Each case prints its response and the verdicts for the checks it defines. The run ends with an `Eval Summary` table.
 
 Results write to Postgres via `eval_db`. The eval history shows up on [os.agno.com](https://os.agno.com) alongside your sessions and traces, so you can see when a case started failing and what changed.
 
-## Diagnose failures with Claude Code
+## Diagnose failures with your coding agent
 
-Open Claude Code and run:
+Open your coding agent and run:
 
-```
+```text
 /eval-and-improve
 ```
 
-Claude runs the suite, triages every failure (bad criteria, real regression, flaky LLM judge), and proposes in-scope fixes. It edits the agent or the case and re-runs until the suite is green.
+The coding agent runs the suite, triages every failure (bad criteria, real regression, flaky LLM judge), and proposes in-scope fixes. It edits the agent or the case and re-runs until the suite is green.
 
 ## When to run evals
 
@@ -101,7 +106,7 @@ Claude runs the suite, triages every failure (bad criteria, real regression, fla
 | Against production                    | On a daily cron       |
 | After bumping a model version         | Every time            |
 
-The production cron is the most valuable one, and the template ships it as the `run_evals` workflow. Set `ENABLE_SCHEDULED_EVALS=True` to run the `smoke`-tagged cases daily. See [scheduling](/features/scheduling) for the cron API.
+The template ships a `run_evals` workflow for scheduled checks. Set `ENABLE_SCHEDULED_EVALS=True` to run the `smoke`-tagged cases daily. See [scheduling](/features/scheduling) for the cron API.
 
 ## What good cases look like
 

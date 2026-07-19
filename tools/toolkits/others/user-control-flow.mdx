@@ -21,8 +21,24 @@ agent = Agent(
     tools=[UserControlFlowTools()],
 )
 
-agent.print_response("Help me create a personalized workout plan", stream=True)
+run_response = agent.run("Help me create a personalized workout plan")
+
+while run_response.is_paused:
+    for requirement in run_response.active_requirements:
+        if requirement.needs_user_input:
+            for field in requirement.user_input_schema:
+                if field.value is None:
+                    field.value = input(f"Enter {field.name}: ")
+
+    run_response = agent.continue_run(
+        run_id=run_response.run_id,
+        requirements=run_response.requirements,
+    )
+
+print(run_response.content)
 ```
+
+The run pauses each time the agent calls `get_user_input`. Fill the requested fields and call `continue_run()` to resume. See [Dynamic User Input](/hitl/dynamic-user-input) for the full pattern.
 
 ## Toolkit Params
 

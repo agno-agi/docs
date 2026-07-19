@@ -1,21 +1,28 @@
 ---
 title: Postgres for Team
 sidebarTitle: Team
+description: Store team sessions in PostgreSQL with PostgresDb.
 ---
 
-Agno supports using PostgreSQL as a storage backend for Teams using the `PostgresDb` class.
+`PostgresDb` stores a Team's sessions and run history in PostgreSQL.
 
 ## Usage
 
 Install dependencies:
 
 ```shell
-uv pip install agno openai ddgs sqlalchemy psycopg
+uv pip install agno openai ddgs sqlalchemy "psycopg[binary]"
 ```
 
-### Run PgVector
+Export your OpenAI API key:
 
-Install [docker desktop](https://docs.docker.com/desktop/install/mac-install/) and run **PgVector** on port **5532** using:
+```shell
+export OPENAI_API_KEY="your_openai_api_key_here"
+```
+
+### Run PostgreSQL
+
+Install [Docker Desktop](https://docs.docker.com/get-started/get-docker/), then start PostgreSQL with pgvector on port `5532`:
 
 ```bash
 docker run -d \
@@ -30,10 +37,6 @@ docker run -d \
 ```
 
 ```python postgres_for_team.py
-"""
-Run: `uv pip install agno openai ddgs sqlalchemy psycopg` to install the dependencies
-"""
-
 from typing import List
 
 from agno.agent import Agent
@@ -47,15 +50,17 @@ from pydantic import BaseModel
 db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
 db = PostgresDb(db_url=db_url)
 
+
 class Article(BaseModel):
     title: str
     summary: str
     reference_links: List[str]
 
+
 hn_researcher = Agent(
     name="HackerNews Researcher",
     model=OpenAIResponses(id="gpt-5.2"),
-    role="Gets top stories from hackernews.",
+    role="Gets top stories from HackerNews.",
     tools=[HackerNewsTools()],
 )
 
@@ -73,19 +78,18 @@ hn_team = Team(
     members=[hn_researcher, web_searcher],
     db=db,
     instructions=[
-        "First, search hackernews for what the user is asking about.",
+        "First, search HackerNews for what the user is asking about.",
         "Then, ask the web searcher to search for each story to get more information.",
-        "Finally, provide a thoughtful and engaging summary.",
+        "Finally, summarize each story and include its reference links.",
     ],
     output_schema=Article,
     markdown=True,
     show_members_responses=True,
 )
 
-hn_team.print_response("Write an article about the top 2 stories on hackernews")
-
+hn_team.print_response("Write an article about the top 2 stories on HackerNews")
 ```
 
-## Params
+## Parameters
 
 <Snippet file="db-postgres-params.mdx" />

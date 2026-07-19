@@ -107,22 +107,31 @@ For contract review, the question is often "what changed from our standard?" Ext
 incoming = agent.run("Extract.", files=[File(url=incoming_url)]).content
 template = agent.run("Extract.", files=[File(filepath="templates/msa-v3.pdf")]).content
 
-incoming_by_cat = {c.category: c for c in incoming.clauses}
-template_by_cat = {c.category: c for c in template.clauses}
+
+def clauses_by_category(contract: Contract) -> dict[str, list[str]]:
+    grouped: dict[str, list[str]] = {}
+    for clause in contract.clauses:
+        grouped.setdefault(clause.category, []).append(clause.text)
+    return {category: sorted(texts) for category, texts in grouped.items()}
+
+
+incoming_by_cat = clauses_by_category(incoming)
+template_by_cat = clauses_by_category(template)
 
 deltas = [
-    (cat, incoming_by_cat.get(cat), template_by_cat.get(cat))
+    (cat, incoming_by_cat.get(cat, []), template_by_cat.get(cat, []))
     for cat in set(incoming_by_cat) | set(template_by_cat)
-    if (incoming_by_cat.get(cat) and incoming_by_cat[cat].text)
-       != (template_by_cat.get(cat) and template_by_cat[cat].text)
+    if incoming_by_cat.get(cat, []) != template_by_cat.get(cat, [])
 ]
 ```
+
+Clauses group into lists because one category often holds several clauses (`other` usually does). Sorting keeps the comparison order-independent.
 
 For a richer comparison, hand both contracts to a reviewer agent with `output_schema` set to a `ClauseDelta` model and let the model summarize the differences.
 
 ## Long contracts and chunking
 
-`OpenAIResponses(id="gpt-5.5")` handles contract-length PDFs in a single call. For documents over the model's context, split by section in your own code and run the agent per chunk. The schema is the same; you concatenate the `clauses` lists at the end.
+Agno sends the PDF to the model as a single file input: a URL reference when you pass `File(url=...)`, or base64-encoded bytes when you pass `filepath` or `content`. Nothing splits the document on the way, so the provider's file-size and context limits bound what one call can take. For contracts over that limit, split by section in your own code and run the agent per chunk. The schema is the same; you concatenate the `clauses` lists at the end.
 
 ## Next steps
 

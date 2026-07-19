@@ -1,66 +1,103 @@
 ---
 title: Video Caption Agent
+description: "Extract audio, transcribe it to timed SRT captions with OpenAI, and embed captions with MoviePyVideoTools."
 ---
 
-Create an agent that processes videos to generate and embed captions using MoviePy and OpenAI tools.
+Create an agent that extracts audio from a video, generates timestamped SRT captions, and embeds them into the output video.
 
-## Code
+```python video_caption.py
+from pathlib import Path
+from sys import argv
 
-```python
 from agno.agent import Agent
 from agno.models.openai import OpenAIResponses
 from agno.tools.moviepy_video import MoviePyVideoTools
-from agno.tools.openai import OpenAITools
+from openai import OpenAI
 
 video_tools = MoviePyVideoTools(
-    enable_process_video=True, enable_generate_captions=True, enable_embed_captions=True
+    enable_process_video=True,
+    enable_generate_captions=False,
+    enable_embed_captions=True,
 )
 
-openai_tools = OpenAITools()
+
+def transcribe_audio_to_srt(audio_path: str, output_path: str) -> str:
+    """Transcribe an audio file to a timestamped SRT file."""
+    with open(audio_path, "rb") as audio_file:
+        captions = OpenAI().audio.transcriptions.create(
+            model="whisper-1",
+            file=audio_file,
+            response_format="srt",
+        )
+
+    Path(output_path).write_text(captions, encoding="utf-8")
+    return output_path
+
 
 video_caption_agent = Agent(
     name="Video Caption Generator Agent",
-    model=OpenAIResponses(
-        id="gpt-5.2",
-    ),
-    tools=[video_tools, openai_tools],
-    description="You are an AI agent that can generate and embed captions for videos.",
+    model=OpenAIResponses(id="gpt-5.2"),
+    tools=[video_tools, transcribe_audio_to_srt],
     instructions=[
-        "When a user provides a video, process it to generate captions.",
-        "Use the video processing tools in this sequence:",
-        "1. Extract audio from the video using extract_audio",
-        "2. Transcribe the audio using transcribe_audio",
-        "3. Generate SRT captions using create_srt",
-        "4. Embed captions into the video using embed_captions",
+        "Follow the requested file paths exactly.",
+        "Call extract_audio, then transcribe_audio_to_srt, then embed_captions.",
+        "Return the captioned video path.",
     ],
-    markdown=True,
 )
 
-video_caption_agent.print_response(
-    "Generate captions for {video with location} and embed them in the video"
-)
+
+if __name__ == "__main__":
+    if len(argv) != 2:
+        raise SystemExit("Usage: python video_caption.py /path/to/input.mp4")
+
+    video_path = Path(argv[1]).expanduser().resolve()
+    if not video_path.is_file():
+        raise SystemExit(f"Video not found: {video_path}")
+
+    audio_path = video_path.with_suffix(".wav")
+    srt_path = video_path.with_suffix(".srt")
+    output_path = video_path.with_name(f"{video_path.stem}_captioned.mp4")
+
+    video_caption_agent.print_response(
+        f"""Process this video using the exact paths below.
+Video: {video_path}
+Audio: {audio_path}
+SRT: {srt_path}
+Captioned video: {output_path}"""
+    )
 ```
 
-## Usage
+<Note>
+  Agno v2.7.2 uses Arial for embedded caption text. Install Arial before running this example on a system that does not include it.
+</Note>
+
+## Run the Example
 
 <Steps>
   <Snippet file="create-venv-step.mdx" />
 
-  <Step title="Set your API key">
-    ```bash
-    export OPENAI_API_KEY=xxx
-    ```
-  </Step>
-
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U openai moviepy ffmpeg agno
+    uv pip install -U agno moviepy openai
     ```
   </Step>
 
-  <Step title="Run Agent">
+  <Step title="Install FFmpeg">
+    Install [FFmpeg](https://ffmpeg.org/download.html), then verify the executable:
     ```bash
-    python cookbook/02_agents/12_multimodal/video_caption.py
+    ffmpeg -version
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    ```bash
+    export OPENAI_API_KEY="your_openai_api_key"
+    ```
+  </Step>
+
+  <Step title="Run the agent">
+    ```bash
+    python video_caption.py /absolute/path/to/input.mp4
     ```
   </Step>
 </Steps>

@@ -1,11 +1,11 @@
 ---
 title: Parallel Workflow
-description: Independent, concurrent tasks that can execute simultaneously for improved efficiency
+description: Run independent steps concurrently with Parallel and pass their combined output to the next step.
 ---
 
-**Example Use-Cases**: Multi-source research, parallel analysis, concurrent data processing
+**Example use cases**: Multi-source research, parallel analysis, concurrent data processing
 
-Parallel workflows maintain deterministic results while dramatically reducing execution time for independent operations.
+Steps inside a `Parallel` block run concurrently. Their outputs are aggregated in the configured step order and passed to the next step in the workflow.
 
 <img
   className="block dark:hidden"
@@ -21,19 +21,36 @@ Parallel workflows maintain deterministic results while dramatically reducing ex
 ## Example
 
 ```python parallel_workflow.py
-from agno.workflow import Parallel, Step, Workflow
+from agno.workflow import Parallel, Step, StepInput, StepOutput, Workflow
+
+
+def research_hackernews(step_input: StepInput) -> StepOutput:
+    return StepOutput(content=f"HackerNews notes for {step_input.input}")
+
+
+def research_web(step_input: StepInput) -> StepOutput:
+    return StepOutput(content=f"Web notes for {step_input.input}")
+
+
+def research_papers(step_input: StepInput) -> StepOutput:
+    return StepOutput(content=f"Paper notes for {step_input.input}")
+
+
+def synthesize(step_input: StepInput) -> StepOutput:
+    combined = step_input.previous_step_content or "No research returned"
+    return StepOutput(content=f"Synthesis:\n{combined}")
 
 workflow = Workflow(
     name="Parallel Research Pipeline",
     steps=[
         Parallel(
-            Step(name="HackerNews Research", agent=hn_researcher),
-            Step(name="Web Research", agent=web_researcher),
-            Step(name="Academic Research", agent=academic_researcher),
-            name="Research Step"
+            Step(name="HackerNews Research", executor=research_hackernews),
+            Step(name="Web Research", executor=research_web),
+            Step(name="Academic Research", executor=research_papers),
+            name="Research Step",
         ),
-        Step(name="Synthesis", agent=synthesizer),  # Combines the results and produces a report
-    ]
+        Step(name="Synthesis", executor=synthesize),
+    ],
 )
 
 workflow.print_response("Write about the latest AI developments", markdown=True)
@@ -41,13 +58,14 @@ workflow.print_response("Write about the latest AI developments", markdown=True)
 
 ## Handling Session State Data in Parallel Steps
 
-When using custom Python functions in your steps, you can access and update the Workflow session state via the `run_context` parameter.
+Custom Python functions can accept a `run_context` parameter and update `run_context.session_state`.
 
-If you are performing session state updates in Parallel Steps, be aware that concurrent access to shared state will require coordination to avoid race conditions.
+Parallel branches share that session-state dictionary. Coordinate writes to the same keys, or assign separate keys to each branch, to avoid races.
 
 ## Developer Resources
 
 - [Parallel Steps Workflow](/workflows/usage/parallel-steps-workflow)
+- [Session State in a Function](/examples/workflows/advanced-concepts/session-state/state-in-function)
 
 ## Reference
 

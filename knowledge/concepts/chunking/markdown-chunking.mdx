@@ -1,14 +1,14 @@
 ---
 title: Markdown Chunking
+description: "Split Markdown documents by heading structure or an approximate character target."
 ---
 
-Markdown chunking is a method of splitting Markdown documents into smaller chunks based on structure like headers, paragraphs, and sections. Set `split_on_headings` to split on heading boundaries, or leave it off for size-based chunking with optional overlap.
+`MarkdownChunking` returns content at or below `chunk_size` as one chunk in its default mode. For longer content, it uses Unstructured to partition Markdown and group the resulting elements toward `chunk_size`. Set `split_on_headings=True` to split on every ATX heading from H1 through H6. Set an integer from `1` to `6` to split on ATX headings through that level.
 
 <Steps>
 
   <Step title="Create a Python file">
     ```python markdown_chunking.py
-    import asyncio
     from agno.agent import Agent
     from agno.knowledge.chunking.markdown import MarkdownChunking
     from agno.knowledge.knowledge import Knowledge
@@ -21,13 +21,14 @@ Markdown chunking is a method of splitting Markdown documents into smaller chunk
         vector_db=PgVector(table_name="recipes_markdown_chunking", db_url=db_url),
     )
 
-    asyncio.run(knowledge.ainsert(
-        url="https://raw.githubusercontent.com/agno-agi/agno/main/README.md",
+    knowledge.insert(
+        url="https://raw.githubusercontent.com/agno-agi/agno/v2.7.2/README.md",
         reader=MarkdownReader(
             name="Markdown Chunking Reader",
-            chunking_strategy=MarkdownChunking(),
+            chunking_strategy=MarkdownChunking(chunk_size=1000),
         ),
-    ))
+    )
+
     agent = Agent(
         knowledge=knowledge,
         search_knowledge=True,
@@ -41,11 +42,13 @@ Markdown chunking is a method of splitting Markdown documents into smaller chunk
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U agno sqlalchemy psycopg pgvector unstructured markdown openai
+    uv pip install -U agno sqlalchemy psycopg pgvector "unstructured<0.18.31" markdown openai
     ```
   </Step>
 
-  <Snippet file="set-openai-key.mdx" />
+  <Step title="Export your OpenAI API key">
+    <Snippet file="set-openai-key.mdx" />
+  </Step>
 
   <Snippet file="run-pgvector-step.mdx" />
 
@@ -57,6 +60,22 @@ Markdown chunking is a method of splitting Markdown documents into smaller chunk
 
 </Steps>
 
+## Choose a Mode
+
+| `split_on_headings` | Behavior |
+|---------------------|----------|
+| `False` | Keep short input as one chunk; partition and group longer input with Unstructured |
+| `True` | Start a chunk at every ATX heading from H1 through H6, regardless of document size |
+| `1` to `6` | Start a chunk at ATX headings through the selected level, regardless of document size |
+
+In heading mode, sections longer than `chunk_size` are split by paragraphs, then by words, and repeat an existing heading. A long indivisible word or prepended overlap can make the final chunk longer than `chunk_size`. Overlap is prepended without an added separator.
+
 ## Markdown Chunking Params
 
 <Snippet file="chunking-markdown.mdx" />
+
+## Developer Resources
+
+- [Chunking overview](/knowledge/concepts/chunking/overview)
+- [Chunking strategies examples](/examples/knowledge/building-blocks/chunking-strategies)
+- [Markdown reader](/knowledge/concepts/readers/markdown-reader)

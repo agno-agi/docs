@@ -13,7 +13,7 @@ runs from anywhere; `--json` writes the full report to the gitignored
 | `orphans.py` | `.mdx` pages on disk (outside `_snippets/`, gitignored paths excluded) not reachable from docs.json navigation, plus nav entries with no file on disk. |
 | `unused_media.py` | Files under `images/` and `videos/` referenced by zero `.mdx`/`.md`/`.css`/`.js`/`.json`/`.html` files (suffix match on the path), with sizes and total reclaimable bytes. |
 | `unused_snippets.py` | `_snippets/` files included (transitively, via `<Snippet file="...">`) by zero nav-reachable pages. Distinguishes `used_only_by_orphans` from `used_by_nothing`; also lists dangling includes. |
-| `redirect_audit.py` | docs.json redirects that shadow live pages, point at dead destinations (one hop resolved, `:slug*` wildcards handled), duplicate a source, or chain into another redirect. |
+| `redirect_audit.py` | docs.json redirects that shadow tracked content pages (including orphans), point at dead destinations (one hop resolved, `:slug*` wildcards handled), duplicate a source, or chain into another redirect. |
 | `link_check.py` | Root-relative links in nav-reachable pages (and their snippets): broken paths, broken `#anchors` (slugified headings incl. snippet headings; `reference-api/**` targets skipped), links to orphans, and links that only work via a redirect. |
 | `run_all.py` | Runs all five over one shared context and prints the combined counts. `--json` writes every report. |
 | `_lib.py` | Shared library: repo file listing (via `git ls-files`, so .gitignore is honored), nav reachability, snippet graph, redirect patterns, anchor slugs. Not runnable. |

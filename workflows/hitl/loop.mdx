@@ -87,7 +87,11 @@ The confirmation happens once before the loop starts. Individual iterations do n
 
 ## Iteration Review
 
-Set `requires_iteration_review=True` to pause between loop iterations. After each iteration completes, the workflow pauses for human review. The reviewer can accept the result (stopping the loop) or reject to run another iteration.
+Set `requires_iteration_review=True` to pause between loop iterations. The workflow pauses after each non-final iteration that would otherwise continue. The reviewer can accept the result (stopping the loop) or reject to run another iteration.
+
+<Warning>
+In Agno v2.7.2, resuming a rejected iteration review assumes that each loop iteration contains one child step. Use iteration review with a single child `Step` until multi-step resume grouping is supported.
+</Warning>
 
 ```python
 from agno.agent import Agent
@@ -189,7 +193,7 @@ Loop(
 
 ## Timeout
 
-`timeout` and `on_timeout` only apply to Step-level pauses. Loop pauses (the start confirmation and iteration review) wait until they are resolved. See [Timeout](/workflows/hitl/timeout).
+`timeout` and `on_timeout` only apply to Step confirmation and output-review pauses. Loop pauses wait until they are resolved. See [Timeout](/workflows/hitl/timeout).
 
 ## Streaming
 
@@ -208,10 +212,13 @@ run_output = session.runs[-1]
 while run_output.is_paused:
     for req in run_output.steps_requiring_confirmation:
         req.confirm()
-    
+
+    for req in run_output.steps_requiring_output_review:
+        req.confirm()
+
     for event in workflow.continue_run(run_output, stream=True, stream_events=True):
         pass
-    
+
     session = workflow.get_session()
     run_output = session.runs[-1]
 ```

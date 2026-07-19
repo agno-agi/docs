@@ -3,44 +3,70 @@ title: "Institutional learning"
 description: "Share what every review learns so the next one starts from the team's accumulated judgment."
 ---
 
-A research team that does not learn re-derives the same conclusions and repeats the same mistakes. The value compounds when an insight from one review is available to every agent on the next. Agno's `LearningMachine` with a shared store and a global namespace makes the team's learning institutional, not per-agent.
+A research team that does not learn re-derives the same conclusions and repeats the same mistakes. The value compounds when an insight from one review is available to every agent on the next. Agno's `LearningMachine` with a shared store and a global namespace puts every agent's learning in one place the whole team reads from.
 
 ```python
 from agno.agent import Agent
+from agno.db.postgres import PostgresDb
 from agno.learn import LearnedKnowledgeConfig, LearningMachine, LearningMode
 from agno.models.openai import OpenAIResponses
 
-# Shared learnings store, imported once, used by every agent and team
+# team_learnings is a Knowledge instance backed by a vector database, on its own
+# table so learnings stay out of the research library's search results.
 from agents.settings import team_learnings
 
-analyst = Agent(
-    name="Financial Analyst",
-    model=OpenAIResponses(id="gpt-5.5"),
-    learning=LearningMachine(
+db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+
+def institutional_learning() -> LearningMachine:
+    return LearningMachine(
         knowledge=team_learnings,
         learned_knowledge=LearnedKnowledgeConfig(
             mode=LearningMode.AGENTIC,
             namespace="global",
         ),
-    ),
+    )
+
+
+learning_instructions = (
+    "Use save_learning to store reusable insights. "
+    "Use search_learnings to find prior knowledge before forming a view."
 )
 
-# Another agent built on the same team_learnings store captures an insight:
-risk_officer.print_response("Estimates lag this sector by about a quarter.")
+analyst = Agent(
+    name="Financial Analyst",
+    model=OpenAIResponses(id="gpt-5.5"),
+    db=db,
+    instructions=learning_instructions,
+    learning=institutional_learning(),
+)
+
+risk_officer = Agent(
+    name="Risk Officer",
+    model=OpenAIResponses(id="gpt-5.5"),
+    db=db,
+    instructions=learning_instructions,
+    learning=institutional_learning(),
+)
+
+# The risk officer captures an insight:
+risk_officer.print_response(
+    "Save this insight: analyst estimates lag this sector by about a quarter."
+)
 
 # Later, a different agent reads it back from the shared store:
 analyst.learning_machine.learned_knowledge_store.print(query="estimate lag")
 ```
 
-Every analyst and every team writes to and reads from the same `team_learnings` store, so the capture above is already in the next agent's context.
+The learning is available to every agent and team sharing the store. In Agentic mode, retrieve it with `search_learnings`. The `Knowledge` instance is required. Without it, saves and searches log a warning and do nothing.
 
 ## Per-agent vs institutional
 
-| | Per-agent memory | Institutional learning |
+| | User memory | Institutional learning |
 |--|------------------|------------------------|
-| Scope | One agent | Every agent and team that shares the store |
-| Namespace | The user or agent | `"global"` |
-| Effect | This analyst remembers | The committee remembers |
+| Scope | One user across agents sharing the database | Every agent and team that shares the store |
+| Namespace | Scoped by `user_id` | `"global"` |
+| Effect | The user's preferences and facts follow them | The committee remembers |
 
 For deep research, institutional is the point. The team's judgment should outlive any single review.
 
@@ -58,9 +84,9 @@ Capture corrections and transferable insights. Leave durable facts to the [resea
 
 | Mode | Behavior | Use for |
 |------|----------|---------|
-| `ALWAYS` | Capture runs after every response | Steady accumulation of observations |
+| `ALWAYS` | Start extraction from the current input on every run | Steady accumulation of observations |
 | `AGENTIC` | The agent decides what is worth keeping | Research, where signal-to-noise matters |
-| `PROPOSE` | A human approves before it persists | Anything that changes how the team decides |
+| `PROPOSE` | The model proposes a learning and asks before saving; approval is prompt-based | Low-risk review where soft approval is sufficient |
 
 This is the same machine the [data agent uses to self-correct](/use-cases/data-agents/self-correcting-agents), pointed at a shared store instead of a per-warehouse one.
 

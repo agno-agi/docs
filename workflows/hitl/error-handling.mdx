@@ -1,27 +1,30 @@
 ---
 title: Error Handling HITL
 sidebarTitle: Error Handling
-description: Pause on step failures to let users retry or skip.
+description: Pause on Step or Condition failures to let users retry or skip.
 keywords: [workflow, error, HITL, retry, skip, pause, exception]
 ---
 
-Steps can pause when they encounter errors, letting users decide to retry or skip the failed step.
+`Step` and `Condition` can pause when execution fails, letting users decide to retry or skip the failed component.
 
 ## Error Pause Mode
 
 Set `on_error=OnError.pause` to pause when a step fails:
 
 ```python
+import random
+
+from agno.db.sqlite import SqliteDb
 from agno.workflow import Workflow, OnError
 from agno.workflow.step import Step
 from agno.workflow.types import StepInput, StepOutput
-from agno.db.sqlite import SqliteDb
-import random
+
 
 def unreliable_api_call(step_input: StepInput) -> StepOutput:
     if random.random() < 0.7:  # 70% failure rate
         raise Exception("API call failed: Connection timeout")
     return StepOutput(content="API call succeeded")
+
 
 def process_data(step_input: StepInput) -> StepOutput:
     return StepOutput(content=f"Processed: {step_input.previous_step_content}")
@@ -33,6 +36,7 @@ workflow = Workflow(
         Step(
             name="fetch_data",
             executor=unreliable_api_call,
+            max_retries=0,
             on_error=OnError.pause,
         ),
         Step(name="process", executor=process_data),
@@ -57,17 +61,19 @@ while run_output.is_paused:
 print(run_output.content)
 ```
 
+`Step` retries executor failures up to `max_retries` times before applying `on_error`. The default, `max_retries=3`, allows four total execution attempts. Set `max_retries=0` to apply the error policy after the first failed attempt.
+
 ## OnError Options
 
 | Value | Behavior |
 |-------|----------|
-| `OnError.fail` | Fail the workflow immediately |
-| `OnError.skip` | Skip the step and continue (default) |
-| `OnError.pause` | Pause for user decision (retry or skip) |
+| `OnError.fail` | Re-raise the error after automatic retries |
+| `OnError.skip` | Skip the component after automatic retries and continue (default) |
+| `OnError.pause` | Pause after automatic retries for a retry-or-skip decision |
 
 ## ErrorRequirement Properties
 
-When a step fails with `on_error=OnError.pause`, an `ErrorRequirement` is created:
+When a `Step` or `Condition` fails with `on_error=OnError.pause`, an `ErrorRequirement` is created:
 
 | Property | Type | Description |
 |----------|------|-------------|
@@ -81,14 +87,15 @@ When a step fails with `on_error=OnError.pause`, an `ErrorRequirement` is create
 | Method | Description |
 |--------|-------------|
 | `req.retry()` | Retry the failed step |
-| `req.skip()` | Skip the step and continue |
+| `req.skip()` | Skip the failed component and continue |
 
 ## Retry Behavior
 
 When you call `req.retry()`:
-1. The step executes again with the same input
-2. If it fails again, the workflow pauses again
-3. You can retry indefinitely or skip after some attempts
+
+1. The component executes again with the same input, including its configured automatic retries.
+2. If it still fails, the workflow pauses again.
+3. You can retry again or skip.
 
 Track attempts in your resolution loop to cap retries:
 
@@ -110,9 +117,10 @@ while run_output.is_paused:
 ## Skip Behavior
 
 When you call `req.skip()`:
-1. The failed step produces no output and is not re-executed
-2. The workflow continues with the next step
-3. The next step's `step_input.previous_step_content` comes from the last successful step, or is `None` if there is none
+
+1. The failed component is not re-executed.
+2. The workflow continues with the next top-level step.
+3. The next step's `step_input.previous_step_content` comes from the last successful top-level step, or is `None` if there is none.
 
 ## Combining with Confirmation
 
@@ -129,6 +137,21 @@ Step(
 ```
 
 The confirmation happens first. If confirmed and the step fails, the error pause activates.
+
+## Condition Errors
+
+Set `on_error` on a `Condition` to control failures raised by its selected branch. `OnError.pause` creates an `ErrorRequirement` for the Condition after the failing inner Step exhausts its own `max_retries`.
+
+```python
+from agno.workflow.condition import Condition
+
+Condition(
+    name="validate_if_needed",
+    evaluator=should_validate,
+    steps=[Step(name="validate", executor=validate_data, max_retries=0)],
+    on_error=OnError.pause,
+)
+```
 
 ## Streaming
 

@@ -1,5 +1,6 @@
 ---
 title: MongoDB Hybrid Search
+description: "Combine vector and keyword retrieval with SearchType.hybrid on a MongoDB collection."
 ---
 
 ## Code
@@ -39,7 +40,7 @@ def mongodb_agent(user: str = "user"):
     )
 
     while True:
-        message = Prompt.ask(f"[bold] :sunglasses: {user} [/bold]")
+        message = Prompt.ask(f"[bold]{user}[/bold]")
         if message in ("exit", "bye"):
             break
         agent.print_response(message)
@@ -66,6 +67,36 @@ docker run -d \
   -p 27017:27017 \
   -v ./tmp/mongo-data:/data/db \
   mongodb/mongodb-atlas-local:8.0.3
+    ```
+  </Step>
+  <Step title="Create the keyword search index">
+    Hybrid search requires a keyword Search index named `default` in addition to the vector index Agno creates. Wait for MongoDB, create the collection if needed, then create the index and wait until it is queryable:
+    ```bash
+    until [ "$(docker inspect --format='{{.State.Health.Status}}' mongodb-container)" = "healthy" ]; do
+      sleep 1
+    done
+
+    docker exec mongodb-container mongosh --quiet --eval '
+    const database = db.getSiblingDB("agno");
+    if (!database.getCollectionNames().includes("recipes")) {
+      database.createCollection("recipes");
+    }
+    if (!database.recipes.aggregate([
+      { $listSearchIndexes: { name: "default" } }
+    ]).hasNext()) {
+      database.recipes.createSearchIndex("default", {
+        mappings: {
+          dynamic: false,
+          fields: { content: { type: "string" } }
+        }
+      });
+    }
+    while (!database.recipes.aggregate([
+      { $listSearchIndexes: { name: "default" } }
+    ]).toArray()[0]?.queryable) {
+      sleep(1000);
+    }
+    '
     ```
   </Step>
   <Step title="Set environment variables">

@@ -1,61 +1,64 @@
 ---
-title: PgVector
+title: Insert, Search, and Delete with PgVector
+description: "Insert a PDF, search it with an agent, and delete PgVector rows by name or metadata."
 ---
-
-## Code
 
 ```python pgvector_db.py
 from agno.agent import Agent
 from agno.knowledge.knowledge import Knowledge
 from agno.vectordb.pgvector import PgVector
 
-db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
-
-vector_db = PgVector(table_name="vectors", db_url=db_url)
-
-knowledge = Knowledge(
-    name="My PG Vector Knowledge Base",
-    description="This is a knowledge base that uses a PG Vector DB",
-    vector_db=vector_db,
+vector_db = PgVector(
+    table_name="vectors",
+    db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
 )
-knowledge.insert(
-    name="Recipes",
-    url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
-    metadata={"doc_type": "recipe_book"},
-)
+knowledge = Knowledge(vector_db=vector_db)
+agent = Agent(knowledge=knowledge, search_knowledge=True)
 
-agent = Agent(
-    knowledge=knowledge,
-    search_knowledge=True,
-    read_chat_history=True,
-)
+if __name__ == "__main__":
+    knowledge.insert(
+        name="Recipes",
+        url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
+        metadata={"doc_type": "recipe_book"},
+    )
 
-agent.print_response("How do I make pad thai?", markdown=True)
+    agent.print_response("How do I make pad thai?", markdown=True)
 
-vector_db.delete_by_name("Recipes")
-
-vector_db.delete_by_metadata({"doc_type": "recipe_book"})
+    vector_db.delete_by_name("Recipes")
+    vector_db.delete_by_metadata({"doc_type": "recipe_book"})
 ```
 
-## Usage
+`delete_by_name()` removes rows whose `name` matches exactly. `delete_by_metadata()` removes rows whose JSON metadata contains the supplied fields.
+
+## Run the Example
 
 <Steps>
   <Snippet file="create-venv-step.mdx" />
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U sqlalchemy psycopg pgvector pypdf openai agno
+    uv pip install -U agno openai pgvector psycopg pypdf sqlalchemy
     ```
   </Step>
+
   <Snippet file="run-pgvector-docker.mdx" />
-  <Step title="Set environment variables">
+
+  <Step title="Export the API key">
     ```bash
-    export OPENAI_API_KEY=xxx
+    export OPENAI_API_KEY=your_openai_api_key_here
     ```
   </Step>
-  <Step title="Run Agent">
+
+  <Step title="Run the example">
     ```bash
     python pgvector_db.py
     ```
   </Step>
 </Steps>
+
+## Next Steps
+
+| Task | Guide |
+|------|-------|
+| Run async Agno methods | [Async PgVector usage](/knowledge/vector-stores/pgvector/usage/async-pgvector-db) |
+| Configure hybrid search | [PgVector hybrid search](/knowledge/vector-stores/pgvector/usage/pgvector-hybrid-search) |

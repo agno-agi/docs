@@ -3,9 +3,9 @@ title: "Serve as an API"
 description: "Turn agents into an HTTP service with streaming, sessions, and auth."
 ---
 
-`AgentOS` serves your agents as a FastAPI application. Every agent gets run, session, and memory endpoints. Your product surfaces call those endpoints.
+`AgentOS` serves registered agents through a FastAPI application. Run routes are component-specific, while database-backed session and memory routes operate across the AgentOS. Your product surfaces call those endpoints.
 
-```python
+```python copilot.py
 from agno.agent import Agent
 from agno.db.postgres import PostgresDb
 from agno.models.openai import OpenAIResponses
@@ -21,12 +21,55 @@ agent = Agent(
     enable_agentic_memory=True,
 )
 
-agent_os = AgentOS(agents=[agent])
+agent_os = AgentOS(
+    agents=[agent],
+    db=db,
+    cors_allowed_origins=[
+        "http://localhost:3000",
+        "https://app.yourproduct.com",
+        "https://os.agno.com",
+    ],
+)
 app = agent_os.get_app()
 
 if __name__ == "__main__":
     agent_os.serve(app="copilot:app", port=7777)
 ```
+
+Supplying `cors_allowed_origins` replaces the AgentOS defaults. Include every browser and AgentOS UI origin that needs to call the backend.
+
+## Run the API
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U "agno[os]" openai sqlalchemy "psycopg[binary]"
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash macOS / Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```powershell Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Snippet file="run-pgvector-step.mdx" />
+
+  <Step title="Start AgentOS">
+    Save the code as `copilot.py`, then run:
+    ```bash
+    python copilot.py
+    ```
+  </Step>
+</Steps>
 
 ## Calling it from a surface
 
@@ -51,13 +94,12 @@ curl -X POST http://localhost:7777/agents/copilot/runs \
 }
 ```
 
-From a browser widget with streaming and a JWT:
+After enabling authorization, a browser widget can stream with a JWT:
 
 ```javascript
-async function askCopilot(message, userId, threadId) {
+async function askCopilot(message, threadId, jwt) {
   const body = new FormData();
   body.append("message", message);
-  body.append("user_id", userId);
   body.append("session_id", threadId);
   body.append("stream", "true");
 
@@ -72,18 +114,19 @@ async function askCopilot(message, userId, threadId) {
 
 | Want | Pass |
 |------|------|
-| Token stream for a live UI | `stream=true` (Server-Sent Events) |
-| Long job, poll later | `background=true` |
-| Per-user isolation | `user_id` and a per-thread `session_id` |
+| Token stream for a live UI | `stream=true` (Server-Sent Events, the default) |
+| A single JSON response | `stream=false` |
+| Long job, poll later | `background=true` and `stream=false` |
+| User and thread attribution | `user_id` and a per-thread `session_id` |
 
 ## What you get without building it
 
 | Endpoint group | Covers |
 |-----------------|--------|
 | Runs | Create, stream, cancel, run in background, resume disconnected streams |
-| Sessions | Create, list, rename, delete, pull every run in a session, scoped per user |
+| Sessions | Create, list, rename, delete, and pull every run in a session. Per-user enforcement requires user isolation. |
 | Memory | Create, update, delete, search user memories |
-| Traces and metrics | Per-run spans, token usage, model breakdown |
+| Traces and metrics | Per-run spans when tracing is enabled, plus token usage and model metrics |
 
 Browse the live OpenAPI spec at the `/docs` endpoint of your running AgentOS.
 
@@ -91,25 +134,31 @@ Browse the live OpenAPI spec at the `/docs` endpoint of your running AgentOS.
 
 `AgentOS` is a FastAPI app. Add routes for webhooks, dashboards, or product-specific endpoints. The agent is a regular Python object you can call from anywhere.
 
-```python
-app = agent_os.get_app()
-
-
-@app.post("/webhooks/stripe")
-async def handle_stripe(event: dict):
-    response = await agent.arun(f"Process Stripe event: {event}", user_id="system")
-    return {"ok": True, "response": response.content}
-```
+<Warning>
+  A public Stripe webhook must read the raw request body and verify its `Stripe-Signature` with the endpoint secret before parsing or passing an event to the agent. Never accept an unverified decoded dictionary. See [Stripe's webhook signature guide](https://docs.stripe.com/webhooks/signature).
+</Warning>
 
 ## Auth
 
-Set `authorization=True` and every endpoint except public routes like `/`, `/health`, `/info`, and the docs pages requires a valid JWT.
+Set `authorization=True` to require a valid JWT on protected central routes. Set `JWT_VERIFICATION_KEY` or `JWT_JWKS_FILE` before building the app. Add `user_isolation=True` to filter user-scoped data for non-admin callers.
 
 ```python
-agent_os = AgentOS(agents=[agent], authorization=True)
+from agno.os.config import AuthorizationConfig
+
+agent_os = AgentOS(
+    agents=[agent],
+    db=db,
+    authorization=True,
+    authorization_config=AuthorizationConfig(user_isolation=True),
+    cors_allowed_origins=[
+        "http://localhost:3000",
+        "https://app.yourproduct.com",
+        "https://os.agno.com",
+    ],
+)
 ```
 
-AgentOS validates the token before any agent code runs and injects `user_id`, `session_id`, and scope claims into the run. RBAC scopes are enforced per endpoint.
+AgentOS validates the token before agent code runs. The JWT `sub` pins `user_id`, and the `scopes` claim drives RBAC. An optional `session_id` claim overrides the form value; otherwise the client supplies the session ID with the request.
 
 ## Next steps
 
@@ -120,6 +169,6 @@ AgentOS validates the token before any agent code runs and injects `user_id`, `s
 
 ## Developer Resources
 
-- [Serve as an API](/features/api)
-- [AgentOS](/agent-os/connect-your-os)
+- [Agent API](/features/api)
+- [Connect your AgentOS](/agent-os/connect-your-os)
 - [Deploy](/deploy/introduction)

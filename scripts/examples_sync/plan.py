@@ -110,6 +110,53 @@ NAV_SEEDS = {
 SIM_ACCEPT = 0.55   # basename match: accept relocation at/above this ratio
 KNOWLEDGE_REDIRECT_SIM = 0.5
 
+# Reserve explicit redirect overrides for retired routes without tracked page
+# content. Tracked pages remain live pages and must not be listed here.
+CANONICAL_REDIRECT_OVERRIDES: tuple[tuple[str, str], ...] = ()
+REDIRECT_SOURCE_SLUGS = {source for source, _ in CANONICAL_REDIRECT_OVERRIDES}
+
+# These shipped routes own tracked content outside the current navigation.
+# Preserve them as pages instead of classifying them as deletion candidates.
+PRESERVED_TRACKED_PAGE_SLUGS = {
+    "examples/agent-os/factories/agent/hitl-factory",
+    "examples/agent-os/factories/agent/jwt-role-factory",
+    "examples/integrations/rag/overview",
+    "examples/integrations/rag/agentic-rag-infinity-reranker",
+    "examples/integrations/rag/agentic-rag-with-lightrag",
+    "examples/integrations/rag/local-rag-langchain-qdrant",
+    "examples/reasoning/models/xai/overview",
+}
+
+# These examples landed on docs main after the pinned v2.7.2 source tag. Keep
+# their shipped pages while this sync remains pinned to that tag. The strict
+# source-field and navigation assertions make a renamed or replaced page fail
+# closed instead of silently bypassing source validation.
+POST_TAG_CURATED_SOURCE_OVERRIDES = {
+    "examples/agent-os/dbs/valkey-db": "05_agent_os/dbs/valkey_db.py",
+    "examples/integrations/observability/the-context-company": "observability/the_context_company.py",
+    "examples/storage/valkey/valkey-for-agent": "06_storage/valkey/valkey_for_agent.py",
+    "examples/storage/valkey/valkey-for-team": "06_storage/valkey/valkey_for_team.py",
+    "examples/storage/valkey/valkey-for-workflow": "06_storage/valkey/valkey_for_workflow.py",
+    "examples/tools/tavily-tools-advanced": "91_tools/tavily_tools_advanced.py",
+}
+
+# These generated examples were updated on docs main after the pinned source
+# tag while their cookbook paths continued to exist. Preserve the shipped
+# pages until the sync target advances past v2.7.2, otherwise regeneration
+# would restore the older callback API from the pinned source.
+POST_TAG_EXISTING_SOURCE_OVERRIDES = {
+    "examples/agent-os/workflow/customer-research-workflow-parallel":
+        "05_agent_os/workflow/customer_research_workflow_parallel.py",
+    "examples/workflows/advanced-concepts/session-state/state-in-condition":
+        "04_workflows/06_advanced_concepts/session_state/state_in_condition.py",
+    "examples/workflows/advanced-concepts/session-state/state-in-function":
+        "04_workflows/06_advanced_concepts/session_state/state_in_function.py",
+    "examples/workflows/advanced-concepts/session-state/state-in-router":
+        "04_workflows/06_advanced_concepts/session_state/state_in_router.py",
+    "examples/workflows/cel-expressions/condition/cel-session-state":
+        "04_workflows/07_cel_expressions/condition/cel_session_state.py",
+}
+
 # ---------------------------------------------------------------------------
 # Parsing helpers
 # ---------------------------------------------------------------------------
@@ -131,20 +178,36 @@ def parse_page(text: str) -> dict:
     page["mangled_fence"] = mangled
 
     # source ref, in priority order:
-    # 1. `source: cookbook/...` frontmatter (written by generate.py; its
-    #    presence marks the page as machine-generated, never curated)
-    # 2. legacy run-block heuristic: cd + python inside the same bash block
+    # 1. `curated_source: cookbook/...` binds one curated code fence to source
+    # 2. `source: cookbook/...` marks a fully generated page
+    # 3. run-block heuristic: a root-relative cookbook command, or cd + python
+    #    inside the same bash block. Mintlify Steps indent their code fences.
     page["src_field"] = False
+    page["curated_source"] = False
+    cm = re.search(r"^curated_source: cookbook/(\S+)\s*$", page["frontmatter"], re.M)
+    if cm:
+        page["ref"] = cm.group(1)
+        page["curated_source"] = True
     sm = re.search(r"^source: cookbook/(\S+)\s*$", page["frontmatter"], re.M)
     if sm:
         page["ref"] = sm.group(1)
         page["src_field"] = True
     import posixpath
-    for block in re.findall(r"^```bash\s*\n(.*?)^```\s*$", body, re.M | re.S):
+    for block in re.findall(
+        r"^[ \t]*```bash[^\n]*\n(.*?)^[ \t]*```[ \t]*$", body, re.M | re.S
+    ):
         if page["ref"]:
             break
-        cd = re.search(r"^cd agno/cookbook/(\S+)", block, re.M)
-        py = re.search(r"^(?:python|python3)\s+(\S+\.py)\s*$", block, re.M)
+        root_py = None
+        if page["code"] is None:
+            root_py = re.search(
+                r"^[ \t]*(?:python|python3)\s+cookbook/(\S+\.py)\s*$", block, re.M
+            )
+        if root_py:
+            page["ref"] = root_py.group(1)
+            break
+        cd = re.search(r"^[ \t]*cd agno/cookbook/(\S+)", block, re.M)
+        py = re.search(r"^[ \t]*(?:python|python3)\s+(\S+\.py)\s*$", block, re.M)
         if cd and py:
             arg = py.group(1)
             if arg.startswith("cookbook/"):
@@ -370,6 +433,13 @@ def main() -> None:
         info["in_nav"] = slug in nav_slugs
         pages[slug] = info
 
+    missing_preserved_pages = PRESERVED_TRACKED_PAGE_SLUGS - pages.keys()
+    if missing_preserved_pages:
+        raise RuntimeError(
+            "preserved tracked page is missing: "
+            + ", ".join(sorted(missing_preserved_pages))
+        )
+
     # inbound links (to judge orphans)
     linked: set[str] = set()
     link_re = re.compile(r"\(/(examples/[a-z0-9\-/]+)[)#]")
@@ -384,6 +454,8 @@ def main() -> None:
         return info["slug"].endswith("/overview") or (info["code"] is None and info["ref"] is None)
 
     def is_curated(info) -> bool:
+        if info.get("curated_source"):
+            return True
         if info.get("src_field"):
             return False  # `source:` frontmatter marks a generated page
         if info["mangled_fence"]:
@@ -420,6 +492,58 @@ def main() -> None:
             "in_nav": info["in_nav"],
             "group": list(nav_group_of.get(slug, ())),
         }
+        post_tag_source = POST_TAG_CURATED_SOURCE_OVERRIDES.get(slug)
+        if post_tag_source is not None:
+            assert info["in_nav"], f"post-tag curated page left navigation: {slug}"
+            assert info["ref"] == post_tag_source, (
+                f"post-tag curated source changed: {slug}: {info['ref']!r} != {post_tag_source!r}"
+            )
+            assert post_tag_source not in cb_files, (
+                f"post-tag source now exists in the pinned source tree; remove the override: {slug}"
+            )
+            entry.update({
+                "class": "PRESERVE_CURATED",
+                "subtype": "post-tag-source",
+                "cookbook_path": post_tag_source,
+                "note": "shipped after the pinned source tag; preserve the upstream page",
+            })
+            results.append(entry)
+            continue
+        post_tag_existing_source = POST_TAG_EXISTING_SOURCE_OVERRIDES.get(slug)
+        if post_tag_existing_source is not None:
+            assert info["in_nav"], f"post-tag source update left navigation: {slug}"
+            assert info["ref"] == post_tag_existing_source, (
+                f"post-tag source update changed: {slug}: "
+                f"{info['ref']!r} != {post_tag_existing_source!r}"
+            )
+            assert post_tag_existing_source in cb_files, (
+                f"post-tag source update is absent from the pinned source tree: {slug}"
+            )
+            entry.update({
+                "class": "PRESERVE_CURATED",
+                "subtype": "post-tag-source-update",
+                "cookbook_path": post_tag_existing_source,
+                "note": "source update shipped after the pinned tag; preserve the upstream page",
+            })
+            results.append(entry)
+            continue
+        if slug in PRESERVED_TRACKED_PAGE_SLUGS:
+            entry.update({
+                "class": "PRESERVE_CURATED",
+                "subtype": "tracked-page",
+                "note": "tracked page retained outside navigation",
+            })
+            results.append(entry)
+            continue
+        if slug in REDIRECT_SOURCE_SLUGS:
+            entry.update({
+                "class": "PRESERVE_CURATED",
+                "subtype": "redirect-source",
+                "in_nav": False,
+                "note": "preserved hidden source for an explicit canonical redirect",
+            })
+            results.append(entry)
+            continue
         if slug.startswith("examples/knowledge/") and not info.get("src_field"):
             # Legacy (pre-restructure) knowledge page: handled in the
             # restructure pass. Generated pages (`source:` frontmatter)
@@ -478,9 +602,20 @@ def main() -> None:
             h = content_hash(code) if code else None
             if h and h in cb_hash:
                 new_ref = sorted(cb_hash[h])[0]
-                entry.update({"class": "REMAP_REGEN", "cookbook_path": None,
-                              "new_cookbook_path": new_ref, "similarity": 1.0,
-                              "note": "no run block; source found by content match"})
+                if is_curated(info):
+                    # Exact source identity does not make a hand-written
+                    # container safe to regenerate. Curated pages can wrap an
+                    # exact first fence with additional tabs, setup, or
+                    # explanation that generation would discard. Still claim
+                    # the matched source so it is not proposed as a NEW page.
+                    entry.update({"class": "PRESERVE_CURATED",
+                                  "cookbook_path": new_ref,
+                                  "similarity": 1.0,
+                                  "note": "exact source fence inside a curated page"})
+                else:
+                    entry.update({"class": "REMAP_REGEN", "cookbook_path": None,
+                                  "new_cookbook_path": new_ref, "similarity": 1.0,
+                                  "note": "no run block; source found by content match"})
                 claimed.setdefault(new_ref, slug)
             elif is_curated(info) and (info["in_nav"] or slug in linked):
                 entry.update({"class": "PRESERVE_CURATED"})
@@ -583,7 +718,7 @@ def main() -> None:
             continue
         slug = slug_for(rel)
         e = entry_by_slug.get(slug)
-        if e and e["class"] != "DELETE":
+        if e and e["class"] != "DELETE" and e.get("subtype") != "redirect-source":
             claimed[rel] = slug
             if not e.get("cookbook_path") and not e.get("new_cookbook_path"):
                 e["new_cookbook_path"] = rel
@@ -707,7 +842,7 @@ def main() -> None:
                 return cand
         return "examples/introduction"
 
-    redirects = []
+    redirects_by_source: dict[str, str] = {}
     for e in results:
         if e["class"] != "DELETE":
             continue
@@ -716,13 +851,46 @@ def main() -> None:
         dest = e.get("redirect_to") or fallback_dest(e["slug"])
         if dest not in live:  # never redirect to a dead page
             dest = fallback_dest(e["slug"])
-        redirects.append({"source": "/" + e["slug"], "destination": "/" + dest})
-    redirects.sort(key=lambda r: r["source"])
+        source = "/" + e["slug"]
+        if source in redirects_by_source:
+            raise RuntimeError(f"duplicate generated redirect source: {source}")
+        redirects_by_source[source] = "/" + dest
+
+    override_sources = [source for source, _ in CANONICAL_REDIRECT_OVERRIDES]
+    if len(override_sources) != len(set(override_sources)):
+        raise RuntimeError("duplicate source in CANONICAL_REDIRECT_OVERRIDES")
+    for source, dest in CANONICAL_REDIRECT_OVERRIDES:
+        if dest not in live:
+            raise RuntimeError(
+                f"canonical redirect destination is not live: /{source} -> /{dest}"
+            )
+        # Explicit canonical redirects replace any fallback selected above and
+        # also emit for preserved hidden sources that are not DELETE entries.
+        redirects_by_source["/" + source] = "/" + dest
+
+    shadowed_redirects = sorted(
+        source.removeprefix("/")
+        for source in redirects_by_source
+        if source.removeprefix("/") in live
+    )
+    if shadowed_redirects:
+        raise RuntimeError(
+            "generated redirects shadow retained pages: "
+            + ", ".join(shadowed_redirects)
+        )
+
+    redirects = [
+        {"source": source, "destination": redirects_by_source[source]}
+        for source in sorted(redirects_by_source)
+    ]
+    if len(redirects) != len({redirect["source"] for redirect in redirects}):
+        raise RuntimeError("duplicate redirect source in output")
 
     # ---- outputs -----------------------------------------------------------
     counts: dict[str, int] = {}
     for e in results:
         counts[e["class"]] = counts.get(e["class"], 0) + 1
+    counts.setdefault("DELETE", 0)
     counts["NEW"] = len(new_entries) + len(knowledge_plan["new_tree"])
 
     plan = {

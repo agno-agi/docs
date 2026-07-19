@@ -1,67 +1,76 @@
 ---
 title: Beta Features
-description: Enable experimental Anthropic beta features in Agno agents.
+description: Send Anthropic beta headers and their matching request configuration with Agno.
 ---
 
-Anthropic's `betas` are experimental features extending the capabilities of Claude models.
-
-They are supported via the `betas` parameter when initializing the `Claude` model:
-
-```python
+```python betas.py
 from agno.agent import Agent
 from agno.models.anthropic import Claude
+
+
+def lookup_temperature(city: str) -> str:
+    temperatures = {
+        "London": "18 C",
+        "Paris": "21 C",
+        "Tokyo": "25 C",
+    }
+    return temperatures.get(city, "No reading available")
+
 
 agent = Agent(
     model=Claude(
-        # Activate the context management beta
+        id="claude-sonnet-4-5-20250929",
         betas=["context-management-2025-06-27"],
+        context_management={
+            "edits": [
+                {
+                    "type": "clear_tool_uses_20250919",
+                    "trigger": {"type": "tool_uses", "value": 2},
+                    "keep": {"type": "tool_uses", "value": 1},
+                }
+            ]
+        },
     ),
+    tools=[lookup_temperature],
 )
+
+if __name__ == "__main__":
+    agent.print_response(
+        "Call lookup_temperature separately for London, Paris, and Tokyo, then compare the readings."
+    )
 ```
 
-## Example
+Agno passes `betas` to the Anthropic SDK's beta Messages API. Use the exact beta name from the feature documentation and include every request field that the feature requires. An unsupported beta returns a `400` response. Anthropic has also retired specific beta headers by ignoring them, so the absence of an error does not prove that a feature is active.
 
-```python
-import anthropic
-from agno.agent import Agent
-from agno.models.anthropic import Claude
+The example pairs the context-editing beta with its required `context_management` body. A beta header changes an API request; it does not add tools or external data access by itself.
 
-# Setup the beta features we want to use
-betas = ["context-1m-2025-08-07"]
-model = Claude(betas=betas)
-
-# Note: you can see all beta features available in your Anthropic version like this:
-all_betas = anthropic.types.AnthropicBetaParam
-print("\n=== All available Anthropic beta features ===")
-beta_lines = "\n- ".join(str(b) for b in all_betas.__args__[1].__args__)
-print(f"- {beta_lines}")
-print("=============================================\n")
-
-agent = Agent(model=model, debug_mode=True)
-
-# The beta features are now activated, the model will have access to use them.
-agent.print_response("What is the weather in Tokyo?")
-```
-
-## Usage
+## Run the Example
 
 <Steps>
   <Snippet file="create-venv-step.mdx" />
 
-  <Step title="Set your API key">
-    ```bash
-    export ANTHROPIC_API_KEY=xxx
-    ```
-  </Step>
-
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U anthropic agno
+    uv pip install -U "agno[anthropic]"
     ```
   </Step>
 
-  <Step title="Run Agent">
-    Save the example above as `betas.py` and run:
+  <Step title="Set your API key">
+    <CodeGroup>
+
+    ```bash Mac/Linux
+    export ANTHROPIC_API_KEY="your_anthropic_api_key"
+    ```
+
+    ```powershell Windows
+    $Env:ANTHROPIC_API_KEY="your_anthropic_api_key"
+    ```
+
+    </CodeGroup>
+  </Step>
+
+  <Step title="Save and run">
+    Save the example as `betas.py`, then run:
 
     ```bash
     python betas.py
@@ -69,17 +78,21 @@ agent.print_response("What is the weather in Tokyo?")
   </Step>
 </Steps>
 
-## Natively Supported Beta Features
+## Features That Require Beta Headers
 
-Some beta features need additional configuration. The Context Management beta requires you to activate it with the `betas` parameter and configure edits with the `context_management` parameter. For Agent Skills, setting the `skills` parameter is enough. Agno adds the required betas automatically.
+| Feature | Beta | Agno Configuration |
+| --- | --- | --- |
+| [Context editing](/models/providers/native/anthropic/usage/context-management) | `context-management-2025-06-27` | Set `betas` and `context_management` |
+| [Files API](/models/providers/native/anthropic/usage/file-upload) | `files-api-2025-04-14` | Send the beta when uploading or referencing an Anthropic file |
+| [Agent Skills](/models/providers/native/anthropic/usage/skills) | `skills-2025-10-02` | Set `skills`; Agno adds the Skills beta and the legacy code-execution beta |
+| [MCP connector](https://platform.claude.com/docs/en/agents-and-tools/mcp-connector) | `mcp-client-2025-04-04` | Set `betas` and `mcp_servers` |
 
-You can check how to use each one of these beta features in our docs.
+Beta names and availability can change. Check Anthropic's [beta-header documentation](https://platform.claude.com/docs/en/api/beta-headers) before enabling one.
 
-Here are the ones supported natively with Agno:
+## Related Generally Available Features
 
-- [Context Management](/models/providers/native/anthropic/usage/context-management)
-- [Code Execution](/models/providers/native/anthropic/usage/code-execution)
-- [File Upload](/models/providers/native/anthropic/usage/file-upload)
-- [Prompt Caching](/models/providers/native/anthropic/usage/prompt-caching)
-- [Agent Skills](/models/providers/native/anthropic/usage/skills)
-- [Web Fetch](/models/providers/native/anthropic/usage/web-fetch)
+The current versions of these Anthropic features do not require a beta header:
+
+- [Code execution](/models/providers/native/anthropic/usage/code-execution)
+- [Prompt caching](/models/providers/native/anthropic/usage/prompt-caching)
+- [Web fetch](/models/providers/native/anthropic/usage/web-fetch)

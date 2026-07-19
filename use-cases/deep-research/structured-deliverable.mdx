@@ -1,6 +1,6 @@
 ---
 title: "Structured deliverable"
-description: "End the pipeline in a decision, not a wall of text: typed output, conviction, and citations."
+description: "End the pipeline in a typed decision: the call, the conviction, the rationale, and the citations."
 ---
 
 Research that ends in prose is hard to act on and harder to audit. The last step of a research pipeline should produce a decision with a fixed shape: the call, the conviction, the reasoning, and what it was based on. Give the final agent an `output_schema` and it returns a validated object.
@@ -18,7 +18,7 @@ class Decision(BaseModel):
     conviction: Literal["low", "medium", "high"] = Field(..., description="Confidence in the call")
     allocation_usd: float = Field(..., description="Dollar allocation, 0 if not BUY")
     rationale: str = Field(..., description="Why, referencing the analyst inputs")
-    citations: List[str] = Field(default_factory=list, description="Sources and prior memos used")
+    citations: List[str] = Field(..., description="Sources and prior memos used")
 
 
 chair = Agent(
@@ -43,9 +43,9 @@ result = chair.run(briefing(market, fundamentals, technicals, risk)).content
 #          citations=['memo:NVDA-2024Q3', 'research:semiconductors'])
 ```
 
-Because `output_schema=Decision`, the run returns a validated `Decision`, not prose. `result.call` and `result.allocation_usd` are safe to act on without parsing text.
+Because `output_schema=Decision`, the run returns a validated `Decision`. Downstream code reads `result.call` and `result.allocation_usd` without parsing text. If the model's output fails validation, Agno logs a warning and `content` stays a string, so check the type before acting on it.
 
-The chair takes no tools. Its only job is to weigh the specialists' inputs and commit to a call. Constraining the output to a schema is what makes the result routable: a downstream system can act on `call` and `allocation_usd` without parsing prose.
+The chair takes no tools. Its only job is to weigh the specialists' inputs and commit to a call.
 
 ## Two artifacts, two purposes
 
@@ -64,7 +64,7 @@ The memo is written by a dedicated agent with file tools and a fixed template, t
 |-------|------------------------|
 | `conviction` | Lets you threshold: act on high, queue medium for review |
 | `rationale` | The reasoning trail, required not optional |
-| `citations` | Ties the call back to grounded sources, not the model's prior |
+| `citations` | Carries source identifiers for downstream verification |
 
 A decision without its citations is unverifiable. Require them in the schema and the instructions.
 

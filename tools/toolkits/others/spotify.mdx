@@ -1,29 +1,62 @@
 ---
 title: Spotify
+description: "Enable an Agent to search Spotify for tracks, artists, and albums with a read-only toolkit configuration."
 ---
 
-**SpotifyTools** enable an Agent to search for songs and manage playlists on Spotify.
+**SpotifyTools** enable an Agent to search Spotify's catalog and access authenticated-user playback data.
 
 ## Prerequisites
 
-The following example requires a Spotify access token from [Spotify](https://developer.spotify.com/). No extra library is needed; the toolkit uses `httpx`, which is already a dependency of Agno.
+The example requires a Spotify access token from [Spotify](https://developer.spotify.com/) and an Anthropic API key. It enables only catalog search, so the Spotify token does not need playlist modification scopes.
+
+```shell
+uv pip install -U agno anthropic
+```
 
 ```shell
 export SPOTIFY_TOKEN=***
+export ANTHROPIC_API_KEY=***
 ```
+
+<Warning>
+Spotify changed several endpoints and response fields for Development Mode apps in February 2026. Extended Quota Mode apps are unaffected. Agno 2.7.2 still uses the earlier paths and fields, so the affected methods below are unavailable to Development Mode apps. Use the read-only example until `SpotifyTools` is updated. See Spotify's [February 2026 migration guide](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide).
+</Warning>
 
 ## Example
 
-The following agent will search for songs using Spotify API.
+The following agent searches Spotify for tracks and returns their names and URIs.
 
 ```python cookbook/91_tools/spotify_tools.py
 from os import getenv
 
 from agno.agent import Agent
+from agno.models.anthropic import Claude
 from agno.tools.spotify import SpotifyTools
 
-agent = Agent(tools=[SpotifyTools(access_token=getenv("SPOTIFY_TOKEN"))])
-agent.print_response("Search for songs by 'Taylor Swift'")
+# Your Spotify access token (get one from https://developer.spotify.com)
+SPOTIFY_TOKEN = getenv("SPOTIFY_TOKEN")
+
+# Initialize the Spotify toolkit
+spotify = SpotifyTools(
+    access_token=SPOTIFY_TOKEN,
+    default_market="US",
+    include_tools=["search_tracks"],
+)
+
+# Create an agent with the Spotify toolkit
+agent = Agent(
+    name="Spotify DJ",
+    model=Claude(id="claude-sonnet-5"),
+    tools=[spotify],
+    instructions=[
+        "Search Spotify for tracks that match the request.",
+        "Return each track's name, artists, and Spotify URI.",
+    ],
+    markdown=True,
+)
+
+response = agent.run("Find five tracks by The Weeknd.")
+print(response.content)
 ```
 
 ## Toolkit Params
@@ -39,20 +72,20 @@ agent.print_response("Search for songs by 'Taylor Swift'")
 | Function                      | Description                                         |
 | ----------------------------- | --------------------------------------------------- |
 | `search_tracks`               | Search for tracks on Spotify                        |
-| `search_playlists`            | Search for playlists on Spotify                     |
+| `search_playlists`            | Unavailable to Development Mode apps in Agno 2.7.2 because it expects the earlier playlist response fields |
 | `search_artists`              | Search for artists on Spotify                       |
 | `search_albums`               | Search for albums on Spotify                        |
-| `get_user_playlists`          | Get playlists for a specific user                   |
+| `get_user_playlists`          | Unavailable to Development Mode apps in Agno 2.7.2 because it expects the earlier response fields |
 | `get_track_recommendations`   | Get track recommendations based on seed data        |
-| `get_artist_top_tracks`       | Get top tracks for a specific artist                |
+| `get_artist_top_tracks`       | Unavailable to Development Mode apps because Spotify removed the endpoint |
 | `get_album_tracks`            | Get tracks from a specific album                    |
 | `get_my_top_tracks`           | Get current user's top tracks                       |
 | `get_my_top_artists`          | Get current user's top artists                      |
-| `create_playlist`             | Create a new playlist for the user                  |
-| `add_tracks_to_playlist`      | Add tracks to an existing playlist                  |
-| `get_playlist`                | Get details of a specific playlist                  |
+| `create_playlist`             | Unavailable to Development Mode apps in Agno 2.7.2 because it calls the removed user-specific endpoint |
+| `add_tracks_to_playlist`      | Unavailable to Development Mode apps in Agno 2.7.2 because it calls the removed `/tracks` endpoint |
+| `get_playlist`                | For Development Mode apps, use `include_tracks=False`; item parsing expects the earlier field names |
 | `update_playlist_details`     | Update playlist name, description, or other details |
-| `remove_tracks_from_playlist` | Remove tracks from an existing playlist             |
+| `remove_tracks_from_playlist` | Unavailable to Development Mode apps in Agno 2.7.2 because it calls the removed `/tracks` endpoint |
 | `get_current_user`            | Get current user's profile information              |
 | `play_track`                  | Start or resume playback (requires an active Spotify session) |
 | `get_currently_playing`       | Get information about currently playing track       |

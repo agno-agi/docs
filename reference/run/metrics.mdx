@@ -1,19 +1,21 @@
 ---
 title: Metrics
 sidebarTitle: Metrics
-description: "Token usage, timing, and per-model breakdown for runs, messages, sessions, and tool calls."
+description: "Token usage and timing for agent, team, and workflow runs, messages, sessions, and tool calls."
 mode: wide
 ---
 
 | Class | Used On | Purpose |
 |-------|---------|---------|
 | `RunMetrics` | `RunOutput.metrics`, `TeamRunOutput.metrics` | Run-level totals with per-model breakdown |
+| `WorkflowMetrics` | `WorkflowRunOutput.metrics` | Per-executor step metrics and total workflow duration |
+| `StepMetrics` | Inside `WorkflowMetrics.steps` | `RunMetrics` for one agent or team step executor |
 | `MessageMetrics` | `Message.metrics` | Per-API-call tokens and timing |
-| `SessionMetrics` | `agent.get_session_metrics()` | Aggregated across all runs in a session |
+| `SessionMetrics` | Agent, team, and workflow `get_session_metrics()` methods | Aggregated across all runs in a session |
 | `ModelMetrics` | Inside `RunMetrics.details` | Per-model aggregate by `(provider, id)` |
 | `ToolCallMetrics` | `ToolExecution.metrics` | Tool execution timing |
 
-All metric classes except `ToolCallMetrics` inherit from `BaseMetrics`, which provides the shared token and cost fields.
+`RunMetrics`, `MessageMetrics`, `SessionMetrics`, and `ModelMetrics` inherit from `BaseMetrics`, which provides the shared token and cost fields.
 
 ## BaseMetrics
 
@@ -68,6 +70,25 @@ Eval agent metrics are prefixed with `eval_`. If an eval agent uses model types 
 `Metrics` is preserved as a backward-compatible alias for `RunMetrics`. Both `from agno.metrics import Metrics` and `from agno.models.metrics import Metrics` still work.
 </Note>
 
+## WorkflowMetrics
+
+`WorkflowRunOutput.metrics` uses `WorkflowMetrics`. Each entry in `steps` wraps the `RunMetrics` produced by an agent or team step executor.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `steps` | `Dict[str, StepMetrics]` | Required | Agent and team executor metrics keyed by step name. |
+| `timer` | `Optional[Timer]` | `None` | Internal timer that computes `duration`. Excluded from `to_dict()`. |
+| `duration` | `Optional[float]` | `None` | Total workflow execution time (seconds). |
+
+### StepMetrics
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `step_name` | `str` | Required | Step name. |
+| `executor_type` | `str` | Required | Executor type, such as `"agent"` or `"team"`. |
+| `executor_name` | `str` | Required | Executor name. |
+| `metrics` | `Optional[RunMetrics]` | `None` | Run metrics for the step executor. |
+
 ## MessageMetrics
 
 Used on `Message.metrics`. Per-API-call metrics. Includes all `BaseMetrics` fields plus:
@@ -81,7 +102,7 @@ Used on `Message.metrics`. Per-API-call metrics. Includes all `BaseMetrics` fiel
 
 ## SessionMetrics
 
-Returned by `agent.get_session_metrics()`. Aggregated across all runs in a session. Includes all `BaseMetrics` fields plus:
+Returned by `agent.get_session_metrics()`, `team.get_session_metrics()`, and `workflow.get_session_metrics()`. Aggregated across all runs in a session. Includes all `BaseMetrics` fields plus:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|

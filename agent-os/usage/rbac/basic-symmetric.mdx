@@ -1,6 +1,7 @@
 ---
 title: Basic RBAC (Symmetric)
 sidebarTitle: Basic (Symmetric)
+description: "AgentOS with RBAC enabled using JWT HS256 and a shared secret."
 ---
 
 Enable RBAC with JWT token authentication using HS256 and a shared secret. The same secret signs tokens and verifies them.
@@ -20,8 +21,9 @@ Enable RBAC with JWT token authentication using HS256 and a shared secret. The s
     from agno.os.config import AuthorizationConfig
     from agno.tools.hackernews import HackerNewsTools
 
-    # JWT Secret (use environment variable in production)
-    JWT_SECRET = os.getenv("JWT_VERIFICATION_KEY", "your-secret-key-at-least-256-bits-long")
+    JWT_SECRET = os.getenv("JWT_VERIFICATION_KEY")
+    if not JWT_SECRET:
+        raise RuntimeError("Set JWT_VERIFICATION_KEY before starting AgentOS")
 
     # Setup database
     db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
@@ -96,14 +98,16 @@ Enable RBAC with JWT token authentication using HS256 and a shared secret. The s
     ```
   </Step>
 
-  <Step title="Export your OpenAI API key">
+  <Step title="Export API and JWT keys">
     <CodeGroup>
     ```bash Mac/Linux
     export OPENAI_API_KEY="your_openai_api_key_here"
+    export JWT_VERIFICATION_KEY="$(python -c 'import secrets; print(secrets.token_hex(32))')"
     ```
 
     ```bash Windows
     $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    $Env:JWT_VERIFICATION_KEY = python -c "import secrets; print(secrets.token_hex(32))"
     ```
     </CodeGroup>
   </Step>
@@ -124,7 +128,7 @@ Enable RBAC with JWT token authentication using HS256 and a shared secret. The s
     ```bash
     python basic_rbac.py
     ```
-    
+
     The server will start and print test JWT tokens to the console.
   </Step>
 
@@ -132,10 +136,10 @@ Enable RBAC with JWT token authentication using HS256 and a shared secret. The s
     ```bash
     # Set the token from console output
     export TOKEN="<user_token_from_console>"
-    
+
     # List agents
     curl -H "Authorization: Bearer $TOKEN" http://localhost:7777/agents
-    
+
     # Run an agent
     curl -X POST -H "Authorization: Bearer $TOKEN" \
       -F "message=Search for latest AI news" \
@@ -144,3 +148,10 @@ Enable RBAC with JWT token authentication using HS256 and a shared secret. The s
   </Step>
 
 </Steps>
+
+## Next Steps
+
+- [Basic RBAC (Asymmetric)](/agent-os/usage/rbac/basic-asymmetric)
+- [Advanced Scopes](/agent-os/usage/rbac/advanced-scopes)
+- [Per-Agent Permissions](/agent-os/usage/rbac/per-agent-permissions)
+- [RBAC Documentation](/agent-os/security/authorization/overview)

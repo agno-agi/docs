@@ -3,7 +3,7 @@ title: "Quality pipeline"
 description: "Two labelers from different providers, a reviewer that diffs them, and an adjudicator that resolves disagreement."
 ---
 
-A single model is one point of failure. Run two labelers from different providers, diff their outputs, and adjudicate only where they disagree. The disagreement record is the audit trail.
+Run two labelers from different providers, compare their outputs, and adjudicate where they disagree. Persist the disagreement report when you need an audit trail.
 
 ```python
 from typing import List, Optional
@@ -46,7 +46,8 @@ reviewer = Agent(
     model=Claude(id="claude-opus-4-7"),
     instructions=(
         "Compare two labelers' Contact outputs field by field. A field "
-        "needs adjudication when both are non-null but differ. Set "
+        "needs adjudication whenever the values differ, including when one "
+        "value is null. Set "
         "needs_adjudication=true if any field does."
     ),
     output_schema=DisagreementReport,
@@ -83,15 +84,15 @@ def label_with_quality_review(text: str) -> FinalLabel:
 
 ## The flow
 
-1. **Two labelers, two providers.** Provider diversity is the signal. When Gemini and Anthropic disagree, that is where the document is ambiguous.
+1. **Two labelers, two providers.** Provider disagreement identifies records that need review.
 2. **Reviewer diffs them.** It emits one `FieldDisagreement` per conflicting field and a single `needs_adjudication` flag. Agreement short-circuits the expensive step.
 3. **Adjudicator runs only on disagreement.** It re-reads the original input with both labels and the reviewer's report, then returns the final record.
 
-The `DisagreementReport` is worth persisting. Disagreement rate by field, by vendor, and over time tells you where the schema or the prompt is weak.
+Agreement does not prove that a label is correct. Measure this pipeline on a labeled validation set. Persisted disagreement rates by field, provider, and prompt version can identify areas for review.
 
 ## Production composition
 
-The example above is three sequential calls so the pattern is readable. For a million-document job, wrap labelers in a `Parallel` step and gate the adjudicator behind a `Condition` in a `Workflow`. See [parallel workflows](/workflows/workflow-patterns/parallel-workflow) and [conditional workflows](/workflows/workflow-patterns/conditional-workflow).
+The example above runs the agents sequentially so the pattern is readable. For a million-document job, wrap labelers in a `Parallel` step and gate the adjudicator behind a `Condition` in a `Workflow`. See [parallel workflows](/workflows/workflow-patterns/parallel-workflow) and [conditional workflows](/workflows/workflow-patterns/conditional-workflow).
 
 ## Production checklist
 
@@ -99,11 +100,11 @@ Agno gives you the orchestration primitives. These concerns are yours to add.
 
 | Concern | What to add |
 |---------|-------------|
-| Rate limiting | Wrap `agent.arun` with a per-provider limiter, or front it with a gateway. Agno does not throttle outbound calls. |
+| Rate limiting | Wrap the agent call with a per-provider limiter, or front it with a gateway. Agno does not throttle outbound calls. |
 | Bounded concurrency | An `asyncio.Semaphore` around the batch fan-out. |
 | Dead-letter queue | Record failed item IDs and re-run them through a stricter pass. |
-| Idempotency | A deterministic `session_id` per item, so re-runs upsert instead of duplicate. |
-| Provider Batch APIs | For non-urgent jobs, call the provider batch endpoints directly for the discount. Not wrapped by Agno. |
+| Idempotency | A deterministic item ID and an output-store lookup before each run. Store results by item ID and prompt version. |
+| Provider Batch APIs | Call provider batch endpoints directly when the workload needs them. Agno does not wrap these APIs. |
 | Prompt versioning | Track a `prompt_version` in run metadata so historical labels stay joinable. |
 | Authoritative cost | `RunMetrics.cost` is populated only when the provider returns it. Attach a token-rate table downstream if you need exact numbers. |
 
@@ -111,7 +112,7 @@ Agno gives you the orchestration primitives. These concerns are yours to add.
 
 | Task | Guide |
 |------|-------|
-| Build the labelers | [Structured extraction](/use-cases/data-labeling/structured-extraction) |
+| Build the labelers | [Data extraction](/use-cases/data-labeling/structured-extraction) |
 | Compose as a workflow | [Workflows](/workflows/overview) |
 | Run agents concurrently | [Async execution](/agents/running-agents) |
 

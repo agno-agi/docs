@@ -1,11 +1,11 @@
 ---
 title: Database
 sidebarTitle: Database
-description: "Read and write access to SQL databases with privilege separation via separate engines."
+description: "Route SQL database reads and writes through separate SQLAlchemy engines."
 keywords: [context providers, database, sql, sqlalchemy, postgres, mysql, readonly]
 ---
 
-**DatabaseContextProvider** gives agents read/write access to any SQL database via SQLAlchemy. Two tools: `query_database` for reads, `update_database` for writes.
+**DatabaseContextProvider** routes database reads and writes through separate SQLAlchemy engines. It exposes `query_database` for reads and `update_database` for writes.
 
 ## Prerequisites
 
@@ -16,15 +16,28 @@ uv pip install -U psycopg2-binary  # PostgreSQL
 uv pip install -U pymysql          # MySQL
 ```
 
+<CodeGroup>
+```bash Mac/Linux
+export OPENAI_API_KEY="your_openai_api_key_here"
+```
+
+```bash Windows
+$Env:OPENAI_API_KEY="your_openai_api_key_here"
+```
+</CodeGroup>
+
 ## Example
 
 ```python
-from sqlalchemy import create_engine
-from agno.agent import Agent
-from agno.models.openai import OpenAIResponses
-from agno.context.database import DatabaseContextProvider
+import asyncio
 
-# Two engines: one read-only, one writable
+from sqlalchemy import create_engine
+
+from agno.agent import Agent
+from agno.context.database import DatabaseContextProvider
+from agno.models.openai import OpenAIResponses
+
+# Database roles enforce permissions for each engine.
 readonly_engine = create_engine("postgresql://reader:pass@localhost/mydb")
 sql_engine = create_engine("postgresql://writer:pass@localhost/mydb")
 
@@ -40,20 +53,26 @@ agent = Agent(
     instructions=db.instructions(),
 )
 
-await agent.aprint_response("How many orders were placed last month?")
+
+async def main() -> None:
+    await agent.aprint_response("How many orders were placed last month?")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 <Warning>
-**Both engines are required.** The read sub-agent uses `readonly_engine` exclusively. Even if the model tries to run a write query, the database connection physically cannot execute it.
+**Both engines are required.** The provider routes read requests to `readonly_engine` and write requests to `sql_engine`. Configure `readonly_engine` with database credentials restricted to SELECT operations and the allowed schemas. The `schema` parameter controls table discovery, not authorization for arbitrary SQL.
 </Warning>
 
 ## Provider Params
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `sql_engine` | `Engine` | required | SQLAlchemy engine for writes. |
-| `readonly_engine` | `Engine` | required | SQLAlchemy engine for reads. Use a read replica or a user with SELECT-only permissions. |
-| `schema` | `str \| None` | `None` | Scope queries to a specific schema. |
+| `sql_engine` | `Engine` | required | SQLAlchemy engine used by the write sub-agent. Its database credentials determine write permissions. |
+| `readonly_engine` | `Engine` | required | SQLAlchemy engine used by the read sub-agent. Use SELECT-only credentials restricted to the allowed schemas. |
+| `schema` | `str \| None` | `None` | Schema used when listing tables and describing columns. It does not authorize or restrict arbitrary SQL. |
 | `id` | `str` | `"database"` | Provider ID. Tools become `query_<id>` and `update_<id>`. |
 | `name` | `str \| None` | `None` | Display name. Defaults to `id` ("database"). |
 | `read_instructions` | `str \| None` | `None` | Custom instructions for the read sub-agent. |
@@ -67,19 +86,19 @@ await agent.aprint_response("How many orders were placed last month?")
 
 | Tool | Description |
 |------|-------------|
-| `query_database` | Run SELECT queries, describe tables, explore schema. Uses `readonly_engine`. |
-| `update_database` | Run INSERT/UPDATE/DELETE queries. Uses `sql_engine`. |
+| `query_database` | Answer database questions through the read sub-agent and `readonly_engine`. |
+| `update_database` | Apply database changes through the write sub-agent and `sql_engine`. |
 
 ## Privilege Separation
 
-The read and write sub-agents use **separate database connections**:
+The read and write sub-agents use separate database connections:
 
 ```
 query_database  → readonly_engine → read replica / SELECT-only user
 update_database → sql_engine      → writable connection
 ```
 
-This is infrastructure-level protection. The read sub-agent's connection cannot execute writes regardless of what SQL the model generates.
+The separate engines route each tool to the intended connection. Database roles enforce the boundary. Grant the reader role SELECT-only access to the required schemas, and grant the writer role only the write permissions it needs. The `schema` parameter helps the agent discover tables and columns but does not block cross-schema SQL.
 
 ## Multiple Databases
 
@@ -105,7 +124,7 @@ agent = Agent(
 # Agent sees: query_orders, update_orders, query_inventory, update_inventory
 ```
 
-## Read-only Mode
+## Read-only Tool Surface
 
 ```python
 db = DatabaseContextProvider(
@@ -115,6 +134,8 @@ db = DatabaseContextProvider(
 )
 # Agent only sees query_database
 ```
+
+`write=False` removes `update_database` from the agent's tools. It does not change the permissions of `readonly_engine`, so keep that engine restricted at the database level.
 
 ## Cookbook
 

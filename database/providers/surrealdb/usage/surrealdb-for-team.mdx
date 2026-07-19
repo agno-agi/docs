@@ -1,22 +1,28 @@
 ---
 title: SurrealDB for Team
 sidebarTitle: Team
-description: "Use SurrealDB as the storage backend for Teams with the SurrealDb class."
+description: Store team sessions and run history in SurrealDB with SurrealDb.
 ---
 
-Agno supports using SurrealDB as a storage backend for Teams using the `SurrealDb` class.
+`SurrealDb` stores a Team's sessions and run history in SurrealDB.
 
 ## Usage
 
-Run SurrealDB locally with the following command:
+Install dependencies:
+
+```shell
+uv pip install anthropic surrealdb ddgs
+```
+
+### Run SurrealDB
+
+Install [Docker Desktop](https://docs.docker.com/get-started/get-docker/), then start SurrealDB on port `8000`:
 
 ```bash
 docker run --rm --pull always -p 8000:8000 surrealdb/surrealdb:latest start --user root --pass root
 ```
 
 ```python surrealdb_for_team.py
-"""Run `uv pip install anthropic surrealdb ddgs` to install dependencies."""
-
 from typing import List
 
 from agno.agent import Agent
@@ -27,25 +33,32 @@ from agno.tools.hackernews import HackerNewsTools
 from agno.tools.websearch import WebSearchTools
 from pydantic import BaseModel
 
-# SurrealDB connection parameters
 SURREALDB_URL = "ws://localhost:8000"
 SURREALDB_USER = "root"
 SURREALDB_PASSWORD = "root"
 SURREALDB_NAMESPACE = "agno"
 SURREALDB_DATABASE = "surrealdb_for_team"
 
-creds = {"username": SURREALDB_USER, "password": SURREALDB_PASSWORD}
-db = SurrealDb(None, SURREALDB_URL, creds, SURREALDB_NAMESPACE, SURREALDB_DATABASE)
+credentials = {"username": SURREALDB_USER, "password": SURREALDB_PASSWORD}
+db = SurrealDb(
+    client=None,
+    db_url=SURREALDB_URL,
+    db_creds=credentials,
+    db_ns=SURREALDB_NAMESPACE,
+    db_db=SURREALDB_DATABASE,
+)
+
 
 class Article(BaseModel):
     title: str
     summary: str
     reference_links: List[str]
 
+
 hn_researcher = Agent(
     name="HackerNews Researcher",
     model=Claude(id="claude-sonnet-4-5-20250929"),
-    role="Gets top stories from hackernews.",
+    role="Gets top stories from HackerNews.",
     tools=[HackerNewsTools()],
 )
 
@@ -63,18 +76,18 @@ hn_team = Team(
     members=[hn_researcher, web_searcher],
     db=db,
     instructions=[
-        "First, search hackernews for what the user is asking about.",
+        "First, search HackerNews for what the user is asking about.",
         "Then, ask the web searcher to search for each story to get more information.",
-        "Finally, provide a thoughtful and engaging summary.",
+        "Finally, summarize each story and include its reference links.",
     ],
     output_schema=Article,
     markdown=True,
     show_members_responses=True,
 )
 
-hn_team.print_response("Write an article about the top 2 stories on hackernews")
+hn_team.print_response("Write an article about the top 2 stories on HackerNews")
 ```
 
-## Params
+## Parameters
 
 <Snippet file="db-surrealdb-params.mdx" />

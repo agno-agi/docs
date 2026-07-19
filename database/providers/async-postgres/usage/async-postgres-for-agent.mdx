@@ -1,21 +1,26 @@
 ---
 title: Async Postgres for Agent
 sidebarTitle: Agent
+description: Store agent sessions and run history asynchronously in PostgreSQL with AsyncPostgresDb.
 ---
 
-Agno supports using [PostgreSQL](https://www.postgresql.org/) asynchronously, with the `AsyncPostgresDb` class.
+`AsyncPostgresDb` stores an Agent's sessions and run history asynchronously in [PostgreSQL](https://www.postgresql.org/). Use async Agent methods such as `arun()` and `aprint_response()`.
 
 ## Usage
 
-Install the `sqlalchemy`, `psycopg`, and `openai` packages:
+Install Agno and the Postgres, model, and tool dependencies:
 
 ```shell
-uv pip install sqlalchemy psycopg openai
+uv pip install -U agno sqlalchemy "psycopg[binary]" openai ddgs
 ```
 
-### Run PgVector
+```shell
+export OPENAI_API_KEY="your_openai_api_key_here"
+```
 
-Install [docker desktop](https://docs.docker.com/desktop/install/mac-install/) and run **PgVector** on port **5532** using:
+### Run PostgreSQL
+
+Install [Docker Desktop](https://docs.docker.com/get-started/get-docker/), then start PostgreSQL with pgvector on port `5532`:
 
 ```bash
 docker run -d \
@@ -34,27 +39,39 @@ import asyncio
 
 from agno.agent import Agent
 from agno.db.postgres import AsyncPostgresDb
-from agno.tools.hackernews import HackerNewsTools
+from agno.tools.websearch import WebSearchTools
 
 db_url = "postgresql+psycopg_async://ai:ai@localhost:5532/ai"
 db = AsyncPostgresDb(db_url=db_url)
 
 agent = Agent(
     db=db,
-    tools=[HackerNewsTools()],
+    tools=[WebSearchTools()],
     add_history_to_context=True,
     add_datetime_to_context=True,
 )
 
+
 async def main():
-    """Run the agent queries in the same event loop"""
-    await agent.aprint_response("How many people live in Canada?")
-    await agent.aprint_response("What is their national anthem called?")
+    try:
+        await agent.aprint_response("How many people live in Canada?")
+        await agent.aprint_response("What is their national anthem called?")
+    finally:
+        await db.close()
+
 
 if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-## Params
+### Run the Example
+
+Save the code above as `async_postgres_for_agent.py`, then run:
+
+```bash
+python async_postgres_for_agent.py
+```
+
+## Parameters
 
 <Snippet file="db-async-postgres-params.mdx" />

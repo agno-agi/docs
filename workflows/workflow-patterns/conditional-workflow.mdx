@@ -1,11 +1,11 @@
 ---
 title: Conditional Workflow
-description: Deterministic branching based on input analysis or business rules
+description: Branch to configured steps based on an evaluator or business rule
 ---
 
-**Example Use-Cases**: Content type routing, topic-specific processing, quality-based decisions
+**Example use cases**: Content type routing, topic-specific processing, quality-based decisions
 
-Conditional workflows provide predictable branching logic while maintaining deterministic execution paths.
+A `Condition` selects a branch from an evaluator result. Steps within the selected branch run in their configured order.
 
 <img
   className="block dark:hidden"
@@ -20,21 +20,34 @@ Conditional workflows provide predictable branching logic while maintaining dete
 
 ## How It Works
 
-The `Condition` class evaluates a function and executes different steps based on the result:
+The `Condition` class runs its `evaluator` and executes different steps based on the result:
 
 - **If branch (`steps`)**: Executes when the evaluator returns `True`
 - **Else branch (`else_steps`)**: Executes when the evaluator returns `False` (optional)
 
 If the condition is `False` and no `else_steps` are provided, the condition is skipped and the workflow continues to the next step.
 
+The evaluator can be a Python function (sync or async), a boolean, or a [CEL expression](/examples/workflows/cel-expressions/condition/cel-basic) string.
+
 ## Basic Example
 
 ```python conditional_workflow.py
-from agno.workflow import Condition, Step, Workflow
+from agno.workflow import Condition, Step, StepInput, StepOutput, Workflow
 
-def is_tech_topic(step_input) -> bool:
-    topic = step_input.input.lower()
+
+def is_tech_topic(step_input: StepInput) -> bool:
+    topic = str(step_input.input).lower()
     return any(keyword in topic for keyword in ["ai", "tech", "software"])
+
+
+def research_technology(step_input: StepInput) -> StepOutput:
+    return StepOutput(content=f"Technology research for {step_input.input}")
+
+
+def create_analysis(step_input: StepInput) -> StepOutput:
+    prior = step_input.previous_step_content or "No technology branch was run"
+    return StepOutput(content=f"Analysis:\n{prior}")
+
 
 workflow = Workflow(
     name="Conditional Research",
@@ -42,10 +55,10 @@ workflow = Workflow(
         Condition(
             name="Tech Topic Check",
             evaluator=is_tech_topic,
-            steps=[Step(name="Tech Research", agent=tech_researcher)]
+            steps=[Step(name="Tech Research", executor=research_technology)],
         ),
-        Step(name="General Analysis", agent=general_analyst),
-    ]
+        Step(name="General Analysis", executor=create_analysis),
+    ],
 )
 
 workflow.print_response("Comprehensive analysis of AI and machine learning trends", markdown=True)
@@ -56,12 +69,26 @@ workflow.print_response("Comprehensive analysis of AI and machine learning trend
 Use `else_steps` to define an alternative execution path when the condition is `False`:
 
 ```python condition_with_else.py
-from agno.workflow import Condition, Step, Workflow
+from agno.workflow import Condition, Step, StepInput, StepOutput, Workflow
 
-def is_technical_issue(step_input) -> bool:
-    text = (step_input.input or "").lower()
+
+def is_technical_issue(step_input: StepInput) -> bool:
+    text = str(step_input.input or "").lower()
     tech_keywords = ["error", "bug", "crash", "not working", "api", "timeout"]
     return any(kw in text for kw in tech_keywords)
+
+
+def diagnose(step_input: StepInput) -> StepOutput:
+    return StepOutput(content=f"Technical diagnosis for: {step_input.input}")
+
+
+def general_support(step_input: StepInput) -> StepOutput:
+    return StepOutput(content=f"General support response for: {step_input.input}")
+
+
+def follow_up(step_input: StepInput) -> StepOutput:
+    return StepOutput(content=f"Follow-up:\n{step_input.previous_step_content}")
+
 
 workflow = Workflow(
     name="Customer Support Router",
@@ -71,19 +98,18 @@ workflow = Workflow(
             evaluator=is_technical_issue,
             # If branch: technical pipeline
             steps=[
-                Step(name="Diagnose", agent=diagnostic_agent),
-                Step(name="Engineer", agent=engineering_agent),
+                Step(name="Diagnose", executor=diagnose),
             ],
             # Else branch: general support
             else_steps=[
-                Step(name="GeneralSupport", agent=general_support_agent),
+                Step(name="GeneralSupport", executor=general_support),
             ],
         ),
-        Step(name="FollowUp", agent=followup_agent),
+        Step(name="FollowUp", executor=follow_up),
     ],
 )
 
-# Technical query -> executes Diagnose, Engineer, then FollowUp
+# Technical query -> executes Diagnose, then FollowUp
 workflow.print_response("My app keeps crashing with a timeout error")
 
 # Non-technical query -> executes GeneralSupport, then FollowUp

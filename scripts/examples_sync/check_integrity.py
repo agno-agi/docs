@@ -4,9 +4,10 @@
 Reads the plan from out/sync-plan.json (run plan.py first) and verifies:
   (a) frontmatter shape, fence balance, and source field on every generated page
   (b) every cookbook path referenced under examples/ exists in the cookbook
-  (c) pages the plan flagged as fence-mangled now carry the full cookbook source
-  (d) file inventory report (mdx count, stray non-mdx files, git status summary)
-  (e) PRESERVE_CURATED pages untouched (per git status)
+  (c) every generated page carries the complete, byte-matching cookbook source
+  (d) curated_source bindings carry the complete cookbook source
+  (e) file inventory report (mdx count, stray non-mdx files, git status summary)
+  (f) PRESERVE_CURATED pages untouched (per git status)
 
 Writes out/integrity-log.json; exits 1 if any check fails.
 
@@ -25,6 +26,9 @@ from collections import Counter
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import generate as gen  # noqa: E402
+
 DOCS_ROOT = HERE.parents[1]
 AGNO_ROOT = Path(os.environ.get("AGNO_REPO") or DOCS_ROOT / "agno")
 COOKBOOK = AGNO_ROOT / "cookbook"
@@ -64,19 +68,30 @@ def fences_balanced(text: str) -> bool:
     return open_len == 0
 
 
-def extract_first_code_block(text: str) -> str | None:
+def extract_python_blocks(text: str) -> list[tuple[str, str]]:
     lines = text.splitlines()
-    for i, line in enumerate(lines):
-        m = re.match(r"^(`{3,})python\b", line.strip())
+    blocks: list[tuple[str, str]] = []
+    i = 0
+    while i < len(lines):
+        m = re.match(r"^(`{3,})python(?:\s+(.*?))?\s*$", lines[i].strip())
         if not m:
+            i += 1
             continue
         run = len(m.group(1))
         for j in range(i + 1, len(lines)):
             s = lines[j].strip()
             if s == "`" * len(s) and len(s) >= run and s.startswith("`"):
-                return "\n".join(lines[i + 1 : j])
-        return None
-    return None
+                blocks.append(((m.group(2) or "").strip(), "\n".join(lines[i + 1 : j])))
+                i = j + 1
+                break
+        else:
+            return blocks
+    return blocks
+
+
+def extract_first_code_block(text: str) -> str | None:
+    blocks = extract_python_blocks(text)
+    return blocks[0][1] if blocks else None
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +111,8 @@ for slug, rel, cls in gen_tasks:
         continue
     if not m.group(1).strip() or not m.group(2).strip():
         a_bad.append((slug, "empty title/description"))
+    elif m.group(2).startswith("Runnable cookbook example:"):
+        a_bad.append((slug, "placeholder description"))
     if m.group(3) != f"cookbook/{rel}":
         a_bad.append((slug, f"source field {m.group(3)!r} != planned cookbook/{rel}"))
     if not fences_balanced(text):
@@ -110,6 +127,7 @@ problems += [f"(a) {s}: {w}" for s, w in a_bad]
 # ---------------------------------------------------------------------------
 ref_res = [
     re.compile(r"^source: (cookbook/\S+)$", re.M),
+    re.compile(r"^curated_source: (cookbook/\S+)$", re.M),
     re.compile(r"cd agno/(cookbook/[^\s`\"']+)"),
     re.compile(r"github\.com/agno-agi/agno/(?:blob|tree)/[^/\s]+/(cookbook/[^)\s\"'`]+)"),
 ]
@@ -133,31 +151,80 @@ for s, r in (b_bad_gen + b_bad_other)[:25]:
 problems += [f"(b) generated {s}: dead ref {r}" for s, r in b_bad_gen]
 
 # ---------------------------------------------------------------------------
-# (c) pages the plan flagged as fence-mangled carry the complete cookbook source
+# (c) every generated page carries the complete cookbook source
 # ---------------------------------------------------------------------------
-mangled = [e for e in plan["pages"] if e.get("mangled")]
 c_bad = []
-for e in mangled:
-    p = DOCS_ROOT / f"{e['slug']}.mdx"
-    rel = e.get("new_cookbook_path") or e["cookbook_path"]
-    code = extract_first_code_block(p.read_text(encoding="utf-8"))
-    want = (COOKBOOK / rel).read_text(encoding="utf-8").strip("\n")
-    if code is None or code.strip("\n") != want:
-        c_bad.append(e["slug"])
-print(f"(c) mangled pages: {len(mangled)} checked, {len(c_bad)} still broken")
-for s in c_bad:
-    print("   STILL BROKEN:", s)
-problems += [f"(c) {s} code block != cookbook source" for s in c_bad]
+source_fences_checked = 0
+for slug, rel, cls in gen_tasks:
+    p = DOCS_ROOT / f"{slug}.mdx"
+    target = COOKBOOK / rel
+    if not p.is_file():
+        c_bad.append((slug, "page missing"))
+        continue
+    if not target.is_file():
+        c_bad.append((slug, f"cookbook/{rel} missing"))
+        continue
+    source_text = target.read_text(encoding="utf-8")
+    siblings = gen.collect_siblings(target, source_text)
+    expected = [("", source_text.strip("\n"))] + [
+        (sibling.name, sibling.read_text(encoding="utf-8").strip("\n"))
+        for sibling in siblings
+    ]
+    blocks = extract_python_blocks(p.read_text(encoding="utf-8"))
+    source_fences_checked += len(expected)
+    if len(blocks) != len(expected):
+        c_bad.append((slug, f"expected {len(expected)} source fences, found {len(blocks)}"))
+        continue
+    if blocks[0][1] != expected[0][1]:
+        c_bad.append((slug, f"primary code block != cookbook/{rel}"))
+    for (label, code), (expected_label, want) in zip(blocks[1:], expected[1:]):
+        if label != expected_label:
+            c_bad.append((slug, f"helper fence label {label!r} != {expected_label!r}"))
+        if code != want:
+            c_bad.append((slug, f"helper code block != cookbook/{rel.rsplit('/', 1)[0]}/{expected_label}"))
+print(
+    f"(c) generated source fidelity: {len(gen_tasks)} pages and "
+    f"{source_fences_checked} source fences checked, {len(c_bad)} bad"
+)
+for slug, why in c_bad:
+    print("   BAD:", slug, "--", why)
+problems += [f"(c) {slug}: {why}" for slug, why in c_bad]
 
 # ---------------------------------------------------------------------------
-# (d) file inventory report (informational; only stray non-mdx files fail)
+# (d) curated_source bindings carry the complete cookbook source
+# ---------------------------------------------------------------------------
+d_bound = []
+d_bad = []
+for p in all_mdx:
+    text = p.read_text(encoding="utf-8")
+    match = re.search(r"^curated_source: cookbook/(\S+)\s*$", text, re.M)
+    if not match:
+        continue
+    rel = match.group(1)
+    slug = str(p.relative_to(DOCS_ROOT)).removesuffix(".mdx")
+    d_bound.append(slug)
+    target = COOKBOOK / rel
+    code = extract_first_code_block(text)
+    if not target.is_file():
+        d_bad.append((slug, f"missing cookbook/{rel}"))
+    elif code is None:
+        d_bad.append((slug, "no Python code fence"))
+    elif code.strip("\n") != target.read_text(encoding="utf-8").strip("\n"):
+        d_bad.append((slug, f"code block != cookbook/{rel}"))
+print(f"(d) curated_source: {len(d_bound)} bindings checked, {len(d_bad)} bad")
+for slug, why in d_bad:
+    print("   BAD:", slug, "--", why)
+problems += [f"(d) {slug}: {why}" for slug, why in d_bad]
+
+# ---------------------------------------------------------------------------
+# (e) file inventory report (informational; only stray non-mdx files fail)
 # ---------------------------------------------------------------------------
 n_files = len(all_mdx)
 non_mdx = [str(p) for p in (DOCS_ROOT / "examples").rglob("*") if p.is_file() and p.suffix != ".mdx"]
-print(f"(d) files under examples/: {n_files} mdx; non-mdx files: {len(non_mdx)}")
+print(f"(e) files under examples/: {n_files} mdx; non-mdx files: {len(non_mdx)}")
 for f in non_mdx[:10]:
     print("   NON-MDX:", f)
-problems += [f"(d) non-mdx file under examples/: {f}" for f in non_mdx]
+problems += [f"(e) non-mdx file under examples/: {f}" for f in non_mdx]
 
 # --untracked-files=all: plain --porcelain collapses fully-untracked
 # directories into one "dir/" entry, undercounting the ?? files.
@@ -173,18 +240,18 @@ for line in status:
         st[code] += 1
     else:
         outside.append((code, path))
-print(f"(d) git status under examples/: {dict(st)}; entries outside examples/: {len(outside)}")
+print(f"(e) git status under examples/: {dict(st)}; entries outside examples/: {len(outside)}")
 
 # ---------------------------------------------------------------------------
-# (e) PRESERVE_CURATED untouched (all of them, not just a sample)
+# (f) PRESERVE_CURATED untouched (all of them, not just a sample)
 # ---------------------------------------------------------------------------
 changed = {line[3:] for line in status}
 preserve = [e["slug"] for e in plan["pages"] if e["class"] == "PRESERVE_CURATED"]
 e_bad = [s for s in preserve if f"{s}.mdx" in changed]
-print(f"(e) PRESERVE_CURATED: {len(preserve)} slugs, {len(e_bad)} appear in git status")
+print(f"(f) PRESERVE_CURATED: {len(preserve)} slugs, {len(e_bad)} appear in git status")
 for s in e_bad[:10]:
     print("   TOUCHED:", s)
-problems += [f"(e) curated page touched: {s}" for s in e_bad]
+problems += [f"(f) curated page touched: {s}" for s in e_bad]
 
 print()
 print(f"TOTAL PROBLEMS: {len(problems)}")

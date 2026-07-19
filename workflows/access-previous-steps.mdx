@@ -5,65 +5,58 @@ description: Access any previous step's output by name with StepInput methods.
 mode: wide
 ---
 
-Advanced workflows often require data from multiple previous steps beyond the immediate predecessor. The `StepInput` object provides methods to access any previous step's output by name or retrieve all accumulated content.
-
-## Example
+`StepInput` can retrieve any previous step output by name, including outputs nested in workflow primitives.
 
 ```python
+from agno.workflow import Step, Workflow
+from agno.workflow.types import StepInput, StepOutput
+
+
+def research_hackernews(step_input: StepInput) -> StepOutput:
+    return StepOutput(content=f"HackerNews findings for {step_input.input}")
+
+
+def research_web(step_input: StepInput) -> StepOutput:
+    return StepOutput(content=f"Web findings for {step_input.input}")
+
+
 def create_comprehensive_report(step_input: StepInput) -> StepOutput:
-    """
-    Custom function that creates a report using data from multiple previous steps.
-    This function has access to ALL previous step outputs and the original workflow message.
-    """
-
-    # Access original workflow input
     original_topic = step_input.input or ""
-
-    # Access specific step outputs by name
     hackernews_data = step_input.get_step_content("research_hackernews") or ""
     web_data = step_input.get_step_content("research_web") or ""
-
-    # Or access ALL previous content
     all_research = step_input.get_all_previous_content()
 
-    # Create a comprehensive report combining all sources
-    report = f"""
-        # Comprehensive Research Report: {original_topic}
-
-        ## Executive Summary
-        Based on research from HackerNews and web sources, here's a comprehensive analysis of {original_topic}.
-
-        ## HackerNews Insights
-        {hackernews_data[:500]}...
-
-        ## Web Research Findings  
-        {web_data[:500]}...
-    """
-
     return StepOutput(
-        step_name="comprehensive_report", 
-        content=report.strip(), 
-        success=True
+        content=(
+            f"Report: {original_topic}\n"
+            f"HackerNews: {hackernews_data}\n"
+            f"Web: {web_data}\n\n"
+            f"All previous content:\n{all_research}"
+        )
     )
 
-# Use in workflow
+
 workflow = Workflow(
-    name="Enhanced Research Workflow",
+    name="research_workflow",
     steps=[
-        Step(name="research_hackernews", agent=hackernews_agent),
-        Step(name="research_web", agent=web_agent),
-        Step(name="comprehensive_report", executor=create_comprehensive_report),  # Accesses both previous steps
-        Step(name="final_reasoning", agent=reasoning_agent),
+        Step(name="research_hackernews", executor=research_hackernews),
+        Step(name="research_web", executor=research_web),
+        Step(name="comprehensive_report", executor=create_comprehensive_report),
     ],
 )
+
+workflow.print_response("agent infrastructure")
 ```
 
-**Available Methods**
-- `step_input.get_step_content("step_name")` - Get content from specific step by name
-- `step_input.get_step_output("step_name")` - Get the full `StepOutput` object from a specific step
-- `step_input.get_all_previous_content()` - Get all previous step content combined
-- `step_input.input` - Access the original workflow input
-- `step_input.previous_step_content` - Get content from immediate previous step
+## Available Methods
+
+| Method or Field | Returns |
+|-----------------|---------|
+| `get_step_content("step_name")` | Content from a named previous step |
+| `get_step_output("step_name")` | Full `StepOutput` from a named previous step |
+| `get_all_previous_content()` | Top-level previous outputs joined into one string |
+| `input` | Original workflow input |
+| `previous_step_content` | Content from the immediate previous step |
 
 ## Accessing Nested Steps
 
@@ -72,27 +65,37 @@ You can directly access steps nested inside `Parallel`, `Condition`, `Router`, `
 ### Direct Access to Steps in Parallel Groups
 
 ```python
+from agno.workflow.parallel import Parallel
+
+
+def run_step_a(step_input: StepInput) -> StepOutput:
+    return StepOutput(content="output from step_a")
+
+
+def run_step_b(step_input: StepInput) -> StepOutput:
+    return StepOutput(content="output from step_b")
+
+
+def run_step_c(step_input: StepInput) -> StepOutput:
+    return StepOutput(content="output from step_c")
+
+
 def aggregator(step_input: StepInput) -> StepOutput:
-    # Access the entire Parallel group output (returns a dict)
     parallel_data = step_input.get_step_content("parallel_processing")
-    
-    # Direct access to individual nested steps (recursive search)
-    step_a_output = step_input.get_step_output("step_a")  # Returns StepOutput object
-    step_a_content = step_input.get_step_content("step_a")  # Returns content string
-    
+    step_a_output = step_input.get_step_output("step_a")
+    step_a_content = step_input.get_step_content("step_a")
+
     return StepOutput(
-        step_name="aggregator",
-        content=f"Step A: {step_a_content}",
-        success=True
+        content=f"Parallel: {parallel_data}\nStep A: {step_a_content}\nFound: {step_a_output is not None}"
     )
 
 workflow = Workflow(
-    name="Parallel Access Example",
+    name="parallel_access",
     steps=[
         Parallel(
-            step_a,  # Can be accessed directly by name
-            step_b,
-            step_c,
+            Step(name="step_a", executor=run_step_a),
+            Step(name="step_b", executor=run_step_b),
+            Step(name="step_c", executor=run_step_c),
             name="parallel_processing",
         ),
         Step(name="aggregator", executor=aggregator),
@@ -105,27 +108,29 @@ workflow = Workflow(
 The recursive search works at any depth level:
 
 ```python
+from agno.workflow.condition import Condition
+from agno.workflow.parallel import Parallel
+from agno.workflow.steps import Steps
+
+
 def deep_nested_step(step_input: StepInput) -> StepOutput:
-    """Step nested deep inside Parallel -> Condition -> Steps."""
-    return StepOutput(step_name="deep_nested_step", content="Deep nested content", success=True)
+    return StepOutput(content="Deep nested content")
+
 
 def verify_nested_access(step_input: StepInput) -> StepOutput:
-    """Verify we can access deeply nested step."""
     nested_output = step_input.get_step_output("deep_nested_step")
     nested_content = step_input.get_step_content("deep_nested_step")
-    
+
     return StepOutput(
-        step_name="verifier",
-        content=f"Nested output found: {nested_output is not None}, Content: {nested_content}",
-        success=True
+        content=f"Nested output found: {nested_output is not None}. Content: {nested_content}"
     )
 
+
 def condition_evaluator(step_input: StepInput) -> bool:
-    """Evaluator for the condition."""
     return True
 
 workflow = Workflow(
-    name="Multiple Depth Access",
+    name="multiple_depth_access",
     steps=[
         Parallel(
             Condition(
@@ -138,7 +143,7 @@ workflow = Workflow(
                     )
                 ],
             ),
-            name="Parallel Processing",
+            name="parallel_processing",
         ),
         Step(name="verifier", executor=verify_nested_access),
     ],
@@ -146,7 +151,7 @@ workflow = Workflow(
 ```
 
 <Note>
-**Lookup Priority**: When a step name exists at both top-level and nested within a group, the direct (top-level) lookup takes priority over the nested search.
+A top-level output takes priority when the same step name also exists in a nested group.
 </Note>
 
 ## Parallel Group Output Format
@@ -164,4 +169,5 @@ parallel_output = step_input.get_step_content("parallel_processing")
 ```
 
 ## Developer Resources
+
 - [Access Multiple Previous Steps Output](/workflows/usage/access-multiple-previous-steps-output)

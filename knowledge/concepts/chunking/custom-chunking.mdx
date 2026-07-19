@@ -1,44 +1,54 @@
 ---
 title: Custom Chunking
-sidebarTitle: Custom Chunking
+description: "Implement your own chunking strategy by subclassing ChunkingStrategy."
 ---
 
-Custom chunking allows you to implement your own chunking strategy by creating a class that inherits from `ChunkingStrategy`. This is useful when you need to split documents based on specific separators, apply custom logic, or handle domain-specific content formats.
+Subclass `ChunkingStrategy` and implement `chunk()` to return a list of `Document` objects.
 
 <Steps>
 
   <Step title="Create a Python file">
     ```python custom_chunking.py
+    from pathlib import Path
     from typing import List
-    import asyncio
+
     from agno.agent import Agent
     from agno.knowledge.chunking.strategy import ChunkingStrategy
     from agno.knowledge.document import Document
     from agno.knowledge.knowledge import Knowledge
-    from agno.knowledge.reader.pdf_reader import PDFReader
+    from agno.knowledge.reader.text_reader import TextReader
     from agno.vectordb.pgvector import PgVector
 
+
     class CustomChunking(ChunkingStrategy):
-        def __init__(self, separator: str = "---", **kwargs):
+        def __init__(self, separator: str = "---"):
             self.separator = separator
 
         def chunk(self, document: Document) -> List[Document]:
-            # Split by custom separator
-            chunks = document.content.split(self.separator)
-
             result = []
-            for i, chunk_content in enumerate(chunks):
-                chunk_content = self.clean_text(chunk_content)  # Use inherited method
-                if chunk_content:
-                    meta_data = document.meta_data.copy()
-                    meta_data["chunk"] = i + 1
-                    result.append(Document(
-                        id=f"{document.id}_{i+1}" if document.id else None,
+            for chunk_content in document.content.split(self.separator):
+                chunk_content = self.clean_text(chunk_content).strip()
+                if not chunk_content:
+                    continue
+
+                chunk_number = len(result) + 1
+                meta_data = document.meta_data.copy()
+                meta_data["chunk"] = chunk_number
+                meta_data["chunk_size"] = len(chunk_content)
+                result.append(
+                    Document(
+                        id=self._generate_chunk_id(
+                            document,
+                            chunk_number,
+                            chunk_content,
+                        ),
                         name=document.name,
                         meta_data=meta_data,
-                        content=chunk_content
-                    ))
+                        content=chunk_content,
+                    )
+                )
             return result
+
 
     db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
 
@@ -46,20 +56,27 @@ Custom chunking allows you to implement your own chunking strategy by creating a
         vector_db=PgVector(table_name="recipes_custom_chunking", db_url=db_url),
     )
 
-    asyncio.run(knowledge.ainsert(
-        url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
-        reader=PDFReader(
+    content_path = Path("tmp/recipes.txt")
+    content_path.parent.mkdir(parents=True, exist_ok=True)
+    content_path.write_text(
+        "Tom kha gai uses coconut milk.\n---\nMassaman curry uses warm spices.",
+        encoding="utf-8",
+    )
+
+    knowledge.insert(
+        path=str(content_path),
+        reader=TextReader(
             name="Custom Chunking Reader",
             chunking_strategy=CustomChunking(separator="---"),
         ),
-    ))
+    )
 
     agent = Agent(
         knowledge=knowledge,
         search_knowledge=True,
     )
 
-    agent.print_response("How to make Thai curry?", markdown=True)
+    agent.print_response("Which recipe uses coconut milk?", markdown=True)
     ```
   </Step>
 
@@ -67,11 +84,13 @@ Custom chunking allows you to implement your own chunking strategy by creating a
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U agno sqlalchemy psycopg pgvector pypdf openai
+    uv pip install -U agno openai pgvector psycopg sqlalchemy
     ```
   </Step>
 
-  <Snippet file="set-openai-key.mdx" />
+  <Step title="Export your OpenAI API key">
+    <Snippet file="set-openai-key.mdx" />
+  </Step>
 
   <Snippet file="run-pgvector-step.mdx" />
 
@@ -86,3 +105,7 @@ Custom chunking allows you to implement your own chunking strategy by creating a
 ## Custom Chunking Params
 
 <Snippet file="chunking-custom.mdx" />
+
+## Developer Resources
+
+- [Chunking overview](/knowledge/concepts/chunking/overview)

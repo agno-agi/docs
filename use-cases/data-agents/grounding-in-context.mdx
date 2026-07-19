@@ -5,6 +5,10 @@ description: "Ground every query in validated SQL, table metadata, and business 
 
 A model knows SQL but it does not know that `revenue` was replaced by `revenue_v2` last March, that "active" excludes trialing accounts, or that MRR is computed net of credits. Grounding provides the missing context. The agent retrieves the relevant context for each question before it writes a line of SQL.
 
+```bash
+uv pip install "agno[openai,pgvector,psycopg,sql]"
+```
+
 ```python
 from agno.agent import Agent
 from agno.knowledge.knowledge import Knowledge
@@ -15,6 +19,14 @@ from agno.vectordb.pgvector import PgVector
 knowledge = Knowledge(
     vector_db=PgVector(table_name="dash_knowledge", db_url="postgresql+psycopg://ai:ai@localhost:5532/ai"),
 )
+knowledge.insert(
+    name="Active subscriptions",
+    text_content=(
+        "Business rule: a subscription is active when ended_at IS NULL. "
+        "Validated query pattern: SELECT plan, count(*) FROM subscriptions "
+        "WHERE ended_at IS NULL GROUP BY plan."
+    ),
+)
 
 agent = Agent(
     model=OpenAIResponses(id="gpt-5.5"),
@@ -23,9 +35,11 @@ agent = Agent(
     search_knowledge=True,
     instructions="Retrieve relevant query patterns and table notes before writing SQL.",
 )
+
+agent.print_response("How many active subscriptions are on the Pro plan?")
 ```
 
-`search_knowledge=True` lets the agent pull the matching context per question instead of carrying the entire data dictionary in every prompt.
+With `knowledge` attached, the agent searches it per question and pulls only the matching context, instead of carrying the entire data dictionary in every prompt. Knowledge search is on by default. Set `search_knowledge=False` to turn it off.
 
 ## The layers worth curating
 
@@ -42,7 +56,7 @@ A production data agent grounds each answer in several layers. The first set is 
 
 ## Validated queries are the highest-leverage layer
 
-One known-good query for "monthly recurring revenue" is worth more than a page of schema notes. When the agent retrieves a validated query for a similar question, it adapts a correct shape instead of inventing one. Seed the store with the queries your analysts already trust.
+One known-good query for "monthly recurring revenue" is worth more than a page of schema notes. When the agent retrieves a validated query for a similar question, it adapts a correct shape instead of inventing one. Seed the store with the queries your analysts already trust: the question, the SQL, the tables used, and any data-quality notes.
 
 ## Grounding vs raw text-to-SQL
 

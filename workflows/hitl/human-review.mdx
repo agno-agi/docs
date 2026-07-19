@@ -5,7 +5,7 @@ description: Consolidate all human-in-the-loop settings into a single config obj
 keywords: [workflow, HITL, human-review, config, confirmation, output review, iteration review, timeout]
 ---
 
-`HumanReview` groups all HITL settings into a single object instead of passing them as separate parameters. Step, Loop, Router, Condition, and Steps accept `human_review=HumanReview(...)`. Parallel accepts the parameter but rejects every HITL field, since parallel branches cannot be individually paused.
+`HumanReview` groups all HITL settings into a single object instead of passing them as separate parameters. Step, Loop, Router, Condition, and Steps accept `human_review=HumanReview(...)`. Parallel rejects every `requires_*` field because parallel branches cannot be individually paused. Behavior fields set on Parallel have no effect.
 
 ```python
 from agno.workflow.step import Step
@@ -58,9 +58,9 @@ If both `human_review` and flat parameters are provided, `human_review` takes pr
 | `requires_iteration_review` | `bool` | `False` | Pause after each loop iteration for review |
 | `iteration_review_message` | `str` | `None` | Message shown during iteration review |
 | `on_reject` | `OnReject` | `OnReject.skip` | Action when user rejects |
-| `on_error` | `OnError` | `OnError.skip` | Action when step errors |
+| `on_error` | `OnError` | `OnError.skip` | Action when a Step or Condition errors |
 | `max_retries` | `int` | `3` | Max retries on rejection (when `on_reject=OnReject.retry`) |
-| `timeout` | `int` | `None` | Seconds to wait for user response |
+| `timeout` | `int` | `None` | Seconds to wait for a Step confirmation or output review |
 | `on_timeout` | `OnTimeout` | `OnTimeout.cancel` | Action when timeout expires |
 
 ## Supported Fields by Component
@@ -79,7 +79,7 @@ Not every field works on every component. Passing an unsupported `requires_*` fl
 | `timeout` | ✓ | - | - | - | - | - |
 | `on_timeout` | ✓ | - | - | - | - | - |
 
-Condition and Steps only support `requires_confirmation`. Parallel doesn't support any HITL fields. Passing unsupported fields raises a clear error:
+Condition and Steps only support `requires_confirmation`. Parallel rejects any `requires_*` field. Passing an unsupported mode raises a clear error:
 
 ```python
 from agno.workflow.condition import Condition
@@ -157,7 +157,7 @@ HumanReview(
 
 ## Timeout
 
-Set a timeout for how long to wait for a user response. If the timeout expires, `on_timeout` determines what happens. The timeout only applies to Step pauses; other components ignore it.
+Set a timeout for a Step confirmation or output review. If the timeout expires, `on_timeout` determines what happens when `continue_run()` is called. Step user-input pauses and other components ignore timeout policies.
 
 ```python
 from agno.workflow import OnTimeout
@@ -192,6 +192,8 @@ data = config.to_dict()
 
 restored = HumanReview.from_dict(data)
 ```
+
+A callable `requires_output_review` predicate serializes as `True`. Reapply the callable after reconstructing a workflow if review should remain conditional.
 
 ## Developer Resources
 

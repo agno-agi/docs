@@ -1,26 +1,27 @@
 ---
 title: "Agent Runtime"
-description: "Run your agents as a secure, stateless service."
+description: "Serve agents through a stateless FastAPI runtime with database persistence and optional auth."
 ---
 
-We build our agents, teams, and workflows with the Agno SDK and take them live using AgentOS. What does it mean to take an agent live? We should be able to:
-1. Run the agent on demand, via an API request, or via interfaces like Slack, Telegram, and others.
-2. Maintain long-running sessions that last from minutes to days to weeks.
-3. Be durable across restarts, replicas, and infrastructure failures.
-4. Be secure against unauthenticated access.
-5. Monitor every run and action taken.
+AgentOS runs agents, teams, and workflows as an API service. A production runtime needs to:
 
-Agno's agent runtime, AgentOS, takes agents, teams, and workflows built with the Agno SDK or any other framework and runs them as a secure, scalable service.
+1. Run components on demand through API requests or interfaces such as Slack and Telegram.
+2. Maintain sessions across minutes, days, or weeks.
+3. Preserve state across restarts, replicas, and infrastructure failures.
+4. Protect application routes from unauthenticated access.
+5. Record runs and actions for monitoring.
 
-Here's the smallest possible AgentOS example:
+AgentOS serves native Agno components and adapters for the Claude Agent SDK, LangGraph, DSPy, and Antigravity.
 
-```python
+This minimal persistent deployment uses PostgreSQL for agent and runtime state:
+
+```python my_app.py
 from agno.agent import Agent
 from agno.db.postgres import PostgresDb
 from agno.models.openai import OpenAIResponses
 from agno.os import AgentOS
 
-db = PostgresDb(db_url="postgresql://user:pass@host:5432/agno")
+db = PostgresDb(db_url="postgresql+psycopg://user:pass@host:5432/agno")
 
 agent = Agent(model=OpenAIResponses(id="gpt-5.5"), db=db)
 
@@ -31,7 +32,7 @@ if __name__ == "__main__":
     agent_os.serve(app="my_app:app", reload=False)
 ```
 
-This script starts a FastAPI application that you can scale horizontally. Persistent sessions, streaming, JWT auth, tracing, and a scheduler, all come built-in.
+This script starts a FastAPI application that can scale horizontally. The database persists sessions. Streaming is available by default; JWT authorization, tracing, and scheduling are optional AgentOS settings.
 
 ## What the runtime gives you
 
@@ -40,19 +41,15 @@ The runtime covers the ground between your agent code and a production service:
 | Concern | How AgentOS handles it |
 |---------|------------------------|
 | HTTP API | Auto-generated endpoints for every registered agent, team, and workflow |
-| Persistence | Sessions and memory persisted to your `db` |
-| Streaming | SSE on every run endpoint; tokens and tool calls stream as they happen |
-| Auth | JWT validation with RBAC scopes built-in |
-| Scheduling | In-process cron that polls the database and fires due jobs |
-| Observability | OpenTelemetry tracing into the same `db`, queryable with SQL |
+| Persistence | Sessions and enabled memory features persist to your `db` |
+| Streaming | Run endpoints support SSE; tokens and tool calls stream when `stream=true` |
+| Auth | Set `authorization=True` and configure a JWT verification key to enforce RBAC scopes |
+| Scheduling | Set `scheduler=True` to poll the database and fire due jobs in process |
+| Observability | Set `tracing=True` to write OpenTelemetry traces to the AgentOS database |
 | Interfaces | Slack, Telegram, WhatsApp, A2A, AG-UI |
 | Human in the loop | Pause runs for user confirmation, admin approval, or external execution |
 
-<Tip>
-  AgentOS can also serve agents built with the Claude Agent SDK, LangGraph, and DSPy.
-
-  See [Multi-framework support](/agent-os/multi-framework/overview).
-</Tip>
+See [Multi-framework support](/agent-os/multi-framework/overview) for adapter setup.
 
 ## Explore
 
@@ -71,5 +68,8 @@ The runtime covers the ground between your agent code and a production service:
   </Card>
   <Card title="Scheduling" icon="clock" href="/features/scheduling">
     In-process cron and multi-step workflows.
+  </Card>
+  <Card title="Interfaces" icon="comments" href="/features/interfaces">
+    Reach users on Slack, Telegram, WhatsApp, A2A, and AG-UI.
   </Card>
 </CardGroup>

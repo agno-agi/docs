@@ -6,9 +6,16 @@ description: "Slack, Telegram, WhatsApp, and browser surfaces, all through the A
 Interfaces plug your agent into Slack, Telegram, WhatsApp, and browser clients.
 
 ```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIResponses
 from agno.os import AgentOS
 from agno.os.interfaces.slack import Slack
 from agno.os.interfaces.telegram import Telegram
+
+db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+agent = Agent(name="Support", model=OpenAIResponses(id="gpt-5.5"), db=db)
 
 agent_os = AgentOS(
     agents=[agent],
@@ -30,30 +37,43 @@ agent_os = AgentOS(
 | AG-UI | Browser clients consuming SSE streams |
 | A2A | Other agents calling yours over a standard protocol |
 
-## Sessions carry across surfaces
+## Sessions per surface
 
-Each interface maps surface state onto AgentOS sessions, so a conversation continues without the user re-mentioning the bot.
+Each interface maps surface state onto AgentOS sessions, so a follow-up in the same thread continues the same conversation.
 
 | Interface | `session_id` | `user_id` |
 |-----------|--------------|-----------|
-| Slack | Thread timestamp | Slack user ID |
-| Telegram | Chat ID | Telegram user ID |
-| WhatsApp | Phone number | Phone number |
-| AG-UI | Browser session | JWT subject |
+| Slack | `<entity_id>:<thread_ts>` | Slack user ID, or resolved email when enabled |
+| Telegram | `tg:<entity_id>:<chat_id>[:<topic_id>][:<reset_id>]` | Telegram user ID |
+| WhatsApp | `wa:<entity_id>:<user_id>[:<reset_id>]` | Phone number or encrypted user ID |
+| AG-UI | Client `thread_id` | JWT subject, or forwarded `user_id` when anonymous |
+| A2A | A2A context ID | JWT subject, or request metadata when anonymous |
 
-Map a user's Slack ID to the same `user_id` your browser widget passes and memory follows them between surfaces. The agent only ever sees a `user_id`, a `session_id`, and a message. It does not know which surface a request came from.
+For Telegram and WhatsApp, `/new` preserves earlier sessions and creates a session whose ID has a new eight-character suffix. This command requires a database.
+
+Stored memory can follow a user across surfaces when the interfaces resolve to the same `user_id` and use the same agent database and memory configuration. Session history remains scoped to each interface-generated `session_id`. Interfaces can add surface metadata and dependencies to a run.
 
 ## One agent, every surface
 
 ```python
+from agno.os.interfaces.a2a import A2A
+from agno.os.interfaces.agui import AGUI
+from agno.os.interfaces.whatsapp import Whatsapp
+
 agent_os = AgentOS(
-    agents=[support_agent],
+    agents=[agent],
     db=db,
     interfaces=[
-        Slack(agent=support_agent, token=..., signing_secret=...),
-        Telegram(agent=support_agent, token=...),
-        Whatsapp(agent=support_agent, access_token=..., verify_token=...),
-        AGUI(agent=support_agent),
+        Slack(agent=agent, token="xoxb-your-token", signing_secret="your-signing-secret"),
+        Telegram(agent=agent, token="your-bot-token"),
+        Whatsapp(
+            agent=agent,
+            access_token="your-access-token",
+            phone_number_id="your-phone-number-id",
+            verify_token="your-verify-token",
+        ),
+        AGUI(agent=agent),
+        A2A(agents=[agent]),
     ],
 )
 ```
@@ -74,9 +94,9 @@ if TELEGRAM_TOKEN:
 agent_os = AgentOS(agents=[agent], db=db, interfaces=interfaces)
 ```
 
-## Resolving Slack names
+## Resolving Slack identities
 
-Slack hands you opaque IDs like `U07ABCXYZ`. Set `resolve_user_identity=True` on the Slack interface and it resolves IDs to names before the agent sees them. Off by default because it costs an extra Slack API call per message.
+Slack hands you opaque IDs like `U07ABCXYZ`. Set `resolve_user_identity=True` on the Slack interface and it resolves the ID to the user's email, which becomes the run's `user_id`. The display name is added to run metadata. Off by default because it costs an extra Slack API call per message.
 
 ## One-off webhooks
 

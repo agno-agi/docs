@@ -12,7 +12,7 @@ The scripts install the Helm release `agentos` into the `agentos` namespace. Ove
 |------|---------|
 | Roll to a new image tag | `IMAGE_TAG=v2 ./scripts/k8s/redeploy.sh` (build and push the tag first) |
 | Restart pods in place | `./scripts/k8s/redeploy.sh` |
-| Sync env variables | `./scripts/k8s/env-sync.sh` (connection and secret keys only; defaults to `.env.production`, pass `.env` to sync that instead) |
+| Sync supported env variables | `./scripts/k8s/env-sync.sh` (updates nonempty values from a fixed allowlist that includes `RUNTIME_ENV`; defaults to `.env.production`, or pass `.env`) |
 | Tail logs | `kubectl logs deploy/agentos -n agentos -f` |
 | Port-forward the API | `kubectl port-forward svc/agentos 8000:8000 -n agentos` |
 | Roll back a release | `helm rollback agentos -n agentos` |
@@ -20,13 +20,15 @@ The scripts install the Helm release `agentos` into the `agentos` namespace. Ove
 
 ## Production auth
 
-Token-Based Authorization is on by default. Without a `JWT_VERIFICATION_KEY` or `JWT_JWKS_FILE`, the app refuses to serve traffic in production. The platform's job is to keep your data private, so the safe default is refuse to start.
+Token-Based Authorization is on by default. Production startup requires `JWT_VERIFICATION_KEY` or a readable JWKS file at the pod path in `JWT_JWKS_FILE`; otherwise the process exits.
 
 Token-Based Auth gives you three things:
 
 1. **No public access.** The server rejects requests without a valid token.
-2. **Per-request identity.** Middleware parses the token and extracts the `user_id`, `session_id`, and custom claims. Each request is tied to a user and session, giving you auditability and traceability.
-3. **Granular permissions.** User tokens can run an agent and view their own sessions. Admin tokens read everyone's sessions and test any agent.
+2. **Per-request identity.** Middleware validates the token and exposes its `user_id`, optional `session_id`, scopes, and claims to the request.
+3. **Scope-based permissions.** Token scopes control access to AgentOS routes and resources.
+
+The templates do not enable per-user data isolation. To scope non-admin session, memory, trace, and run access to the JWT subject, pass `authorization_config=AuthorizationConfig(user_isolation=True)` to `AgentOS`. See [User Isolation](/agent-os/security/authorization/user-isolation).
 
 To opt out (not recommended), set `authorization=False` in `app/main.py`, then build and push a new image tag and roll to it with `IMAGE_TAG=<tag> ./scripts/k8s/redeploy.sh`. Use this only inside a private VPC behind another auth layer. Without it, anyone who guesses your AgentOS URL can access your platform.
 
@@ -89,13 +91,14 @@ Add `anthropic` to `pyproject.toml`, set the provider key in your env, and regen
 ./scripts/generate_requirements.sh
 ```
 
-Rebuild locally with `docker compose up -d --build`. For production:
+Rebuild locally with `docker compose up -d --build`. For production, build and push a new tag, then roll to it:
 
 ```bash
-./scripts/k8s/env-sync.sh
 docker build -t <registry>/agentos:v2 . && docker push <registry>/agentos:v2
 IMAGE_TAG=v2 ./scripts/k8s/redeploy.sh
 ```
+
+`env-sync.sh` uses a fixed allowlist that includes `RUNTIME_ENV`, `AGENTOS_URL`, the `JWT_JWKS_FILE` path, the template's supported secrets, and `DB_PASS`. It does not deliver the referenced JWKS file or sync a new provider key such as `ANTHROPIC_API_KEY`. Provide the JWKS file through a custom image or chart volume. Deliver a new provider key via `extraEnv` and `helm upgrade`.
   </Accordion>
 
   <Accordion title="Add tools">
@@ -131,7 +134,7 @@ Sync with `./scripts/k8s/env-sync.sh`. The interface activates automatically and
   <Accordion title="Toggle scheduled workflows">
 The deployment check runs daily by default (`ENABLE_DEPLOY_CHECK=True`); it is deterministic and free. Scheduled evals are off by default (`ENABLE_SCHEDULED_EVALS=False`) because they use model calls. Both workflows stay runnable on demand regardless.
 
-In the cluster these are chart values. Set them via `extraEnv` and `helm upgrade`; `./scripts/k8s/env-sync.sh` syncs only the connection and secret keys.
+In the cluster these are chart values. Set them via `extraEnv` and `helm upgrade`; `env-sync.sh` does not sync `ENABLE_DEPLOY_CHECK`, `ENABLE_SCHEDULED_EVALS`, or `EVALS_*`.
   </Accordion>
 </AccordionGroup>
 
@@ -159,10 +162,10 @@ source .venv/bin/activate
 | `OPENAI_API_KEY` | Yes | - | Models and embeddings. |
 | `RUNTIME_ENV` | No | `prd` | `dev` disables JWT. Compose sets it for local. Never put it in an env file that syncs to a real cluster, or production deploys unauthenticated. |
 | `JWT_VERIFICATION_KEY` | Production | - | Public key from os.agno.com. Quote the value so the multi-line PEM parses as one variable. |
-| `JWT_JWKS_FILE` | Production | - | Path to a JWKS file inside the container. Alternative to `JWT_VERIFICATION_KEY`. `up.sh` and `env-sync.sh` deliver it as the chart value `jwtJwksFile`. |
+| `JWT_JWKS_FILE` | Production | - | Path inside the pod to a JWKS file. `up.sh` and `env-sync.sh` set only the `jwtJwksFile` path. The current chart does not mount the file. |
 | `MCP_CONNECT_SECRET` | No | - | OAuth consent secret (16+ chars) for connecting claude.ai and ChatGPT to `/mcp`. `up.sh` generates it into `.env.production` when the deploy has a public URL (`INGRESS_HOST` or `AGENTOS_URL`); set it by hand otherwise. |
 | `AGENTOS_MCP_SIGNING_KEY` | No | generated | Optional high-entropy signing-key material (32+ chars) for OAuth tokens. Unset, a strong key is generated and persisted in the database. Rotating it invalidates outstanding tokens. |
-| `AGENTOS_URL` | No | `http://127.0.0.1:8000` | Scheduler base URL. The chart resolves it automatically: explicit value, then ingress URL, then in-cluster service DNS. Set it by hand only for a custom domain or tunnel. Also the public origin OAuth metadata derives from when `MCP_CONNECT_SECRET` is set. |
+| `AGENTOS_URL` | No | `http://agentos:8000` | Scheduler base URL. The chart resolves an explicit value first, then the ingress URL, then the release service URL. Set it only for a custom domain or tunnel. When `MCP_CONNECT_SECRET` is set, OAuth metadata uses this URL as its public origin. |
 | `ENABLE_DEPLOY_CHECK` | No | `True` | Daily deployment-check cron. |
 | `ENABLE_SCHEDULED_EVALS` | No | `False` | Daily run-evals cron. Uses model calls. |
 | `EVALS_TAG` | No | `smoke` | Eval tag the run-evals workflow runs. |
@@ -174,7 +177,7 @@ source .venv/bin/activate
 | `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASS` / `DB_DATABASE` | No | matches compose | Postgres connection. `up.sh` generates `DB_PASS` once and saves it to your env file. |
 | `DB_DRIVER` | No | `postgresql+psycopg` | SQLAlchemy driver. |
 | `AGNO_DEBUG` | No | `False` | Verbose Agno logs. Compose sets it for dev. |
-| `WAIT_FOR_DB` | No | `False` | If `True`, the entrypoint blocks on the database before starting. Compose sets it. |
+| `WAIT_FOR_DB` | No | `True` in Helm | If `True`, the entrypoint blocks on the database before starting. The Helm chart and Compose set it to `True`. |
 | `AGENTOS_NAMESPACE` | No | `agentos` | Namespace the k8s scripts target. |
 | `AGENTOS_RELEASE` | No | `agentos` | Helm release name the k8s scripts target. |
 | `IMAGE_REPOSITORY` | No | `agnohq/agentos` | Image the chart deploys. Read by `up.sh`. |
@@ -193,10 +196,10 @@ Install [kubectl](https://kubernetes.io/docs/tasks/tools/) and [Helm](https://he
 `up.sh` deploys into your current kubectl context and verifies it can reach the cluster first. Point kubectl at the target cluster and confirm `kubectl get namespace` works, then rerun.
   </Accordion>
   <Accordion title="up.sh pauses asking for a JWT key">
-Expected. Mint the key at [os.agno.com](https://os.agno.com): connect your OS (**Connect OS** → **Live**, enter your AgentOS URL), then turn on **Token-Based Authorization (JWT)** under **Settings** → **OS & Security** and paste the full PEM. To do it later, skip the prompt, add `JWT_VERIFICATION_KEY` or `JWT_JWKS_FILE` to `.env.production`, and run `./scripts/k8s/env-sync.sh`.
+Expected. Mint the key at [os.agno.com](https://os.agno.com): connect your OS (**Connect OS** → **Live**, enter your AgentOS URL), then turn on **Token-Based Authorization (JWT)** under **Settings** → **OS & Security** and paste the full PEM. To add a PEM later, set `JWT_VERIFICATION_KEY` and run `./scripts/k8s/env-sync.sh`. To use JWKS, first provide the file through a custom image or chart volume, then set `JWT_JWKS_FILE` to its pod path and sync.
   </Accordion>
-  <Accordion title="App refuses to serve in production">
-JWT auth is on whenever `RUNTIME_ENV` is not `dev`. Set `JWT_VERIFICATION_KEY` or `JWT_JWKS_FILE` and sync. To opt out inside a private VPC behind another auth layer, set `authorization=False` in `app/main.py` and roll out your own image build.
+  <Accordion title="App fails to start in production">
+JWT auth is on whenever `RUNTIME_ENV` is not `dev`. Set `JWT_VERIFICATION_KEY` and sync. `JWT_JWKS_FILE` works only when a custom image or chart mount already provides a readable file at that pod path. To opt out inside a private VPC behind another auth layer, set `authorization=False` in `app/main.py` and roll out your own image build.
   </Accordion>
   <Accordion title="Pods stuck in ImagePullBackOff">
 The cluster can't pull the image. Confirm the tag was pushed and the cluster has access to your registry; for private registries, set `imagePullSecrets` in `charts/agentos/values.yaml`. On kind, `kind load docker-image` the tag and deploy with `IMAGE_PULL_POLICY=Never`.

@@ -6,7 +6,7 @@ description: "Run AgentOS locally using Docker and deploy to production on Kuber
 
 AgentOS is a secure, scalable platform for running agents. The [agentos-helm](https://github.com/agno-agi/agentos-helm) codebase runs AgentOS locally using Docker and deploys to production on Kubernetes. It comes with:
 
-- **2 platform agents** that build and run the platform for you. **Agent Builder** creates agents, teams, and workflows. **Platform Manager** monitors and manages the platform.
+- **2 platform agents** that build and run the platform for you. **Agent Builder** creates agents, teams, and workflows. **Platform Manager** understands, monitors, and explains the platform.
 - **5 [skills](/deploy/templates/improve-agents)** that let coding agents build, test, and improve the platform for you.
 
 Because the trace data, agent code, evals, and system logs all live in one place, the platform can inspect and improve itself automatically.
@@ -115,13 +115,13 @@ Bringing your own Postgres instead? It must have the [pgvector](https://github.c
   </Step>
 
   <Step title="Mint your JWT key">
-The script pauses for a `JWT_VERIFICATION_KEY`. Token-Based Authorization is on by default and without a verification key or a `JWT_JWKS_FILE`, the platform refuses to serve production traffic.
+The script pauses for a `JWT_VERIFICATION_KEY`. Token-Based Authorization is on by default. Production startup requires that verification key or a readable JWKS file at the pod path in `JWT_JWKS_FILE`; otherwise the process exits.
 
 1. Open [os.agno.com](https://os.agno.com), click **Connect OS** → **Live**, enter your AgentOS URL (your ingress host, or a tunnel while testing), and name it **Live AgentOS**.
 2. Go to **Settings** → **OS & Security** and turn on **Token-Based Authorization (JWT)**.
 3. Copy the public key and paste the full PEM into the `up.sh` prompt. The script saves it to your env file and deploys.
 
-If you skip the prompt, add the key to `.env.production` later and run `./scripts/k8s/env-sync.sh`.
+If you skip the prompt, add `JWT_VERIFICATION_KEY` to `.env.production` later and run `./scripts/k8s/env-sync.sh`. For JWKS, provide the file through a custom image or chart volume, set `JWT_JWKS_FILE` to its pod path, then deploy. The current chart only forwards the path.
 
 <Note>Live AgentOS connections are a paid feature. Use code `PLATFORM30` for one month off.</Note>
   </Step>
@@ -169,7 +169,7 @@ Immutable tags keep rollbacks one `helm rollback` away. Running `./scripts/k8s/r
 ./scripts/k8s/env-sync.sh
 ```
 
-Changed secrets roll the pod automatically. The script syncs the connection and secret keys (including `JWT_JWKS_FILE`); other knobs (`ENABLE_DEPLOY_CHECK`, `ENABLE_SCHEDULED_EVALS`, `EVALS_*`) are chart values. Set them via `extraEnv` and `helm upgrade`.
+Changed supported values roll the pod automatically. `env-sync.sh` updates `RUNTIME_ENV`, `AGENTOS_URL`, `OPENAI_API_KEY`, `JWT_VERIFICATION_KEY`, `MCP_CONNECT_SECRET`, `AGENTOS_MCP_SIGNING_KEY`, `PARALLEL_API_KEY`, `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, and `DB_PASS`. It updates the `JWT_JWKS_FILE` path only. The current chart does not upload or mount the referenced file. Use `JWT_VERIFICATION_KEY`, a custom image containing the file, or a chart extension with a Secret volume. Set `ENABLE_DEPLOY_CHECK`, `ENABLE_SCHEDULED_EVALS`, and `EVALS_*` via `extraEnv` and `helm upgrade`.
 
 ### Tear down
 

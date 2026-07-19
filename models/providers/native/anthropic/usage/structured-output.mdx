@@ -1,67 +1,81 @@
 ---
 title: Agent with Structured Outputs
+description: Return a validated Pydantic object from a Claude agent.
 ---
+
+Set `output_schema` to return a validated Pydantic object instead of free-form text.
 
 ## Code
 
 ```python structured_output.py
-from typing import List
-
-from agno.agent import Agent, RunOutput  # noqa
+from agno.agent import Agent, RunOutput
 from agno.models.anthropic import Claude
 from pydantic import BaseModel, Field
-from rich.pretty import pprint  # noqa
+
 
 class MovieScript(BaseModel):
-    setting: str = Field(
-        ..., description="Provide a nice setting for a blockbuster movie."
-    )
-    ending: str = Field(
-        ...,
-        description="Ending of the movie. If not available, provide a happy ending.",
-    )
-    genre: str = Field(
-        ...,
-        description="Genre of the movie. If not available, select action, thriller or romantic comedy.",
-    )
-    name: str = Field(..., description="Give a name to this movie")
-    characters: List[str] = Field(..., description="Name of characters for this movie.")
-    storyline: str = Field(
-        ..., description="3 sentence storyline for the movie. Make it exciting!"
-    )
+    name: str = Field(description="Movie title")
+    genre: str
+    characters: list[str]
+    storyline: str = Field(description="Three-sentence storyline")
+
 
 movie_agent = Agent(
-    model=Claude(id="claude-sonnet-4-5-20250929"),
+    model=Claude(id="claude-sonnet-4-6"),
     description="You help people write movie scripts.",
     output_schema=MovieScript,
 )
 
-movie_agent.print_response("New York")
+if __name__ == "__main__":
+    run: RunOutput = movie_agent.run("Write a thriller set in New York.")
+    movie = run.content
 
-# You can also get the response in a variable:
-# run: RunOutput = movie_agent.run("New York")
+    assert isinstance(movie, MovieScript)
+    print(movie.model_dump_json(indent=2))
 ```
+
+`run.content` is a `MovieScript` instance after Claude returns valid JSON and Agno validates it against the schema.
+
+<Note>
+Agno 2.7.2 translates `output_schema` to Anthropic's legacy-compatible `output_format` request and adds the `structured-outputs-2025-11-13` beta automatically. Anthropic's current direct API uses `output_config.format`; the legacy request remains available during Anthropic's migration period. Let Agno populate the request field when you use `output_schema`.
+</Note>
+
+Anthropic lists Claude Sonnet 4.6 as supporting structured outputs. Refusals and responses stopped at `max_tokens` can end without a schema-valid result. Anthropic JSON outputs are also incompatible with citations and message prefilling; Agno disables document citations for these requests.
 
 ## Usage
 
 <Steps>
   <Snippet file="create-venv-step.mdx" />
 
-  <Step title="Set your API key">
-    ```bash
-    export ANTHROPIC_API_KEY=xxx
-    ```
-  </Step>
-
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U anthropic agno
+    uv pip install -U "agno[anthropic]"
     ```
   </Step>
 
-  <Step title="Run Agent">
+  <Step title="Export your Anthropic API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export ANTHROPIC_API_KEY="your_anthropic_api_key_here"
+    ```
+
+    ```powershell Windows
+    $Env:ANTHROPIC_API_KEY="your_anthropic_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the agent">
+    Save the code above as `structured_output.py`, then run:
+
     ```bash
     python structured_output.py
     ```
   </Step>
 </Steps>
+
+## Developer Resources
+
+- [Streaming structured outputs](/models/providers/native/anthropic/usage/structured-output-stream)
+- [Structured outputs with strict tools](/models/providers/native/anthropic/usage/structured-output-strict-tools)
+- [Anthropic structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs)
