@@ -199,6 +199,55 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
     """Document runtime branches that the pinned route metadata omits."""
     schemas = spec["components"]["schemas"]
 
+    def response_ref(description: str, schema_name: str) -> dict:
+        assert schema_name in schemas, schema_name
+        return {
+            "description": description,
+            "content": {
+                "application/json": {
+                    "schema": {"$ref": f"#/components/schemas/{schema_name}"},
+                }
+            },
+        }
+
+    def add_response(operation: dict, status: str, description: str, schema_name: str) -> None:
+        assert status not in operation["responses"], (operation.get("operationId"), status)
+        operation["responses"][status] = response_ref(description, schema_name)
+
+    def sort_responses(operation: dict) -> None:
+        operation["responses"] = dict(
+            sorted(operation["responses"].items(), key=lambda item: int(item[0]))
+        )
+
+    for schema_name, title, example in (
+        ("ForbiddenResponse", "ForbiddenResponse", {"detail": "Insufficient permissions"}),
+        ("ConflictResponse", "ConflictResponse", {"detail": "Resource conflict"}),
+        (
+            "NotImplementedResponse",
+            "NotImplementedResponse",
+            {"detail": "Operation not supported for this resource type"},
+        ),
+        (
+            "ServiceUnavailableResponse",
+            "ServiceUnavailableResponse",
+            {"detail": "Feature not supported by the configured service"},
+        ),
+    ):
+        assert schema_name not in schemas
+        schemas[schema_name] = {
+            "properties": {
+                "detail": {
+                    "type": "string",
+                    "title": "Detail",
+                    "description": "Error detail message",
+                },
+            },
+            "type": "object",
+            "required": ["detail"],
+            "title": title,
+            "example": example,
+        }
+
     config_example = spec["paths"]["/config"]["get"]["responses"]["200"]["content"]["application/json"][
         "example"
     ]
@@ -316,20 +365,6 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         "Takes effect immediately on this worker (the local verification cache entry is "
         "evicted) and within the cache TTL on other workers."
     )
-    assert "ServiceUnavailableResponse" not in schemas
-    schemas["ServiceUnavailableResponse"] = {
-        "properties": {
-            "detail": {
-                "type": "string",
-                "title": "Detail",
-                "description": "Error detail message",
-            },
-        },
-        "type": "object",
-        "required": ["detail"],
-        "title": "ServiceUnavailableResponse",
-        "example": {"detail": "Service accounts not supported by the configured database"},
-    }
     revoke_responses = revoke_service_account["responses"]
     assert set(revoke_responses) == {"204", "422"}
     revoke_responses.update(
@@ -369,6 +404,337 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         }
     )
     revoke_service_account["responses"] = dict(sorted(revoke_responses.items(), key=lambda item: int(item[0])))
+
+    create_service_account = spec["paths"]["/service-accounts"]["post"]
+    assert set(create_service_account["responses"]) == {"201", "422"}
+    add_response(
+        create_service_account,
+        "400",
+        "Requested scopes are invalid, or privileged scopes were not explicitly allowed",
+        "BadRequestResponse",
+    )
+    add_response(
+        create_service_account,
+        "409",
+        "An active service account with this name already exists",
+        "ConflictResponse",
+    )
+    add_response(
+        create_service_account,
+        "500",
+        "Service account could not be created",
+        "InternalServerErrorResponse",
+    )
+    add_response(
+        create_service_account,
+        "503",
+        "Service accounts are not supported by the configured database",
+        "ServiceUnavailableResponse",
+    )
+    sort_responses(create_service_account)
+
+    schedule_operations = (
+        ("/schedules", "get", "200", (("503", "Scheduler storage is unavailable", "ServiceUnavailableResponse"),)),
+        (
+            "/schedules",
+            "post",
+            "201",
+            (
+                ("409", "A schedule with this name already exists", "ConflictResponse"),
+                ("500", "Schedule could not be created", "InternalServerErrorResponse"),
+                ("503", "Scheduler dependencies or storage are unavailable", "ServiceUnavailableResponse"),
+            ),
+        ),
+        (
+            "/schedules/{schedule_id}",
+            "get",
+            "200",
+            (
+                ("404", "Schedule not found", "NotFoundResponse"),
+                ("503", "Scheduler storage is unavailable", "ServiceUnavailableResponse"),
+            ),
+        ),
+        (
+            "/schedules/{schedule_id}",
+            "patch",
+            "200",
+            (
+                ("404", "Schedule not found", "NotFoundResponse"),
+                ("409", "A schedule with this name already exists", "ConflictResponse"),
+                ("500", "Schedule could not be updated", "InternalServerErrorResponse"),
+                ("503", "Scheduler dependencies or storage are unavailable", "ServiceUnavailableResponse"),
+            ),
+        ),
+        (
+            "/schedules/{schedule_id}",
+            "delete",
+            "204",
+            (
+                ("404", "Schedule not found", "NotFoundResponse"),
+                ("500", "Schedule could not be deleted", "InternalServerErrorResponse"),
+                ("503", "Scheduler storage is unavailable", "ServiceUnavailableResponse"),
+            ),
+        ),
+        (
+            "/schedules/{schedule_id}/enable",
+            "post",
+            "200",
+            (
+                ("404", "Schedule not found", "NotFoundResponse"),
+                ("500", "Schedule could not be enabled", "InternalServerErrorResponse"),
+                ("503", "Scheduler dependencies or storage are unavailable", "ServiceUnavailableResponse"),
+            ),
+        ),
+        (
+            "/schedules/{schedule_id}/disable",
+            "post",
+            "200",
+            (
+                ("404", "Schedule not found", "NotFoundResponse"),
+                ("500", "Schedule could not be disabled", "InternalServerErrorResponse"),
+                ("503", "Scheduler storage is unavailable", "ServiceUnavailableResponse"),
+            ),
+        ),
+        (
+            "/schedules/{schedule_id}/trigger",
+            "post",
+            "200",
+            (
+                ("404", "Schedule not found", "NotFoundResponse"),
+                ("409", "Schedule is disabled", "ConflictResponse"),
+                ("503", "Scheduler is not running or storage is unavailable", "ServiceUnavailableResponse"),
+            ),
+        ),
+        (
+            "/schedules/{schedule_id}/runs",
+            "get",
+            "200",
+            (
+                ("404", "Schedule not found", "NotFoundResponse"),
+                ("503", "Scheduler storage is unavailable", "ServiceUnavailableResponse"),
+            ),
+        ),
+        (
+            "/schedules/{schedule_id}/runs/{run_id}",
+            "get",
+            "200",
+            (
+                ("404", "Schedule run not found", "NotFoundResponse"),
+                ("503", "Scheduler storage is unavailable", "ServiceUnavailableResponse"),
+            ),
+        ),
+    )
+    for path, method, success_status, additions in schedule_operations:
+        operation = spec["paths"][path][method]
+        assert set(operation["responses"]) == {success_status, "422"}, operation["operationId"]
+        for status, description, schema_name in additions:
+            add_response(operation, status, description, schema_name)
+        sort_responses(operation)
+
+    optimize_memories = spec["paths"]["/optimize-memories"]["post"]
+    assert optimize_memories["description"] == (
+        "Optimize all memories for a given user using the default summarize strategy. This operation "
+        "combines all memories into a single comprehensive summary, achieving maximum token reduction "
+        "while preserving all key information. To use a custom model, specify the model parameter in "
+        "'provider:model_id' format (e.g., 'openai:gpt-4o-mini', "
+        "'anthropic:claude-3-5-sonnet-20241022'). If not specified, uses MemoryManager's default model "
+        "(gpt-4o). Set apply=false to preview optimization results without saving to database."
+    )
+    optimize_memories["description"] = (
+        "Optimize all memories for a user with the summarize strategy. The operation combines the "
+        "user's memories into one summary. Set `apply=false` to preview the result without saving it. "
+        "Specify a custom model as `provider:model_id`, for example `openai:gpt-5.4-mini`, "
+        "`anthropic:claude-sonnet-4-6`, or `google:gemini-3.5-flash`. If omitted, Agno v2.7.4 uses "
+        "MemoryManager's default model, `gpt-4o`."
+    )
+    optimize_model = schemas["OptimizeMemoriesRequest"]["properties"]["model"]
+    assert optimize_model["description"] == (
+        "Model to use for optimization in format 'provider:model_id' (e.g., 'openai:gpt-4o-mini', "
+        "'anthropic:claude-3-5-sonnet-20241022', 'google:gemini-2.0-flash-exp'). If not specified, uses "
+        "MemoryManager's default model (gpt-4o)."
+    )
+    optimize_model["description"] = (
+        "Model in `provider:model_id` format. Current examples include `openai:gpt-5.4-mini`, "
+        "`anthropic:claude-sonnet-4-6`, and `google:gemini-3.5-flash`. If omitted, Agno v2.7.4 uses "
+        "MemoryManager's default model, `gpt-4o`."
+    )
+
+    delete_config = spec["paths"]["/components/{component_id}/configs/{version}"]["delete"]
+    assert delete_config["description"] == (
+        "Delete a specific draft config version. Cannot delete published or current configs."
+    )
+    delete_config["description"] = (
+        "Delete a specific config version. Agno v2.7.4 rejects the current version. Synchronous "
+        "SQLite and PostgreSQL storage allow deletion of a published non-current version."
+    )
+
+    whatsapp_path = spec["paths"].get("/whatsapp/webhook")
+    if whatsapp_path is not None:
+        whatsapp_webhook = whatsapp_path["post"]
+        assert whatsapp_webhook["description"] == "Process incoming WhatsApp messages"
+        assert "requestBody" not in whatsapp_webhook
+        assert whatsapp_webhook.get("parameters") in (None, [])
+        whatsapp_webhook["parameters"] = [
+            {
+                "name": "X-Hub-Signature-256",
+                "in": "header",
+                "required": True,
+                "schema": {"type": "string"},
+                "description": "SHA-256 HMAC signature for the raw request body, prefixed with `sha256=`",
+            }
+        ]
+        whatsapp_webhook["requestBody"] = {
+            "required": True,
+            "content": {
+                "application/json": {
+                    "schema": {"type": "object", "additionalProperties": True},
+                }
+            },
+        }
+        assert set(whatsapp_webhook["responses"]) == {"200", "403"}
+        assert whatsapp_webhook["responses"]["403"] == {"description": "Invalid webhook signature"}
+        whatsapp_webhook["responses"]["403"] = response_ref(
+            "Invalid webhook signature", "ForbiddenResponse"
+        )
+        add_response(
+            whatsapp_webhook,
+            "500",
+            "Signature validation is not configured, or the JSON body is malformed or is not an object",
+            "InternalServerErrorResponse",
+        )
+        sort_responses(whatsapp_webhook)
+
+    agui_path = spec["paths"].get("/agui")
+    if agui_path is not None:
+        agui_run = agui_path["post"]
+        assert agui_run.get("security") is None
+        agui_run["security"] = [{"HTTPBearer": []}]
+        agui_success = agui_run["responses"]["200"]
+        assert agui_success["description"] == "Successful Response"
+        assert agui_success["content"] == {"application/json": {"schema": {}}}
+        agui_success["description"] = "Server-sent event stream"
+        agui_success["content"] = {"text/event-stream": {"schema": {"type": "string"}}}
+
+    a2a_families = (
+        ("agents", "Agent"),
+        ("teams", "Team"),
+        ("workflows", "Workflow"),
+    )
+    a2a_paths = [
+        f"/a2a/{family}/{{id}}/v1/message:{action}"
+        for family, _ in a2a_families
+        for action in ("send", "stream")
+    ]
+    present_a2a_paths = [path for path in a2a_paths if path in spec["paths"]]
+    if present_a2a_paths:
+        assert present_a2a_paths == a2a_paths
+        from a2a.types import SendMessageRequest, SendMessageSuccessResponse, SendStreamingMessageRequest
+
+        for request_model in (SendMessageRequest, SendStreamingMessageRequest):
+            request_schema = request_model.model_json_schema(
+                ref_template="#/components/schemas/A2ARequest_{model}"
+            )
+            request_definitions = request_schema.pop("$defs")
+            for definition_name, definition_schema in request_definitions.items():
+                component_name = f"A2ARequest_{definition_name}"
+                if component_name in schemas:
+                    assert schemas[component_name] == definition_schema, component_name
+                else:
+                    schemas[component_name] = definition_schema
+            assert request_model.__name__ not in schemas
+            schemas[request_model.__name__] = request_schema
+
+        success_example = SendMessageSuccessResponse.model_validate(
+            {
+                "jsonrpc": "2.0",
+                "id": "request-123",
+                "result": {
+                    "id": "task-456",
+                    "contextId": "context-789",
+                    "status": {"state": "completed"},
+                },
+            }
+        ).model_dump(mode="json", by_alias=True, exclude_none=True)
+
+        for family, label in a2a_families:
+            for action, request_schema_name in (
+                ("send", "SendMessageRequest"),
+                ("stream", "SendStreamingMessageRequest"),
+            ):
+                path = f"/a2a/{family}/{{id}}/v1/message:{action}"
+                operation = spec["paths"][path]["post"]
+                assert operation.get("security") is None
+                operation["security"] = [{"HTTPBearer": []}]
+                assert [parameter["name"] for parameter in operation["parameters"]] == ["id"]
+                operation["parameters"].append(
+                    {
+                        "name": "X-User-ID",
+                        "in": "header",
+                        "required": False,
+                        "schema": {"type": "string"},
+                        "description": (
+                            "Optional user ID for anonymous attribution. Authenticated requests use the "
+                            "identity from the credential."
+                        ),
+                    }
+                )
+                assert "requestBody" not in operation
+                operation["requestBody"] = {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": f"#/components/schemas/{request_schema_name}"},
+                        }
+                    },
+                }
+
+                mode = "non-streaming" if action == "send" else "streaming"
+                expected_description = (
+                    f"{'Send' if action == 'send' else 'Stream'} a message to an Agno {label} "
+                    f"({mode}). The {label} is identified via the path parameter '{{id}}'. Optional: "
+                    "Pass user ID via X-User-ID header (recommended) or 'userId' in params.message.metadata."
+                )
+                if action == "stream":
+                    expected_description += " Returns real-time updates as newline-delimited JSON (NDJSON)."
+                assert operation["description"] == expected_description
+                operation["description"] = (
+                    f"{'Send' if action == 'send' else 'Stream'} a message to an Agno {label}. "
+                    "Anonymous requests can set `X-User-ID` or `params.message.metadata.userId` for "
+                    "attribution. Authenticated requests use the identity from the credential."
+                )
+
+                if action == "send":
+                    success_json = operation["responses"]["200"]["content"]["application/json"]
+                    assert "task" in success_json["example"]["result"]
+                    success_json["example"] = deepcopy(success_example)
+                    if family in ("agents", "teams"):
+                        add_response(
+                            operation,
+                            "202",
+                            "Message accepted for background execution when `blocking=false`",
+                            "SendMessageSuccessResponse",
+                        )
+                    if family == "agents":
+                        add_response(
+                            operation,
+                            "501",
+                            "A2A is not supported for this agent type",
+                            "NotImplementedResponse",
+                        )
+                else:
+                    operation["description"] += " The response is a server-sent event stream."
+                    success_content = operation["responses"]["200"]["content"]
+                    assert success_content["application/json"]["schema"] == {}
+                    assert "text/event-stream" in success_content
+                    del success_content["application/json"]
+                    success_content["text/event-stream"]["schema"] = {"type": "string"}
+                    add_response(
+                        operation,
+                        "500",
+                        "Run could not be started",
+                        "InternalServerErrorResponse",
+                    )
+                sort_responses(operation)
 
     resume_team = spec["paths"]["/teams/{team_id}/runs/{run_id}/resume"]["post"]
     team_success_content = resume_team["responses"]["200"]["content"]
@@ -425,6 +791,17 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         assert response_schema == {}
         response_schema.update(deepcopy(fork_response_schema))
 
+    for path_item in spec["paths"].values():
+        for method in ("get", "post", "put", "patch", "delete", "head", "options", "trace"):
+            operation = path_item.get(method)
+            if not isinstance(operation, dict) or not operation.get("security"):
+                continue
+            if "401" not in operation["responses"]:
+                add_response(operation, "401", "Unauthorized", "UnauthenticatedResponse")
+            if "403" not in operation["responses"]:
+                add_response(operation, "403", "Forbidden", "ForbiddenResponse")
+            sort_responses(operation)
+
     spec["components"]["schemas"] = dict(sorted(schemas.items()))
     return spec
 
@@ -445,6 +822,26 @@ def preserve_curated_slack_metadata(spec: dict) -> dict:
         for name in names:
             assert name in curated_post, f"missing curated Slack {path} {name}"
             current_post[name] = curated_post[name]
+
+    if "/slack/interactions" in spec["paths"]:
+        from agno.os.interfaces.slack.ids import ACTION_CHECK_STATUS
+
+        assert ACTION_CHECK_STATUS == "check_status"
+        interactions = spec["paths"]["/slack/interactions"]["post"]
+        old_actions = (
+            "- `row_approve` - Approve a pending tool call\n"
+            "- `row_reject` - Reject a pending tool call\n"
+            "- `submit_pause` - Submit form data for a paused workflow"
+        )
+        new_actions = old_actions + (
+            "\n- `check_status` - Check an admin approval and resume an approved run"
+        )
+        if "`check_status`" not in interactions["description"]:
+            assert interactions["description"].count(old_actions) == 1
+            interactions["description"] = interactions["description"].replace(old_actions, new_actions)
+        else:
+            assert interactions["description"].count("`check_status`") == 1
+            assert new_actions in interactions["description"]
     return spec
 
 
