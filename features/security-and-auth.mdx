@@ -3,13 +3,13 @@ title: Security & Auth
 description: "Protect AgentOS APIs with JWT verification, scoped permissions, request isolation, and per-user data boundaries."
 ---
 
-Teams serving agents to employees or customers need identity, permissions, and user data boundaries at the runtime. AgentOS verifies JWTs, enforces scopes per endpoint, creates a fresh component copy for each run, and can scope persistent user data to the JWT subject. Tokens can come from the Control Plane, your backend, or an external identity provider.
+Teams serving agents to employees or customers need identity, permissions, and user data boundaries at the runtime. AgentOS verifies JWTs, enforces scopes per endpoint, creates a fresh component copy for core run endpoints, and can scope persistent user data to the JWT subject. Tokens can come from the Control Plane, your backend, or an external identity provider.
 
 | Boundary | Control |
 |----------|---------|
 | Caller identity | JWT signature verification; set `verify_audience=True` to enforce the `aud` claim |
 | API access | Scopes enforced per endpoint |
-| Run state | Fresh component copy for each request |
+| Run state | Fresh component copy for core run endpoints, with some resources shared by reference |
 | Persistent user data | Opt-in reads, writes, and ownership checks scoped to the JWT subject |
 | Network and database | Reverse proxy controls and database permissions configured by the deployment |
 
@@ -44,7 +44,7 @@ A small set of public routes are exempt from the JWT requirement: `/`, `/health`
 
 <Steps>
   <Step title="Toggle JWT authorization">
-    Open [os.agno.com](https://os.agno.com) → **Add OS** → **Live** → paste your URL. Enable JWT authorization when connecting a new AgentOS, or later from the OS Settings page.
+    Open [os.agno.com](https://os.agno.com) → **Connect OS** → **Live** → paste your URL. Enable JWT authorization when connecting a new AgentOS, or later from the OS Settings page.
   </Step>
 
   <Step title="Copy the public key">
@@ -111,11 +111,11 @@ The AgentOS control plane mints each token with the appropriate scopes. Scopes a
 
 ## Request isolation
 
-Each run request gets a fresh copy of the agent, team, or workflow it's hitting. AgentOS calls `deep_copy()` on the registered component before the run, so mutable per-run state (session-scoped variables, tool execution context, run metadata) never bleeds between concurrent calls.
+Core run endpoints start each run from a fresh copy of the registered agent, team, or workflow. AgentOS calls `deep_copy()` and copies mutable fields when possible.
 
-Heavy resources (the database connection, the model client, MCP tool handles) are shared by reference; only the mutable per-run state is isolated. You get cheap concurrency without two requests racing on the same in-memory agent instance.
+Models, databases, knowledge resources, MCP tool handles, and some tools are shared by reference so their connections and pools remain available. A field that cannot be copied also falls back to the original value. Custom tools and objects shared this way must be safe for concurrent use.
 
-This is on by default for run endpoints. There's nothing to configure.
+The copy happens automatically on core run endpoints. Review mutable state in custom tools and objects before serving concurrent traffic.
 
 ## User isolation
 

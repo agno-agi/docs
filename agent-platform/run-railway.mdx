@@ -3,9 +3,7 @@ title: Run on Railway
 description: "Deploy AgentOS and Postgres to Railway with JWT authorization and MCP access."
 ---
 
-Deploy after local probes and release evals pass. The Railway starter provisions AgentOS and Postgres, sets the public URL used by schedules and MCP, and requires JWT verification before serving production traffic.
-
-The template includes scripts to:
+Your company probably has a standard way to run software. Use it. If you want to deploy this platform without building the cloud infrastructure first, Railway is the quickest path through this guide. The template includes scripts to:
 
 - Deploy to Railway: `./scripts/railway/up.sh`
 - Sync environment variables: `./scripts/railway/env-sync.sh`
@@ -19,9 +17,9 @@ The template includes scripts to:
 
 ## Why JWT is on by default
 
-Token-Based Authorization is **ON** by default. Production startup requires a `JWT_VERIFICATION_KEY` or `JWT_JWKS_FILE`. The deploy script pauses for the verification key before it serves traffic.
+JWT authorization is enabled by default. Production startup requires a `JWT_VERIFICATION_KEY` or `JWT_JWKS_FILE`. During an interactive deploy, the script pauses for a verification key when neither value is configured.
 
-Token-Based Auth gives you three things:
+JWT authorization provides:
 
 - **Protected application routes.** Requests to agent, team, workflow, and data routes require a valid token.
 - **Per-request identity.** Middleware parses the token and exposes `user_id`, `session_id`, and custom claims to protected routes.
@@ -36,13 +34,15 @@ Per-user data isolation is opt-in. Set `authorization_config=AuthorizationConfig
 <Steps>
   <Step title="Configure your production environment">
 
-    The deploy and sync scripts read `.env.production`. This keeps local and production values separate: different OpenAI keys with different budgets, production-only credentials, a different Slack workspace.
+    The deploy and sync scripts read `.env.production`. This keeps local and production values separate: different OpenAI keys with different budgets, production-only credentials, or a different Slack workspace.
+
+    Create the file the first time you deploy:
 
     ```bash
-    test -f .env.production || cp .env .env.production
+    cp .env .env.production
     ```
 
-    Edit `.env.production` with a production OpenAI key.
+    Skip this command if `.env.production` already exists. Edit the file with a production OpenAI key.
 
   </Step>
 
@@ -59,7 +59,7 @@ Per-user data isolation is opt-in. Set `authorization_config=AuthorizationConfig
     3. Creates the `agent-os` service and forwards the database connection vars.
     4. Issues your public Railway domain and sets `AGENTOS_URL` to it, on Railway and in `.env.production`.
     5. Generates `MCP_CONNECT_SECRET` for hosted MCP clients and saves it to `.env.production` and Railway.
-    6. Pauses and asks for a JWT verification key.
+    6. Asks for a JWT verification key when neither JWT setting is configured.
     7. Builds and deploys from the current directory.
 
     The domain takes a few minutes to start resolving after the first deploy.
@@ -83,10 +83,11 @@ Per-user data isolation is opt-in. Set `authorization_config=AuthorizationConfig
   <Step title="Confirm it's live">
 
     ```bash
-    railway logs --service agent-os
+    curl --fail https://<your-app>.up.railway.app/health
+    curl --silent --output /dev/null --write-out "%{http_code}\n" https://<your-app>.up.railway.app/agents
     ```
 
-    Once you see successful requests, open `https://<your-app>.up.railway.app/docs` and you're live.
+    The health check should succeed, and the protected `/agents` route should return `401` without a token. Open `https://<your-app>.up.railway.app/docs` to inspect the deployed API. Use `railway logs --service agent-os` if either check fails.
 
   </Step>
 
@@ -105,7 +106,7 @@ Per-user data isolation is opt-in. Set `authorization_config=AuthorizationConfig
 
 ## Auto-deploys from GitHub
 
-By default every code update needs `./scripts/railway/redeploy.sh`. To auto-deploy on every push to `main`:
+Until GitHub auto-deploy is connected, redeploy code changes with `./scripts/railway/redeploy.sh`. To deploy on every push to `main`:
 
 1. Open the Railway dashboard → your project → the `agent-os` service → **Settings**.
 2. Under **Source**, click **Connect Repo** and pick your repo.
@@ -115,11 +116,13 @@ Push to `main` now triggers a build and deploy. `./scripts/railway/env-sync.sh` 
 
 ## External authentication boundary
 
-Deployments inside a private VPC can set `authorization=False` in `app/main.py` when another trusted layer blocks unauthenticated traffic. Keep AgentOS authorization enabled for internet-accessible deployments and services that hold user data.
+If a private network or trusted gateway already blocks unauthenticated traffic, set `authorization=False` in `app/main.py`. JWT middleware still validates tokens while `JWT_VERIFICATION_KEY` or `JWT_JWKS_FILE` remains configured. Remove those values from `.env.production` and the Railway `agent-os` service, then redeploy. `MCP_CONNECT_SECRET` controls the separate OAuth flow for MCP clients. Remove it from both places too if the gateway should protect `/mcp`. Keep AgentOS authorization enabled for internet-accessible deployments and services that hold user data.
+
+`./scripts/railway/env-sync.sh` updates variables present in `.env.production`; it does not remove variables you deleted from the file.
 
 ## Scaling
 
-The default deploy is one replica with 4 GiB of memory and 2 vCPU. Change `numReplicas` and `limits` in `railway.json` as your load and availability requirements grow.
+The starter is configured for one replica with 4 GiB of memory and 2 vCPU. Adjust the resource limits in `railway.json` as load grows. Validate schedules and long-lived MCP connections with your workload before increasing `numReplicas`.
 
 ## Operations
 
@@ -136,7 +139,7 @@ The default deploy is one replica with 4 GiB of memory and 2 vCPU. Change `numRe
   Deleting the Railway project removes the app, the database, and all data.
 </Warning>
 
-See [Railway Reference](/deploy/templates/railway/reference) for environment variables, scaling, and troubleshooting.
+See [Railway Reference](/deploy/templates/railway/reference) for environment variables, customization, and troubleshooting.
 
 ## Next
 

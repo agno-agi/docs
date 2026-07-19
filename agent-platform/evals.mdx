@@ -7,7 +7,7 @@ Probes help you discover weaknesses. Evals turn the behavior you care about into
 
 ## Cases
 
-Cases live in `evals/cases.py`. Each case sends one input to an agent (`agent=`) and optionally checks two things:
+Cases live in `evals/cases.py`. Each case sends one input to an agent (`agent=`) and can run up to two checks:
 
 - **judge**: `AgentAsJudgeEval` scores the response against `criteria` (binary pass/fail) using an LLM.
 - **reliability**: `ReliabilityEval` checks which tools fired against `expected_tool_calls`.
@@ -94,7 +94,7 @@ The suite imports agents on the host and writes results to Postgres through `eva
 
 Each case prints its response and the verdicts for the checks it defines. The run ends with an `Eval Summary` table.
 
-Results write to Postgres via `eval_db`. The eval history shows up on [os.agno.com](https://os.agno.com) alongside your sessions and traces, so you can see when a case started failing and what changed.
+Results are written to Postgres via `eval_db`. The eval history appears on [os.agno.com](https://os.agno.com) alongside your sessions and traces, so you can compare inputs, responses, and verdicts across runs.
 
 ## Diagnose failures with your coding agent
 
@@ -104,25 +104,28 @@ Open your coding agent and ask it to run:
 Run the eval-and-improve skill in .agents/skills.
 ```
 
-The coding agent runs the suite, triages every failure (bad criteria, real regression, flaky LLM judge), and proposes in-scope fixes. It edits the agent or the case and re-runs until the suite is green.
+The coding agent runs the suite and classifies failures as bad criteria, real regressions, or unreliable LLM judgments. It proposes scoped fixes, updates the agent or case, and re-runs the affected checks.
 
-## When to run evals
+## Choose when to run evals
 
-| Trigger                               | Frequency             |
-| ------------------------------------- | --------------------- |
-| Before deploying a change to an agent | Every time            |
-| As part of CI                         | Every PR              |
-| Against production                    | On a daily cron       |
-| After bumping a model version         | Every time            |
+These behavioral checks call models, so choose a cadence that fits the cost and confidence you need.
 
-The template ships a `run_evals` workflow for scheduled checks. Set `ENABLE_SCHEDULED_EVALS=True` to run the `smoke`-tagged cases daily. See [scheduling](/features/scheduling) for the cron API.
+| Situation | Suggested run |
+| --------- | ------------- |
+| While changing one behavior | Run the affected case with `--name <case>`. |
+| Before a release | Run the `release` tag when you want broader confidence. |
+| In CI | Use stable `smoke` or `release` cases. Leave `live` cases out. |
+| After changing a model | Run the cases for affected agents. |
+| On a schedule | Run `smoke` cases when recurring model calls are useful. |
+
+The template ships a `run_evals` workflow for scheduled checks. Scheduled evals are off by default because they make model calls. Set `ENABLE_SCHEDULED_EVALS=True` to run the `smoke`-tagged cases daily. See [scheduling](/features/scheduling) for the cron API.
 
 ## What good cases look like
 
 - **Specific.** "Returns a JSON object with `ticker` and `price`" beats "Returns the right answer".
-- **Stable.** Avoid prompts whose correct answer changes daily. Use phrasing like "describes a real, recent..." instead of locking in a specific result.
+- **Stable.** Avoid prompts whose correct answer changes daily. Use phrasing like "describes a real, recent..." so the case remains useful as the answer changes.
 - **Scoped to one behavior.** One case per behavior makes failures easy to read.
-- **Anchored to tools.** `expected_tool_calls` catches the failure mode where the agent confidently makes things up instead of calling a tool.
+- **Anchored to tools.** `expected_tool_calls` catches responses that skip a required tool call.
 
 ## Next
 
