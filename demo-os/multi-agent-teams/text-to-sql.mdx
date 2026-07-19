@@ -29,7 +29,7 @@ responses.
 
 | Member | Intended work | Database connection |
 |--------|---------------|---------------------|
-| **Analyst** | Read data, write and validate queries, interpret results | PostgreSQL connection with `default_transaction_read_only=on` |
+| **Analyst** | Read data, write and validate queries, interpret results | Connection defaults transactions to read-only; use a SELECT-only role for enforcement |
 | **Engineer** | Create views, summary tables, and other assets in `dash` | Read-write connection with `search_path=dash,public` |
 | **Leader** | Select members and combine results | No SQL tool access; the team database persists sessions |
 
@@ -37,11 +37,11 @@ Both specialists receive `search_knowledge_base`, schema introspection, SQL, and
 
 ## Access controls
 
-The Analyst's connection sets PostgreSQL transactions to read-only. PostgreSQL rejects DML and DDL on that connection.
+The Analyst connection sets `default_transaction_read_only=on`, so each transaction starts read-only. This setting is a session default, not a privilege boundary. A role with write privileges can switch a transaction to read-write. The bundled `ai` role is writable. Use a separate PostgreSQL role with SELECT-only grants before treating the Analyst connection as read-only.
 
 The Engineer uses a different control. A SQLAlchemy event listener searches statements for explicit writes to `public.*` and raises an error when it recognizes one. This regular-expression guard is best-effort. It can miss alternate SQL forms or unqualified targets, so it does not provide a database-enforced security boundary.
 
-For a hard Engineer boundary, use PostgreSQL roles and grants that permit reads from `public` and writes only to `dash`.
+For hard boundaries, use separate PostgreSQL roles and grants. Give the Analyst SELECT-only access. Give the Engineer read access to `public` and write access only to `dash`.
 
 ## Query flow
 
@@ -49,7 +49,7 @@ For a direct data question, the expected flow is:
 
 1. The leader delegates the question to the Analyst.
 2. The Analyst searches knowledge for table metadata, query patterns, and business rules.
-3. The Analyst executes SQL through the read-only connection.
+3. The Analyst executes SQL through its database connection.
 4. The leader turns the member response into the final answer.
 
 For work that needs a reusable view, the leader can involve both members:
@@ -57,7 +57,7 @@ For work that needs a reusable view, the leader can involve both members:
 1. The Analyst identifies the repeated query or missing data asset.
 2. The Engineer inspects the schema and creates an asset under `dash`.
 3. The Engineer records that asset in knowledge.
-4. The Analyst queries the new asset through its read-only connection.
+4. The Analyst queries the new asset through its database connection.
 
 `TeamMode.coordinate` allows the leader to call multiple members. It does not restrict a run to one specialist.
 
@@ -79,7 +79,7 @@ Knowledge search and learning writes are model-driven tool calls. The instructio
 | [`agents/dash/team.py`](https://github.com/agno-agi/demo-os/blob/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/agents/dash/team.py) | Team and leader configuration |
 | [`agents/dash/agents/analyst.py`](https://github.com/agno-agi/demo-os/blob/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/agents/dash/agents/analyst.py) | Analyst configuration |
 | [`agents/dash/agents/engineer.py`](https://github.com/agno-agi/demo-os/blob/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/agents/dash/agents/engineer.py) | Engineer configuration |
-| [`agents/dash/db_utils.py`](https://github.com/agno-agi/demo-os/blob/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/agents/dash/db_utils.py) | Read-only engine and Engineer statement guard |
+| [`agents/dash/db_utils.py`](https://github.com/agno-agi/demo-os/blob/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/agents/dash/db_utils.py) | Analyst and Engineer engine configuration |
 | [`agents/dash/tools/build.py`](https://github.com/agno-agi/demo-os/blob/4bd50f71b9d29cdd24fd86c2c059c8057b9009c4/agents/dash/tools/build.py) | Member tool assembly |
 
 ## Try it

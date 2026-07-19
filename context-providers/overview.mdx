@@ -36,7 +36,7 @@ agent = Agent(
 )
 ```
 
-The agent sees five tools: `query_slack`, `update_slack`, `query_gdrive`, `query_database`, `update_database`. Each provider exposes one read tool plus an optional write tool.
+The agent sees five tools: `query_slack`, `update_slack`, `query_gdrive`, `query_database`, `update_database`. Each provider exposes one query tool plus an optional update tool.
 
 ## How it Works
 
@@ -59,14 +59,14 @@ The sub-agent does the tool work; the calling agent does the reasoning. On most 
 
 ### Read/Write Separation
 
-Writable providers run two sub-agents with minimum privilege:
+Writable providers run two sub-agents with separate connections or tool sets:
 
 | Provider | Read sub-agent | Write sub-agent |
 |----------|----------------|-----------------|
 | Database | Uses `readonly_engine` | Uses `sql_engine` |
 | Slack | History, thread, and lookup tools (search with a user token) | `send_message` + lookups |
 
-These are infrastructure-level guarantees, not prompt instructions. The read sub-agent physically cannot call write tools.
+Each sub-agent receives its own connection or tool set. For `DatabaseContextProvider`, enforce the read boundary with SELECT-only credentials on `readonly_engine`. The Slack read sub-agent does not receive `send_message`.
 
 ### Mode
 
@@ -79,12 +79,12 @@ These are infrastructure-level guarantees, not prompt instructions. The read sub
     # Agent sees: query_slack, update_slack
     ```
     
-    **When to use:** Most cases. You get clean read/write separation with privilege isolation. The read sub-agent cannot call write tools.
+    **When to use:** Most cases. You get separate read and write sub-agents. For databases, configure SELECT-only credentials on `readonly_engine`.
     
     **How it works:** Two sub-agents handle the underlying toolkit. Reads go through the read sub-agent (history, threads, lookups, plus search when a user token or Slack-interface token is configured). Writes go through the write sub-agent (send_message + lookups for channel resolution).
   </Tab>
   <Tab title="agent">
-    Single `query_<id>` tool. Read-only access through one sub-agent.
+    Single `query_<id>` tool. Query access through one sub-agent.
     
     ```python
     from agno.context.mode import ContextMode
@@ -93,9 +93,9 @@ These are infrastructure-level guarantees, not prompt instructions. The read sub
     # Agent sees: query_slack only
     ```
     
-    **When to use:** Read-only access, or when you want maximum abstraction. Your agent just asks questions; the sub-agent figures out which tools to call.
+    **When to use:** Read access, or when you want maximum abstraction. For databases, the connection credentials determine which statements are permitted.
     
-    **How it works:** All requests route through the read sub-agent. No write access. The sub-agent orchestrates reads internally.
+    **How it works:** All requests route through the read sub-agent. The sub-agent receives the provider's query-side tool set. `DatabaseContextProvider` supplies a general SQL query tool, so database permissions enforce the SQL boundary.
   </Tab>
   <Tab title="tools">
     Bypass sub-agents entirely. Your agent sees the raw toolkit methods.
