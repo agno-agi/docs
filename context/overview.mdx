@@ -1,69 +1,90 @@
 ---
 title: Context Engineering
 sidebarTitle: Overview
-description: Design and control the information sent to language models to guide their behavior.
+description: Control the instructions, data, history, and tools sent to a model for each run.
 keywords: [context, context engineering, system message, user message, prompts, prompt engineering]
 ---
 
-Context engineering is the process of designing and controlling the information (context) that is sent to language models to guide their behavior and outputs. 
-In practice, building context comes down to one question: "Which information is most likely to achieve the desired outcome?"
+Context engineering controls what a model sees when an agent or team runs. Product teams use it to give the model the right instructions and application data while keeping each request focused.
 
-In Agno, this means carefully crafting the system message, which includes the agent or team description, instructions, and other relevant settings. By thoughtfully constructing this context, you can:
+```bash
+uv pip install -U agno openai sqlalchemy
+```
 
-- Steer your agent or team toward specific behaviors or roles.
-- Constrain or expand your agent or team's capabilities.
-- Ensure outputs are consistent, relevant, and aligned with your application's needs.
-- Enable advanced use cases such as multi-step reasoning, tool use, or structured output.
+```python support_agent.py
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIResponses
 
-Effective context engineering is an iterative process: refining the system message, trying out different descriptions and instructions, and using features such as schemas, delegation, and tool integrations.
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.4-mini"),
+    db=SqliteDb(db_file="tmp/support.db"),
+    instructions=[
+        "Answer product questions clearly and concisely.",
+        "The customer's plan is {plan}.",
+    ],
+    session_state={"plan": "enterprise"},
+    add_history_to_context=True,
+    num_history_runs=3,
+)
 
-The context of an Agno agent consists of the following:
-- **System message**: The system message is the main context that is sent to the agent or team, including all additional context
-- **User message**: The user message is the message that is sent to the agent or team.
-- **Chat history**: The chat history is the history of the conversation between the agent or team and the user.
-- **Additional input**: Any few-shot examples or other additional input that is added to the context.
+agent.print_response(
+    "Which support channels can I use?",
+    user_id="customer-42",
+    session_id="support-thread-7",
+)
+```
 
+The system message carries the agent's instructions and resolved plan. The user message carries the current request. Up to three previous runs from the same stored session can also enter the model context.
+
+## Sources of Context
+
+| Source | What it contributes | Use it for |
+|--------|---------------------|------------|
+| Description and instructions | Stable role, behavior, and constraints | Product behavior that applies across runs |
+| Run input | The current user request | The task to complete now |
+| [Knowledge](/knowledge/overview) | Retrieved content from documents and data | Domain grounding and source-backed answers |
+| [Memory](/memory/overview) | Persistent facts associated with a user | Preferences and details that cross sessions |
+| [Chat history](/history/overview) | Messages from earlier runs in one session | Multi-turn continuity |
+| [Session state](/state/overview) | Application data stored with the session | Carts, task progress, plans, and counters |
+| [Dependencies](/dependencies/overview) | Static or callable values resolved at run time | Request-specific application data |
+| Tool definitions and results | Available operations and their outputs | Reading data and taking actions |
+| `additional_context` and `additional_input` | Explicit system or message context | Few-shot examples and custom context blocks |
+
+Agno can assemble these sources for each run. Enable only the sources the model needs for the current use case.
+
+## Control Context Size
+
+| Requirement | Configuration |
+|-------------|---------------|
+| Include recent conversation turns | `add_history_to_context=True` with `num_history_runs` or `num_history_messages` |
+| Condense a long conversation | [Session summaries](/sessions/session-summaries) |
+| Reduce stored tool-result context | [Context compression](/compression/overview) |
+| Retrieve relevant domain content | [Knowledge search](/knowledge/concepts/search-and-retrieval/overview) |
+| Add runtime values to the user message | `add_dependencies_to_context=True` |
+| Add session state as a context block | `add_session_state_to_context=True` |
+
+Start with the smallest set that supports the task. Inspect model messages in [debug mode](/agents/debugging-agents) when behavior suggests the model received missing, stale, or conflicting context.
 
 ## Context Caching
 
-Most model providers support caching of system and user messages, though the implementation differs between providers.
+Some model providers cache repeated prompt prefixes. Provider requirements and pricing differ. Keep stable instructions consistent between requests, place changing data in the appropriate runtime fields, and verify the selected provider's caching behavior.
 
-The general approach is to cache repetitive content and common instructions, and then reuse that cached content in subsequent requests as the prefix of your system message.
-In other words, if the model supports it, you can reduce the number of tokens sent to the model by putting static content at the start of your system message.
-
-Agno's context construction is designed to place the most likely static content at the beginning of the system message.  
-If you wish to fine-tune this, the recommended approach is to manually set the system message.
-
-Some examples of prompt caching:
-- [OpenAI's prompt caching](https://platform.openai.com/docs/guides/prompt-caching)
-- [Anthropic prompt caching](https://docs.claude.com/en/docs/build-with-claude/prompt-caching) -> See an [Agno example](/models/providers/native/anthropic/usage/prompt-caching) of this
+- [OpenAI prompt caching](https://platform.openai.com/docs/guides/prompt-caching)
+- [Anthropic prompt caching](https://docs.claude.com/en/docs/build-with-claude/prompt-caching)
+- [Anthropic caching with Agno](/models/providers/native/anthropic/usage/prompt-caching)
 - [OpenRouter prompt caching](https://openrouter.ai/docs/features/prompt-caching)
 
+## Next Steps
 
-## Learn more
 <CardGroup cols={3}>
-  <Card
-    title="Context Engineering for Agents"
-    icon="robot"
-    iconType="duotone"
-    href="/context/agent/overview"
-  >
-    Craft system messages and instructions for agents.
+  <Card title="Agent Context" icon="robot" iconType="duotone" href="/context/agent/overview">
+    Configure system messages and instructions for agents.
   </Card>
-  <Card
-    title="Context Engineering for Teams"
-    icon="users"
-    iconType="duotone"
-    href="/context/team/overview"
-  >
-    Configure context for multi-agent coordination.
+  <Card title="Team Context" icon="users" iconType="duotone" href="/context/team/overview">
+    Configure context for a leader and its members.
   </Card>
-  <Card
-    title="Chat History"
-    icon="history"
-    iconType="duotone"
-    href="/history/overview"
-  >
-    Include conversation history in context.
+  <Card title="Chat History" icon="history" iconType="duotone" href="/history/overview">
+    Select previous messages for model context.
   </Card>
 </CardGroup>

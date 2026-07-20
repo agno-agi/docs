@@ -1,74 +1,102 @@
 ---
 title: "Interfaces"
 sidebarTitle: "Overview"
-description: "Expose Agno agents through various communication protocols and platforms"
+description: "Expose agents, teams, and workflows through product frontends, messaging platforms, and agent protocols."
 keywords: [interfaces, a2a, ag-ui, slack, whatsapp, telegram, protocols, integration]
 ---
 
-Interfaces enable exposing Agno agents, teams, and workflows through various communication protocols and platforms. Each interface provides a standardized way to connect Agno agents to external systems, messaging platforms, and frontend applications.
+Product teams use interfaces to place agents in the channel where users already work. Mount AG-UI for a product frontend, Slack or Telegram for conversations, WhatsApp for customer messaging, or A2A for agent-to-agent calls.
 
-## Available Interfaces
-
-<CardGroup cols={2}>
-  <Card
-    title="AG-UI"
-    icon="desktop"
-    href="/agent-os/interfaces/ag-ui/introduction"
-  >
-    Connect agents to frontend applications using the Agent-User Interaction Protocol
-  </Card>
-  <Card
-    title="Slack"
-    icon="slack"
-    href="/agent-os/interfaces/slack/introduction"
-  >
-    Deploy agents as Slack applications for team collaboration
-  </Card>
-  <Card
-    title="WhatsApp"
-    icon="whatsapp"
-    href="/agent-os/interfaces/whatsapp/introduction"
-  >
-    Serve agents via WhatsApp for direct messaging interactions
-  </Card>
-  <Card
-    title="Telegram"
-    icon="telegram"
-    href="/agent-os/interfaces/telegram/introduction"
-  >
-    Deploy agents as Telegram bots for direct and group chat conversations
-  </Card>
-  <Card
-    title="A2A"
-    icon="code"
-    href="/agent-os/interfaces/a2a/introduction"
-  >
-    Expose agents via the Agent-to-Agent Protocol for inter-agent communication
-  </Card>
-</CardGroup>
-
-## How Interfaces Work
-
-Interfaces are FastAPI routers that mount protocol-specific endpoints on an AgentOS instance. Each interface:
-
-- Wraps Agno agents, teams, or workflows into protocol-compatible endpoints
-- Handles authentication and request validation for the target platform
-- Manages session tracking and context preservation
-- Streams responses back to clients in the appropriate format
-
-## Using Interfaces
-
-Interfaces are added to an AgentOS instance through the `interfaces` parameter:
-
-```python
+```python slack_agent.py
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
 from agno.os import AgentOS
 from agno.os.interfaces.slack import Slack
 
-agent_os = AgentOS(
-    agents=[my_agent],
-    interfaces=[Slack(agent=my_agent)],
+support_agent = Agent(
+    id="support-agent",
+    model=OpenAIResponses(id="gpt-5.4"),
 )
+
+agent_os = AgentOS(
+    agents=[support_agent],
+    interfaces=[Slack(agent=support_agent)],
+)
+
 app = agent_os.get_app()
 ```
 
-Multiple interfaces can be added to a single AgentOS instance, allowing the same agents to be exposed through different protocols simultaneously.
+The Slack interface mounts its webhook routes on the AgentOS application and routes each conversation to `support_agent`.
+
+## Choose an Interface
+
+| Interface | Use when | Components |
+|---|---|---|
+| [AG-UI](/agent-os/interfaces/ag-ui/introduction) | A web or mobile frontend speaks the Agent-User Interaction Protocol | Agents, teams |
+| [Slack](/agent-os/interfaces/slack/introduction) | Teams use an agent in channels, direct messages, and threads | Agents, teams, workflows |
+| [Telegram](/agent-os/interfaces/telegram/introduction) | Users reach an agent through direct messages or group chats | Agents, teams, workflows |
+| [WhatsApp](/agent-os/interfaces/whatsapp/introduction) | Customers interact with an agent through WhatsApp Business | Agents, teams, workflows |
+| [A2A](/agent-os/interfaces/a2a/introduction) | Other agent systems call AgentOS through the Agent-to-Agent Protocol | Agents, teams, workflows |
+
+<Note>
+Discord uses the standalone `DiscordClient` integration from `agno.integrations.discord`. See the [Discord guide](/agent-os/interfaces/discord/introduction).
+</Note>
+
+## How Interfaces Work
+
+Each interface mounts a FastAPI router on AgentOS and translates between the external protocol and an Agent, Team, or Workflow.
+
+| Responsibility | Behavior |
+|---|---|
+| Request handling | Parse platform events or protocol messages into Agno run input |
+| Session routing | Map the external user and conversation to AgentOS user and session IDs |
+| Streaming | Translate run events into the format supported by the client |
+| Media | Pass supported files, images, audio, and video to the component |
+| Responses | Return text, generated media, progress, and human-in-the-loop state through the interface |
+
+Support varies by interface. Use each interface guide for its events, media types, and response behavior.
+
+## Authentication
+
+Messaging platforms authenticate their own webhook routes. Protocol interfaces follow the AgentOS authentication mode and scope mappings.
+
+| Interface | Request verification |
+|---|---|
+| Slack | Slack signing secret |
+| Telegram | Telegram webhook secret token |
+| WhatsApp | Meta webhook signature using the WhatsApp app secret |
+| AG-UI | AgentOS bearer authentication and run scopes when configured |
+| A2A | AgentOS bearer authentication and resource scopes when configured |
+
+The regular AgentOS REST routes continue to use the runtime's configured [authentication and authorization](/agent-os/security/overview).
+
+## Mount Multiple Interfaces
+
+One AgentOS application can expose the same component through several interfaces:
+
+```python
+from agno.os.interfaces.agui import AGUI
+from agno.os.interfaces.slack import Slack
+
+agent_os = AgentOS(
+    agents=[support_agent],
+    interfaces=[
+        AGUI(agent=support_agent),
+        Slack(agent=support_agent),
+    ],
+)
+
+app = agent_os.get_app()
+```
+
+The agent keeps one implementation while each interface owns protocol handling, routing, and response formatting.
+
+## Next Steps
+
+| Task | Guide |
+|---|---|
+| Connect a product frontend | [AG-UI](/agent-os/interfaces/ag-ui/introduction) |
+| Build a workplace agent | [Slack](/agent-os/interfaces/slack/introduction) |
+| Serve a messaging bot | [Telegram](/agent-os/interfaces/telegram/introduction) |
+| Reach customers on WhatsApp | [WhatsApp](/agent-os/interfaces/whatsapp/introduction) |
+| Expose agents to other agent systems | [A2A](/agent-os/interfaces/a2a/introduction) |

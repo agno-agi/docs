@@ -1,114 +1,151 @@
 ---
 title: "Using the API"
 sidebarTitle: "Using the API"
-description: "Call the AgentOS API to run agents, teams, and workflows."
+description: "Run agents, manage state, and operate AgentOS through its REST API."
 ---
 
-AgentOS exposes endpoints for running agents and managing sessions, memories, knowledge, and evals. The same API powers the [control plane](/agent-os/control-plane) and can be used to build your AI products.
+Application engineers use the AgentOS API to embed agents in products and manage runtime state from any HTTP client.
 
-## Instance Discovery
+```bash
+curl http://localhost:7777/agents/support-agent/runs \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "message=Where is my order?" \
+  -d "user_id=customer-42" \
+  -d "session_id=order-support-42" \
+  -d "stream=false"
+```
 
-`GET /info` is unauthenticated and returns what a client needs to bootstrap against an instance: which authentication mode it enforces and whether an MCP server is mounted.
+The response includes the run output, `run_id`, and `session_id`. Reuse the same `session_id` to group later runs in the same thread. Configure [chat history](/history/overview) when the model needs messages from earlier runs.
+
+Teams and workflows use the same run pattern:
+
+| Component | Run endpoint |
+|---|---|
+| Agent | `POST /agents/{agent_id}/runs` |
+| Team | `POST /teams/{team_id}/runs` |
+| Workflow | `POST /workflows/{workflow_id}/runs` |
+
+## Discover an Instance
+
+`GET /info` returns the metadata a client needs before making authenticated calls. The endpoint is public.
 
 ```bash
 curl http://localhost:7777/info
 ```
 
-```json
-{
-  "os_id": "my-agent-os",
-  "name": null,
-  "agno_version": "2.7.2",
-  "agent_count": 1,
-  "team_count": 0,
-  "workflow_count": 0,
-  "mcp": {
-    "enabled": true,
-    "path": "/mcp",
-    "oauth": null
-  },
-  "auth_mode": "none"
-}
-```
-
 | Field | Description |
-|-------|-------------|
-| `auth_mode` | Authentication enforced by the instance: `none`, `security_key`, or `jwt` |
+|---|---|
+| `auth_mode` | Active authentication mode: `none`, `security_key`, or `jwt` |
+| `agent_count`, `team_count`, `workflow_count` | Number of registered runtime components |
 | `mcp.enabled` | Whether the MCP server is mounted |
-| `mcp.path` | Mount path of the MCP server, `null` when disabled |
-| `mcp.oauth` | OAuth discovery details when the MCP endpoint is OAuth-protected, `null` otherwise |
-| `agent_count`, `team_count`, `workflow_count` | Registered components |
+| `mcp.path` | MCP mount path when enabled |
+| `mcp.oauth` | OAuth discovery details when the MCP endpoint uses OAuth |
 | `agno_version` | Agno version running on the instance |
 
-## Endpoints
+Use `GET /config` to retrieve component IDs, database IDs, interfaces, and domain configuration. Send credentials when `auth_mode` requires them.
 
-| Resource | Operations |
-|----------|------------|
-| Agents | Run, list, get |
-| Teams | Run, list, get |
-| Workflows | Run, list, get |
-| Sessions | Create, list, get, update, delete |
-| Memories | Create, list, get, update, delete |
-| Knowledge | Add, search, list, get, update, delete |
-| Evals | Create, list, get, update, delete |
-| Metrics | Get, refresh |
+## API Surfaces
 
-See the [API reference](/reference-api/overview) for full documentation.
+| Task | Resources |
+|---|---|
+| Execute application logic | Agents, teams, workflows, runs |
+| Manage conversation and user state | Sessions, memories, learnings |
+| Manage retrieval content | Knowledge, content sources, search |
+| Measure behavior | Evaluations, metrics, traces |
+| Control sensitive operations | Approvals, run continuation, cancellation |
+| Automate recurring work | Schedules and schedule runs |
+| Operate the runtime | Configuration, models, databases, service accounts |
 
-## Running Agents
+See the [API reference](/reference-api/overview) for every path and schema.
+
+## Stream Run Events
+
+Run endpoints stream Server-Sent Events by default. Use `curl -N` to print events as they arrive:
+
 ```bash
-curl http://localhost:7777/agents/my-agent/runs \
+curl -N http://localhost:7777/agents/support-agent/runs \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "message=Tell me about Agno" \
-  -d "stream=true" \
-  -d "user_id=john@example.com" \
-  -d "session_id=session_123"
+  -d "message=Investigate this account" \
+  -d "stream=true"
 ```
 
-Teams and workflows follow the same pattern:
-- `POST /teams/{team_id}/runs`
-- `POST /workflows/{workflow_id}/runs`
+Set `stream=false` when the caller needs one JSON response after the run completes.
 
-## Authentication
+## Pass Runtime Context
 
-The `auth_mode` field from `GET /info` tells you which credential to send:
+Run endpoints accept JSON-encoded form fields alongside the message:
+
+| Field | Use |
+|---|---|
+| `dependencies` | Values available to tools and runtime functions |
+| `session_state` | State carried through the current session |
+| `metadata` | Application metadata stored with the run |
+| `knowledge_filters` | Filters applied during knowledge retrieval |
+| `output_schema` | JSON Schema for structured output |
+
+```bash
+curl http://localhost:7777/agents/story-writer/runs \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "message=Write a short story" \
+  -d 'dependencies={"reader_age":10}' \
+  -d 'metadata={"source":"reading-app"}' \
+  -d 'output_schema={"type":"object","properties":{"title":{"type":"string"},"story":{"type":"string"}},"required":["title","story"]}' \
+  -d "stream=false"
+```
+
+## Authenticate Requests
+
+Read `auth_mode` from `GET /info`, then send the matching credential:
 
 | `auth_mode` | Credential |
-|-------------|------------|
-| `none` | No header required |
+|---|---|
+| `none` | No authorization header |
 | `security_key` | `Authorization: Bearer <OS_SECURITY_KEY>` |
 | `jwt` | `Authorization: Bearer <jwt-token>` |
 
 ```bash
-curl http://localhost:7777/agents/my-agent/runs \
+curl http://localhost:7777/agents/support-agent/runs \
   -H "Authorization: Bearer <your-token>" \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "message=Your query here"
+  -d "message=Summarize my open tickets" \
+  -d "stream=false"
 ```
 
-Service-account tokens (`agno_pat_...`) are accepted as bearer credentials in every mode on instances with a database. See [Security & Authorization](/agent-os/security/overview) to configure authentication.
+Service-account tokens beginning with `agno_pat_` are bearer credentials for machine callers. They are available when the AgentOS instance has a database.
 
-## Passing Dependencies
+## REST or Python Client
 
-Pass runtime parameters like `dependencies`, `session_state`, or `metadata` as form fields:
-```bash
-curl http://localhost:7777/agents/story-writer/runs \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "message=Write me a 5 line story" \
-  -d 'dependencies={"robot_name": "Anna"}'
+| Client | Use when |
+|---|---|
+| REST API | The application uses another language, needs direct HTTP control, or calls a small set of endpoints |
+| `AgentOSClient` | A Python application needs typed run outputs and helpers for sessions, memory, knowledge, and configuration |
+
+```python
+import asyncio
+
+from agno.client import AgentOSClient
+
+
+async def main():
+    client = AgentOSClient(base_url="http://localhost:7777")
+    response = await client.run_agent(
+        agent_id="support-agent",
+        message="Where is my order?",
+        user_id="customer-42",
+        session_id="order-support-42",
+    )
+    print(response.content)
+
+
+asyncio.run(main())
 ```
 
-## Output Schema
+## Next Steps
 
-Pass a JSON schema to structure the response:
-```bash
-curl http://localhost:7777/agents/story-writer/runs \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "message=Write a story" \
-  -d 'output_schema={"type":"object","properties":{"title":{"type":"string"},"content":{"type":"string"}},"required":["title","content"]}'
-```
-
-## Cancelling Runs
-```bash
-curl -X POST http://localhost:7777/agents/story-writer/runs/123/cancel
-```
+| Task | Guide |
+|---|---|
+| Browse every endpoint | [API reference](/reference-api/overview) |
+| Use the Python client | [AgentOS Client](/agent-os/client/agentos-client) |
+| Configure authentication | [Security & Auth](/agent-os/security/overview) |
+| Manage sessions | [Session management example](/agent-os/usage/client/session-management) |
+| Run AgentOS as an MCP server | [AgentOS as MCP Server](/agent-os/mcp/mcp) |

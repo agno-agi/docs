@@ -1,173 +1,141 @@
 ---
-title: Tracing
-description: Configure tracing for agents, teams, and workflows in AgentOS.
-sidebarTitle: Overview
+title: "Tracing"
+sidebarTitle: "Overview"
+description: "Store AgentOS traces to inspect run behavior, latency, errors, model calls, and tool calls."
 keywords: [tracing, agentos, observability, debugging]
 ---
 
-Set `tracing=True` on `AgentOS` to record agent, team, workflow, model, and tool spans in a database. View stored traces in the [AgentOS UI](https://os.agno.com/traces).
+Engineering teams use tracing to diagnose failed runs, slow tools, and unexpected model behavior. Set `tracing=True` to record AgentOS execution spans in a database.
 
-<Note>
-For a comprehensive introduction to Agno Tracing concepts (traces, spans, and what gets captured), see the [Tracing Overview](/tracing/overview).
-</Note>
-
-## Prerequisites
-
-Install the required packages:
-
-```bash
-uv pip install -U "agno[os]" openai opentelemetry-api opentelemetry-sdk openinference-instrumentation-agno ddgs
-export OPENAI_API_KEY=***
-```
-
-## Database Configuration
-
-How you configure tracing depends on your database setup:
-
-| Scenario | Configuration | Where Traces Are Stored |
-|----------|---------------|------------------------|
-| Single shared database | `tracing=True` | The shared database |
-| Multiple databases | `tracing=True` + `db=...` | The dedicated `db` |
-| No `db` specified | `tracing=True` | First database found (not recommended) |
-
-<Note>
-We recommend a separate, dedicated database for traces. It keeps them all in one place, which makes them easier to query and analyze.
-</Note>
-
-## Single Database Setup
-
-If all your agents and teams share the **same database instance**, enabling tracing is simple:
-
-```python
+```python traced_agent_os.py
 from agno.agent import Agent
 from agno.db.sqlite import SqliteDb
 from agno.models.openai import OpenAIResponses
 from agno.os import AgentOS
 
-# Single shared database for everything
-db = SqliteDb(db_file="tmp/agno.db")
+db = SqliteDb(db_file="tmp/agentos.db")
 
-agent = Agent(
-    name="Research Agent",
-    model=OpenAIResponses(id="gpt-5.2"),
-    db=db,  # Uses shared db
+research_agent = Agent(
+    id="research-agent",
+    model=OpenAIResponses(id="gpt-5.4"),
 )
 
-# Enable tracing - traces stored in the shared db
 agent_os = AgentOS(
-    agents=[agent],
+    agents=[research_agent],
     db=db,
-    tracing=True,  # Traces go to the shared db
+    tracing=True,
 )
 
 app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="traced_agent_os:app", reload=True)
 ```
 
-In this setup, traces are automatically stored in the shared database alongside sessions and other data.
+The AgentOS database stores the agent's sessions and its traces. View traces in the [AgentOS Control Plane](https://os.agno.com/traces) or query them through the AgentOS API.
 
-## Multiple Databases Setup
+## What Tracing Captures
 
-<Warning>
-  When agents or teams have **different databases**, it is highly recommended that you specify a dedicated `db` to ensure all traces are stored in one central location.
-</Warning>
+| Span | What you can inspect |
+|---|---|
+| Agent, team, and workflow runs | Input, output, status, duration, and child operations |
+| Model calls | Model execution within a run |
+| Tool calls | Tool name, execution timing, result, and errors |
+| Team coordination | Calls made while the team delegates or coordinates |
+| Workflow steps | Execution order and duration for each step |
 
-If you have multiple agents with their own databases, traces need a dedicated database:
+AgentOS uses OpenTelemetry instrumentation and stores the resulting traces in an Agno database.
+
+## Choose a Trace Database
+
+| Runtime setup | Configuration | Trace location |
+|---|---|---|
+| Components share one database | `db=shared_db, tracing=True` | Shared AgentOS database |
+| Components use separate databases | `db=trace_db, tracing=True` | Dedicated AgentOS database |
+| AgentOS has no `db` | `tracing=True` | First component database discovered |
+
+Set `db` explicitly when the runtime contains components with different databases. Component order determines the fallback database when AgentOS has no database of its own.
+
+## Use a Dedicated Trace Database
+
+Give each component its application database and pass the trace database to AgentOS:
 
 ```python
 from agno.agent import Agent
 from agno.db.sqlite import SqliteDb
 from agno.models.openai import OpenAIResponses
 from agno.os import AgentOS
-from agno.tools.hackernews import HackerNewsTools
-from agno.tools.websearch import WebSearchTools
 
-# Each agent has its own database
-agent1_db = SqliteDb(db_file="tmp/agent1.db", id="agent1_db")
-agent2_db = SqliteDb(db_file="tmp/agent2.db", id="agent2_db")
+agent_db = SqliteDb(db_file="tmp/agent.db", id="agent-db")
+trace_db = SqliteDb(db_file="tmp/traces.db", id="trace-db")
 
-# Dedicated database for traces (separate from agent databases)
-db = SqliteDb(db_file="tmp/traces.db", id="traces_db")
-
-# Agent 1 with its own database
-hackernews_agent = Agent(
-    name="HackerNews Agent",
-    model=OpenAIResponses(id="gpt-5.2"),
-    tools=[HackerNewsTools()],
-    db=agent1_db,
+research_agent = Agent(
+    id="research-agent",
+    model=OpenAIResponses(id="gpt-5.4"),
+    db=agent_db,
 )
 
-# Agent 2 with its own database
-search_agent = Agent(
-    name="Search Agent",
-    model=OpenAIResponses(id="gpt-5.2"),
-    tools=[WebSearchTools()],
-    db=agent2_db,
-)
-
-# AgentOS with dedicated tracing database
 agent_os = AgentOS(
-    agents=[hackernews_agent, search_agent],
+    agents=[research_agent],
+    db=trace_db,
     tracing=True,
-    db=db,  # All traces go here
 )
 
 app = agent_os.get_app()
 ```
 
-### Why Use a Dedicated Tracing Database?
+This layout gives traces their own retention and access policy while the agent keeps its application data in `agent_db`.
 
-Without `db`, AgentOS stores all traces in the **first database it finds** from your agents, teams, or workflows. The selected database depends on component order.
+## Configure the Span Processor
 
-With a dedicated `db`:
+Use `setup_tracing()` when you need batched writes or explicit queue settings:
 
-- **Unified observability**: All traces in one queryable location
-- **Cross-agent analysis**: Compare performance across agents
-- **Independent scaling**: Traces don't affect agent data storage
-- **Predictable behavior**: You control exactly where traces go
-
-## Using setup_tracing() with AgentOS
-
-You can also use `setup_tracing()` for more control over tracing configuration. In this case, you still need to ensure the tracing database is available to AgentOS:
-
-```python
+```python custom_tracing.py
 from agno.agent import Agent
 from agno.db.sqlite import SqliteDb
 from agno.models.openai import OpenAIResponses
 from agno.os import AgentOS
 from agno.tracing import setup_tracing
 
-# Agent databases
-agent1_db = SqliteDb(db_file="tmp/agent1.db", id="agent1_db")
-agent2_db = SqliteDb(db_file="tmp/agent2.db", id="agent2_db")
+trace_db = SqliteDb(db_file="tmp/traces.db", id="trace-db")
 
-# Dedicated tracing database
-db = SqliteDb(db_file="tmp/traces.db", id="traces_db")
-
-# Set up tracing with custom configuration
 setup_tracing(
-    db=db,
+    db=trace_db,
     batch_processing=True,
     max_queue_size=2048,
+    max_export_batch_size=512,
     schedule_delay_millis=3000,
 )
 
-# Create agents
-agent1 = Agent(name="Agent 1", model=OpenAIResponses(id="gpt-5.2"), db=agent1_db)
-agent2 = Agent(name="Agent 2", model=OpenAIResponses(id="gpt-5.2"), db=agent2_db)
+research_agent = Agent(
+    id="research-agent",
+    model=OpenAIResponses(id="gpt-5.4"),
+)
 
-# Pass db to AgentOS for trace querying via API
 agent_os = AgentOS(
-    agents=[agent1, agent2],
-    db=db,  # Makes traces queryable via AgentOS API
+    agents=[research_agent],
+    db=trace_db,
 )
 
 app = agent_os.get_app()
 ```
 
-<Note>
-  Even when using `setup_tracing()`, pass `db` to AgentOS so traces are accessible through the AgentOS API and UI.
-</Note>
+`setup_tracing()` configures tracing globally, so call it before creating agents and omit `tracing=True` from AgentOS. Pass the same database to AgentOS so its API and Control Plane can read the stored traces.
 
-<Tip>
-  Use a dedicated `db` when traces need separate retention, access, or scaling policies.
-</Tip>
+## Install Dependencies
+
+The AgentOS extra includes the tracing packages:
+
+```bash
+uv pip install -U "agno[os]" openai
+```
+
+## Next Steps
+
+| Task | Guide |
+|---|---|
+| Understand traces and spans | [Tracing concepts](/tracing/overview) |
+| Filter stored traces | [Filter Options](/agent-os/tracing/filter-options) |
+| Trace an agent | [Basic Agent Tracing](/agent-os/tracing/usage/basic-agent-tracing) |
+| Trace a team | [Basic Team Tracing](/agent-os/tracing/usage/basic-team-tracing) |
+| Trace a workflow | [Basic Workflow Tracing](/agent-os/tracing/usage/basic-workflow-tracing) |
