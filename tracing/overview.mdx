@@ -1,157 +1,140 @@
 ---
 title: Tracing
-description: Trace agent, team, and workflow runs with OpenTelemetry and store the spans in your own database
+description: Trace agent, team, and workflow runs with OpenTelemetry and store spans in a configured database or observability backend.
 sidebarTitle: Overview
 keywords: [tracing, observability, opentelemetry, debugging, monitoring]
 ---
 
 <Badge icon="code-branch" color="orange">
-    <Tooltip tip="Introduced in v2.3.5" cta="View release notes" href="https://github.com/agno-agi/agno/releases/tag/v2.3.5">v2.3.5</Tooltip>
+  <Tooltip tip="Introduced in v2.3.5" cta="View release notes" href="https://github.com/agno-agi/agno/releases/tag/v2.3.5">v2.3.5</Tooltip>
 </Badge>
 
-In the systems you build with Agno, agents will make autonomous decisions, interact with external tools, and coordinate with each other in ways that aren't immediately visible from your recorded sessions alone. Observability is key to staying on top of what your agents are doing and how your system is performing.
+A final run response shows the outcome. Tracing shows the model calls, tool executions, and nested agent, team, or workflow operations that produced it. Developers use traces to investigate failures, latency, token usage, and unexpected tool behavior.
 
-**Agno Tracing** is the recommended way to introduce observability for your Agno agents, teams, and workflows. 
-It automatically captures all relevant execution details, helping you understand what your agents are doing, simplifying debugging and helping you optimize your system.
-
-Tracing uses [OpenTelemetry](https://opentelemetry.io/) to instrument Agno agents, teams, and workflows, capturing traces and spans.
-
-<Frame caption="Traces stored in SQLite database viewed with AgentOS">
-  <img src="/images/traces-in-os.png" alt="Traces viewed in AgentOS" />
-</Frame>
-
-## Why is Observability Important?
-
-As your Agno system becomes more complex (Agents using multiple tools, making sequential decisions, and coordinating with other agents), understanding its behavior becomes challenging. 
-
-**Agno Tracing** solves this:
-
-- **Debugging**: See exactly what went wrong when an agent fails
-- **Performance**: Identify bottlenecks in agent execution
-- **Cost Tracking**: Monitor token usage and API calls
-- **Behavior Analysis**: Understand decision-making patterns
-- **Audit Trail**: Track what agents did and why
-
-<Note>
-All Agno Tracing data is stored in your own database. No tracing data will leave your system, or be sent to third parties: you are in complete control.
-</Note>
-
-## Understanding Traces and Spans
-
-Traces and spans form a parent-child hierarchy that mirrors your agent's execution:
-
-### Trace
-A **trace** represents one complete agent execution from start to finish. Each trace has a unique `trace_id` that groups all related operations together.
-
-### Span
-A **span** is a single operation within that execution. Spans form a parent-child hierarchy:
-
-<img 
-  className="block dark:hidden" 
-  src="/images/traces-vs-spans-light.png" 
-  alt="Traces vs spans diagram"
-/>
-
-<img 
-  className="hidden dark:block" 
-  src="/images/traces-vs-spans-dark.png" 
-  alt="Traces vs spans diagram"
-/>
-
-Each span captures:
-- **What happened**: Operation name (e.g., `agent.run`, `model.response`)
-- **When**: Start and end timestamps
-- **Context**: Input arguments, outputs, token usage
-- **Relationships**: Parent span, child spans
-- **Metadata**: Agent ID, session ID, run ID
-
-## What Gets Traced
-
-Agno automatically captures:
-
-| Operation          | What Gets Traced                                                                 |
-|--------------------|---------------------------------------------------------------------------------|
-| **Agent Runs**     | Every `agent.run()` or `agent.arun()` call with full context                    |
-| **Model Calls**    | LLM interactions including prompts, responses, and token usage                  |
-| **Tool Executions**| Tool invocations with arguments and results                                     |
-| **Team Operations**| Team coordination and member agent runs                                         |
-| **Workflow Operations**| Workflow coordination and step runs                                         |
-
-
-## Key Features
-
-- **Zero-Code Instrumentation**: No need to modify your agent code
-- **Database Storage**: Traces stored in your Agno database (SQLite, PostgreSQL, etc.)
-- **Flexible Querying**: Filter by agent, session, run, or time range
-- **OpenTelemetry Standard**: Export to external tools like Arize Phoenix, Langfuse, and The Context Company
-- **Low Overhead**: Set `batch_processing=True` to batch and export traces in the background
-- **Configurable**: Adjust batch sizes and processing for your needs
-
-## Quick Start
+## Trace an Agent
 
 <Steps>
-  <Step title="Install Dependencies">
+  <Step title="Install tracing dependencies">
     ```bash
-    uv pip install -U openai agno sqlalchemy opentelemetry-api opentelemetry-sdk openinference-instrumentation-agno
+    uv pip install -U "agno[os]" openai opentelemetry-api opentelemetry-sdk openinference-instrumentation-agno
     ```
   </Step>
-  
-  <Step title="Enable Tracing">
-    ```python
-    from agno.tracing import setup_tracing
-    from agno.db.sqlite import SqliteDb
 
-    db = SqliteDb(db_file="tmp/traces.db")
-    setup_tracing(db=db) # Call this once at startup
-    ```
-  </Step>
-  
-  <Step title="Run Your Agent">
-    ```python
+  <Step title="Configure database export">
+    Call `setup_tracing()` once at application startup, before creating agents.
+
+    ```python tracing_agent.py
     from agno.agent import Agent
+    from agno.db.sqlite import SqliteDb
     from agno.models.openai import OpenAIResponses
+    from agno.tracing import setup_tracing
+
+    traces_db = SqliteDb(db_file="tmp/traces.db")
+    setup_tracing(db=traces_db)
 
     agent = Agent(
-        name="My Agent",
-        model=OpenAIResponses(id="gpt-5.2"),
-        instructions="You are a helpful assistant",
+        id="support-agent",
+        model=OpenAIResponses(id="gpt-5.4-mini"),
+        instructions="Answer support questions concisely.",
     )
-    
-    agent.run("Hello!")  # Automatically traced!
+
+    agent.run("Summarize the latest support request.")
     ```
   </Step>
-  
-  <Step title="Query Traces">
+
+  <Step title="Query stored traces">
     ```python
-    traces, total = db.get_traces(agent_id=agent.id, limit=10)
+    traces, total = traces_db.get_traces(agent_id="support-agent", limit=10)
+
     for trace in traces:
-        print(f"{trace.name}: {trace.duration_ms}ms")
+        print(trace.name, trace.duration_ms)
     ```
   </Step>
 </Steps>
 
-## Guides
+`setup_tracing(db=...)` installs Agno's `DatabaseSpanExporter` and instruments agents, teams, and workflows through OpenTelemetry.
+
+<Frame caption="Traces stored in SQLite and viewed in AgentOS">
+  <img src="/images/traces-in-os.png" alt="Traces viewed in AgentOS" />
+</Frame>
+
+## Traces and Spans
+
+| Concept | Description |
+|---------|-------------|
+| Trace | One complete execution, identified by `trace_id` |
+| Span | One timed operation within the trace, such as an agent run, model response, or tool execution |
+| Parent-child relationship | Connects nested operations into the execution hierarchy |
+
+<img
+  className="block dark:hidden"
+  src="/images/traces-vs-spans-light.png"
+  alt="Trace and span hierarchy"
+/>
+
+<img
+  className="hidden dark:block"
+  src="/images/traces-vs-spans-dark.png"
+  alt="Trace and span hierarchy"
+/>
+
+## What Gets Traced
+
+Agno instrumentation captures spans for:
+
+| Operation | Examples |
+|-----------|----------|
+| Agent runs | `agent.run()` and `agent.arun()` |
+| Model calls | Model requests and responses |
+| Tool execution | Tool calls and results |
+| Team execution | Leader coordination and member runs |
+| Workflow execution | Workflow runs and step execution |
+
+Spans carry timing, status, relationships, and operation attributes. Trace payloads can include application inputs and outputs. Review captured attributes before sending traces to a shared or external destination.
+
+## Choose a Trace Destination
+
+Tracing storage follows the OpenTelemetry configuration in your application:
+
+| Configuration | Destination |
+|---------------|-------------|
+| `setup_tracing(db=...)` | The selected Agno database through `DatabaseSpanExporter` |
+| `AgentOS(..., tracing=True, db=...)` | The AgentOS database, available through its API and Control Plane |
+| A custom OpenTelemetry provider instrumented with `AgnoInstrumentor` | The backend configured by that provider's exporter |
+
+Use [Agno OpenTelemetry integrations](/observability/overview) when traces should go to an external observability backend. The exporter configuration determines where those spans are sent.
+
+## Immediate and Batch Export
+
+`setup_tracing()` writes each completed span immediately by default. Set `batch_processing=True` to queue spans and export them in batches.
+
+```python
+setup_tracing(
+    db=traces_db,
+    batch_processing=True,
+    max_queue_size=2048,
+    max_export_batch_size=512,
+    schedule_delay_millis=5000,
+)
+```
+
+| Parameter | Default | Purpose |
+|-----------|---------|---------|
+| `batch_processing` | `False` | Use batched export instead of immediate export |
+| `max_queue_size` | `2048` | Maximum queued spans |
+| `max_export_batch_size` | `512` | Maximum spans in one export batch |
+| `schedule_delay_millis` | `5000` | Delay between scheduled batch exports |
+
+## Next Steps
 
 <CardGroup cols={3}>
-  <Card
-    title="Basic Setup"
-    icon="rocket"
-    href="/tracing/basic-setup"
-  >
-    Configure and enable tracing
+  <Card title="Basic Setup" icon="rocket" href="/tracing/basic-setup">
+    Configure SDK and AgentOS tracing.
   </Card>
-  <Card
-    title="Tracing in AgentOS"
-    icon="rocket"
-    href="/agent-os/tracing/overview"
-  >
-    Trace your agents, teams, and workflows in AgentOS
+  <Card title="Tracing in AgentOS" icon="chart-network" href="/agent-os/tracing/overview">
+    Store and inspect traces for an AgentOS runtime.
   </Card>
-  <Card
-    title="DB Functions"
-    icon="database"
-    href="/tracing/db-functions"
-  >
-    Query traces and spans from your database
+  <Card title="Database Functions" icon="database" href="/tracing/db-functions">
+    Query traces and spans from an Agno database.
   </Card>
 </CardGroup>

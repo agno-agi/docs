@@ -1,86 +1,89 @@
 ---
 title: Sessions
 sidebarTitle: Overview
-description: Multi-turn conversation threads with persistent history and state.
+description: Group related runs under a stable session ID, with database-backed history and state.
 keywords: [sessions, session, session id, run]
 ---
 
-When you call `Agent.run()`, it creates a single, stateless interaction. The agent responds to your message with no memory of what came before.
+Product agents use sessions to keep each conversation thread separate and continue it across requests. A stable `session_id` groups related runs, while `user_id` associates the thread with the person using your product.
 
-Most real applications need multi-turn **conversations**, and that's what sessions give you.
-
-## What's a Session?
-
-A session is a conversation thread: a collection of multi-turn interactions (called "runs") between a user and your Agent, Team, or Workflow. Each session gets a unique `session_id` that ties together all the runs, chat history, state, and metrics for that conversation.
-
-Key concepts:
-
-- **Session**: A multi-turn conversation identified by a `session_id`. Contains all the runs, history, state, and metrics for that conversation thread.
-- **Run**: A single interaction within a session. Every time you call `Agent.run()`, `Team.run()`, or `Workflow.run()`, a new `run_id` is created. One run is one message-and-response pair in the conversation.
-Runs can pause for human-in-the-loop requirements and continue after those requirements are resolved.
-
-<Note>
-Sessions require a database to store history and state. See [Session Storage](/database/overview) for setup details.
-</Note>
-
-<Note>
-**Workflow sessions work differently:** Unlike agent and team sessions that store conversation messages, workflow sessions track complete pipeline executions (runs) with inputs and outputs. Because of these unique characteristics, we've created a [dedicated Workflow Sessions section](/sessions/workflow-sessions) that covers workflow-specific features like run-based history, session state, and workflow agents.
-</Note>
-
-## Single-Run Example
-
-When you run an agent without specifying a `session_id`, Agno automatically generates both a `run_id` and a `session_id` for you:
-
-```python
+```python support_agent.py
 from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
 from agno.models.openai import OpenAIResponses
 
-agent = Agent(model=OpenAIResponses(id="gpt-5.2"))
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.4-mini"),
+    db=SqliteDb(db_file="tmp/support.db"),
+    add_history_to_context=True,
+    num_history_runs=3,
+)
 
-# Run the agent - Agno auto-generates session_id and run_id
-response = agent.run("Tell me a 5 second short story about a robot")
-print(response.content)
-print(f"Run ID: {response.run_id}")        # Auto-generated UUID
-print(f"Session ID: {response.session_id}") # Auto-generated UUID
+agent.print_response(
+    "My order number is ORD-123.",
+    user_id="customer-42",
+    session_id="support-thread-7",
+)
+
+agent.print_response(
+    "Which order are we discussing?",
+    user_id="customer-42",
+    session_id="support-thread-7",
+)
 ```
 
-This creates a new session with a single run. But here's the catch: without a database configured, there's no persistence. The `session_id` exists for this single run, but you can't continue the conversation later because nothing is saved. To actually use sessions for multi-turn conversations, you need to configure a database (even an `InMemoryDb` works).
+The database stores both runs under `support-thread-7`. On the second run, `add_history_to_context=True` loads messages from the same session into the model context.
 
-## Multi-User Conversations
+## IDs and Persistence
 
-In production, multiple users often talk to the same agent or team simultaneously. Sessions keep those threads isolated:
+| Value | Purpose | Generation |
+|-------|---------|------------|
+| `run_id` | Identifies one execution | Agno generates a new value for every run unless you provide one |
+| `session_id` | Groups related runs into one thread | Agno generates one when the Agent instance first runs without a supplied value, then reuses it on that instance |
+| `user_id` | Associates a run and session with a user | Your application supplies it, or the agent uses its configured default |
 
-- `user_id` distinguishes the person using your product.
-- `session_id` distinguishes conversation threads for that user (think "chat tabs").
-- Conversation history only flows into the run when you enable it via [`add_history_to_context`](/history/agent/overview#add-history-to-the-agent-context).
+An ID labels a run or thread. A configured database provides durable storage.
 
-For a full walkthrough that includes persistence, history, and per-user session IDs, follow the [Session Management guide](/sessions/session-management) or the [History guide](/history/overview).
+## Persistence and Model Context
 
-## Learn more
+Session storage and chat history serve separate purposes:
+
+| Configuration | Effect |
+|---------------|--------|
+| `db=...` | Persists session records, runs, state, and stored messages |
+| `add_history_to_context=True` | Adds messages from previous runs in the session to the next model request |
+| `num_history_runs=N` | Limits history by run count |
+| `num_history_messages=N` | Limits history by message count |
+| `session_state={...}` | Stores application state with the session |
+
+`add_history_to_context` defaults to `False`. Configure it when the model needs conversational continuity. See [Chat History](/history/overview) for message selection and storage controls.
+
+## Multi-User Applications
+
+Use IDs from your application instead of sharing one generated session across customers:
+
+| Product concept | Agno value |
+|-----------------|------------|
+| Account or customer | `user_id` |
+| Chat thread, ticket, or workspace conversation | `session_id` |
+| One request and response cycle | `run_id` |
+
+A user can have multiple session IDs, such as separate support tickets or chat tabs. Reuse a session ID only for runs that belong to the same thread.
+
+## Workflow Sessions
+
+Agent and team sessions store conversational runs and messages. Workflow sessions track pipeline executions with their inputs, outputs, and state. See [Workflow Sessions](/sessions/workflow-sessions) for workflow-specific behavior.
+
+## Next Steps
 
 <CardGroup cols={3}>
-  <Card
-    title="Session Management"
-    icon="tag"
-    iconType="duotone"
-    href="/sessions/session-management"
-  >
-    Manage session IDs, names, and performance for agents and teams.
+  <Card title="Session Management" icon="tag" iconType="duotone" href="/sessions/session-management">
+    Assign IDs and manage agent and team sessions.
   </Card>
-  <Card
-    title="History Management"
-    icon="clock-rotate-left"
-    iconType="duotone"
-    href="/sessions/history-management"
-  >
-    Control how conversation history flows into context.
+  <Card title="History Management" icon="clock-rotate-left" iconType="duotone" href="/sessions/history-management">
+    Control which previous messages enter model context.
   </Card>
-  <Card
-    title="Session Summaries"
-    icon="file-lines"
-    iconType="duotone"
-    href="/sessions/session-summaries"
-  >
-    Condense long conversations to reduce token costs.
+  <Card title="Session Summaries" icon="file-lines" iconType="duotone" href="/sessions/session-summaries">
+    Condense long conversations to manage context size.
   </Card>
 </CardGroup>
