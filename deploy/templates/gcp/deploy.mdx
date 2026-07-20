@@ -4,18 +4,19 @@ sidebarTitle: "Deploy"
 description: "Run AgentOS locally using Docker and deploy to production on Google Cloud Run."
 ---
 
-AgentOS is a secure, scalable platform for running agents. The [agentos-gcp](https://github.com/agno-agi/agentos-gcp) codebase runs AgentOS locally using Docker and deploys to production on Google Cloud Run. It comes with:
+Choose Google Cloud when your team wants the AgentOS service and persisted platform data in its own GCP project. The [agentos-gcp](https://github.com/agno-agi/agentos-gcp) template uses Docker locally and deploys Cloud Run with a private Cloud SQL database for production.
 
-- **2 platform agents** that build and run the platform for you. **Agent Builder** creates agents, teams, and workflows. **Platform Manager** understands, monitors, and explains the platform.
-- **5 [skills](/deploy/templates/improve-agents)** that let coding agents build, test, and improve the platform for you.
+- **Agent Builder**, which creates agents, teams, and workflows when prompted.
+- **Platform Manager**, which inspects registered agents, eval history, deployment checks, and schedules.
+- **Six [skills](/deploy/templates/improve-agents)**. `setup-platform` configures the local platform. Five lifecycle skills create, extend, improve, evaluate, and review it.
 
-Because the trace data, agent code, evals, and system logs all live in one place, the platform can inspect and improve itself automatically.
+Coding agents can use the repository skills, live AgentOS API, evals, and container logs to inspect and improve the platform.
 
-Everything runs in your own Google Cloud project: Cloud Run serves the platform and Cloud SQL holds your data.
+Cloud Run, Cloud SQL, Artifact Registry, and deployment secrets live in your GCP project. Model calls and optional interfaces use the providers you configure.
 
 ## Get started
 
-The fastest way to get started is using a coding agent. Copy the prompt below into Claude Code, Cursor or Codex and it'll take you from zero to a running platform.
+Copy the prompt below into Claude Code, Cursor, or Codex to clone the template, start AgentOS locally, and build your first agent.
 
 <Snippet file="setup-prompt-gcp.mdx" />
 
@@ -97,7 +98,7 @@ Edit `.env.production` with production values: a different OpenAI key, productio
 
 Enables the required APIs, creates an Artifact Registry repo and pushes a locally-built image to it, provisions Cloud SQL Postgres on a private IP, stores your keys in Secret Manager, and deploys the `agent-os` Cloud Run service. The first run takes 15-20 minutes: the one-time VPC peering is about 5 minutes and the Cloud SQL instance another 5-10. Once the service URL exists, the script sets `AGENTOS_URL` to it in a second revision so scheduled jobs reach the platform, and generates `MCP_CONNECT_SECRET`, the OAuth consent secret for chat apps, into `.env.production`.
 
-<Note>Always-on Cloud Run at this template's sizing (2 vCPU / 4 GiB, min 1 instance, no CPU throttling) is ≈$110/mo list price. The budget knob is 1 vCPU / 2 GiB at ≈$58/mo: edit the `--cpu`/`--memory` flags in `scripts/gcp/up.sh`. Cloud SQL `db-g1-small` adds ≈$25-35/mo.</Note>
+<Note>One always-on Cloud Run instance at this template's sizing (2 vCPU / 4 GiB, min 1 instance, no CPU throttling) is ≈$110/mo list price. The budget knob is 1 vCPU / 2 GiB at ≈$58/mo: edit the `--cpu`/`--memory` flags in `scripts/gcp/up.sh`. Cloud SQL `db-g1-small` adds ≈$25-35/mo. The template does not set a maximum instance count, so Cloud Run can add instances under load. Add `--max-instances 1` until you have validated schedule registration and MCP streams under scale-out.</Note>
   </Step>
 
   <Step title="Mint your JWT key">
@@ -124,10 +125,15 @@ For claude.ai and ChatGPT on the web: add `https://<cloud-run-url>/mcp` as a cus
 
   <Step title="Confirm it's live">
 ```bash
-gcloud run services logs read agent-os --region us-central1 --limit 100
+gcloud run services logs read agent-os \
+  --project "${GCP_PROJECT_ID:-$(gcloud config get-value project)}" \
+  --region "${GCP_REGION:-us-central1}" --limit 100
+
+curl -o /dev/null -w '%{http_code}\n' "https://<cloud-run-url>/health"  # 200
+curl -o /dev/null -w '%{http_code}\n' "https://<cloud-run-url>/agents"  # 401
 ```
 
-Open `https://<cloud-run-url>/docs` to confirm the API is serving.
+`/health` and `/docs` remain public. Protected AgentOS routes such as `/agents` require a valid token.
   </Step>
 </Steps>
 

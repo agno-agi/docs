@@ -1,52 +1,16 @@
 ---
 title: "Dash"
-sidebarTitle: "Dash"
-description: "Self-learning data agent that grounds answers in six layers of context and improves with every query."
+sidebarTitle: "Dash: Data Agent"
+description: "Self-hosted data agent that grounds SQL answers in six layers of company context and stores reusable fixes."
 ---
 
-**Dash is a self-learning data agent built with systems engineering principles. It grounds answers in six layers of context and improves with every query.**
+**Dash gives data teams a self-hosted agent for answering business questions against company databases.**
 
-Ask a question in English and get a correct, meaningful answer. That's the goal. But raw LLMs writing SQL hit a wall fast: schemas lack meaning, types are misleading, tribal knowledge is missing, there's no way to learn from mistakes, and results lack interpretation. The root cause is missing context and missing memory. Dash solves this with six layers of grounded context, a self-learning loop that captures every fix, and a focus on delivering insights you can act on.
+Database schemas rarely contain metric definitions, proven query patterns, or the reasons a past query failed. Dash combines that company context with live schema inspection so its SQL and explanations reflect how your organization uses its data.
+
+Agno coordinates an Analyst and Engineer, keeps curated knowledge and learned fixes available across runs, and serves the team through AgentOS. Run Dash against the included SaaS dataset, then ask it for your current MRR or highest-churn plan.
 
 Chat with Dash in Slack, the terminal, or the [AgentOS UI](https://os.agno.com). The code is public at [agno-agi/dash](https://github.com/agno-agi/dash).
-
-## How it works
-
-Dash runs as an Agno team in coordinate mode, with a leader that routes each request to two specialists:
-
-| Agent | Role |
-|-------|------|
-| **Analyst** | Reads company data (read-only), generates SQL, interprets results |
-| **Engineer** | Builds reusable views and summary tables in the `dash` schema |
-| **Leader** | Routes queries, coordinates the team, posts to Slack |
-
-**Schema boundaries:** Company data lives in the `public` schema; agent-created views and summary tables live in the `dash` schema. The Analyst connects with `default_transaction_read_only=on`, so PostgreSQL rejects any write it attempts. A SQLAlchemy event listener blocks Engineer writes that target `public`. These guardrails live in the infrastructure, so they hold regardless of what the model generates.
-
-### Six layers of context
-
-| Layer | Purpose | Source |
-|-------|---------|--------|
-| **Table Usage** | Schema, columns, relationships | `knowledge/tables/*.json` |
-| **Human Annotations** | Metrics, definitions, business rules | `knowledge/business/*.json` |
-| **Query Patterns** | SQL that is known to work | `knowledge/queries/*.sql` |
-| **Institutional Knowledge** | Docs, wikis, external references | MCP (optional) |
-| **Learnings** | Error patterns and discovered fixes | Agno `Learning Machine` |
-| **Runtime Context** | Live schema changes | `introspect_schema` tool |
-
-### Self-learning
-
-Every query retrieves knowledge and learnings before generating SQL. When a query fails, Dash diagnoses the error, fixes it, and saves the fix as a learning. Two complementary systems make this work:
-
-| System | Stores | How it evolves |
-|--------|--------|----------------|
-| **Knowledge** | Validated queries, table schemas, business rules | Curated by you and refined by Dash |
-| **Learnings** | Error patterns and discovered fixes | Managed automatically by the Learning Machine |
-
-When a churn query returns wrong numbers because it filtered on the `status` column instead of `ended_at IS NULL`, Dash saves the fix and doesn't make that mistake again. When your team defines MRR as the sum of active subscriptions excluding trials, that rule lives in `knowledge/business/` and every future query respects it.
-
-### Insights you can act on
-
-Dash reasons about what makes an answer useful. Ask "Which plan has the highest churn rate?" and you get the number, the comparison across plans, the trend behind it, and any caveats from your business rules.
 
 ## Run locally
 
@@ -85,6 +49,40 @@ Confirm Dash is running at [http://localhost:8000/docs](http://localhost:8000/do
 </Frame>
 
 <Check>Dash is running locally.</Check>
+
+## How it works
+
+Dash runs as an Agno team in coordinate mode, with a leader that routes each request to two specialists:
+
+| Agent | Role |
+|-------|------|
+| **Analyst** | Reads company data (read-only), generates SQL, interprets results |
+| **Engineer** | Builds reusable views and summary tables in the `dash` schema |
+| **Leader** | Routes queries, coordinates the team, posts to Slack |
+
+**Schema boundaries:** Company data lives in the `public` schema; agent-created views and summary tables live in the `dash` schema. The Analyst connects with `default_transaction_read_only=on`, so PostgreSQL rejects its writes. The Engineer is instructed to write only to `dash`, and a SQLAlchemy event listener rejects DDL and DML that explicitly targets `public`. PostgreSQL enforces the Analyst boundary. The Engineer boundary depends on the application listener and model instructions.
+
+### Six layers of context
+
+| Layer | Purpose | Source |
+|-------|---------|--------|
+| **Table Usage** | Schema, columns, relationships | `knowledge/tables/*.json` |
+| **Human Annotations** | Metrics, definitions, business rules | `knowledge/business/*.json` |
+| **Query Patterns** | SQL that is known to work | `knowledge/queries/*.sql` |
+| **Institutional Knowledge** | Docs, wikis, external references | MCP (optional) |
+| **Learnings** | Error patterns and discovered fixes | Agno `Learning Machine` |
+| **Runtime Context** | Live schema changes | `introspect_schema` tool |
+
+### Self-learning
+
+The Analyst searches knowledge and learnings before generating SQL. Its workflow tells it to inspect the live schema after an error and call `save_learning` after discovering a reusable fix. Agno's Learning Machine makes those saved fixes available to later runs.
+
+| System | Stores | How it evolves |
+|--------|--------|----------------|
+| **Knowledge** | Validated queries, table schemas, business rules | Curated by you; Dash can propose reusable queries |
+| **Learnings** | Error patterns and discovered fixes | Saved by the agents through the Learning Machine |
+
+When a churn query filters on `status` and should use `ended_at IS NULL`, Dash can save that correction for later runs to retrieve. When your team defines MRR as the sum of active subscriptions excluding trials, the rule lives in `knowledge/business/` alongside the queries that use it.
 
 ## Deploy to Railway
 

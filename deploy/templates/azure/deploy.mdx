@@ -4,18 +4,19 @@ sidebarTitle: "Deploy"
 description: "Run AgentOS locally using Docker and deploy to production on Azure Container Apps."
 ---
 
-AgentOS is a secure, scalable platform for running agents. The [agentos-azure](https://github.com/agno-agi/agentos-azure) codebase runs AgentOS locally using Docker and deploys to production on Azure Container Apps. It comes with:
+Choose Azure when your team wants AgentOS deployment resources and persisted platform data in its own Azure subscription. The [agentos-azure](https://github.com/agno-agi/agentos-azure) template uses Docker locally and provisions Container Apps, Flexible Server for PostgreSQL, ACR, and networking for production.
 
-- **2 platform agents** that build and run the platform for you. **Agent Builder** creates agents, teams, and workflows. **Platform Manager** understands, monitors, and explains the platform.
-- **5 [skills](/deploy/templates/improve-agents)** that let coding agents build, test, and improve the platform for you.
+- **Agent Builder**, which creates agents, teams, and workflows when prompted.
+- **Platform Manager**, which inspects registered agents, eval history, deployment checks, and schedules.
+- **Six [skills](/deploy/templates/improve-agents)**. `setup-platform` configures the local platform. Five lifecycle skills create, extend, improve, evaluate, and review it.
 
-Because the trace data, agent code, evals, and system logs all live in one place, the platform can inspect and improve itself automatically.
+Coding agents can use the repository skills, live AgentOS API, evals, and container logs to inspect and improve the platform.
 
-Everything runs in your own Azure subscription, and one script provisions the network, database, registry, and app into a single resource group.
+The deployment resources live in one Azure resource group. Model calls and optional interfaces use the providers you configure.
 
 ## Get started
 
-The fastest way to get started is using a coding agent. Copy the prompt below into Claude Code, Cursor or Codex and it'll take you from zero to a running platform.
+Copy the prompt below into Claude Code, Cursor, or Codex to clone the template, start AgentOS locally, and build your first agent.
 
 <Snippet file="setup-prompt-azure.mdx" />
 
@@ -81,6 +82,8 @@ Prints `MCP OK` with the tool count and a real agent answer through the MCP endp
 
 **Prerequisites:** [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) installed and `az login` completed. Docker running; the image is built locally.
 
+<Warning>Use a new, dedicated `AZURE_RESOURCE_GROUP`. `down.sh` deletes the entire selected group, including unrelated resources if you point it at a shared group.</Warning>
+
 <Steps>
   <Step title="Create a production env">
 ```bash
@@ -95,7 +98,7 @@ Edit `.env.production` with production values: a different OpenAI key, productio
 ./scripts/azure/up.sh
 ```
 
-The first run takes 15-20 minutes (Postgres Flexible Server is the long pole) and creates everything inside one dedicated resource group, `agentos` by default: a VNet with private DNS, a container registry with the locally built image, PostgreSQL 17 Flexible Server with private access and pgvector allowlisted, the Container Apps environment, and the `agent-os` app pinned to exactly one replica so the in-process scheduler never runs twice. The app URL is only known after create. Once the app is up, the script writes `AGENTOS_URL` back to your env file so scheduled jobs reach the platform. It also generates `MCP_CONNECT_SECRET`, the OAuth consent secret for connecting chat apps, into the same file.
+The first run takes 15-20 minutes. PostgreSQL Flexible Server takes most of that time. The script creates everything inside the selected resource group, `agentos` by default: a VNet with private DNS, a container registry with the locally built image, PostgreSQL 17 Flexible Server with private access and pgvector allowlisted, the Container Apps environment, and the `agent-os` app pinned to one replica. The app URL is only known after create. Once the app is up, the script writes `AGENTOS_URL` back to your env file so scheduled jobs reach the platform. It also generates `MCP_CONNECT_SECRET`, the OAuth consent secret for connecting chat apps, into the same file.
   </Step>
 
   <Step title="Mint your JWT key">
@@ -105,7 +108,7 @@ The script pauses for a `JWT_VERIFICATION_KEY`. Token-Based Authorization is on 
 2. Go to **Settings** → **OS & Security** and turn on **Token-Based Authorization (JWT)**.
 3. Copy the public key and paste the full PEM into the `up.sh` prompt. The script saves it to your env file, stores it as a Container Apps secret, and applies it together with `AGENTOS_URL` in a second revision.
 
-If your env file already sets `JWT_JWKS_FILE`, the script skips the pause, but it only applies the path. Bake or mount the file before deployment. If you skip the prompt, add `JWT_VERIFICATION_KEY` to `.env.production` and run `./scripts/azure/env-sync.sh`. Adding JWKS later requires an image rebuild or mount plus a redeploy. Env sync alone is insufficient.
+If your env file already sets `JWT_JWKS_FILE`, the script skips the pause and applies the path. Bake or mount the file before deployment. If you skip the prompt, add `JWT_VERIFICATION_KEY` to `.env.production` and run `./scripts/azure/env-sync.sh`. Adding JWKS later requires an image rebuild or mount plus a redeploy. Env sync applies only the path.
 
 <Note>Live AgentOS connections are a paid feature. Use code `PLATFORM30` for one month off.</Note>
   </Step>
@@ -122,10 +125,13 @@ For claude.ai and ChatGPT on the web: add `https://<container-app-domain>/mcp` a
 
   <Step title="Confirm it's live">
 ```bash
-az containerapp logs show -g agentos -n agent-os --follow
+curl -o /dev/null -w '%{http_code}\n' "https://<container-app-domain>/health"  # 200
+curl -o /dev/null -w '%{http_code}\n' "https://<container-app-domain>/agents"  # 401
+
+az containerapp logs show -g "${AZURE_RESOURCE_GROUP:-agentos}" -n agent-os --follow
 ```
 
-The script prints your app URL. Give the revision a couple of minutes to converge, then open `https://<container-app-domain>/docs` to confirm the API is serving.
+The script prints your app URL. Give the revision a couple of minutes to converge. `/health` and `/docs` remain public. Protected AgentOS routes such as `/agents` require a valid token.
   </Step>
 </Steps>
 

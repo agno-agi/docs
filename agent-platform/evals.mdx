@@ -1,15 +1,13 @@
 ---
 title: Evals
-description: "Lock in agent behavior with regression tests."
+description: "Turn expected agent behavior into repeatable checks for development, CI, and scheduled runs."
 ---
 
-Evals are regression tests for your agents. Rerun the same prompts against the same agents and behavior drift becomes visible.
-
-`/improve-agent` generates probes from an agent's instructions to find new weaknesses. Evals preserve known behavior as repeatable cases.
+Probes help you discover weaknesses. Evals turn the behavior you care about into repeatable checks that can run before release, in CI, and on a schedule.
 
 ## Cases
 
-Cases live in `evals/cases.py`. Each case sends one input to an agent (`agent=`) and optionally checks two things:
+Cases live in `evals/cases.py`. Each case sends one input to an agent (`agent=`) and can run up to two checks:
 
 - **judge**: `AgentAsJudgeEval` scores the response against `criteria` (binary pass/fail) using an LLM.
 - **reliability**: `ReliabilityEval` checks which tools fired against `expected_tool_calls`.
@@ -46,9 +44,17 @@ Add tags to group your cases into suites. The template uses three tags: `smoke`,
 
 ## Run the suite
 
-The suite runs on the host, calls the model, and logs results to your local Postgres through `eval_db`. Start the platform first (`docker compose up -d`) and make sure `.env` has your `OPENAI_API_KEY`.
+The suite imports agents on the host and writes results to Postgres through `eval_db`. Start the database, activate the local virtual environment, and set `OPENAI_API_KEY` in `.env`.
 
 <Steps>
+  <Step title="Start Postgres">
+
+    ```bash
+    docker compose up -d agentos-db
+    ```
+
+  </Step>
+
   <Step title="Create a virtual environment">
 
     The eval suite runs on the host and needs a local virtual environment:
@@ -68,15 +74,18 @@ The suite runs on the host, calls the model, and logs results to your local Post
   <Step title="Run the eval suite">
 
     ```bash
-    python -m evals --tag smoke     # fast suite
-    python -m evals                # full suite
+    python -m evals --tag smoke      # fast checks
+    python -m evals --tag release    # pre-release suite
+    python -m evals --tag live       # checks that depend on live sources
+    python -m evals                  # all cases
     ```
 
     Other options:
 
     ```bash
-    python -m evals -v             # stream the agent run with full panels
-    python -m evals --name <case>  # single case while iterating
+    python -m evals --name <case>                       # one case while iterating
+    python -m evals --tag release --json-output out.json
+    python -m evals -v                                  # stream full run panels
     ```
 
   </Step>
@@ -85,36 +94,39 @@ The suite runs on the host, calls the model, and logs results to your local Post
 
 Each case prints its response and the verdicts for the checks it defines. The run ends with an `Eval Summary` table.
 
-Results write to Postgres via `eval_db`. The eval history shows up on [os.agno.com](https://os.agno.com) alongside your sessions and traces, so you can see when a case started failing and what changed.
+Results are written to Postgres via `eval_db`. The eval history appears on [os.agno.com](https://os.agno.com) alongside your sessions and traces, so you can compare inputs, responses, and verdicts across runs.
 
 ## Diagnose failures with your coding agent
 
-Open your coding agent and run:
+Open your coding agent and ask it to run:
 
 ```text
-/eval-and-improve
+Run the eval-and-improve skill in .agents/skills.
 ```
 
-The coding agent runs the suite, triages every failure (bad criteria, real regression, flaky LLM judge), and proposes in-scope fixes. It edits the agent or the case and re-runs until the suite is green.
+The coding agent runs the suite and classifies failures as bad criteria, real regressions, or unreliable LLM judgments. It proposes scoped fixes, updates the agent or case, and re-runs the affected checks.
 
-## When to run evals
+## Choose when to run evals
 
-| Trigger                               | Frequency             |
-| ------------------------------------- | --------------------- |
-| Before deploying a change to an agent | Every time            |
-| As part of CI                         | Every PR              |
-| Against production                    | On a daily cron       |
-| After bumping a model version         | Every time            |
+These behavioral checks call models, so choose a cadence that fits the cost and confidence you need.
 
-The template ships a `run_evals` workflow for scheduled checks. Set `ENABLE_SCHEDULED_EVALS=True` to run the `smoke`-tagged cases daily. See [scheduling](/features/scheduling) for the cron API.
+| Situation | Suggested run |
+| --------- | ------------- |
+| While changing one behavior | Run the affected case with `--name <case>`. |
+| Before a release | Run the `release` tag when you want broader confidence. |
+| In CI | Use stable `smoke` or `release` cases. Leave `live` cases out. |
+| After changing a model | Run the cases for affected agents. |
+| On a schedule | Run `smoke` cases when recurring model calls are useful. |
+
+The template ships a `run_evals` workflow for scheduled checks. Scheduled evals are off by default because they make model calls. Set `ENABLE_SCHEDULED_EVALS=True` to run the `smoke`-tagged cases daily. See [scheduling](/features/scheduling) for the cron API.
 
 ## What good cases look like
 
 - **Specific.** "Returns a JSON object with `ticker` and `price`" beats "Returns the right answer".
-- **Stable.** Avoid prompts whose correct answer changes daily. Use phrasing like "describes a real, recent..." instead of locking in a specific result.
+- **Stable.** Avoid prompts whose correct answer changes daily. Use phrasing like "describes a real, recent..." so the case remains useful as the answer changes.
 - **Scoped to one behavior.** One case per behavior makes failures easy to read.
-- **Anchored to tools.** `expected_tool_calls` catches the failure mode where the agent confidently makes things up instead of calling a tool.
+- **Anchored to tools.** `expected_tool_calls` catches responses that skip a required tool call.
 
 ## Next
 
-[Next steps →](/agent-platform/next-steps)
+[Run your platform on Railway →](/agent-platform/run-railway)

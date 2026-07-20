@@ -4,18 +4,17 @@ sidebarTitle: "Deploy"
 description: "Run AgentOS locally using Docker and deploy to production on AWS."
 ---
 
-AgentOS is a secure, scalable platform for running agents. The [agentos-aws](https://github.com/agno-agi/agentos-aws) codebase runs AgentOS locally using Docker and deploys to production on AWS. It comes with:
+Choose AWS when your team wants AgentOS, PostgreSQL, secrets, logs, and networking in its own AWS account. The [agentos-aws](https://github.com/agno-agi/agentos-aws) template uses Docker locally and deploys AgentOS with ECS Express Mode and RDS for production.
 
-- **2 platform agents** that build and run the platform for you. **Agent Builder** creates agents, teams, and workflows. **Platform Manager** understands, monitors, and explains the platform.
-- **5 [skills](/deploy/templates/improve-agents)** that let coding agents build, test, and improve the platform for you.
+- **Agent Builder**, which creates agents, teams, and workflows when prompted.
+- **Platform Manager**, which inspects registered agents, eval history, deployment checks, and schedules.
+- **Six [skills](/deploy/templates/improve-agents)**. `setup-platform` configures the local platform. Five lifecycle skills create, extend, improve, evaluate, and review it.
 
-Because the trace data, agent code, evals, and system logs all live in one place, the platform can inspect and improve itself automatically.
-
-Production runs in your own AWS account: the deploy scripts use ECS Express Mode for the service and RDS for Postgres.
+Coding agents can use the repository skills, live AgentOS API, evals, and container logs to inspect and improve the platform.
 
 ## Get started
 
-The fastest way to get started is using a coding agent. Copy the prompt below into Claude Code, Cursor or Codex and it'll take you from zero to a running platform.
+Copy the prompt below into Claude Code, Cursor, or Codex to clone the template, start AgentOS locally, and build your first agent.
 
 <Snippet file="setup-prompt-aws.mdx" />
 
@@ -79,7 +78,12 @@ Prints `MCP OK` with the tool count and a real agent answer through the MCP endp
 
 ## Deploy to production
 
-**Prerequisites:** [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) recent enough for ECS Express Mode (`aws ecs create-express-gateway-service help` must work), credentials configured (`aws sts get-caller-identity` succeeds), and Docker running. The image is built locally and pushed to ECR.
+**Prerequisites:**
+
+- [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) recent enough for ECS Express Mode. `aws ecs create-express-gateway-service help` must work.
+- Configured AWS credentials. `aws sts get-caller-identity` must succeed. The AWS principal needs permission to create and pass IAM roles and manage ECS Express Mode, ECR, RDS, Secrets Manager, EC2 networking, and CloudWatch logs.
+- A default VPC in the target region with subnets in at least two Availability Zones. Find the VPC with `aws ec2 describe-vpcs --filters Name=is-default,Values=true --query 'Vpcs[0].VpcId' --output text --region <region>`. Then run `aws ec2 describe-subnets --filters Name=vpc-id,Values=<default-vpc-id> --query 'Subnets[].AvailabilityZone' --output text --region <region>` and confirm that it returns at least two distinct zones.
+- Docker running. The script builds the image locally and pushes it to ECR.
 
 <Steps>
   <Step title="Create a production env">
@@ -95,9 +99,11 @@ Edit `.env.production` with production values: a different OpenAI key, productio
 ./scripts/aws/up.sh
 ```
 
-Provisions an ECR repo, a private RDS PostgreSQL 17 instance, and Secrets Manager secrets, then makes one `aws ecs create-express-gateway-service` call. That call brings the Fargate service, an ALB with HTTPS, security groups, autoscaling, CloudWatch logs and alarms, and a public URL (`https://ag-<id>.ecs.<region>.on.aws`, generated per service). The script pins scaling to a single always-on task so the in-process scheduler never double-fires, and sets `AGENTOS_URL` to the generated URL so scheduled jobs reach the platform. It also generates `MCP_CONNECT_SECRET` into `.env.production` when it's missing, so chat apps can connect over OAuth from the first deploy.
+Provisions an ECR repo, a private RDS PostgreSQL 17 instance, and Secrets Manager secrets, then makes one `aws ecs create-express-gateway-service` call. That call brings the Fargate service, an ALB with HTTPS, security groups, autoscaling, CloudWatch logs and alarms, and a public URL (`https://ag-<id>.ecs.<region>.on.aws`, generated per service). The script pins scaling to a single always-on task and sets `AGENTOS_URL` to the generated URL so scheduled jobs reach the platform. It also generates `MCP_CONNECT_SECRET` into `.env.production` when it's missing, so chat apps can connect over OAuth from the first deploy.
 
-The first run takes 30-45 minutes end to end. Certificate and DNS provisioning is the long pole, and the script waits until the gateway actually answers before declaring success. Redeploys take minutes. Region comes from `AWS_REGION` (default `us-east-1`).
+The first run takes 30-45 minutes end to end. Certificate and DNS provisioning takes most of that time, and the script waits until the gateway answers before declaring success. Redeploys take minutes. Region comes from `AWS_REGION` (default `us-east-1`).
+
+<Note>The template has been validated with one ECS task. AgentOS claims due schedules through PostgreSQL. Simultaneous schedule registration and long-lived MCP streams still need validation before you scale the service.</Note>
 
 <Note>This stack idles at roughly $100-110/month: about $70/mo for Fargate (2 vCPU/4 GB), $17-25/mo for the ALB (shared across up to 25 Express services), and $14/mo for the RDS db.t4g.micro. AWS bills idle resources. Tear down what you don't use with `./scripts/aws/down.sh`.</Note>
   </Step>
@@ -126,10 +132,13 @@ For claude.ai and ChatGPT on the web: add `https://<service-url>/mcp` as a custo
 
   <Step title="Confirm it's live">
 ```bash
-aws logs tail /ecs/agent-os --follow
+curl -o /dev/null -w '%{http_code}\n' "https://<service-url>/health"  # 200
+curl -o /dev/null -w '%{http_code}\n' "https://<service-url>/agents"  # 401
+
+aws logs tail /ecs/agent-os --region <region> --follow
 ```
 
-The app finishes rolling out behind the gateway; first boot pulls the image and waits for the database. Open `https://<service-url>/docs` to confirm the API is serving.
+The app finishes rolling out behind the gateway; first boot pulls the image and waits for the database. `/health` and `/docs` remain public. Protected AgentOS routes such as `/agents` require a valid token.
   </Step>
 </Steps>
 

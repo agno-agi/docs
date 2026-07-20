@@ -4,16 +4,17 @@ sidebarTitle: "Deploy"
 description: "Run AgentOS locally using Docker and deploy to production on Fly.io."
 ---
 
-AgentOS is a secure, scalable platform for running agents. The [agentos-fly](https://github.com/agno-agi/agentos-fly) codebase runs AgentOS locally using Docker and deploys to production on Fly.io. It comes with:
+Choose Fly.io when you want an always-on AgentOS Machine and PostgreSQL on Fly's private network. The [agentos-fly](https://github.com/agno-agi/agentos-fly) template uses Docker locally and provisions both Fly apps for production.
 
-- **2 platform agents** that build and run the platform for you. **Agent Builder** creates agents, teams, and workflows. **Platform Manager** understands, monitors, and explains the platform.
-- **5 [skills](/deploy/templates/improve-agents)** that let coding agents build, test, and improve the platform for you.
+- **Agent Builder**, which creates agents, teams, and workflows when prompted.
+- **Platform Manager**, which inspects registered agents, eval history, deployment checks, and schedules.
+- **Six [skills](/deploy/templates/improve-agents)**. `setup-platform` configures the local platform. Five lifecycle skills create, extend, improve, evaluate, and review it.
 
-Because the trace data, agent code, evals, and system logs all live in one place, the platform can inspect and improve itself automatically.
+Coding agents can use the repository skills, live AgentOS API, evals, and container logs to inspect and improve the platform.
 
 ## Get started
 
-The fastest way to get started is using a coding agent. Copy the prompt below into Claude Code, Cursor or Codex and it'll take you from zero to a running platform.
+Copy the prompt below into Claude Code, Cursor, or Codex to clone the template, start AgentOS locally, and build your first agent.
 
 <Snippet file="setup-prompt-fly.mdx" />
 
@@ -95,9 +96,9 @@ Edit `.env.production` with production values: a different OpenAI key, productio
 
 Provisions the app and an unmanaged Fly Postgres on the same private network, pushes your credentials as Fly secrets, and deploys a single always-on machine. Fly app names are global, so the script generates `agentos-<suffix>` and records it in `fly.toml`. It also sets `AGENTOS_URL` to `https://<app>.fly.dev` before the first deploy so scheduled jobs reach the platform, and generates `MCP_CONNECT_SECRET`, the OAuth consent secret for chat apps, into `.env.production` when it's missing.
 
-Deploys use `fly deploy --ha=false` on purpose: the Fly default creates two machines, which doubles cost and runs two in-process schedulers double-firing every cron. Default sizing is `shared-cpu-2x` with 4 GB (~$21/mo) plus a small Postgres machine (~$4/mo). For dedicated cores, switch the size to `performance-2x` (~$62/mo) in `fly.toml`.
+Deploys use `fly deploy --ha=false` because the Fly default creates two machines and doubles the application cost. The template has been validated with one always-on machine. Default sizing is `shared-cpu-2x` with 4 GB (~$21/mo) plus a small Postgres machine (~$4/mo). For dedicated cores, switch the size to `performance-2x` (~$62/mo) in `fly.toml`.
 
-<Note>Fly's stock `postgres-flex` image does not ship pgvector: sessions and memory work out of the box, but knowledge bases (RAG) need the extension. Set `FLY_PG_IMAGE` to a `postgres-flex` derivative with pgvector installed before running `up.sh`. Without it, the script prints a warning and everything except knowledge bases works. See [Enable pgvector](/deploy/templates/fly/reference#customize).</Note>
+<Note>Fly's stock `postgres-flex` image supports sessions and memory. Knowledge bases require a pgvector-enabled derivative. Set `FLY_PG_IMAGE` before running `up.sh`. The script warns when the stock image is selected. See [Enable pgvector](/deploy/templates/fly/reference#customize).</Note>
   </Step>
 
   <Step title="Mint your JWT key">
@@ -124,10 +125,13 @@ For claude.ai and ChatGPT on the web: add `https://<app>.fly.dev/mcp` as a custo
 
   <Step title="Confirm it's live">
 ```bash
+curl -o /dev/null -w '%{http_code}\n' "https://<app>.fly.dev/health"  # 200
+curl -o /dev/null -w '%{http_code}\n' "https://<app>.fly.dev/agents"  # 401
+
 fly logs
 ```
 
-The app name comes from `fly.toml`, so no `--app` flag is needed. Open `https://<app>.fly.dev/docs` to confirm the API is serving.
+The app name comes from `fly.toml`, so no `--app` flag is needed. `/health` and `/docs` remain public. Protected AgentOS routes such as `/agents` require a valid token.
   </Step>
 </Steps>
 

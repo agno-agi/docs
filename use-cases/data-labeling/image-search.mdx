@@ -1,0 +1,100 @@
+---
+title: "Build an image search application"
+sidebarTitle: "Image Search"
+description: "Describe images with an agent, index the descriptions in PgVector, and search the collection from a browser UI."
+---
+
+Run the complete Image Search application from the Agno repository:
+
+```bash
+uv venv .venvs/image_search --python 3.12
+source .venvs/image_search/bin/activate
+uv pip install -e "libs/agno[os,google]" "fastapi[standard]" pgvector "psycopg[binary]"
+./cookbook/scripts/run_pgvector.sh
+export GOOGLE_API_KEY="..."
+fastapi dev cookbook/data_labeling/image_search/run.py --port 7777
+```
+
+Open [http://localhost:7777/ui](http://localhost:7777/ui), then click **Reindex** to label and index the configured images.
+
+## Application structure
+
+The application registers one `Knowledge` instance and one ingest workflow with AgentOS. A small FastAPI route serves the browser UI.
+
+```python
+from agno.os import AgentOS
+from db import get_knowledge
+from fastapi import FastAPI
+from workflows.ingest import ingest_workflow
+
+
+base_app = FastAPI(title="Image Search")
+
+agent_os = AgentOS(
+    id="image_search",
+    name="Image Search",
+    knowledge=[get_knowledge()],
+    workflows=[ingest_workflow],
+    base_app=base_app,
+)
+
+app = agent_os.get_app()
+```
+
+| Part | Implementation |
+|------|----------------|
+| Label | A Gemini agent returns an `ImageDescription` with a caption, subjects, scene, visual style, and tags. |
+| Index | `to_searchable_text()` flattens those fields into the text sent to `GeminiEmbedder`. |
+| Search | `PgVector` combines vector and keyword search with `SearchType.hybrid`. |
+| Metadata | `Knowledge` stores the image URL and structured description for the gallery. |
+| Ingest | A `Workflow` downloads each image, creates a searchable description, and stores the embedded description, structured metadata, and source URL. |
+| UI | A single HTML file renders the gallery, search results, and reindex status. |
+
+## Search-tuned labels
+
+The schema separates fields that help with different queries:
+
+```python
+from typing import List
+
+from pydantic import BaseModel, Field
+
+
+class ImageDescription(BaseModel):
+    caption: str
+    subjects: List[str] = Field(default_factory=list)
+    scene: str
+    visual_style: str
+    tags: List[str] = Field(default_factory=list)
+```
+
+The caption captures a natural description. Subjects and tags add the concrete terms users search for. Scene and visual style support queries about setting, lighting, mood, and composition.
+
+## Reindex behavior
+
+Reindexing performs a full rebuild. The workflow removes the existing knowledge content, then processes every URL in `IMAGE_URLS` with a bounded thread pool. This makes prompt and schema changes visible across the complete demo collection.
+
+The workflow uses `PostgresDb` so AgentOS can persist background workflow runs. The same Postgres instance stores knowledge content, while PgVector stores embeddings and serves hybrid search.
+
+## Routes
+
+| Action | Route |
+|--------|-------|
+| Open the UI | `GET /ui` |
+| List gallery content | `GET /knowledge/content` |
+| Search the image index | `POST /knowledge/search` |
+| Start a reindex run | `POST /workflows/image-ingest/runs` |
+
+## Next steps
+
+| Task | Guide |
+|------|-------|
+| Build the minimal extract-and-index pipeline | [Data extraction](/use-cases/data-labeling/structured-extraction#extract-then-index) |
+| Define a different media schema | [Multimodal inputs](/use-cases/data-labeling/multimodal-inputs) |
+| Configure knowledge search | [Knowledge](/knowledge/overview) |
+
+## Developer Resources
+
+- [Image Search source](https://github.com/agno-agi/agno/tree/main/cookbook/data_labeling/image_search)
+- [Image extraction to vector database cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/data_labeling/_09_image_extraction_to_vectordb)
+- [AgentOS](/agent-os/introduction)

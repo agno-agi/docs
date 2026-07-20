@@ -1,122 +1,101 @@
 ---
-title: "Quality pipeline"
-description: "Two labelers from different providers, a reviewer that diffs them, and an adjudicator that resolves disagreement."
+title: "Quality review pipeline"
+description: "Run two labelers concurrently, persist each workflow run, and adjudicate disagreements."
 ---
 
-Run two labelers from different providers, compare their outputs, and adjudicate where they disagree. Persist the disagreement report when you need an audit trail.
+Use a `Workflow` to run two labelers in parallel, review their outputs, and call an adjudicator when the reviewer finds a disagreement. The [complete cookbook](https://github.com/agno-agi/agno/blob/main/cookbook/data_labeling/_18_quality_review/basic.py) defines the schemas, agents, and executor functions used in this workflow composition:
 
 ```python
-from typing import List, Optional
-
-from agno.agent import Agent
-from agno.models.anthropic import Claude
-from agno.models.google import Gemini
-from pydantic import BaseModel, Field
+from agno.db.sqlite import SqliteDb
+from agno.workflow import Step, Workflow
+from agno.workflow.condition import Condition
+from agno.workflow.parallel import Parallel
 
 
-class Contact(BaseModel):
-    name: Optional[str] = None
-    email: Optional[str] = None
-    company: Optional[str] = None
+label_a = Step(name="Labeler A", agent=labeler_a)
+label_b = Step(name="Labeler B", agent=labeler_b)
+review = Step(name="Reviewer", executor=run_reviewer)
+adjudicate = Step(name="Adjudicator", executor=run_adjudicator)
 
-
-class FieldDisagreement(BaseModel):
-    field: str = Field(..., description="Top-level Contact field name")
-    value_a: Optional[str] = None
-    value_b: Optional[str] = None
-    reason: str = Field(..., description="Why this field needs adjudication")
-
-
-class DisagreementReport(BaseModel):
-    disagreements: List[FieldDisagreement] = Field(default_factory=list)
-    needs_adjudication: bool = Field(..., description="True if any field disagrees")
-
-
-class FinalLabel(BaseModel):
-    contact: Contact
-    notes: Optional[str] = None
-
-
-LABELER = "Extract contact info. Use exactly what the text shows. Null if missing."
-
-labeler_a = Agent(model=Gemini(id="gemini-3.5-flash"), instructions=LABELER, output_schema=Contact)
-labeler_b = Agent(model=Claude(id="claude-opus-4-7"), instructions=LABELER, output_schema=Contact)
-
-reviewer = Agent(
-    model=Claude(id="claude-opus-4-7"),
-    instructions=(
-        "Compare two labelers' Contact outputs field by field. A field "
-        "needs adjudication whenever the values differ, including when one "
-        "value is null. Set "
-        "needs_adjudication=true if any field does."
-    ),
-    output_schema=DisagreementReport,
+workflow = Workflow(
+    name="Quality review labeling",
+    db=SqliteDb(db_file="tmp/labeling.db"),
+    steps=[
+        Parallel(label_a, label_b, name="Label"),
+        review,
+        Condition(
+            name="Adjudicate",
+            evaluator=has_disagreement,
+            steps=[adjudicate],
+        ),
+    ],
 )
-
-adjudicator = Agent(
-    model=Claude(id="claude-opus-4-7"),
-    instructions=(
-        "Re-read the original text and resolve every reported "
-        "disagreement. Return a FinalLabel with the correct values."
-    ),
-    output_schema=FinalLabel,
-)
-
-
-def label_with_quality_review(text: str) -> FinalLabel:
-    a = labeler_a.run(text).content
-    b = labeler_b.run(text).content
-
-    report = reviewer.run(
-        f"Labeler A:\n{a.model_dump_json()}\n\nLabeler B:\n{b.model_dump_json()}"
-    ).content
-
-    if not report.needs_adjudication:
-        return FinalLabel(contact=a, notes="Labelers agreed.")
-
-    return adjudicator.run(
-        f"Original input:\n{text}\n\n"
-        f"Labeler A:\n{a.model_dump_json()}\n\n"
-        f"Labeler B:\n{b.model_dump_json()}\n\n"
-        f"Reviewer report:\n{report.model_dump_json()}"
-    ).content
 ```
 
-## The flow
+## Execution flow
 
-1. **Two labelers, two providers.** Provider disagreement identifies records that need review.
-2. **Reviewer diffs them.** It emits one `FieldDisagreement` per conflicting field and a single `needs_adjudication` flag. Agreement short-circuits the expensive step.
-3. **Adjudicator runs only on disagreement.** It re-reads the original input with both labels and the reviewer's report, then returns the final record.
+| Step | What it does |
+|------|--------------|
+| `Parallel` | Runs a Google labeler and an Anthropic labeler concurrently against the same input. |
+| `Reviewer` | Reads both step outputs and returns a typed `DisagreementReport`. |
+| `Condition` | Reads `needs_adjudication` from the reviewer output. |
+| `Adjudicator` | Receives the original input, both labels, and the disagreement report. It runs only when the condition passes. |
+| `SqliteDb` | Persists workflow runs in `tmp/labeling.db`. |
 
-Agreement does not prove that a label is correct. Measure this pipeline on a labeled validation set. Persisted disagreement rates by field, provider, and prompt version can identify areas for review.
+The cookbook reviewer flags a field when both labelers return non-null, different values. Change the reviewer instructions if a null value and a populated value should also trigger adjudication.
 
-## Production composition
+## Pass step outputs to the reviewer
 
-The example above runs the agents sequentially so the pattern is readable. For a million-document job, wrap labelers in a `Parallel` step and gate the adjudicator behind a `Condition` in a `Workflow`. See [parallel workflows](/workflows/workflow-patterns/parallel-workflow) and [conditional workflows](/workflows/workflow-patterns/conditional-workflow).
+`StepInput.get_step_output()` finds named steps inside the `Parallel` block. The reviewer executor uses those outputs to build its prompt.
 
-## Production checklist
+```python
+from agno.workflow.types import StepInput, StepOutput
 
-Agno gives you the orchestration primitives. These concerns are yours to add.
 
-| Concern | What to add |
-|---------|-------------|
-| Rate limiting | Wrap the agent call with a per-provider limiter, or front it with a gateway. Agno does not throttle outbound calls. |
-| Bounded concurrency | An `asyncio.Semaphore` around the batch fan-out. |
-| Dead-letter queue | Record failed item IDs and re-run them through a stricter pass. |
-| Idempotency | A deterministic item ID and an output-store lookup before each run. Store results by item ID and prompt version. |
-| Provider Batch APIs | Call provider batch endpoints directly when the workload needs them. Agno does not wrap these APIs. |
-| Prompt versioning | Track a `prompt_version` in run metadata so historical labels stay joinable. |
-| Authoritative cost | `RunMetrics.cost` is populated only when the provider returns it. Attach a token-rate table downstream if you need exact numbers. |
+def run_reviewer(step_input: StepInput) -> StepOutput:
+    a = step_input.get_step_output("Labeler A").content
+    b = step_input.get_step_output("Labeler B").content
+    prompt = (
+        f"Labeler A:\n{a.model_dump_json(indent=2)}\n\n"
+        f"Labeler B:\n{b.model_dump_json(indent=2)}"
+    )
+    report = reviewer.run(prompt).content
+    return StepOutput(content=report)
+```
+
+The condition reads the reviewer output from `previous_step_content`:
+
+```python
+def has_disagreement(step_input: StepInput) -> bool:
+    report = step_input.previous_step_content
+    return bool(report and getattr(report, "needs_adjudication", False))
+```
+
+## Run the workflow
+
+From the Agno repository root:
+
+```bash
+uv venv .venv --python 3.12
+source .venv/bin/activate
+uv pip install "agno[google,anthropic]"
+export GOOGLE_API_KEY="..."
+export ANTHROPIC_API_KEY="..."
+python cookbook/data_labeling/_18_quality_review/basic.py
+```
+
+Test the workflow against a labeled validation set before using its output. Track reviewer decisions and final labels by prompt and model version so changes remain measurable.
 
 ## Next steps
 
 | Task | Guide |
 |------|-------|
-| Build the labelers | [Data extraction](/use-cases/data-labeling/structured-extraction) |
-| Compose as a workflow | [Workflows](/workflows/overview) |
-| Run agents concurrently | [Async execution](/agents/running-agents) |
+| Define the label schema | [Data extraction](/use-cases/data-labeling/structured-extraction) |
+| Inspect workflow patterns | [Workflows](/workflows/overview) |
+| Run independent branches | [Parallel workflows](/workflows/workflow-patterns/parallel-workflow) |
+| Gate a step on a result | [Conditional workflows](/workflows/workflow-patterns/conditional-workflow) |
 
 ## Developer Resources
 
 - [Quality review cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/data_labeling/_18_quality_review)
-- [Workflows overview](/workflows/overview)
+- [Workflow reference](/reference/workflows/workflow)

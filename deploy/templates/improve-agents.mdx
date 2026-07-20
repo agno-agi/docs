@@ -1,49 +1,67 @@
 ---
 title: "Build with Coding Agents"
 sidebarTitle: "Coding Agents"
-description: "Bundled skills that let Claude Code, Codex, and Cursor create, improve, evaluate, and maintain your agents."
+description: "Use bundled skills to set up, build, evaluate, and maintain agents inside an AgentOS Starter."
 ---
 
-Every template is designed for coding agents to drive the full agent-development lifecycle: create, improve, evaluate, maintain.
+Run the setup skill inside a freshly cloned [Starter](/deploy/introduction):
 
-Everything on this page runs inside a cloned template. If you don't have one running yet, [pick a Starter](/deploy/introduction) first.
+```text
+/setup-platform
+```
 
-The skills live in `.agents/skills/`. Claude Code picks them up on clone through a committed `.claude/skills` symlink; other harnesses like Codex and Cursor can symlink the same folder. Invoke a skill by name (`/create-new-agent`) or describe the task and the coding agent matches it.
+The coding agent configures the local environment, starts AgentOS with Docker, verifies the MCP endpoint, builds your first agent, and helps you connect the AgentOS UI.
+
+Each Starter gives coding agents access to the project, live AgentOS API, evals, traces in PostgreSQL, and container logs. They can use that context to diagnose behavior, edit the implementation, and verify the result.
 
 ## Skills
 
-| Skill | What it does | Who drives |
-|-------|--------------|------------|
-| `/create-new-agent` | Scaffolds an agent, registers it in `app/main.py`, smoke-tests it live. | You + the agent |
-| `/extend-agent` | Adds a tool or capability, refines instructions, fixes a known bug. | You |
-| `/improve-agent` | Derives probes from the agent's `INSTRUCTIONS`, judges responses, edits until they pass. | The agent |
-| `/eval-and-improve` | Runs the eval suite, diagnoses failures, fixes in scope until green. | The agent |
-| `/review-and-improve` | Sweeps for drift between docs, code, and config. Auto-fixes mechanical drift. | The agent |
+The skills live in `.agents/skills/`. Claude Code discovers them through the committed `.claude/skills` symlink. Codex and Cursor can use the same folder. Invoke a skill by name or describe the task and let the coding agent select it.
 
-## Your platform as an MCP tool
+| Skill | What it does | Use when |
+|-------|--------------|----------|
+| `/setup-platform` | Configures a fresh clone, starts AgentOS locally, verifies MCP, and builds the first agent. | Starting with a new Starter |
+| `/create-new-agent` | Scaffolds an agent, registers it in `app/main.py`, and smoke-tests it live. | Adding a new agent |
+| `/extend-agent` | Adds a tool or capability, refines instructions, or fixes a known bug. | The required change is already clear |
+| `/improve-agent` | Derives probes from the agent's `INSTRUCTIONS`, judges responses, makes focused edits, and reruns affected probes. | Improving behavior through simulations and probes |
+| `/eval-and-improve` | Runs the eval suite, classifies failures, proposes scoped fixes, and reruns affected cases. | Resolving an eval regression |
+| `/review-and-improve` | Checks documentation, code, and configuration together and fixes straightforward inconsistencies. | Maintaining the project after changes |
 
-Coding agents edit the platform's code and call its live agents over MCP. Register your AgentOS with the MCP clients on your machine:
+## Connect the live platform
+
+Coding agents can edit the project and call its live agents over MCP. Register the local AgentOS with supported clients:
 
 ```bash
 uvx agno connect
 ```
 
-It auto-detects Claude Code, Claude Desktop, Codex, and Cursor and registers `http://localhost:8000/mcp`. To check the connection, open one of those apps and ask: "can you access my agentos mcp?". Your coding agent can then call `run_agent`, `run_team`, and `run_workflow` against the live platform.
+The command detects Claude Code, Claude Desktop, Codex, and Cursor and registers `http://localhost:8000/mcp`. Your coding agent can then call `run_agent`, `run_team`, and `run_workflow` against the running platform.
 
-For a deployed platform, point the same command at your domain: `uvx agno connect --url https://<your-domain>`.
+For a deployed platform, pass its URL:
 
-`agno connect` writes client credentials according to the endpoint's authentication. It writes tokenless entries for an unauthenticated MCP endpoint. It mints scoped service-account tokens (`agno_pat_...`) for a token-protected endpoint when the AgentOS has a REST admin credential that can authorize the mint. For an OAuth-enabled endpoint, it writes tokenless entries and prints one-time browser sign-in steps for supported clients. Use `--pat` when a headless client needs a service-account token on an OAuth-enabled AgentOS; minting still requires a REST admin credential or an existing admin PAT. With the built-in OAuth provider, `MCP_CONNECT_SECRET` is the secret entered on the AgentOS consent page. Coding clients use OAuth tokens from that flow or a separately minted PAT.
+```bash
+uvx agno connect --url https://<your-domain>
+```
+
+| AgentOS configuration | What `agno connect` does |
+|-----------------------|--------------------------|
+| MCP without authentication | Writes a tokenless client entry |
+| Token-protected AgentOS with an admin credential | Mints a scoped service-account token for each client |
+| MCP OAuth | Writes the connection and prints the client sign-in step |
+| Headless client using MCP OAuth | Use `--pat` with an admin credential or existing admin PAT |
+
+See [`agno connect`](/cli/connect) for client configuration, credential requirements, and conflict handling.
 
 ## Evals
 
-Lock in agent behavior with the eval suite in `evals/`. The evals run on the host machine, so set up the venv once:
+The eval suite lives in `evals/`. Set up the host environment once:
 
 ```bash
 ./scripts/venv_setup.sh
 source .venv/bin/activate
 ```
 
-Then run:
+Run the suite by scope:
 
 ```bash
 python -m evals --tag smoke      # fast checks of the self-driving surfaces
@@ -52,36 +70,36 @@ python -m evals --name <case>    # one case while iterating
 python -m evals -v               # stream the full run with rich panels
 ```
 
-Cases wrap [AgentAsJudgeEval](/evals/agent-as-judge/overview) (LLM judge, binary pass/fail) and [ReliabilityEval](/evals/reliability/overview) (tool-call assertions). Results log to Postgres, so run history shows up at [os.agno.com](https://os.agno.com) next to sessions and traces.
+Cases use [AgentAsJudgeEval](/evals/agent-as-judge/overview) for model-judged behavior and [ReliabilityEval](/evals/reliability/overview) for tool-call assertions. Results are stored in PostgreSQL and appear in the [AgentOS UI](https://os.agno.com) beside sessions and traces.
 
 If a case fails, run `/eval-and-improve`.
 
 ## Agent patterns
 
-The bundled agents demonstrate three patterns to copy:
+The bundled agents demonstrate three patterns:
 
 | Pattern | Example | When to use |
 |---------|---------|-------------|
 | Direct tools | `agents/web_search.py` | The agent needs fine-grained control over each tool call. |
-| Context provider | `agents/platform_manager.py` | You want many tools collapsed into one `query_<thing>` interface that hands off to a sub-agent. |
-| Studio builder | `agents/agent_builder.py` | Users create and refine components from chat; deletes keep a confirmation gate. |
+| Context provider | `agents/platform_manager.py` | Several tools can sit behind one `query_<thing>` interface managed by a sub-agent. |
+| Studio builder | `agents/agent_builder.py` | Users create and refine components from chat with confirmation gates for destructive actions. |
 
 ## Teams and workflows
 
 | Pattern | When to use |
 |---------|-------------|
-| [Teams](/teams/overview) | Route to specialists, coordinate parallel work, synthesize results. |
-| [Workflows](/workflows/overview) | Processes with defined, repeatable control flow. |
+| [Teams](/teams/overview) | Route to specialists, coordinate parallel work, and synthesize results. |
+| [Workflows](/workflows/overview) | Run a process with defined, repeatable control flow. |
 
-Agents for open questions, teams for routing, workflows for processes.
+Use agents for open questions, teams for routing, and workflows for processes.
 
 ## Scheduled tasks
 
-The scheduler is on by default. Two reference workflows are registered out of the box:
+The scheduler is enabled by default. Two reference workflows are registered:
 
 | Workflow | What it does | Default |
 |----------|--------------|---------|
-| Deployment check | Daily readiness report: database, auth, scheduler, MCP, Slack config. Fixed checks, no LLM calls. | On. Disable with `ENABLE_DEPLOY_CHECK=False`. |
-| Run evals | Daily smoke-tag eval run. Uses model calls. | Off. Enable with `ENABLE_SCHEDULED_EVALS=True`. |
+| Deployment Check | Runs a daily readiness report for the database, authentication, scheduler, MCP, and Slack configuration. It uses fixed checks with no model calls. | On. Disable with `ENABLE_DEPLOY_CHECK=False`. |
+| Run Evals | Runs the smoke-tag eval suite daily and uses model calls. | Off. Enable with `ENABLE_SCHEDULED_EVALS=True`. |
 
 See [Scheduler](/agent-os/scheduler/overview) for the cron API.

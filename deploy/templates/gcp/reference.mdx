@@ -4,7 +4,7 @@ sidebarTitle: "Reference"
 description: "Commands, customization, environment variables, and troubleshooting for the Google Cloud Run template."
 ---
 
-The Cloud Run service is `agent-os`, the Cloud SQL instance is `agentos-db`, and the Artifact Registry repo is `agentos`. The scripts target the current gcloud project and `us-central1`; override them with `GCP_PROJECT_ID` and `GCP_REGION`.
+The Cloud Run service is `agent-os`, the Cloud SQL instance is `agentos-db`, and the Artifact Registry repo is `agentos`. The scripts target the current gcloud project and `us-central1`; override them with `GCP_PROJECT_ID` and `GCP_REGION`. Start with [Deploy AgentOS on Google Cloud](/deploy/templates/gcp/deploy) for prerequisites and the first deployment. Export overrides before running direct `gcloud` commands; the template scripts also read them from the selected env file.
 
 ## Manage
 
@@ -12,23 +12,25 @@ The Cloud Run service is `agent-os`, the Cloud SQL instance is `agentos-db`, and
 |------|---------|
 | Deploy code changes | `./scripts/gcp/redeploy.sh` |
 | Sync env variables | `./scripts/gcp/env-sync.sh` (defaults to `.env.production`; pass `.env` to sync that instead) |
-| Tail logs | `gcloud run services logs read agent-os --region us-central1 --limit 100` |
+| Tail logs | `gcloud run services logs read agent-os --project "${GCP_PROJECT_ID:-$(gcloud config get-value project)}" --region "${GCP_REGION:-us-central1}" --limit 100` |
 | Resize the service | Edit the `--cpu`/`--memory` flags in `scripts/gcp/up.sh` and rerun it |
 | Tear down | `./scripts/gcp/down.sh` (add `--yes` to skip the confirmation) |
 
+`up.sh` sets one minimum instance and no maximum. Cloud Run can add instances under load. AgentOS claims due schedules through PostgreSQL. Simultaneous schedule registration and long-lived MCP streams still need validation. Add `--max-instances 1` to the Cloud Run deploy command when you need a single-process topology.
+
 ## Production auth
 
-Token-Based Authorization is on by default. Production startup requires `JWT_VERIFICATION_KEY` or a readable JWKS file at the container path in `JWT_JWKS_FILE`; otherwise the process exits.
+Token-Based Authorization protects AgentOS routes by default in production. Startup requires `JWT_VERIFICATION_KEY` or a readable JWKS file at the container path in `JWT_JWKS_FILE`; otherwise the process exits.
 
 Token-Based Auth gives you three things:
 
-1. **No public access.** The server rejects requests without a valid token.
+1. **Protected API access.** Requests to protected AgentOS routes require a valid token. `/`, `/health`, `/info`, `/docs`, `/redoc`, `/openapi.json`, and `/docs/oauth2-redirect` remain public.
 2. **Per-request identity.** Middleware validates the token and exposes its `user_id`, optional `session_id`, scopes, and claims to the request.
 3. **Scope-based permissions.** Token scopes control access to AgentOS routes and resources.
 
 The templates do not enable per-user data isolation. To scope non-admin session, memory, trace, and run access to the JWT subject, pass `authorization_config=AuthorizationConfig(user_isolation=True)` to `AgentOS`. See [User Isolation](/agent-os/security/authorization/user-isolation).
 
-To opt out (not recommended), set `authorization=False` in `app/main.py` and redeploy. Use this only inside a private VPC behind another auth layer. Without it, anyone who guesses your Cloud Run URL can access your platform.
+To disable JWT authentication, set `authorization=False` in `app/main.py`, remove `JWT_VERIFICATION_KEY` and `JWT_JWKS_FILE` from the Cloud Run service, and redeploy. `authorization=False` disables AgentOS scope enforcement. Configured JWT environment variables continue to enable JWT validation. MCP OAuth remains active when `MCP_CONNECT_SECRET` is set. Only do this when another layer protects the service.
 
 ## Customize
 
@@ -83,13 +85,13 @@ def default_model():
     return Claude(id="claude-sonnet-5")
 ```
 
-Add `anthropic` to `pyproject.toml`, set the provider key in your env, and regenerate pins:
+Add `anthropic` to `pyproject.toml`. Set `ANTHROPIC_API_KEY` in `.env` for local runs and `.env.production` for production, then regenerate pins:
 
 ```bash
 ./scripts/generate_requirements.sh
 ```
 
-Rebuild locally with `docker compose up -d --build`. For production:
+Before production sync, add `ANTHROPIC_API_KEY` to the `is_secret_key()` allowlist in `scripts/gcp/env-sync.sh`. This stores the key in Secret Manager. Then rebuild and deploy:
 
 ```bash
 ./scripts/gcp/env-sync.sh
@@ -154,7 +156,7 @@ source .venv/bin/activate
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `OPENAI_API_KEY` | Yes | - | Models and embeddings. |
-| `RUNTIME_ENV` | No | `prd` | `dev` disables JWT. Compose sets it for local. Never put it in an env file that syncs to Cloud Run, or production deploys unauthenticated. |
+| `RUNTIME_ENV` | No | `prd` | `dev` sets `authorization=False`, which disables AgentOS scope enforcement. Configured JWT environment variables continue to enable JWT validation. Compose sets `dev` locally; keep `prd` on Cloud Run. |
 | `JWT_VERIFICATION_KEY` | Production | - | Public key from os.agno.com. Quote the value so the multi-line PEM parses as one variable. |
 | `JWT_JWKS_FILE` | Production | - | Path to a JWKS file inside the container. The scripts set only this environment variable. Add the file to the image build context, rebuild, and redeploy the image, or configure a mount and roll the service. |
 | `MCP_CONNECT_SECRET` | No | generated by `up.sh` | OAuth consent secret (16+ chars) for connecting claude.ai and ChatGPT to `/mcp`. `up.sh` generates one on deploy and writes it to `.env.production`. |
@@ -172,7 +174,7 @@ source .venv/bin/activate
 | `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASS` / `DB_DATABASE` | No | matches compose | Postgres connection. |
 | `DB_DRIVER` | No | `postgresql+psycopg` | SQLAlchemy driver. |
 | `AGNO_DEBUG` | No | `False` | Verbose Agno logs. Compose sets it for dev. |
-| `WAIT_FOR_DB` | No | `False` | If `True`, the entrypoint blocks on the database before starting. Compose sets it. |
+| `WAIT_FOR_DB` | No | `False` | If `True`, the entrypoint blocks on the database before starting. Compose and the production deploy set it to `True`. |
 
 ## Troubleshooting
 
@@ -184,13 +186,13 @@ Install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install), then 
 Expected. The script deploys first because Cloud Run only reveals the URL once the service exists, then pauses so you can mint the key against it. Mint the key at [os.agno.com](https://os.agno.com): connect your OS (**Connect OS** → **Live**, enter your Cloud Run URL), then turn on **Token-Based Authorization (JWT)** under **Settings** → **OS & Security** and paste the full PEM. To add a PEM later, set `JWT_VERIFICATION_KEY` in `.env.production` and run `./scripts/gcp/env-sync.sh`. To use `JWT_JWKS_FILE`, add the file to the image build context and run `./scripts/gcp/redeploy.sh`, or configure a mount. Then add the container path to `.env.production` and run `./scripts/gcp/env-sync.sh`. The scripts do not upload or mount the file.
   </Accordion>
   <Accordion title="App fails to start in production">
-JWT auth is on whenever `RUNTIME_ENV` is not `dev`. Set `JWT_VERIFICATION_KEY` and sync. For JWKS, add the file to the image build context and run `./scripts/gcp/redeploy.sh`, or configure a mount. Then set `JWT_JWKS_FILE` to its container path in `.env.production` and run `./scripts/gcp/env-sync.sh`. To opt out inside a private VPC behind another auth layer, set `authorization=False` in `app/main.py`.
+AgentOS scope enforcement is on whenever `RUNTIME_ENV` is not `dev`. Set `JWT_VERIFICATION_KEY` and sync. For JWKS, add the file to the image build context and run `./scripts/gcp/redeploy.sh`, or configure a mount. Then set `JWT_JWKS_FILE` to its container path in `.env.production` and run `./scripts/gcp/env-sync.sh`. To disable JWT, set `authorization=False` in `app/main.py`, remove both JWT variables from the Cloud Run service, and redeploy. MCP OAuth remains active when `MCP_CONNECT_SECRET` is set.
   </Accordion>
   <Accordion title="Every request returns 403">
 Your organization likely enforces Domain Restricted Sharing (`constraints/iam.allowedPolicyMemberDomains`), which silently rejects the `allUsers` binding that `--allow-unauthenticated` needs. The deploy still succeeds; the service just ships private. `up.sh` prints a warning when it detects this. Grant `roles/run.invoker` to specific principals, or ask an org admin for an `allUsers` exception.
   </Accordion>
   <Accordion title="Cloud SQL or Cloud Run creation fails">
-Check that billing is enabled on the project. `up.sh` warns when it can't confirm billing; Cloud SQL and Cloud Run creation both fail without it.
+Check that billing is enabled on the project. `up.sh` warns when it can't confirm billing. Cloud SQL and Cloud Run creation require billing.
   </Accordion>
   <Accordion title="Scheduled jobs never fire">
 `AGENTOS_URL` is still the localhost default. `up.sh` sets it to your Cloud Run URL automatically; for a custom domain or tunnel, set it by hand and run `./scripts/gcp/env-sync.sh`.

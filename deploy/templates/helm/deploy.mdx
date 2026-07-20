@@ -4,18 +4,19 @@ sidebarTitle: "Deploy"
 description: "Run AgentOS locally using Docker and deploy to production on Kubernetes."
 ---
 
-AgentOS is a secure, scalable platform for running agents. The [agentos-helm](https://github.com/agno-agi/agentos-helm) codebase runs AgentOS locally using Docker and deploys to production on Kubernetes. It comes with:
+Choose Kubernetes when your platform team already operates a cluster and wants Helm-managed control over the image, ingress, and database topology. The [agentos-helm](https://github.com/agno-agi/agentos-helm) template uses Docker locally and deploys AgentOS through the Helm chart in `charts/agentos`.
 
-- **2 platform agents** that build and run the platform for you. **Agent Builder** creates agents, teams, and workflows. **Platform Manager** understands, monitors, and explains the platform.
-- **5 [skills](/deploy/templates/improve-agents)** that let coding agents build, test, and improve the platform for you.
+- **Agent Builder**, which creates agents, teams, and workflows when prompted.
+- **Platform Manager**, which inspects registered agents, eval history, deployment checks, and schedules.
+- **Six [skills](/deploy/templates/improve-agents)**. `setup-platform` configures the local platform. Five lifecycle skills create, extend, improve, evaluate, and review it.
 
-Because the trace data, agent code, evals, and system logs all live in one place, the platform can inspect and improve itself automatically.
+Coding agents can use the repository skills, live AgentOS API, evals, and container logs to inspect and improve the platform.
 
-The Helm chart in `charts/agentos` deploys to any Kubernetes cluster, cloud-managed (EKS, GKE, AKS) or your own.
+The chart runs one AgentOS replica by default and supports in-cluster or external PostgreSQL. It can run on managed clusters such as EKS, GKE, and AKS or on a cluster you operate.
 
 ## Get started
 
-The fastest way to get started is using a coding agent. Copy the prompt below into Claude Code, Cursor or Codex and it'll take you from zero to a running platform.
+Copy the prompt below into Claude Code, Cursor, or Codex to clone the template, start AgentOS locally, and build your first agent.
 
 <Snippet file="setup-prompt-helm.mdx" />
 
@@ -79,7 +80,7 @@ Prints `MCP OK` with the tool count and a real agent answer through the MCP endp
 
 ## Deploy to production
 
-**Prerequisites:** [kubectl](https://kubernetes.io/docs/tasks/tools/) pointed at your cluster, [Helm](https://helm.sh/docs/intro/install/) 3+, and a container registry the cluster can pull from.
+**Prerequisites:** [kubectl](https://kubernetes.io/docs/tasks/tools/) pointed at your cluster and [Helm](https://helm.sh/docs/intro/install/) 3+. The cluster must be able to pull the selected image. The default image is public; custom builds need a reachable registry.
 
 <Steps>
   <Step title="Create a production env">
@@ -107,7 +108,7 @@ Testing on a local [kind](https://kind.sigs.k8s.io) cluster instead? Run `docker
 IMAGE_REPOSITORY=<registry>/agentos IMAGE_TAG=v1 ./scripts/k8s/up.sh   # your own build
 ```
 
-Helm-installs the chart into the `agentos` namespace of your current kubectl context (the script shows the context and asks first): the API deployment at one replica by design, since the in-process scheduler must not run twice, plus in-cluster Postgres with pgvector and its volume. The script also generates a `DB_PASS` and saves it to your env file. Keep it; the Postgres volume reads the password only on first initialization.
+Helm installs the chart into the `agentos` namespace of your current kubectl context. The script shows the context and asks first. The default topology is one AgentOS replica plus in-cluster PostgreSQL with pgvector and a persistent volume. The script also generates a `DB_PASS` and saves it to your env file. Keep it; the Postgres volume reads the password only on first initialization.
 
 To publish behind your ingress controller, add `INGRESS_HOST=os.example.com` (and optionally `INGRESS_CLASS=nginx`). `AGENTOS_URL` then points at that host; otherwise the scheduler uses the in-cluster service DNS, which works out of the box. When the deploy has a public URL (`INGRESS_HOST` or an explicit `AGENTOS_URL`), the script also generates `MCP_CONNECT_SECRET`, the OAuth consent secret for connecting chat apps, and saves it to your env file.
 
@@ -138,14 +139,33 @@ For claude.ai and ChatGPT on the web: add `https://<your-agentos-domain>/mcp` as
 
   <Step title="Confirm it's live">
 ```bash
-kubectl rollout status deployment/agentos -n agentos
-kubectl logs deploy/agentos -n agentos -f
+AGENTOS_NAMESPACE="${AGENTOS_NAMESPACE:-agentos}"
+AGENTOS_RELEASE="${AGENTOS_RELEASE:-agentos}"
+AGENTOS_NAME="$AGENTOS_RELEASE"
+[[ "$AGENTOS_NAME" == *agentos* ]] || AGENTOS_NAME="${AGENTOS_NAME}-agentos"
+
+kubectl rollout status "deployment/$AGENTOS_NAME" -n "$AGENTOS_NAMESPACE"
 ```
 
-With an ingress, open `https://<your-agentos-domain>/docs` to confirm the API is serving. No ingress yet? Port-forward and open [localhost:8000/docs](http://localhost:8000/docs):
+With an ingress, verify the public health route and a protected route:
 
 ```bash
-kubectl port-forward svc/agentos 8000:8000 -n agentos
+curl -o /dev/null -w '%{http_code}\n' "https://<your-agentos-domain>/health"  # 200
+curl -o /dev/null -w '%{http_code}\n' "https://<your-agentos-domain>/agents"  # 401
+```
+
+No ingress yet? Start a port-forward, keep it running, and run the same checks against `http://localhost:8000` from another terminal:
+
+```bash
+kubectl port-forward "svc/$AGENTOS_NAME" 8000:8000 -n "$AGENTOS_NAMESPACE"
+```
+
+`/health` and `/docs` remain public. Protected AgentOS routes such as `/agents` require a valid token.
+
+Tail logs when a check fails:
+
+```bash
+kubectl logs "deployment/$AGENTOS_NAME" -n "$AGENTOS_NAMESPACE" -f
 ```
   </Step>
 </Steps>
@@ -154,11 +174,17 @@ kubectl port-forward svc/agentos 8000:8000 -n agentos
 
 ### Redeploy after code changes
 
-Build and push a new tag, then roll the release to it:
+Build and push a new tag. If the release already uses your repository, roll it to the new tag:
 
 ```bash
 docker build -t <registry>/agentos:v2 . && docker push <registry>/agentos:v2
 IMAGE_TAG=v2 ./scripts/k8s/redeploy.sh
+```
+
+Switch a release from the official image to your repository with both values:
+
+```bash
+IMAGE_REPOSITORY=<registry>/agentos IMAGE_TAG=v2 ./scripts/k8s/up.sh
 ```
 
 Immutable tags keep rollbacks one `helm rollback` away. Running `./scripts/k8s/redeploy.sh` without `IMAGE_TAG` restarts the pods in place; that only picks up a re-pushed tag if the new image actually reached the cluster.
