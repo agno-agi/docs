@@ -1,0 +1,112 @@
+---
+title: Knowledge Agents
+description: "Build agents that answer from indexed content with controlled ingestion, retrieval, filtering, and source updates."
+---
+
+Engineering and operations teams use knowledge agents to answer questions from product documentation, policies, and internal procedures. Agno provides ingestion, retrieval, metadata filtering, corpus isolation, and source updates. AgentOS exposes the knowledge base through its API and Control Plane.
+
+```python knowledge_agent.py
+from agno.agent import Agent
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.knowledge.knowledge import Knowledge
+from agno.vectordb.chroma import ChromaDb
+from agno.vectordb.search import SearchType
+
+knowledge = Knowledge(
+    name="Company handbook",
+    vector_db=ChromaDb(
+        collection="company_handbook",
+        path="tmp/chromadb",
+        persistent_client=True,
+        search_type=SearchType.hybrid,
+        embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+    ),
+)
+
+knowledge.insert(
+    name="Travel policy",
+    text_content=(
+        "Domestic travel under $2,000 requires manager approval. "
+        "International travel and travel costing $2,000 or more require VP approval."
+    ),
+    skip_if_exists=True,
+)
+
+agent = Agent(
+    name="Policy Agent",
+    model="openai:gpt-5.5",
+    knowledge=knowledge,
+    search_knowledge=True,
+    instructions=[
+        "Use the knowledge base for policy questions.",
+        "Say when the answer is not in the knowledge base.",
+    ],
+)
+
+agent.print_response("When does travel need VP approval?", stream=True)
+```
+
+Create a virtual environment, install the OpenAI and ChromaDB integrations, and set `OPENAI_API_KEY` before running the agent:
+
+```bash
+uv venv --python 3.12
+uv pip install -U "agno[chromadb,openai]"
+export OPENAI_API_KEY="your_openai_api_key"
+uv run python knowledge_agent.py
+```
+
+The agent decides when to search the indexed policy. ChromaDB persists the embedded content under `tmp/chromadb` for later runs.
+
+## Choose the information path
+
+| Information | Pattern |
+|-------------|---------|
+| Policies, manuals, and product documentation | Index the corpus with [Knowledge](/knowledge/overview). |
+| Current account, order, or operational data | Query a [context provider](/context-providers/overview), tool, or MCP server at run time. |
+| Policies plus current records | Retrieve the rules from Knowledge, then call a tool for the current record. |
+| Typed fields extracted from incoming files | Use [Document Processing](/use-cases/document-processing/overview). |
+
+Knowledge owns indexed content and retrieval. Context providers and tools query live systems. Product agents add sessions, authentication, and interfaces around either pattern.
+
+## Choose retrieval behavior
+
+| Behavior | Configuration | Use when |
+|----------|---------------|----------|
+| Agentic search | `search_knowledge=True` | The agent may need several searches or no search. |
+| Automatic context | `add_knowledge_to_context=True`, `search_knowledge=False` | Each string input should receive retrieved context before the model runs. |
+| Custom retrieval | Set a custom `knowledge_retriever` | An existing search service owns query rewriting, ranking, or access checks. |
+
+Start with agentic search. Add automatic context when each string input depends on the corpus. Use a custom retriever when retrieval policy lives outside Agno.
+
+## Protect corpus boundaries
+
+| Requirement | Control |
+|-------------|---------|
+| Several named corpora share one vector database | Give each `Knowledge` instance a unique name and set [`isolate_vector_search=True`](/knowledge/concepts/isolate-vector-search). |
+| Results should match document attributes | Insert metadata and apply [knowledge filters](/knowledge/concepts/filters/overview). |
+| Tenant or user authorization | Authenticate and authorize the caller before retrieval. Apply metadata filters from the verified identity to narrow results. |
+| Users can submit remote URLs | Configure reader `allowed_hosts` and follow the [SSRF hardening pattern](/examples/knowledge/production/ssrf-allowed-hosts). |
+
+Reindex older content before enabling isolated vector search if its vectors do not contain `linked_to` metadata.
+
+## Production path
+
+| Need | Guide |
+|------|-------|
+| Ingest files, URLs, and text | [Knowledge quickstart](/knowledge/quickstart) |
+| Track content state and updates | [Contents database](/knowledge/concepts/contents-db) and [knowledge lifecycle example](/examples/knowledge/production/knowledge-lifecycle) |
+| Choose a production vector database | [Vector stores](/knowledge/vector-stores/index) |
+| Choose vector, keyword, or hybrid retrieval | [Search and retrieval](/knowledge/concepts/search-and-retrieval/overview) |
+| Tune how documents are split | [Chunking](/knowledge/concepts/chunking/overview) |
+| Isolate customer corpora | [Multi-tenant example](/examples/knowledge/production/multi-tenant) |
+| Manage content through AgentOS | [Manage knowledge](/agent-os/knowledge/manage-knowledge) |
+| Catch retrieval or answer regressions | [Agent Evaluation](/features/evaluation) |
+
+## Next steps
+
+| Task | Guide |
+|------|-------|
+| Build your first indexed agent | [Knowledge quickstart](/knowledge/quickstart) |
+| Combine several source types | [Multi-source RAG](/examples/knowledge/production/multi-source-rag) |
+| Share retrieval across specialists | [Knowledge for teams](/knowledge/teams/overview) |
+| Query live systems instead of an index | [Connecting your data](/use-cases/product-agents/connecting-your-data) |

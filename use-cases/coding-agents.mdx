@@ -1,0 +1,139 @@
+---
+title: Coding Agents
+sidebarTitle: Coding Agents
+description: "Build coding agents that inspect repositories, edit files, run commands, and verify changes."
+---
+
+Coding agents handle repository work that starts with reading the project and ends with verified changes. Agno gives engineering teams scoped workspaces, command boundaries, approval gates, background runs, and a production API for these agents.
+
+```python coding_agent.py
+import tempfile
+from pathlib import Path
+
+from agno.agent import Agent
+from agno.tools.coding import CodingTools
+
+project = Path(tempfile.mkdtemp(prefix="coding-agent-"))
+
+(project / "math_utils.py").write_text(
+    "def factorial(n: int) -> int:\n"
+    "    return 1 if n <= 1 else n * factorial(n - 1)\n"
+)
+
+(project / "test_math_utils.py").write_text(
+    "import unittest\n\n"
+    "from math_utils import factorial\n\n\n"
+    "class TestFactorial(unittest.TestCase):\n"
+    "    def test_factorial(self):\n"
+    "        self.assertEqual(factorial(5), 120)\n\n\n"
+    "if __name__ == '__main__':\n"
+    "    unittest.main()\n"
+)
+
+coding_agent = Agent(
+    name="Coding Agent",
+    model="openai:gpt-5.5",
+    tools=[
+        CodingTools(
+            base_dir=project,
+            restrict_to_base_dir=True,
+            all=True,
+            allowed_commands=["python3"],
+        )
+    ],
+    instructions=[
+        "Read existing files before changing them.",
+        "Make focused edits.",
+        "Run the test suite after every change.",
+        "Report the files changed and the final test result.",
+    ],
+)
+
+coding_agent.print_response(
+    "Update factorial() to reject negative inputs, add a regression test, "
+    "then run python3 -m unittest -v.",
+    stream=True,
+)
+```
+
+Create a virtual environment, install the OpenAI integration, and set `OPENAI_API_KEY` before running the agent:
+
+```bash
+uv venv --python 3.12
+uv pip install -U "agno[openai]"
+export OPENAI_API_KEY="your_openai_api_key"
+uv run python coding_agent.py
+```
+
+The example creates a fresh fixture on every run. `base_dir` scopes file operations to that directory. `allowed_commands` limits shell entry points to `python3`.
+
+<Warning>
+`base_dir` limits file paths. The process still inherits the host environment, network access, and operating-system permissions. Run untrusted code inside a dedicated container, virtual machine, or remote sandbox.
+</Warning>
+
+<Note>
+To give Codex, Claude Code, Cursor, or another client access to Agno documentation, see [Connect your coding agent](/coding-agents).
+</Note>
+
+## Common patterns
+
+| Pattern | Agent task |
+|---------|------------|
+| Repository onboarding | Map the project and answer questions with file references. |
+| Bug fixing | Reproduce a failure, make a focused change, and rerun the failing tests. |
+| Code review | Inspect a diff, run targeted checks, and return prioritized findings. |
+| Dependency upgrades | Update a dependency, resolve compatibility failures, and run the project gates. |
+| CI remediation | Read failure logs, reproduce the failure, patch the cause, and verify the fix. |
+| Migrations | Apply repeatable changes across files and report unresolved cases. |
+
+## Choose the execution boundary
+
+| Requirement | Use |
+|-------------|-----|
+| Compact tools for a trusted local project | [`CodingTools`](/tools/toolkits/local/coding) with a scoped `base_dir` and narrow `allowed_commands`. |
+| Read-only repository analysis | [`Workspace`](/tools/toolkits/local/workspace) with `allowed=["read", "list", "search"]`. |
+| Approval before edits or shell commands | `Workspace` with its default confirmation policy and `require_read_before_write=True`. |
+| Execute untrusted code remotely | [Daytona](/tools/toolkits/others/daytona) or [E2B](/tools/toolkits/others/e2b). |
+| Execute untrusted code on your infrastructure | Run the agent inside a dedicated container or virtual machine. |
+
+## Define the engineering loop
+
+| Stage | Boundary |
+|-------|----------|
+| Understand | Read and search the relevant files before proposing a change. |
+| Change | Keep edits focused and require confirmation when the workspace is not disposable. |
+| Verify | Run the repository's tests, lint, type checks, and build inside the execution environment. |
+| Review | Return changed files, command results, and unresolved risks. |
+| Publish | Keep commits, pushes, pull requests, and deployments outside the default loop or expose them as separately gated tools. |
+
+## Production path
+
+| Need | Agno capability |
+|------|-----------------|
+| Serve coding tasks through an API | Register the agent with [AgentOS](/agent-os/overview). |
+| Continue after the client disconnects | Use [background execution](/background-execution/overview). |
+| Pause before edits or shell commands | Use `Workspace` confirmation with [AgentOS HITL](/agent-os/usage/hitl). |
+| Authenticate CI and machine callers | Mint a scoped [service account](/agent-os/security/authorization/service-accounts). |
+| Inspect model calls, tool arguments, and failures | Configure a database and enable [observability](/features/observability). |
+| Catch behavioral regressions | Run coding tasks against fresh fixture repositories with an [eval suite](/evals/suite/overview). |
+
+## Evaluate coding agents
+
+| Quality layer | Check |
+|---------------|-------|
+| Project gates | Compile the project and run its unit, integration, lint, and type checks inside the execution environment. |
+| Reliability | Verify required tool calls such as reading the target file and running the test command. |
+| Agent as judge | Score whether the change follows the request, stays in scope, and explains its verification. |
+| Performance | Track end-to-end runtime and memory use. |
+
+Restore the fixture before every eval case so one run cannot affect the next.
+
+## Next steps
+
+| Task | Guide |
+|------|-------|
+| Configure the compact coding toolkit | [CodingTools](/tools/toolkits/local/coding) |
+| Add confirmation-gated workspace access | [Workspace](/tools/toolkits/local/workspace) |
+| Isolate remote execution | [Daytona](/tools/toolkits/others/daytona) or [E2B](/tools/toolkits/others/e2b) |
+| Add behavioral regression cases | [Agent Evaluation](/features/evaluation) |
+| Serve the agent in production | [Agent API](/features/api) |

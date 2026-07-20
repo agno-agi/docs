@@ -1,11 +1,11 @@
 ---
 title: "Agent Storage"
-description: "Store sessions, memory, knowledge, and traces in a supported database backend."
+description: "Persist agent sessions, memory, knowledge, traces, approvals, schedules, evaluations, and metrics."
 ---
 
-Agents persist the data they generate and use in a database, set by the `db` param: sessions, memory, knowledge metadata, traces, schedules, approvals, learnings, and usage metrics.
+Agent state has to remain available across conversations, restarts, and replicas. Agents, teams, workflows, and AgentOS share a `db` interface for sessions, memory, learnings, knowledge metadata, traces, schedules, approvals, evaluations, and metrics.
 
-The primitives (agents, teams, workflows) and the AgentOS accept a `db` param. Pick from JSON files (local or cloud), embedded (SQLite), relational (Postgres, MySQL), document (MongoDB, Firestore), key-value (Redis, Valkey, DynamoDB), or distributed (SingleStore).
+The `db` parameter accepts JSON file, embedded, relational, document, key-value, and distributed backends.
 
 ```python
 from agno.db.postgres import PostgresDb
@@ -31,8 +31,7 @@ AgentOS creates the tables and indexes on first boot. Set `auto_provision_dbs=Fa
 | `agno_schedules`, `agno_schedule_runs` | Cron jobs |
 | `agno_metrics`, `agno_eval_runs` | Metrics and eval results |
 
-- Backend-specific names may vary.
-- Schema changes are generally additive.
+Backend-specific table and collection names may vary.
 
 ## Pick a backend
 
@@ -40,16 +39,16 @@ Most tutorials use `PostgresDb`. Pair it with `PgVector` when you want relationa
 
 | Backend | When to use |
 |---------|-------------|
-| [`PostgresDb`](/database/providers/postgres/overview) | Production. Vector + relational on one box. |
+| [`PostgresDb`](/database/providers/postgres/overview) | Production runtime state; pair with `PgVector` for embeddings |
 | [`SqliteDb`](/database/providers/sqlite/overview) | Local dev, single-user demos, edge deployments |
 | [`MongoDb`](/database/providers/mongo/overview) | Already on Mongo |
 | [`MySQLDb`](/database/providers/mysql/overview) | Already on MySQL |
-| [`SingleStoreDb`](/database/providers/singlestore/overview) | Vector + analytics on one engine, high-throughput |
-| [`RedisDb`](/database/providers/redis/overview) | Cache-friendly, ephemeral sessions |
-| [`ValkeyDb`](/database/providers/valkey/overview) | Cache-friendly, ephemeral sessions |
+| [`SingleStoreDb`](/database/providers/singlestore/overview) | Existing SingleStore infrastructure and high-throughput runtime state |
+| [`RedisDb`](/database/providers/redis/overview) | Existing Redis infrastructure and high-throughput key-value access |
+| [`ValkeyDb`](/database/providers/valkey/overview) | Existing Valkey infrastructure and high-throughput key-value access |
 | [`DynamoDb`](/database/providers/dynamodb/overview) | AWS-native, serverless |
 | [`FirestoreDb`](/database/providers/firestore/overview) | GCP-native, serverless |
-| [`JsonDb`](/database/providers/json/overview) | Local JSON files, no server to run |
+| [`JsonDb`](/database/providers/json/overview) | Local JSON file storage |
 | [`GcsJsonDb`](/database/providers/gcs/overview) | JSON-backed records in Google Cloud Storage |
 | [`InMemoryDb`](/database/providers/in-memory/overview) | Tests, ephemeral demos |
 
@@ -57,7 +56,7 @@ Postgres-compatible managed services like [Neon](/database/providers/neon/overvi
 
 ## Vector storage
 
-Knowledge needs a vector store, and Agno supports 15+ vector databases out of the box.
+Knowledge uses a vector store for embedding search.
 
 ```python
 from agno.knowledge import Knowledge
@@ -78,7 +77,7 @@ agent = Agent(
 
 Other options: LanceDB, Qdrant, Weaviate, Pinecone, Chroma, MongoDB Atlas, Cosmos, Cassandra, ClickHouse, SurrealDB, Milvus. See [Vector Stores](/knowledge/vector-stores/index).
 
-For most production AgentOS deployments, **PgVector + PostgresDb on the same Postgres** is the right default: one database with hybrid search and transactional reads, and no extra service to operate.
+For production deployments already using Postgres, pair `PostgresDb` with `PgVector` to keep runtime state and hybrid search in one Postgres service.
 
 ## Splitting concerns across databases
 
@@ -103,4 +102,10 @@ Common splits include separate tenant databases, a high-traffic agent on its own
 
 ## File and blob storage
 
-For media that doesn't belong in the relational store (generated images, audio, large PDFs), store them in object storage and reference paths in `agno_knowledge` or `agno_sessions`.
+Store generated images, audio, and large PDFs in object storage, then reference their paths in `agno_knowledge` or `agno_sessions`.
+
+## Developer Resources
+
+- [Database overview](/database/overview)
+- [Vector stores](/knowledge/vector-stores/index)
+- [Database migrations](/agent-os/usage/database-migrations)
