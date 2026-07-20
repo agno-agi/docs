@@ -1,11 +1,9 @@
 ---
 title: Scheduling
-description: "Built-in cron for triggering recurring tasks."
+description: "Run agents, teams, and workflows on recurring schedules with persisted history and retry controls."
 ---
 
-AgentOS comes with a built-in cron-style scheduler. Use it to run morning briefings, daily triage, weekly digests, hourly health checks. Agents can also manage their own schedules through tool calls.
-
-Registered schedules live in the AgentOS database (`agno_schedules` table). The scheduler runs in the same FastAPI process as your agents. No separate worker.
+Recurring work such as daily briefs, queue triage, repository syncs, health checks, and reports should use the same runtime as on-demand runs. AgentOS stores schedules and run history in the platform database, invokes existing agent, team, or workflow endpoints, and lets agents manage schedules through `SchedulerTools`.
 
 ```python
 from agno.os import AgentOS
@@ -18,7 +16,7 @@ agent_os = AgentOS(
 )
 ```
 
-The scheduler polls `agno_schedules` every `scheduler_poll_interval` seconds, fires due jobs, retries failures up to each schedule's `max_retries`, and persists state.
+The scheduler runs inside the AgentOS process and polls `agno_schedules` every `scheduler_poll_interval` seconds. Keep at least one scheduler-enabled runtime running continuously. Due jobs retry failures up to each schedule's `max_retries`, and every attempt is persisted.
 
 The scheduler fires a due job by calling its endpoint over HTTP, against `http://127.0.0.1:7777` by default. That matches the default `serve()` port. Set `scheduler_base_url` to match when you serve on a different host or port; otherwise schedules fire against the wrong URL.
 
@@ -79,59 +77,18 @@ async def lifespan(app):
 agent_os = AgentOS(agents=[agent], db=db, scheduler=True, lifespan=lifespan)
 ```
 
-`if_exists="update"` makes the call idempotent. Re-running on restart updates the existing schedule rather than raising or duplicating. Pass `"skip"` if you want to leave manually-edited schedules alone, or `"raise"` (the default) to surface accidental name collisions. This is the pattern Coda uses for [daily digest and repo sync](/deploy/templates/coda/overview).
+`if_exists="update"` makes restarts idempotent by updating the existing schedule. Pass `"skip"` to preserve manually edited schedules or `"raise"` (the default) to surface accidental name collisions. This is the pattern Coda uses for [daily digest and repo sync](/deploy/templates/coda/overview).
 
-## Workflows for multi-step jobs
+## Schedule a workflow
 
-Schedules fire single endpoints. When the work is multi-step (research, then outline, then draft, then review), you reach for a workflow. Workflows are a separate primitive, but they're the most common thing a schedule fires.
-
-A workflow is a typed pipeline whose steps run in order. Use `Parallel` for concurrent steps, `Loop` for repetition, and `Router` to select one branch.
-
-```python
-from agno.workflow import Loop, Step, Workflow
-
-workflow = Workflow(
-    name="content_pipeline",
-    steps=[
-        Step(name="research", agent=researcher),
-        Step(name="outline", agent=outliner),
-        Loop(
-            name="draft_review",
-            steps=[
-                Step(name="draft", agent=writer),
-                Step(name="review", agent=editor),
-            ],
-            end_condition='last_step_content.contains("APPROVED")',
-            max_iterations=3,
-        ),
-    ],
-)
-```
-
-`Loop.end_condition` accepts a CEL expression string (as above) or a callable that takes the iteration's step outputs and returns a bool. `Condition` is a separate primitive for if/else branching inside a workflow.
-
-<Note>
-CEL string conditions need the optional `cel-python` dependency: `pip install cel-python` or `pip install 'agno[cel]'`. Without it, the expression logs an error, evaluates to `False`, and the loop runs to `max_iterations`. The callable form has no extra dependency.
-</Note>
-
-Registered workflows get a `POST /workflows/<id>/runs` endpoint and can be scheduled. Session history is persisted when the workflow has a database. Traces are stored when AgentOS tracing is enabled.
-
-| Pattern | Use when |
-|---------|----------|
-| **Sequential** | Steps depend on each other |
-| **Parallel** | Steps are independent and you want fanout |
-| **Loop with condition** | Quality threshold or max iterations |
-| **Router + Condition** | Dynamic branching on input |
-| **Cross-modal chaining** | Output of one agent is input to a different modality (text → speech, code → narration) |
-
-For worked examples, see [Demo OS](https://github.com/agno-agi/demo-os).
+Schedules invoke endpoints. Point a schedule at `/workflows/<id>/runs` when recurring work has multiple steps, branches, or review loops. See [Workflow Automation](/use-cases/workflow-automation) and [Workflows](/workflows/overview).
 
 ## Schedule runs and observability
 
 When a schedule fires, AgentOS:
 
-1. Looks up the schedule in `agno_schedules` and claims it via a row-level lease.
-2. Calls the configured endpoint (`POST /agents/<id>/runs` or `POST /workflows/<id>/runs`) over HTTP via `httpx.AsyncClient`. This is the same path an external caller would take, including auth headers.
+1. Looks up the schedule in `agno_schedules` and claims it through a database-backed lease.
+2. Calls the configured endpoint (`POST /agents/<id>/runs`, `POST /teams/<id>/runs`, or `POST /workflows/<id>/runs`) over HTTP via `httpx.AsyncClient`. This is the same path an external caller would take, including auth headers.
 3. Records the schedule attempt in `agno_schedule_runs` with status, timings, the underlying `run_id` and `session_id` when returned, and any error. The target component persists its run according to its database configuration. Traces require tracing to be enabled.
 
 Schedule runs are queryable from `agno_schedule_runs`. When the target component persists sessions and AgentOS tracing is enabled, the linked run also appears in session and trace views. This Postgres query lists runs fired in the last 24 hours:
@@ -152,6 +109,6 @@ The `ai.` prefix is the schema `PostgresDb` creates its tables in by default (ov
 
 ## Scheduler in HA
 
-Every replica can run the scheduler loop safely on the backends that implement the scheduler's claim methods (Postgres, SQLite, and MongoDB). Due schedules are claimed via a row-level lease (`locked_by`, `locked_at` on `agno_schedules`). The first replica to claim a due job runs it; the others skip. No leader election needed.
+Every replica can run the scheduler loop safely on the backends that implement the scheduler's claim methods: Postgres, SQLite, and MongoDB. Due schedules are claimed through an atomic database-backed lease. The first replica to claim a due job runs it; the others skip.
 
-If you'd rather keep scheduler polling off your hot request path, pin it to a dedicated replica via deployment config. See [Scheduler](/agent-os/scheduler/overview) for tuning details.
+Deployment configuration can pin scheduler polling to a dedicated replica. See [Scheduler](/agent-os/scheduler/overview) for tuning details.
