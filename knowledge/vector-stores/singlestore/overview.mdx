@@ -7,19 +7,30 @@ description: Use SingleStore as a vector database for your Knowledge Base.
 ## Setup
 
 ```shell
-docker run -d --name singlestoredb \
-  -p 3306:3306 \
-  -p 8080:8080 \
-  -e ROOT_PASSWORD=admin \
-  -e SINGLESTORE_DB=AGNO \
-  -e SINGLESTORE_USER=root \
-  -e SINGLESTORE_PASSWORD=password \
-  singlestore/cluster-in-a-box
-
-docker start singlestoredb
+uv pip install -U PyMySQL sqlalchemy pypdf openai agno
 ```
 
-After running the container, set the environment variables:
+Run SingleStore with Docker:
+
+```shell
+docker run -d --name singlestoredb \
+  --platform linux/amd64 \
+  -p 3306:3306 \
+  -p 8080:8080 \
+  -v /tmp:/var/lib/memsql \
+  -e ROOT_PASSWORD=admin \
+  -e LICENSE_KEY=accept \
+  ghcr.io/singlestore-labs/singlestoredb-dev:latest
+```
+
+Create the database:
+
+```shell
+docker exec singlestoredb memsql -u root -padmin \
+  -e "CREATE DATABASE IF NOT EXISTS AGNO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+```
+
+Then set the environment variables:
 
 ```shell
 export SINGLESTORE_HOST="localhost"
@@ -29,13 +40,11 @@ export SINGLESTORE_PASSWORD="admin"
 export SINGLESTORE_DATABASE="AGNO"
 ```
 
-SingleStore supports both cloud-based and local deployments. For step-by-step guidance on setting up your cloud deployment, please refer to the [SingleStore Setup Guide](https://docs.singlestore.com/cloud/connect-to-singlestore/connect-with-mysql/connect-with-mysql-client/connect-to-singlestore-helios-using-tls-ssl/).
+SingleStore supports both cloud-based and local deployments. For cloud setup, see the [SingleStore Setup Guide](https://docs.singlestore.com/cloud/connect-to-singlestore/connect-with-mysql/connect-with-mysql-client/connect-to-singlestore-helios-using-tls-ssl/).
 
 ## Example
 
 ```python agent_with_knowledge.py
-import typer
-from typing import Optional
 from os import getenv
 
 from sqlalchemy.engine import create_engine
@@ -57,7 +66,7 @@ if SSL_CERT:
 
 db_engine = create_engine(db_url)
 
-knowledge_base = Knowledge(
+knowledge = Knowledge(
     vector_db=SingleStore(
         collection="recipes",
         db_engine=db_engine,
@@ -65,32 +74,74 @@ knowledge_base = Knowledge(
     ),
 )
 
-def pdf_assistant(user: str = "user"):
-    run_id: Optional[str] = None
-
-    agent = Agent(
-        user_id=user,
-        knowledge=knowledge_base,
-        # Uncomment the following line to use traditional RAG
-        # add_knowledge_to_context=True,
-    )
-    if run_id is None:
-        run_id = agent.run_id
-        print(f"Started Run: {run_id}\n")
-    else:
-        print(f"Continuing Run: {run_id}\n")
-
-    while True:
-        agent.cli_app(markdown=True)
+agent = Agent(
+    knowledge=knowledge,
+    search_knowledge=True,
+)
 
 if __name__ == "__main__":
-    # Comment out after first run
-    knowledge_base.insert(
+    knowledge.insert(
         url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf"
     )
 
-    typer.run(pdf_assistant)
+    agent.print_response("How do I make pad thai?", markdown=True)
 ```
+
+<Card title="Async Support ⚡">
+  <div className="mt-2">
+    <p>
+      SingleStore also supports asynchronous operations, enabling concurrency and leading to better performance.
+    </p>
+
+    ```python async_singlestore_db.py
+    import asyncio
+    from os import getenv
+
+    from sqlalchemy.engine import create_engine
+
+    from agno.agent import Agent
+    from agno.knowledge.knowledge import Knowledge
+    from agno.vectordb.singlestore import SingleStore
+
+    USERNAME = getenv("SINGLESTORE_USERNAME")
+    PASSWORD = getenv("SINGLESTORE_PASSWORD")
+    HOST = getenv("SINGLESTORE_HOST")
+    PORT = getenv("SINGLESTORE_PORT")
+    DATABASE = getenv("SINGLESTORE_DATABASE")
+    SSL_CERT = getenv("SINGLESTORE_SSL_CERT", None)
+
+    db_url = f"mysql+pymysql://{USERNAME}:{PASSWORD}@{HOST}:{PORT}/{DATABASE}?charset=utf8mb4"
+    if SSL_CERT:
+        db_url += f"&ssl_ca={SSL_CERT}&ssl_verify_cert=true"
+
+    db_engine = create_engine(db_url)
+
+    knowledge = Knowledge(
+        vector_db=SingleStore(
+            collection="recipes",
+            db_engine=db_engine,
+            schema=DATABASE,
+        ),
+    )
+
+    agent = Agent(
+        knowledge=knowledge,
+        search_knowledge=True,
+    )
+
+    if __name__ == "__main__":
+        asyncio.run(
+            knowledge.ainsert(url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf")
+        )
+
+        asyncio.run(agent.aprint_response("How do I make pad thai?", markdown=True))
+    ```
+
+    <Tip className="mt-4">
+      Use <code>ainsert()</code> and <code>aprint_response()</code> methods with <code>asyncio.run()</code> for non-blocking operations in high-throughput applications.
+    </Tip>
+  </div>
+</Card>
 
 ## SingleStore Params
 

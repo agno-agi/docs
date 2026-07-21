@@ -5,19 +5,26 @@ description: "Use Google Maps with Agno agents."
 
 Enable Agno agents with location intelligence with various Google Maps API functionalities including business search, directions, geocoding, address validation, and more. Specify `include_tools` and `exclude_tools` parameters for selective function access.
 
-## Prerequisites:
+## Prerequisites
+
+- Install the dependencies: `uv pip install -U agno googlemaps google-maps-places openai`.
+- Set `OPENAI_API_KEY` for the agent's default model.
 - Set the environment variable `GOOGLE_MAPS_API_KEY` with your Google Maps API key.
   You can obtain the API key from the Google Cloud Console:
   https://console.cloud.google.com/projectselector2/google/maps-apis/credentials
+- Authenticate Application Default Credentials for the Places client with `gcloud auth application-default login`.
+- Enable the Places API (New), Directions API, Address Validation API, Geocoding API, Distance Matrix API, Elevation API, and Time Zone API for the key's project.
 
-- You also need to activate the Address Validation API for your project:
-  https://console.developers.google.com/apis/api/addressvalidation.googleapis.com
+```bash
+gcloud auth application-default login
+export OPENAI_API_KEY="your_openai_api_key_here"
+export GOOGLE_MAPS_API_KEY="your_google_maps_api_key_here"
+```
 
-```python
+```python google_maps_tools.py
 
 from agno.agent import Agent
-from agno.tools.crawl4ai import Crawl4aiTools
-from agno.tools.google_maps import GoogleMapTools
+from agno.tools.google.maps import GoogleMapTools
 
 # ---------------------------------------------------------------------------
 # Create Agent
@@ -28,12 +35,11 @@ agent_full = Agent(
     name="Full Maps API Agent",
     tools=[
         GoogleMapTools(),  # All functions enabled by default
-        Crawl4aiTools(max_length=5000),
     ],
     description="You are a location and business information specialist with full Google Maps access.",
     instructions=[
         "Use any Google Maps function as needed for location-based queries",
-        "Combine Maps data with website data when available",
+        "Combine Maps results when a request needs multiple lookups",
         "Format responses clearly and provide relevant details",
         "Handle errors gracefully and provide meaningful feedback",
     ],
@@ -54,8 +60,6 @@ agent_search = Agent(
     instructions=[
         "Focus on place searches and getting place details",
         "Use search_places for general queries",
-        "Use find_place_from_text for specific place names",
-        "Use get_nearby_places for proximity searches",
     ],
     markdown=True,
 )
@@ -70,7 +74,6 @@ agent_safe = Agent(
                 "get_directions",  # Excludes detailed route calculations
             ]
         ),
-        Crawl4aiTools(max_length=3000),
     ],
     description="You are a location specialist with restricted access to expensive operations.",
     instructions=[
@@ -164,13 +167,12 @@ if __name__ == "__main__":
         stream=True,
     )
 
-    # Example 9: Business Hours and Accessibility
-    print("\n=== Business Hours and Accessibility Example ===")
+    # Example 9: Business Hours
+    print("\n=== Business Hours Example ===")
     agent.print_response(
         """Find museums in Phoenix that are:
         1. Open on Mondays
-        2. Have wheelchair accessibility
-        3. Within 5 miles of downtown
+        2. Within 5 miles of downtown
         Include their opening hours and contact information.""",
         stream=True,
     )
@@ -188,15 +190,16 @@ if __name__ == "__main__":
 ```
 
 ## Run the Example
-```bash
-# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/91_tools
 
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
+Save the code above as `google_maps_tools.py`, then run:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+
+uv pip install -U agno googlemaps google-maps-places openai
 
 python google_maps_tools.py
 ```
+
 For details, see [Google Maps cookbook](https://github.com/agno-agi/agno/blob/main/cookbook/91_tools/google_maps_tools.py).

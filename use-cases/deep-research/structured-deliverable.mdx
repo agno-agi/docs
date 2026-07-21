@@ -1,9 +1,9 @@
 ---
 title: "Structured deliverable"
-description: "End the pipeline in a decision, not a wall of text: typed output, conviction, and citations."
+description: "Return a typed decision with the call, conviction, allocation, rationale, and citations."
 ---
 
-Research that ends in prose is hard to act on and harder to audit. The last step of a research pipeline should produce a decision with a fixed shape: the call, the conviction, the reasoning, and what it was based on. Give the final agent an `output_schema` and it returns a validated object.
+Make the final pipeline step return a typed decision that downstream code can validate and use. Define the call, conviction, allocation, rationale, and citations in a Pydantic schema, then pass it as the final agent's `output_schema`.
 
 ```python
 from typing import List, Literal
@@ -18,7 +18,7 @@ class Decision(BaseModel):
     conviction: Literal["low", "medium", "high"] = Field(..., description="Confidence in the call")
     allocation_usd: float = Field(..., description="Dollar allocation, 0 if not BUY")
     rationale: str = Field(..., description="Why, referencing the analyst inputs")
-    citations: List[str] = Field(default_factory=list, description="Sources and prior memos used")
+    citations: List[str] = Field(..., description="Sources and prior memos used")
 
 
 chair = Agent(
@@ -43,11 +43,11 @@ result = chair.run(briefing(market, fundamentals, technicals, risk)).content
 #          citations=['memo:NVDA-2024Q3', 'research:semiconductors'])
 ```
 
-Because `output_schema=Decision`, the run returns a validated `Decision`, not prose. `result.call` and `result.allocation_usd` are safe to act on without parsing text.
+Because `output_schema=Decision`, the run returns a validated `Decision`. Downstream code reads `result.call` and `result.allocation_usd` directly. If the model's output fails validation, Agno logs a warning and `content` stays a string, so check the type before acting on it.
 
-The chair takes no tools. Its only job is to weigh the specialists' inputs and commit to a call. Constraining the output to a schema is what makes the result routable: a downstream system can act on `call` and `allocation_usd` without parsing prose.
+The chair weighs the specialists' inputs and commits to a call. Its configuration omits tools so every conclusion comes from the supplied briefing.
 
-## Two artifacts, two purposes
+## Decision and memo
 
 A research system usually produces both a machine-actionable decision and a human-readable memo.
 
@@ -58,19 +58,19 @@ A research system usually produces both a machine-actionable decision and a huma
 
 The memo is written by a dedicated agent with file tools and a fixed template, then archived. The next review reads it back as [prior work](/use-cases/deep-research/grounding-research). The decision is the row you store and act on.
 
-## Make it auditable
+## Required decision fields
 
-| Field | Why it earns its place |
-|-------|------------------------|
+| Field | Purpose |
+|-------|---------|
 | `conviction` | Lets you threshold: act on high, queue medium for review |
-| `rationale` | The reasoning trail, required not optional |
-| `citations` | Ties the call back to grounded sources, not the model's prior |
+| `rationale` | Records the reasoning trail for review and audit |
+| `citations` | Carries source identifiers for downstream verification |
 
-A decision without its citations is unverifiable. Require them in the schema and the instructions.
+Require citations in the schema and instructions so each decision carries source identifiers for verification.
 
-## Gate the irreversible
+## Add approval for consequential actions
 
-When a decision triggers a real action (moving capital, publishing a number), put a human in the loop on that step. Approve the call, then let automation act. See [human approval](/features/human-approval).
+When a decision triggers a real action, such as moving capital or publishing a number, add human approval before the action executes. See [human approval](/hitl/overview).
 
 ## Next steps
 
@@ -84,4 +84,4 @@ When a decision triggers a real action (moving capital, publishing a number), pu
 
 - [Structured output](/input-output/structured-output/agent)
 - [Workflows cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/04_workflows)
-- [Human approval](/features/human-approval)
+- [Human approval](/hitl/overview)

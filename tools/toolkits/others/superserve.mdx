@@ -1,0 +1,138 @@
+---
+title: Superserve
+description: Run agent-generated code in an isolated Superserve cloud sandbox.
+---
+
+**Superserve** provides isolated cloud sandboxes (Firecracker microVMs) for running AI-generated code. The sandbox persists across tool calls, so files your agent writes and packages it installs remain available. Every tool has a sync and an async variant, so the toolkit works with both `agent.run()` and `agent.arun()`.
+
+## Prerequisites
+
+The following example requires the `superserve` and `openai` packages:
+
+```shell
+uv pip install superserve openai
+```
+
+You will also need a Superserve API key. You can get it from [superserve.ai](https://superserve.ai):
+
+```shell
+export SUPERSERVE_API_KEY=ss_live_...
+```
+
+## Example
+
+This example creates an agent that writes and executes code in a Superserve sandbox:
+
+```python cookbook/91_tools/superserve_tools.py
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.tools.superserve import SuperserveTools
+
+agent = Agent(
+    name="Coding Agent with Superserve tools",
+    model=OpenAIResponses(id="gpt-5.5"),
+    tools=[SuperserveTools(timeout=600)],
+    markdown=True,
+    instructions=[
+        "You are an expert at writing and executing code in a secure Superserve sandbox.",
+        "Your primary purpose is to:",
+        "1. Write clear, efficient code based on user requests",
+        "2. ALWAYS execute the code in the sandbox using run_python_code or run_command",
+        "3. Show the actual execution results to the user",
+        "4. Provide explanations of how the code works and what the output means",
+        "Guidelines:",
+        "- NEVER just provide code without executing it",
+        "- Install missing packages when needed using run_command, for example pip install <package>",
+        "- Use file operations (create_file, read_file, list_files) when working with scripts",
+        "- Always show both the code AND the execution output",
+        "- Handle errors gracefully and explain any issues encountered",
+    ],
+)
+
+agent.print_response(
+    "Write Python code to generate the first 10 Fibonacci numbers and calculate their sum and average"
+)
+```
+
+## Sandbox Reuse
+
+With `persistent=True` (the default), the sandbox ID is stored in the agent's session state. The same sandbox is reused across tool calls and across runs in the same session. Pass `sandbox_id` to connect to a specific existing sandbox instead of creating a new one.
+
+Sandboxes are created from the `superserve/code-interpreter` template by default, which ships with Python 3.11 and pip. Override it for other runtimes:
+
+```python
+SuperserveTools(template="superserve/node-22")
+```
+
+## Secrets
+
+Bind team secrets to the sandbox without exposing the real credential. The sandbox sees a proxy token; the real value is swapped in only for outbound requests to the secret's allowed hosts:
+
+```python
+SuperserveTools(secrets={"OPENAI_API_KEY": "openai-prod"})
+```
+
+## Toolkit Params
+
+| Parameter | Type | Default | Description |
+| --------- | ---- | ------- | ----------- |
+| `api_key` | `Optional[str]` | `None` | Superserve API key. If not provided, uses the SUPERSERVE_API_KEY env var |
+| `base_url` | `Optional[str]` | `None` | Override the control-plane base URL. If not provided, uses the SUPERSERVE_BASE_URL env var or the SDK default |
+| `sandbox_id` | `Optional[str]` | `None` | Connect to an existing sandbox instead of creating a new one |
+| `template` | `Optional[str]` | `None` | Template to create the sandbox from. Defaults to `superserve/code-interpreter` |
+| `timeout` | `int` | `300` | Sandbox lifetime in seconds before it is auto-stopped |
+| `auto_delete_seconds` | `Optional[int]` | `None` | Hard TTL in seconds after which the sandbox is deleted even if never shut down explicitly |
+| `command_timeout` | `int` | `60` | Per-command timeout in seconds |
+| `output_directory` | `Optional[str]` | `None` | Host directory that `download_directory` writes into. Defaults to the current working directory |
+| `metadata` | `Optional[Dict[str, str]]` | `None` | Metadata to attach to created sandboxes |
+| `env_vars` | `Optional[Dict[str, str]]` | `None` | Environment variables to set in created sandboxes |
+| `secrets` | `Optional[Dict[str, str]]` | `None` | Team secrets to bind as `{ENV_VAR: secret_name}`. The sandbox sees a proxy token; the real credential never enters the sandbox |
+| `persistent` | `bool` | `True` | Persist the sandbox ID in the agent's session state so the same sandbox is reused across runs |
+| `enable_run_python_code` | `bool` | `True` | Enables the `run_python_code` tool |
+| `enable_run_command` | `bool` | `True` | Enables the `run_command` tool |
+| `enable_create_file` | `bool` | `True` | Enables the `create_file` tool |
+| `enable_read_file` | `bool` | `True` | Enables the `read_file` tool |
+| `enable_list_files` | `bool` | `True` | Enables the `list_files` tool |
+| `enable_delete_file` | `bool` | `True` | Enables the `delete_file` tool |
+| `enable_download_directory` | `bool` | `True` | Enables the `download_directory` tool |
+| `enable_get_sandbox_info` | `bool` | `True` | Enables the `get_sandbox_info` tool |
+| `enable_list_sandboxes` | `bool` | `True` | Enables the `list_sandboxes` tool |
+| `enable_shutdown_sandbox` | `bool` | `True` | Enables the `shutdown_sandbox` tool |
+| `enable_shutdown_sandbox_by_id` | `bool` | `True` | Enables the `shutdown_sandbox_by_id` tool |
+| `enable_get_preview_url` | `bool` | `True` | Enables the `get_preview_url` tool |
+| `enable_pause_sandbox` | `bool` | `False` | Enables the `pause_sandbox` tool |
+| `enable_resume_sandbox` | `bool` | `False` | Enables the `resume_sandbox` tool |
+| `enable_attach_secret` | `bool` | `False` | Enables the `attach_secret` tool |
+| `enable_detach_secret` | `bool` | `False` | Enables the `detach_secret` tool |
+| `all` | `bool` | `False` | Enables all tools, overriding the individual `enable_*` flags |
+| `instructions` | `Optional[str]` | `None` | Custom instructions for using the Superserve tools |
+| `add_instructions` | `bool` | `False` | Whether to add the instructions to the agent's system message |
+
+## Toolkit Functions
+
+| Function | Description |
+| -------- | ----------- |
+| `run_python_code` | Execute Python code in the sandbox and return stdout, stderr, and exit code |
+| `run_command` | Execute a shell command in the sandbox |
+| `create_file` | Create or overwrite a file in the sandbox |
+| `read_file` | Read a file's contents from the sandbox |
+| `list_files` | List the contents of a directory in the sandbox |
+| `delete_file` | Delete a file or directory in the sandbox |
+| `download_directory` | Download a directory from the sandbox as a zip archive saved locally |
+| `get_sandbox_info` | Get the current sandbox's ID, name, status, and metadata |
+| `list_sandboxes` | List all sandboxes belonging to the team |
+| `shutdown_sandbox` | Delete the current sandbox and release its resources |
+| `shutdown_sandbox_by_id` | Delete a specific sandbox by its ID |
+| `get_preview_url` | Get a public URL for a port exposed inside the sandbox |
+| `pause_sandbox` | Pause the current sandbox to save resources (opt-in) |
+| `resume_sandbox` | Resume the current paused sandbox (opt-in) |
+| `attach_secret` | Bind a team secret to the sandbox under an environment variable (opt-in) |
+| `detach_secret` | Remove a secret binding from the sandbox (opt-in) |
+
+Each function has an async variant with the same tool name, used automatically with `agent.arun()`.
+
+## Developer Resources
+
+- [Tools](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/tools/superserve.py)
+- [Superserve cookbook](https://github.com/agno-agi/agno/blob/main/cookbook/91_tools/superserve_tools.py)
+- [Superserve Documentation](https://superserve.ai)

@@ -14,7 +14,7 @@ description: Integrate Agno with OpenLIT for OpenTelemetry-native observability,
    Ensure you have the necessary packages installed:
 
    ```bash
-   uv pip install agno openai openlit
+   uv pip install agno openai openlit yfinance
    ```
 
 2. **Deploy OpenLIT**
@@ -24,7 +24,7 @@ description: Integrate Agno with OpenLIT for OpenTelemetry-native observability,
    ```bash
    git clone https://github.com/openlit/openlit
    cd openlit
-   docker-compose up -d
+   docker compose up -d
    ```
 
    Access the dashboard at `http://127.0.0.1:3000` with default credentials (username: `user@openlit.io`, password: `openlituser`).
@@ -37,7 +37,13 @@ description: Integrate Agno with OpenLIT for OpenTelemetry-native observability,
    - Reusing existing ClickHouse or OpenTelemetry Collector infrastructure
    - OpenLIT Operator for zero-code instrumentation in Kubernetes
 
-3. **Set Environment Variables (Optional)**
+3. **Set your OpenAI API key**
+
+   ```bash
+   export OPENAI_API_KEY="your_openai_api_key_here"
+   ```
+
+4. **Set the OpenLIT endpoint (Optional)**
 
    Configure the OTLP endpoint based on your deployment:
 
@@ -53,7 +59,7 @@ description: Integrate Agno with OpenLIT for OpenTelemetry-native observability,
 
 ### Example: Basic Agent Setup
 
-This example demonstrates how to instrument your Agno agent with OpenLIT for automatic tracing.
+Instrument your Agno agent with OpenLIT for automatic tracing.
 
 ```python
 import openlit
@@ -70,9 +76,8 @@ openlit.init(
 agent = Agent(
     name="Stock Price Agent",
     model=OpenAIResponses(id="gpt-5.2"),
-    tools=[YFinanceTools(stock_price=True, analyst_recommendations=True)],
+    tools=[YFinanceTools(enable_stock_price=True, enable_analyst_recommendations=True)],
     instructions="You are a stock price agent. Answer questions in the style of a stock analyst.",
-    show_tool_calls=True,
 )
 
 # Use the agent - all calls are automatically traced
@@ -94,15 +99,15 @@ openlit.init()
 
 # Create and configure the agent
 agent = Agent(
-    name="Web Search Agent",
+    name="HackerNews Agent",
     model=OpenAIResponses(id="gpt-5.2"),
     tools=[HackerNewsTools()],
-    instructions="Search the web and provide comprehensive answers.",
+    instructions="Use HackerNews to provide comprehensive answers.",
     markdown=True,
 )
 
 # Use the agent - traces will be printed to console
-agent.print_response("What are the latest developments in AI agents?")
+agent.print_response("What are the top stories on HackerNews right now?")
 ```
 
 ### Example: Multi-Agent Team Tracing
@@ -132,7 +137,7 @@ research_agent = Agent(
 finance_agent = Agent(
     name="Financial Analyst",
     model=OpenAIResponses(id="gpt-5.2"),
-    tools=[YFinanceTools(stock_price=True, company_info=True)],
+    tools=[YFinanceTools(enable_stock_price=True, enable_company_info=True)],
     instructions="Perform quantitative financial analysis",
 )
 
@@ -174,9 +179,8 @@ trace_provider.add_span_processor(
 )
 trace.set_tracer_provider(trace_provider)
 
-# Initialize OpenLIT with custom tracer
+# Initialize OpenLIT - it auto-detects and reuses the tracer provider configured above
 openlit.init(
-    tracer=trace.get_tracer(__name__),
     disable_batch=True
 )
 
@@ -188,7 +192,7 @@ agent = Agent(
 )
 
 # Use the agent
-agent.print_response("What is currently trending on Twitter?")
+agent.print_response("What is currently trending on HackerNews?")
 ```
 
 ## OpenLIT Dashboard Features
@@ -219,7 +223,6 @@ The `openlit.init()` function accepts several parameters:
 ```python
 openlit.init(
     otlp_endpoint="http://127.0.0.1:4318",  # OTLP collector endpoint
-    tracer=None,  # Custom OpenTelemetry tracer
     disable_batch=False,  # Disable batch span processing
     environment="production",  # Environment name for filtering
     application_name="my-agent",  # Application identifier
@@ -232,9 +235,9 @@ For true zero-code instrumentation, you can use the `openlit-instrument` CLI com
 
 ```bash
 openlit-instrument \
-  --service-name my-ai-app \
+  --service_name my-ai-app \
   --environment production \
-  --otlp-endpoint http://127.0.0.1:4318 \
+  --otlp_endpoint http://127.0.0.1:4318 \
   python your_app.py
 ```
 
@@ -253,4 +256,3 @@ This approach is particularly useful for:
 ## Integration with Other Platforms
 
 [OpenLIT](https://openlit.io/) can export traces to other observability platforms like Grafana Cloud, New Relic and more. See the [Langfuse integration guide](/observability/langfuse) for an example of using OpenLIT with Langfuse.
-

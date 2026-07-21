@@ -1,0 +1,89 @@
+---
+title: "Fallback Models: Error-Specific"
+description: "Use FallbackConfig for error-specific fallback routing."
+source: cookbook/02_agents/17_fallback_models/02_error_specific_fallbacks.py
+---
+
+```python error_specific_fallbacks.py
+"""
+Fallback Models — Error-Specific
+==================================
+
+Use FallbackConfig for error-specific fallback routing.
+
+- on_error: tried on any error from the primary model.
+- on_rate_limit: tried specifically on rate-limit (429) errors.
+- on_context_overflow: tried on context-window-exceeded errors.
+
+When a specific fallback list matches the error type, it takes
+priority over the general on_error list.
+"""
+
+from agno.agent import Agent
+from agno.models.anthropic import Claude
+from agno.models.fallback import FallbackConfig
+from agno.models.openai import OpenAIChat
+
+# ---------------------------------------------------------------------------
+# Create Agent with error-specific fallbacks
+# ---------------------------------------------------------------------------
+agent = Agent(
+    model=OpenAIChat(id="gpt-4o"),
+    fallback_config=FallbackConfig(
+        # On rate-limit errors, try these models (in order)
+        on_rate_limit=[
+            OpenAIChat(id="gpt-4o-mini"),
+            Claude(id="claude-sonnet-4-20250514"),
+        ],
+        # On context-window-exceeded errors, try a model with a larger window
+        on_context_overflow=[
+            Claude(id="claude-sonnet-4-20250514"),
+        ],
+        # General fallback for all other errors
+        on_error=[
+            Claude(id="claude-sonnet-4-20250514"),
+        ],
+    ),
+)
+
+# ---------------------------------------------------------------------------
+# Run Agent
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    agent.print_response("What is the meaning of life?", stream=True)
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno anthropic openai
+    ```
+  </Step>
+
+  <Step title="Export your API keys">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export ANTHROPIC_API_KEY="your_anthropic_api_key_here"
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:ANTHROPIC_API_KEY="your_anthropic_api_key_here"
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `error_specific_fallbacks.py`, then run:
+    ```bash
+    python error_specific_fallbacks.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/02_agents/17_fallback_models/02_error_specific_fallbacks.py](https://github.com/agno-agi/agno/blob/main/cookbook/02_agents/17_fallback_models/02_error_specific_fallbacks.py)

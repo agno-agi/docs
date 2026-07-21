@@ -1,0 +1,196 @@
+---
+title: "AgentOS on Kubernetes"
+sidebarTitle: "Deploy"
+description: "AgentOS template for teams that develop locally with Docker and deploy to production on Kubernetes with Helm."
+---
+
+**The [agentos-helm](https://github.com/agno-agi/agentos-helm) template is for teams that develop locally with Docker and deploy to production on Kubernetes with Helm.**
+
+It includes:
+
+- **Agent Builder**, which creates agents, teams, and workflows.
+- **Platform Manager**, which inspects and explains the platform, eval history, deployment checks, and schedules.
+- **Six [skills](/deploy/templates/improve-agents)** for setting up, building, testing, and improving the project with a coding agent.
+
+Coding agents can use these skills with the AgentOS API, evals, traces, and container logs to inspect and improve the platform.
+
+The Helm chart in `charts/agentos` deploys to any Kubernetes cluster, cloud-managed (EKS, GKE, AKS) or your own.
+
+## Get started
+
+Copy the prompt below into Claude Code, Cursor, or Codex to configure and run the template with a coding agent.
+
+<Snippet file="setup-prompt-helm.mdx" />
+
+Prefer to drive yourself? Follow the manual steps below.
+
+## Manual setup
+
+**Prerequisites:** [Docker](https://www.docker.com/get-started/) installed and running. An [OpenAI API key](https://platform.openai.com).
+
+<Steps>
+  <Step title="Clone and configure">
+```bash
+git clone https://github.com/agno-agi/agentos-helm.git agentos
+cd agentos
+
+cp example.env .env
+```
+
+Edit `.env` and set `OPENAI_API_KEY`.
+  </Step>
+
+  <Step title="Start the platform">
+```bash
+docker compose up -d --build
+```
+
+The first build takes a few minutes. Confirm the API is available at [localhost:8000/docs](http://localhost:8000/docs).
+  </Step>
+
+  <Step title="Verify end to end">
+```bash
+./scripts/mcp_check.sh
+```
+
+Prints `MCP OK` with the tool count and a real agent answer through the MCP endpoint.
+  </Step>
+
+  <Step title="Connect the AgentOS UI">
+1. Open [os.agno.com](https://os.agno.com) and sign in.
+2. Click **Connect OS**, enter `http://localhost:8000`, and name it **Local AgentOS**.
+  </Step>
+
+  <Step title="Build your first agent">
+1. Chat with **Agent Builder**: "Build an agent that tracks AI news and writes a daily brief". Go through the agent development process.
+2. Once created, click **Refresh** on the top right, pick the new agent from the **Agents** dropdown, and ask: "What's new with Anthropic?"
+3. Ask **Platform Manager**: "How healthy is the platform?" It answers from eval history, deployment checks, schedules, and the agent you just built.
+  </Step>
+</Steps>
+
+<Check>At this point, your AgentOS is running locally.</Check>
+
+## Connect your frontends
+
+| Frontend | How |
+|----------|-----|
+| MCP clients on your machine | `uvx agno connect` auto-detects Claude Code, Claude Desktop, Codex, and Cursor and registers `http://localhost:8000/mcp`. Verify from the app: "can you access my agentos mcp?" |
+| AgentOS UI | [os.agno.com](https://os.agno.com) → **Connect OS** → `http://localhost:8000`. |
+| claude.ai and ChatGPT | Hosted sessions can't reach localhost. Deploy to production first, then add `https://<your-agentos-domain>/mcp` as a custom connector and approve the consent page with the `MCP_CONNECT_SECRET` that `up.sh` generates. |
+| Slack | Set `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET`. See [Slack setup](/agent-os/interfaces/slack/setup). |
+| Your product | Call the AgentOS REST API with 80+ endpoints. Browse them at `/docs`. |
+
+## Deploy to production
+
+**Prerequisites:** [kubectl](https://kubernetes.io/docs/tasks/tools/) pointed at your cluster, [Helm](https://helm.sh/docs/intro/install/) 3+, and a container registry the cluster can pull from.
+
+<Steps>
+  <Step title="Create a production env">
+```bash
+cp .env .env.production
+```
+
+Edit `.env.production` with production values: a different OpenAI key, production-only credentials, a different Slack workspace.
+  </Step>
+
+  <Step title="Pick your image">
+The chart defaults to the official [`agnohq/agentos`](https://hub.docker.com/r/agnohq/agentos) image, the reference platform exactly as in this repo (`latest`, plus `agno-<pin>` tags for exact runtimes). The moment you customize anything (a new agent, edited instructions), build and push your own:
+
+```bash
+docker build -t <registry>/agentos:v1 .
+docker push <registry>/agentos:v1
+```
+
+Testing on a local [kind](https://kind.sigs.k8s.io) cluster instead? Run `docker build -t agentos:kind . && kind load docker-image agentos:kind`, then deploy with `IMAGE_REPOSITORY=agentos IMAGE_TAG=kind IMAGE_PULL_POLICY=Never ./scripts/k8s/up.sh`. The README's "Local dry run on kind" section has the full flow.
+  </Step>
+
+  <Step title="Deploy">
+```bash
+./scripts/k8s/up.sh                                                    # official image
+IMAGE_REPOSITORY=<registry>/agentos IMAGE_TAG=v1 ./scripts/k8s/up.sh   # your own build
+```
+
+Helm-installs the chart into the `agentos` namespace of your current kubectl context (the script shows the context and asks first): the API deployment at one replica by design, since the in-process scheduler must not run twice, plus in-cluster Postgres with pgvector and its volume. The script also generates a `DB_PASS` and saves it to your env file. Keep it; the Postgres volume reads the password only on first initialization.
+
+To publish behind your ingress controller, add `INGRESS_HOST=os.example.com` (and optionally `INGRESS_CLASS=nginx`). `AGENTOS_URL` then points at that host; otherwise the scheduler uses the in-cluster service DNS, which works out of the box. When the deploy has a public URL (`INGRESS_HOST` or an explicit `AGENTOS_URL`), the script also generates `MCP_CONNECT_SECRET`, the OAuth consent secret for connecting chat apps, and saves it to your env file.
+
+Bringing your own Postgres instead? It must have the [pgvector](https://github.com/pgvector/pgvector) extension available. Install with `postgres.enabled=false` and the `externalDatabase.*` values in `charts/agentos/values.yaml`.
+  </Step>
+
+  <Step title="Mint your JWT key">
+The script pauses for a `JWT_VERIFICATION_KEY`. Token-Based Authorization is on by default. Production startup requires that verification key or a readable JWKS file at the pod path in `JWT_JWKS_FILE`; otherwise the process exits.
+
+1. Open [os.agno.com](https://os.agno.com), click **Connect OS** → **Live**, enter your AgentOS URL (your ingress host, or a tunnel while testing), and name it **Live AgentOS**.
+2. Go to **Settings** → **OS & Security** and turn on **Token-Based Authorization (JWT)**.
+3. Copy the public key and paste the full PEM into the `up.sh` prompt. The script saves it to your env file and deploys.
+
+If you skip the prompt, add `JWT_VERIFICATION_KEY` to `.env.production` later and run `./scripts/k8s/env-sync.sh`. For JWKS, provide the file through a custom image or chart volume, set `JWT_JWKS_FILE` to its pod path, then deploy. The current chart only forwards the path.
+
+<Note>Live AgentOS connections are a paid feature. Use code `PLATFORM30` for one month off.</Note>
+  </Step>
+
+  <Step title="Connect your MCP clients">
+Re-run `uvx agno connect`, this time pointed at your deployed domain:
+
+```bash
+uvx agno connect --url https://<your-agentos-domain>
+```
+
+For claude.ai and ChatGPT on the web: add `https://<your-agentos-domain>/mcp` as a custom connector in the chat app's connector settings. Leave the form's optional OAuth fields (client ID / client secret) empty. Click **Connect** and, on the consent page, enter the `MCP_CONNECT_SECRET` that `up.sh` generated during deploy (saved in `.env.production`; deployed without `INGRESS_HOST`? set `MCP_CONNECT_SECRET` and a public `AGENTOS_URL` in `.env.production` and run `./scripts/k8s/env-sync.sh`).
+  </Step>
+
+  <Step title="Confirm it's live">
+```bash
+kubectl rollout status deployment/agentos -n agentos
+kubectl logs deploy/agentos -n agentos -f
+```
+
+With an ingress, open `https://<your-agentos-domain>/docs` to confirm the API is serving. No ingress yet? Port-forward and open [localhost:8000/docs](http://localhost:8000/docs):
+
+```bash
+kubectl port-forward svc/agentos 8000:8000 -n agentos
+```
+  </Step>
+</Steps>
+
+<Check>Your AgentOS is live on Kubernetes.</Check>
+
+### Redeploy after code changes
+
+Build and push a new tag, then roll the release to it:
+
+```bash
+docker build -t <registry>/agentos:v2 . && docker push <registry>/agentos:v2
+IMAGE_TAG=v2 ./scripts/k8s/redeploy.sh
+```
+
+Immutable tags keep rollbacks one `helm rollback` away. Running `./scripts/k8s/redeploy.sh` without `IMAGE_TAG` restarts the pods in place; that only picks up a re-pushed tag if the new image actually reached the cluster.
+
+### Sync environment variables
+
+```bash
+./scripts/k8s/env-sync.sh
+```
+
+Changed supported values roll the pod automatically. `env-sync.sh` updates `RUNTIME_ENV`, `AGENTOS_URL`, `OPENAI_API_KEY`, `JWT_VERIFICATION_KEY`, `MCP_CONNECT_SECRET`, `AGENTOS_MCP_SIGNING_KEY`, `PARALLEL_API_KEY`, `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, and `DB_PASS`. It updates the `JWT_JWKS_FILE` path only. The current chart does not upload or mount the referenced file. Use `JWT_VERIFICATION_KEY`, a custom image containing the file, or a chart extension with a Secret volume. Set `ENABLE_DEPLOY_CHECK`, `ENABLE_SCHEDULED_EVALS`, and `EVALS_*` via `extraEnv` and `helm upgrade`.
+
+### Tear down
+
+```bash
+./scripts/k8s/down.sh
+```
+
+<Warning>
+Uninstalls the release and deletes the Postgres volume, including all data. The namespace stays in place since it may be shared; the script prints the command to delete it too.
+</Warning>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Build with coding agents" icon="wand-magic-sparkles" href="/deploy/templates/improve-agents">
+    Skills to create → improve → evaluate your platform using coding agents.
+  </Card>
+  <Card title="Kubernetes reference" icon="book" href="/deploy/templates/helm/reference">
+    Commands, environment variables, troubleshooting.
+  </Card>
+</CardGroup>

@@ -1,9 +1,9 @@
 ---
 title: "Human routing and eval"
-description: "Confidence-gated approval and accuracy tracking against a golden set."
+description: "Route low-confidence fields for approval and track extraction accuracy against a golden set."
 ---
 
-Two production concerns the labeling docs leave open: routing low-confidence fields to a human, and tracking accuracy as the system runs over time. Both are short patterns on top of the same extraction agent.
+Document processing pipelines need a review path for low-confidence fields and a way to measure extraction quality over time. Add both to the same extraction agent.
 
 ## Per-field confidence
 
@@ -45,7 +45,7 @@ agent = Agent(
 
 invoice = agent.run(
     "Extract this invoice.",
-    files=[File(url="https://example.com/scan-low-quality.pdf")],
+    files=[File(filepath="scan-low-quality.pdf")],
 ).content
 # Invoice(invoice_number=ConfidentField(value='1042', confidence='high'),
 #         vendor=ConfidentField(value='Acme Corp', confidence='high'),
@@ -55,7 +55,7 @@ invoice = agent.run(
 
 ## Route on low confidence
 
-The trigger is plain Python. Walk the fields, find anything below threshold, and decide what to do with it.
+Walk the extracted fields, find values below the confidence threshold, and route the document in application code.
 
 ```python
 def low_confidence_fields(invoice: Invoice) -> list[str]:
@@ -73,11 +73,11 @@ else:
     write_to_database(invoice)
 ```
 
-The model returns confidence. Your code decides the threshold and the action. Two declaratives, no model-side branching.
+Treat confidence as an agent-provided routing signal. Application code sets the threshold and chooses the action.
 
 ## Gate the next action with `requires_confirmation`
 
-For a tighter loop, wrap the downstream action (the database write, the ERP push) in a tool that requires approval, and only invoke it when confidence is high. The agent pauses on low confidence and a human can release the run.
+Wrap a downstream action, such as a database write or ERP push, in a tool that requires approval. Every call pauses the run until a human confirms it. This places approval at the system boundary.
 
 ```python
 from agno.agent import Agent
@@ -93,15 +93,13 @@ def post_to_erp(invoice_id: str, vendor: str, total: float) -> str:
     return f"Posted {invoice_id} for {vendor}: {total}"
 
 
+db = SqliteDb(db_file="tmp/extraction.db")
+
 writer = Agent(
     model=OpenAIResponses(id="gpt-5.5"),
     tools=[post_to_erp],
-    db=SqliteDb(db_file="tmp/extraction.db"),
-    instructions=(
-        "Given a parsed invoice, post it to the ERP with post_to_erp. "
-        "If any value is unclear, call the tool with what you have and "
-        "wait for human confirmation."
-    ),
+    db=db,
+    instructions="Given a parsed invoice, post it to the ERP with post_to_erp.",
 )
 
 run = writer.run(
@@ -117,21 +115,25 @@ if run.is_paused:
 
     run = writer.continue_run(
         run_id=run.run_id,
+        session_id=run.session_id,
         requirements=run.requirements,
     )
 ```
 
-The pause is durable. `run.run_id` is persisted in `db`, so the approval can come from a different process minutes or hours later. See [human approval](/features/human-approval) for the full surface, including async variants and listing pending approvals from the database.
+The pause is persisted in `db`. A different process can reconstruct the same Agent configuration and continue with the stored `run_id` and `session_id`. See [human approval](/hitl/approval) for async variants and listing pending approvals from the database.
 
 ## Accuracy against a golden set
 
-Confidence routes individual documents. Eval tells you whether the system as a whole is still extracting what it should. Build a small golden set (50 to a few hundred labeled documents) and grade the agent against it.
+A representative golden set compares extraction behavior across prompt or model changes.
 
 ```python
 from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
 from agno.eval.accuracy import AccuracyEval
 from agno.media import File
 from agno.models.openai import OpenAIResponses
+
+db = SqliteDb(db_file="tmp/extraction.db")
 
 agent = Agent(
     model=OpenAIResponses(id="gpt-5.5"),
@@ -139,67 +141,72 @@ agent = Agent(
     output_schema=Invoice,
 )
 
+run = agent.run(
+    "Extract this invoice.",
+    files=[File(filepath="golden/invoice-001.pdf")],
+)
+
 evaluation = AccuracyEval(
+    db=db,
     name="invoice-extraction-golden",
     model=OpenAIResponses(id="gpt-5.5"),
-    agent=agent,
-    input=lambda: agent.run(
-        "Extract this invoice.",
-        files=[File(url="https://example.com/golden/invoice-001.pdf")],
-    ),
+    input="Extract this invoice.",
     expected_output=(
         "Invoice number 1042, vendor Acme Corp, dated 2026-04-12, "
         "total 1296.00 USD."
     ),
-    num_iterations=3,
 )
 
-result = evaluation.run(print_results=True)
-# AccuracyResult(name='invoice-extraction-golden', avg_score=9.0, ...)
-assert result is not None and result.avg_score >= 8
+result = evaluation.run_with_output(
+    output=run.content.model_dump_json(), print_results=True
+)
+# AccuracyResult(avg_score=9.0, ...)
+assert result is not None
+print(result.avg_score)
 ```
 
-`AccuracyEval` runs the agent `num_iterations` times against the same input, asks a grader model to score each run against the expected output, and reports the average. Loop the call over your golden set to get a per-document score.
+`AccuracyEval.run()` executes its configured agent but does not accept document files. Run document extraction first, then pass its serialized output to `run_with_output`. `AccuracyEval` uses a model judge to compare that output with `expected_output`; it is a semantic score, not an exact field-by-field metric.
 
 ```python
 results = []
 for doc in golden_set:
+    run = agent.run("Extract this invoice.", files=[File(filepath=doc.path)])
     eval_ = AccuracyEval(
+        db=db,
         name=f"invoice-{doc.id}",
         model=OpenAIResponses(id="gpt-5.5"),
-        agent=agent,
-        input=lambda doc=doc: agent.run(
-            "Extract this invoice.",
-            files=[File(filepath=doc.path)],
-        ),
+        input="Extract this invoice.",
         expected_output=doc.expected_description,
-        num_iterations=1,
     )
-    results.append(eval_.run(print_results=False))
+    results.append(
+        eval_.run_with_output(
+            output=run.content.model_dump_json(), print_results=False, print_summary=False
+        )
+    )
 ```
 
-Persist the per-document score to the same `db` you use for runs, and you have a regression signal. A drop in average score after a model swap or prompt change tells you the new configuration is worse before it reaches production. See the [evals cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/09_evals/accuracy) for `db_logging` and the team variant.
+Passing `db=db` stores each evaluation result. Compare model-judge scores across repeated runs with a fixed judge configuration, and add deterministic field checks for invoice numbers, dates, totals, and line items. See the [evals cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/09_evals/accuracy) for database logging and the team variant.
 
-## Two patterns, one job
+## Review controls
 
 | Pattern | What it answers | When it fires |
 |---------|------------------|---------------|
 | Confidence routing | "Which fields on this document need a human?" | Every run, per document |
 | Approval-gated tools | "Should we let the agent take the next action?" | At a specific tool boundary |
-| AccuracyEval over a golden set | "Is the extractor still as accurate as last week?" | On CI, after a prompt or model change, on a schedule |
+| AccuracyEval over a golden set | "How does a model judge compare these outputs?" | After a prompt or model change, or on a schedule |
 
-The first two protect a single document. The third protects the system.
+Confidence routing and approval-gated tools act on one document. `AccuracyEval` records a model-judge signal for comparing configurations.
 
 ## Next steps
 
 | Task | Guide |
 |------|-------|
 | Schedule the eval to run nightly | [Batch and durability](/use-cases/document-processing/batch-and-durability) |
-| Approve from an external UI | [Human approval](/features/human-approval) |
+| Approve from an external UI | [Human approval](/hitl/approval) |
 | Add a two-labeler review step | [Quality pipeline](/use-cases/data-labeling/quality-pipeline) |
 
 ## Developer Resources
 
 - [Approval cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/02_agents/11_approvals)
 - [Accuracy eval cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/09_evals/accuracy)
-- [Human approval](/features/human-approval)
+- [Human approval](/hitl/overview)

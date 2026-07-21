@@ -1,16 +1,12 @@
 ---
 title: Reasoning Agents
 sidebarTitle: Overview
-description: Transform any model into a reasoning system through structured chain-of-thought processing, perfect for complex problems that require multiple steps, tool use, and self-validation.
+description: Transform any model into a reasoning system through structured chain-of-thought processing for problems that require multiple steps, tool use, and self-validation.
 keywords: [reasoning agents,reasoning teams, reasoning, chain of thought, chain of thought agents, chain of thought reasoning]
 ---
 
 
-**The problem:** Regular models often rush to answers on complex problems, missing steps or making logical errors.
-
-**The solution:** Enable `reasoning=True` and watch your model break down the problem, explore multiple approaches, validate results, and deliver thoroughly vetted solutions.
-
-**The beauty?** It works with any model, from GPT-4o to Claude to local models via Ollama. You're not limited to specialized reasoning models.
+Regular models often rush to answers on complex problems, missing steps or making logical errors. Setting `reasoning=True` makes the model break down the problem, explore multiple approaches, and validate results before answering. It works with any model, from GPT-4o to Claude to local models via Ollama.
 
 ## How It Works
 
@@ -18,10 +14,10 @@ Enable reasoning on any agent by setting `reasoning=True`:
 
 ```python
 from agno.agent import Agent
-from agno.models.openai import OpenAIResponses
+from agno.models.openai import OpenAIChat
 
 reasoning_agent = Agent(
-    model=OpenAIResponses(id="gpt-5.2"),  # Any model works
+    model=OpenAIChat(id="gpt-4o"),  # Any model works
     reasoning=True,
 )
 ```
@@ -70,12 +66,12 @@ The reasoning agent works through these steps iteratively (up to 10 by default),
 
 - Forces structured chain-of-thought through the 6-step framework
 - Creates detailed reasoning steps with confidence scores
-- **This is where reasoning agents shine**: transforming any model into a reasoning system
+- The primary use case: adds reasoning to models without native reasoning support
 
-**With native reasoning models** (gpt-5-mini, DeepSeek-R1, o3-mini):
+**With native reasoning models** (gpt-5.2, DeepSeek-R1, o3-mini):
 
 - Uses the model's built-in reasoning capabilities
-- Adds a validation pass from your main agent
+- Your main agent receives the reasoning output, summarizes it, and produces the final answer
 - Useful for critical tasks but often unnecessary overhead for simpler problems
 
 ## Basic Example
@@ -84,11 +80,11 @@ Let's transform a regular GPT-4o model into a reasoning system:
 
 ```python reasoning_agent.py
 from agno.agent import Agent
-from agno.models.openai import OpenAIResponses
+from agno.models.openai import OpenAIChat
 
 # Transform a regular model into a reasoning system
 reasoning_agent = Agent(
-    model=OpenAIResponses(id="gpt-5.2"),
+    model=OpenAIChat(id="gpt-4o"),
     reasoning=True,
     markdown=True,
 )
@@ -114,16 +110,16 @@ With `show_full_reasoning=True`, you'll see:
 
 ## Reasoning with Tools
 
-Here's where reasoning agents truly excel: combining multi-step reasoning with tool use. The reasoning agent can call tools iteratively, analyze results, and build toward a comprehensive solution.
+The reasoning agent can call tools during reasoning. It calls them iteratively, analyzes results, and builds on them across steps.
 
 ```python finance_reasoning.py
 from agno.agent import Agent
-from agno.models.openai import OpenAIResponses
-from agno.tools.hackernews import HackerNewsTools
+from agno.models.openai import OpenAIChat
+from agno.tools.yfinance import YFinanceTools
 
 reasoning_agent = Agent(
-    model=OpenAIResponses(id="gpt-5.2"),
-    tools=[HackerNewsTools()],
+    model=OpenAIChat(id="gpt-4o"),
+    tools=[YFinanceTools(enable_historical_prices=True, enable_company_news=True)],
     instructions=["Use tables to display data"],
     reasoning=True,
     markdown=True,
@@ -138,19 +134,19 @@ reasoning_agent.print_response(
 
 The reasoning agent will:
 
-1. Break down the task (need stock data for 3 companies)
-2. Use HackerNews to search for current tech news
+1. Break down the task (price data and news for 3 companies)
+2. Fetch quarterly price history for each ticker
 3. Analyze each company's performance
-4. Search for news about key drivers
-5. Validate findings across multiple sources
-6. Create a comprehensive comparison with tables
+4. Pull recent company news to identify key drivers
+5. Validate findings before finalizing
+6. Create a comparison with tables
 7. Provide a final answer with clear insights
 
 ## Configuration Options
 
 ### Display Options
 
-Want to peek under the hood? Control what you see during reasoning:
+Control what you see during reasoning:
 
 ```python
 agent.print_response(
@@ -161,7 +157,7 @@ agent.print_response(
 
 ### Capturing Reasoning Events
 
-For building custom UIs or programmatically tracking reasoning progress, you can capture reasoning events (`ReasoningStarted`, `ReasoningStep`, `ReasoningCompleted`) as they happen during streaming. See the [Reasoning Reference](/reference/reasoning/reasoning#reasoning-event-types) for event attributes and complete code examples.
+For building custom UIs or programmatically tracking reasoning progress, you can capture reasoning events (`ReasoningStarted`, `ReasoningStep`, `ReasoningCompleted`) as they happen during streaming. See the [Reasoning Reference](/reference/reasoning/reasoning#reasoning-events) for event attributes and complete code examples.
 
 ### Iteration Control
 
@@ -169,7 +165,7 @@ Adjust how many reasoning steps the agent takes:
 
 ```python
 reasoning_agent = Agent(
-    model=OpenAIResponses(id="gpt-5.2"),
+    model=OpenAIChat(id="gpt-4o"),
     reasoning=True,
     reasoning_min_steps=2,  # Minimum reasoning steps (default: 1)
     reasoning_max_steps=15,  # Maximum reasoning steps (default: 10)
@@ -185,11 +181,11 @@ For advanced use cases, you can provide your own reasoning agent:
 
 ```python
 from agno.agent import Agent
-from agno.models.openai import OpenAIResponses
+from agno.models.openai import OpenAIChat
 
 # Create a custom reasoning agent with specific instructions
 custom_reasoning_agent = Agent(
-    model=OpenAIResponses(id="gpt-5.2"),
+    model=OpenAIChat(id="gpt-4o"),
     instructions=[
         "Focus heavily on mathematical rigor",
         "Always provide step-by-step proofs",
@@ -197,7 +193,7 @@ custom_reasoning_agent = Agent(
 )
 
 main_agent = Agent(
-    model=OpenAIResponses(id="gpt-5.2"),
+    model=OpenAIChat(id="gpt-4o"),
     reasoning=True,
     reasoning_agent=custom_reasoning_agent,  # Use your custom agent
 )
@@ -211,7 +207,7 @@ main_agent = Agent(
 
     ```python logical_puzzle.py
     from agno.agent import Agent
-    from agno.models.openai import OpenAIResponses
+    from agno.models.openai import OpenAIChat
 
     task = (
         "Three missionaries and three cannibals need to cross a river. "
@@ -221,7 +217,7 @@ main_agent = Agent(
     )
 
     reasoning_agent = Agent(
-        model=OpenAIResponses(id="gpt-5.2"),
+        model=OpenAIChat(id="gpt-4o"),
         reasoning=True,
         markdown=True,
     )
@@ -235,12 +231,12 @@ main_agent = Agent(
 
     ```python mathematical_proof.py
     from agno.agent import Agent
-    from agno.models.openai import OpenAIResponses
+    from agno.models.openai import OpenAIChat
 
     task = "Prove that for any positive integer n, the sum of the first n odd numbers is equal to n squared. Provide a detailed proof."
 
     reasoning_agent = Agent(
-        model=OpenAIResponses(id="gpt-5.2"),
+        model=OpenAIChat(id="gpt-4o"),
         reasoning=True,
         markdown=True,
     )
@@ -254,7 +250,7 @@ main_agent = Agent(
 
     ```python scientific_research.py
     from agno.agent import Agent
-    from agno.models.openai import OpenAIResponses
+    from agno.models.openai import OpenAIChat
 
     task = (
         "Read the following abstract of a scientific paper and provide a critical evaluation of its methodology, "
@@ -266,7 +262,7 @@ main_agent = Agent(
     )
 
     reasoning_agent = Agent(
-        model=OpenAIResponses(id="gpt-5.2"),
+        model=OpenAIChat(id="gpt-4o"),
         reasoning=True,
         markdown=True,
     )
@@ -280,12 +276,12 @@ main_agent = Agent(
 
     ```python planning_itinerary.py
     from agno.agent import Agent
-    from agno.models.openai import OpenAIResponses
+    from agno.models.openai import OpenAIChat
 
     task = "Plan a 3-day itinerary from Los Angeles to Las Vegas, including must-see attractions, dining recommendations, and optimal travel times."
 
     reasoning_agent = Agent(
-        model=OpenAIResponses(id="gpt-5.2"),
+        model=OpenAIChat(id="gpt-4o"),
         reasoning=True,
         markdown=True,
     )
@@ -299,12 +295,12 @@ main_agent = Agent(
 
     ```python creative_writing.py
     from agno.agent import Agent
-    from agno.models.openai import OpenAIResponses
+    from agno.models.openai import OpenAIChat
 
     task = "Write a short story about life in 500,000 years. Consider technological, biological, and societal evolution."
 
     reasoning_agent = Agent(
-        model=OpenAIResponses(id="gpt-5.2"),
+        model=OpenAIChat(id="gpt-4o"),
         reasoning=True,
         markdown=True,
     )
@@ -326,7 +322,7 @@ main_agent = Agent(
 
 **Consider alternatives when:**
 
-- You're using a native reasoning model (gpt-5-mini, DeepSeek-R1) for simple tasks: just use the model directly
+- You're using a native reasoning model (gpt-5.2, DeepSeek-R1) for simple tasks: just use the model directly
 - You want explicit control over when the agent thinks vs. acts: use [Reasoning Tools](/reasoning/reasoning-tools) instead
 - The task is straightforward and doesn't require multi-step thinking
 
@@ -339,6 +335,6 @@ main_agent = Agent(
 
 ## Developer Resources
 
-- View [Reasoning Agent Examples](/reasoning/usage/agents/basic-cot)
-- View [Reasoning Team Examples](/reasoning/usage/agents/team-cot)
-- View [Reasoning Team Cookbook](https://github.com/agno-agi/agno/blob/main/cookbook/10_reasoning/teams)
+- [Reasoning agent examples](/reasoning/usage/agents/basic-cot)
+- [Reasoning team examples](/reasoning/usage/agents/team-cot)
+- [Reasoning team cookbook](https://github.com/agno-agi/agno/blob/main/cookbook/10_reasoning/teams)

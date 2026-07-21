@@ -1,22 +1,28 @@
 ---
-title: Conditional Branching Workflow
-description: This example demonstrates **Workflows 2.0** router pattern for intelligent, content-based workflow routing.
+title: Router Steps Workflow
+description: "Route to one of several steps based on the input."
 ---
 
-This example demonstrates **Workflows 2.0** to dynamically select the best execution path based on input 
-analysis, enabling adaptive workflows that choose optimal strategies per topic.
+Use `Router` to pick one execution path based on the input. A selector function looks
+at the topic and returns the step to run, so each request gets the research method
+that fits it.
 
-**When to use**: When you need mutually exclusive execution paths based on business logic.
-Ideal for topic-specific workflows, expertise routing, or when different subjects require 
-completely different processing strategies. Unlike Conditions which can trigger multiple 
-parallel paths, Router selects exactly one path.
+**When to use**: Mutually exclusive execution paths based on business logic. A
+`Condition` gates its steps with a boolean check. A `Router` picks which of its choices
+to run.
+
+Install dependencies:
+
+```shell
+uv pip install agno openai ddgs
+```
 
 ```python router_steps_workflow.py
 from typing import List
 
 from agno.agent.agent import Agent
 from agno.tools.hackernews import HackerNewsTools
-from agno.tools.yfinance import YFinanceTools
+from agno.tools.websearch import WebSearchTools
 from agno.workflow.router import Router
 from agno.workflow.step import Step
 from agno.workflow.types import StepInput
@@ -29,10 +35,10 @@ hackernews_agent = Agent(
     tools=[HackerNewsTools()],
 )
 
-finance_agent = Agent(
-    name="Finance Researcher",
-    instructions="You are a finance researcher. Search for stock data, market trends, and financial information to gather detailed insights.",
-    tools=[YFinanceTools()],
+web_agent = Agent(
+    name="Web Researcher",
+    instructions="Search news sites, blogs, and official documentation for the topic.",
+    tools=[WebSearchTools()],
 )
 
 content_agent = Agent(
@@ -47,10 +53,10 @@ research_hackernews = Step(
     description="Research latest tech trends from Hacker News",
 )
 
-research_finance = Step(
-    name="research_finance",
-    agent=finance_agent,
-    description="Research financial data and market trends",
+research_web = Step(
+    name="research_web",
+    agent=web_agent,
+    description="Research the topic on the web",
 )
 
 publish_content = Step(
@@ -60,7 +66,6 @@ publish_content = Step(
 )
 
 
-# Now returns Step(s) to execute
 def research_router(step_input: StepInput) -> List[Step]:
     """
     Decide which research method to use based on the input topic.
@@ -92,8 +97,8 @@ def research_router(step_input: StepInput) -> List[Step]:
         print(f"Tech topic detected: Using HackerNews research for '{topic}'")
         return [research_hackernews]
     else:
-        print(f"Finance topic detected: Using finance research for '{topic}'")
-        return [research_finance]
+        print(f"General topic detected: Using web research for '{topic}'")
+        return [research_web]
 
 
 workflow = Workflow(
@@ -103,7 +108,7 @@ workflow = Workflow(
         Router(
             name="research_strategy_router",
             selector=research_router,
-            choices=[research_hackernews, research_finance],
+            choices=[research_hackernews, research_web],
             description="Intelligently selects research method based on topic",
         ),
         publish_content,
@@ -115,4 +120,3 @@ if __name__ == "__main__":
         "Latest developments in artificial intelligence and machine learning"
     )
 ```
-

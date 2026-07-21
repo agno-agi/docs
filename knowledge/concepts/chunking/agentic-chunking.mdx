@@ -1,14 +1,14 @@
 ---
 title: Agentic Chunking
+description: "Split documents with AgenticChunking, which uses a model to find natural breakpoints."
 ---
 
-Agentic chunking is an intelligent method of splitting documents into smaller chunks by using a model to determine natural breakpoints in the text. Rather than splitting text at fixed character counts, it analyzes the content to find semantically meaningful boundaries like paragraph breaks and topic transitions.
+`AgenticChunking` asks a model to choose each split position within `max_chunk_size` characters. It uses the size limit when the model call fails or the response cannot be parsed as an integer. Positions above the limit are clamped.
 
 <Steps>
 
   <Step title="Create a Python file">
     ```python agentic_chunking.py
-    import asyncio
     from agno.agent import Agent
     from agno.knowledge.chunking.agentic import AgenticChunking
     from agno.knowledge.knowledge import Knowledge
@@ -21,20 +21,20 @@ Agentic chunking is an intelligent method of splitting documents into smaller ch
         vector_db=PgVector(table_name="recipes_agentic_chunking", db_url=db_url),
     )
 
-    asyncio.run(knowledge.ainsert(
+    knowledge.insert(
         url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
         reader=PDFReader(
             name="Agentic Chunking Reader",
             chunking_strategy=AgenticChunking(),
         ),
-    ))
+    )
 
     agent = Agent(
         knowledge=knowledge,
         search_knowledge=True,
     )
 
-    agent.print_response("How to make Thai curry?", markdown=True)
+    agent.print_response("How do I make Thai curry?", markdown=True)
     ```
   </Step>
 
@@ -42,8 +42,12 @@ Agentic chunking is an intelligent method of splitting documents into smaller ch
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U agno sqlalchemy psycopg pgvector
+    uv pip install -U agno openai pypdf sqlalchemy psycopg pgvector
     ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <Snippet file="set-openai-key.mdx" />
   </Step>
 
   <Snippet file="run-pgvector-step.mdx" />
@@ -59,6 +63,8 @@ Agentic chunking is an intelligent method of splitting documents into smaller ch
 ## Custom Prompts
 
 ```python
+from agno.knowledge.chunking.agentic import AgenticChunking
+
 AgenticChunking(
     custom_prompt="Split at major section boundaries. Keep complete clauses together.",
     max_chunk_size=3000,
@@ -66,18 +72,18 @@ AgenticChunking(
 ```
 
 <Info>
-Custom prompts override default chunking behavior and are prioritized over default instructions.
+`custom_prompt` is inserted into Agno's chunking instructions. For the chunker to make progress, the model must return a positive integer.
 </Info>
 
 <Tip>
-**Best Practices:**
-- Always set `max_chunk_size` when using `custom_prompt`.
-- Focus `custom_prompt` on chunking logic only.
-- The default instructions automatically handle the output format constraints.
+Set `max_chunk_size` explicitly when using a custom prompt so the model receives the intended limit.
 </Tip>
-
-See [Agentic Chunking with Custom Prompt](/examples/knowledge/chunking/agentic-chunking-custom-prompt) for a complete example.
 
 ## Agentic Chunking Params
 
 <Snippet file="chunking-agentic.mdx" />
+
+## Developer Resources
+
+- [Chunking strategies examples](/examples/knowledge/building-blocks/chunking-strategies)
+- [Chunking overview](/knowledge/concepts/chunking/overview)

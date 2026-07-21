@@ -1,9 +1,9 @@
 ---
 title: Agent Observability
-description: "Store traces, run history, and audit logs in your own database. Natively in Agno"
+description: "Trace agent, team, and workflow runs across models, tools, and steps."
 ---
 
-AgentOS comes with a built-in tracing provider that routes every run to your database. There is no external observability SaaS to sign up for, no API key to manage, and no data egress. Your traces live in `agno_traces` and `agno_spans` in the same `db` you already use for sessions and memory.
+A production agent run can cross models, tools, team members, and workflow steps. Platform teams use traces to explain an unexpected answer, locate a slow call, and follow a failure to its source. AgentOS instruments those runs with OpenTelemetry, stores trace data in your configured database, and renders the same trace tree in the Control Plane.
 
 ```python
 from agno.os import AgentOS
@@ -15,21 +15,20 @@ agent_os = AgentOS(
 )
 ```
 
-Every run produces a trace tree: spans for the LLM call, each tool, hook, retrieval, and team delegation. Tracing is built on [OpenTelemetry](https://opentelemetry.io/) and instruments your agents with zero code changes.
+`tracing=True` instruments supported agent, team, and workflow operations. Each instrumented run produces spans for model calls, tool executions, team coordination, and workflow steps. AgentOS writes the aggregate trace to `agno_traces` and individual spans to `agno_spans`.
 
-## Your data never leaves your db
+## Where trace data goes
 
-This is the difference between AgentOS tracing and hosted observability platforms.
+The built-in exporter writes trace records to the database you configure:
 
-| | AgentOS tracing | Hosted observability SaaS |
-|---|---|---|
-| Where traces live | Your database | Their servers |
-| Data egress | None | Every prompt, tool call, and response leaves your network |
-| Vendor dependency | None | Your observability stops if they go down or you stop paying |
-| Cost model | Your existing database | Per-seat or per-event billing |
-| Querying | Direct SQL on your tables | Their API and UI only |
+| Configuration | Trace destination |
+|---------------|-------------------|
+| `AgentOS(db=trace_db, tracing=True)` | `trace_db` |
+| `AgentOS(tracing=True)` with component databases | First database found on a native agent, team, or workflow |
+| `AgentOS(tracing=True)` with no database | Tracing is skipped and AgentOS logs a warning |
+| Custom OpenTelemetry exporter | The exporter destination you configure |
 
-Prompts, tool arguments, and model outputs often contain customer PII, internal data, and proprietary logic. With AgentOS tracing, none of it crosses your network boundary. You own the data, you control retention, and you can query it with the database tools you already run.
+Tracing does not change where models and tools send data. An agent can still call external model providers, tools, or exporters. Trace attributes can contain prompts, tool arguments, and model output, so apply the same access and retention controls you use for other sensitive application data.
 
 <Frame caption="Traces stored in your own database, viewed in a SQL client">
   <img src="/images/traces-in-db.png" alt="agno_traces and agno_spans tables in a database client" style={{ borderRadius: "0.5rem" }} />
@@ -37,16 +36,9 @@ Prompts, tool arguments, and model outputs often contain customer PII, internal 
 
 ## What gets captured
 
-| Span | Attributes |
-|------|------------|
-| **Run** | `agent_id`, `user_id`, `session_id`, `model`, latency, status |
-| **LLM call** | Model, prompt tokens, completion tokens, temperature, tool calls returned |
-| **Tool** | Tool name, arguments, result, duration, exception (if any) |
-| **Pre/post hook** | Hook name, duration, modified input/output |
-| **Retrieval** | Query, vector store, k, returned docs, scores |
-| **Team delegation** | Member name, mode, sub-run trace |
+Each record in `agno_spans` stores the span name, parent, status, timestamps, duration, and an `attributes` JSON object. The aggregate row in `agno_traces` stores the run, session, user, and component IDs when present, plus overall status, start and end times, and duration.
 
-Traces follow OpenTelemetry semantic conventions, so you can query them directly:
+Traces follow OpenInference semantic conventions, so you can query them directly:
 
 ```sql
 -- Top 10 slowest span types by average duration
@@ -54,15 +46,17 @@ SELECT
     name,
     AVG(duration_ms) AS avg_ms,
     COUNT(*) AS calls
-FROM agno_spans
+FROM ai.agno_spans
 GROUP BY name
 ORDER BY avg_ms DESC
 LIMIT 10;
 ```
 
+`PostgresDb` creates its tables in the `ai` schema by default (override with `PostgresDb(db_schema=...)`). Qualify the table as `ai.agno_spans` or add `ai` to your `search_path`.
+
 ## In the AgentOS UI
 
-The [control plane](https://os.agno.com) renders the same traces visually. Click a run to see the full tree: LLM hops, tool calls with their inputs and outputs, hooks, and sub-agent traces. Filter by user, session, or time range.
+The [control plane](https://os.agno.com) renders the same traces visually. Click a run to see the full tree: LLM hops, tool calls with their inputs and outputs, and sub-agent traces. Filter by user, session, or time range.
 
 <Frame caption="The same traces, rendered in the AgentOS control plane">
   <img src="/images/traces-in-os.png" alt="Trace tree in the AgentOS UI" style={{ borderRadius: "0.5rem" }} />
@@ -75,15 +69,16 @@ Traces are high-volume and write-heavy, with a different cost profile, retention
 ```python
 from agno.agent import Agent
 from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIResponses
 from agno.os import AgentOS
 
 # Each agent keeps its own database
-agent_db = PostgresDb(db_url="postgresql://primary/...")
+agent_db = PostgresDb(db_url="postgresql+psycopg://primary/...")
 
 # Dedicated database for traces
-trace_db = PostgresDb(db_url="postgresql://traces/...")
+trace_db = PostgresDb(db_url="postgresql+psycopg://traces/...")
 
-agent = Agent(name="Research Agent", model=..., db=agent_db)
+agent = Agent(name="Research Agent", model=OpenAIResponses(id="gpt-5.2"), db=agent_db)
 
 agent_os = AgentOS(
     agents=[agent],
@@ -98,9 +93,9 @@ See [Multi-DB tracing](/agent-os/tracing/usage/tracing-with-multi-db-scenario) f
 
 ## External providers
 
-If you already run an observability platform, AgentOS can export to it instead of (or alongside) your database. Add an OpenTelemetry exporter to send traces to Langfuse, Langsmith, Arize, Logfire, MLflow, or any OTel endpoint.
+You can configure OpenTelemetry exporters for Langfuse, LangSmith, Arize, Logfire, MLflow, The Context Company, or another OpenTelemetry endpoint.
 
-See the [Observability section](/observability/overview): [Langfuse](/observability/langfuse), [Langsmith](/observability/langsmith), [Arize](/observability/arize), [Logfire](/observability/logfire), [MLflow](/observability/mlflow).
+See the [Observability section](/observability/overview): [Langfuse](/observability/langfuse), [LangSmith](/observability/langsmith), [Arize](/observability/arize), [Logfire](/examples/integrations/observability/logfire-via-openinference), [MLflow](/observability/mlflow), [The Context Company](/observability/the-context-company).
 
 ## Developer Resources
 

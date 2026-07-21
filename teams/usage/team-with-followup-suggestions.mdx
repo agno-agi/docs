@@ -1,10 +1,10 @@
 ---
 title: Team with Followup Suggestions
 sidebarTitle: Followup Suggestions
-description: "Generate actionable followup prompts after every team response."
+description: "Generate followup prompt suggestions from a team's completed response."
 ---
 
-Set `followups=True` on a Team to automatically generate followup prompt suggestions after each response. Works the same way as [agent followups](/agents/usage/agent-with-followup-suggestions), with support for all team modes.
+Set `followups=True` on a Team to generate followup prompt suggestions when the main response has content. Followup generation makes a second model call and works with all team modes.
 
 <Steps>
 
@@ -12,18 +12,17 @@ Set `followups=True` on a Team to automatically generate followup prompt suggest
     ```python team_followup_suggestions.py
     from agno.agent import Agent
     from agno.models.openai import OpenAIResponses
-    from agno.team.team import Team
-    from agno.team.mode import TeamMode
+    from agno.team import Team, TeamMode
 
     researcher = Agent(
         name="Researcher",
         role="Research topics thoroughly",
-        model=OpenAIResponses(id="gpt-4o"),
+        model=OpenAIResponses(id="gpt-5.4-mini"),
     )
 
     team = Team(
         name="Research Team",
-        model=OpenAIResponses(id="gpt-4o"),
+        model=OpenAIResponses(id="gpt-5.4-mini"),
         mode=TeamMode.coordinate,
         members=[researcher],
         followups=True,
@@ -34,7 +33,7 @@ Set `followups=True` on a Team to automatically generate followup prompt suggest
 
     print(response.content)
     print("\nFollowup suggestions:")
-    for i, suggestion in enumerate(response.followups, 1):
+    for i, suggestion in enumerate(response.followups or [], 1):
         print(f"  {i}. {suggestion}")
     ```
   </Step>
@@ -52,7 +51,7 @@ Set `followups=True` on a Team to automatically generate followup prompt suggest
     ```bash Mac/Linux
     export OPENAI_API_KEY="your_openai_api_key_here"
     ```
-    ```bash Windows
+    ```powershell Windows
     $Env:OPENAI_API_KEY="your_openai_api_key_here"
     ```
     </CodeGroup>
@@ -72,7 +71,9 @@ Set `followups=True` on a Team to automatically generate followup prompt suggest
 |-----------|------|---------|-------------|
 | `followups` | `bool` | `False` | Enable followup suggestion generation |
 | `num_followups` | `int` | `3` | Number of suggestions to generate (minimum 1) |
-| `followup_model` | `Model` | Team's model | Separate model for generating followups. Use a smaller model to reduce cost. |
+| `followup_model` | `Model \| str` | `None` | Model used for followups. When unset, the team's model is used. |
+
+If the followup model call fails, the team response still completes and `response.followups` can be `None`.
 
 ## Streaming
 
@@ -83,19 +84,17 @@ import asyncio
 
 from agno.agent import Agent
 from agno.models.openai import OpenAIResponses
-from agno.team.team import Team
-from agno.team.mode import TeamMode
-from agno.team import TeamRunEvent
+from agno.team import Team, TeamMode, TeamRunEvent
 
 researcher = Agent(
     name="Researcher",
     role="Research topics thoroughly",
-    model=OpenAIResponses(id="gpt-4o"),
+    model=OpenAIResponses(id="gpt-5.4-mini"),
 )
 
 team = Team(
     name="Research Team",
-    model=OpenAIResponses(id="gpt-4o"),
+    model=OpenAIResponses(id="gpt-5.4-mini"),
     mode=TeamMode.coordinate,
     members=[researcher],
     followups=True,
@@ -114,7 +113,7 @@ async def main():
 
         if event.event == TeamRunEvent.followups_completed:
             print("\n\nFollowup suggestions:")
-            for i, suggestion in enumerate(event.followups, 1):
+            for i, suggestion in enumerate(event.followups or [], 1):
                 print(f"  {i}. {suggestion}")
 
 

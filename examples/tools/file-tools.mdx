@@ -1,20 +1,56 @@
 ---
-title: "File Management"
-description: "Use file management with Agno agents."
+title: "File Tools - File System Operations and Management"
+description: "Use FileTools for file operations including reading, writing, searching files, and searching file contents."
+source: cookbook/91_tools/file_tools.py
 ---
 
-Enable Agno agents to perform file system operations and management with File Tools. The `enable_` flag pattern is used for selective function access.
+Use FileTools for file operations including reading, writing, searching files, and searching file contents. Shows enable_ flag patterns for selective function access.
 
-```python
+```python file_tools.py
+"""
+File Tools - File System Operations and Management
+
+This example demonstrates how to use FileTools for file operations
+including reading, writing, searching files, and searching file contents.
+Shows enable_ flag patterns for selective function access.
+"""
 
 from pathlib import Path
 
 from agno.agent import Agent
-from agno.tools.file import FileTools
+from agno.models.openai import OpenAIResponses
+from agno.tools.file import DEFAULT_EXCLUDE_PATTERNS, FileTools
+
+EXCLUSION_SANDBOX = Path("tmp/file_tools_exclusions")
+
+
+def setup_exclusion_sandbox() -> None:
+    EXCLUSION_SANDBOX.mkdir(parents=True, exist_ok=True)
+
+    (EXCLUSION_SANDBOX / "main.py").write_text("def hello():\n    return 'world'\n")
+    (EXCLUSION_SANDBOX / "README.md").write_text("# My Project\n\nDoes a thing.\n")
+
+    site_pkg = (
+        EXCLUSION_SANDBOX
+        / ".venv"
+        / "lib"
+        / "python3.12"
+        / "site-packages"
+        / "requests"
+    )
+    site_pkg.mkdir(parents=True, exist_ok=True)
+    (site_pkg / "__init__.py").write_text("__version__ = '2.31.0'\n")
+    (site_pkg / "api.py").write_text("def get(url):\n    pass\n")
+
+    git_dir = EXCLUSION_SANDBOX / ".git"
+    git_dir.mkdir(exist_ok=True)
+    (git_dir / "HEAD").write_text("ref: refs/heads/main\n")
+
 
 # ---------------------------------------------------------------------------
 # Create Agent
 # ---------------------------------------------------------------------------
+
 
 # Example 1: All functions enabled (default behavior)
 agent_full = Agent(
@@ -85,6 +121,92 @@ agent_writer = Agent(
     markdown=True,
 )
 
+# Example 5: Content search agent using enable_search_content
+# search_content lets the agent grep through file contents (case-insensitive)
+# for a query string, returning matching files with snippets.
+agent_content_search = Agent(
+    tools=[
+        FileTools(
+            Path("tmp/file"),
+            enable_read_file=True,
+            enable_search_content=True,
+            enable_list_files=True,
+            enable_save_file=False,
+        )
+    ],
+    description="You are a content search specialist that finds information within files.",
+    instructions=[
+        "Search through file contents to find relevant information",
+        "Use search_content to locate files containing specific terms",
+        "Summarize the matches and provide context from the snippets",
+    ],
+    markdown=True,
+)
+
+# Example 6: Default exclusions skip noise directories (.venv, .git, __pycache__,
+# node_modules, build artifacts, etc.) so agents don't waste context on installed
+# packages or VCS metadata. See DEFAULT_EXCLUDE_PATTERNS for the full list.
+agent_default_exclusions = Agent(
+    model=OpenAIResponses(id="gpt-5.4"),
+    tools=[
+        FileTools(
+            base_dir=EXCLUSION_SANDBOX,
+            enable_list_files=True,
+            enable_search_files=True,
+            enable_search_content=True,
+        )
+    ],
+    description="You help users explore a project, skipping build and dependency noise.",
+    instructions=[
+        "Use list_files and search_content to answer questions about the project",
+    ],
+    markdown=True,
+)
+
+# Example 7: Custom exclusions - start from DEFAULT_EXCLUDE_PATTERNS and remove
+# the entries you want visible. Future additions to the default list apply
+# automatically. Here we keep the defaults but unhide .venv so the agent can
+# inspect installed packages.
+exclude_without_venv = [p for p in DEFAULT_EXCLUDE_PATTERNS if p != ".venv"]
+
+agent_can_read_venv = Agent(
+    model=OpenAIResponses(id="gpt-5.4"),
+    tools=[
+        FileTools(
+            base_dir=EXCLUSION_SANDBOX,
+            exclude_patterns=exclude_without_venv,
+            enable_list_files=True,
+            enable_search_files=True,
+            enable_search_content=True,
+        )
+    ],
+    description="You inspect installed Python packages to answer version and source questions.",
+    instructions=[
+        "Use search_content and search_files to look inside .venv when asked",
+        "Report package versions and the file path where you found them",
+    ],
+    markdown=True,
+)
+
+# Example 8: Full opt-out with exclude_patterns=[]. Every file becomes visible,
+# including .git internals. Use only when you need forensic access to the tree.
+agent_sees_everything = Agent(
+    model=OpenAIResponses(id="gpt-5.4"),
+    tools=[
+        FileTools(
+            base_dir=EXCLUSION_SANDBOX,
+            exclude_patterns=[],
+            enable_list_files=True,
+            enable_search_files=True,
+        )
+    ],
+    description="You audit the full project tree, including hidden and ignored directories.",
+    instructions=[
+        "Return the complete file inventory when asked",
+    ],
+    markdown=True,
+)
+
 # Example usage
 
 # ---------------------------------------------------------------------------
@@ -114,18 +236,64 @@ if __name__ == "__main__":
         "Search for all files which have an extension '.txt' and save the answer to a new file named 'all_txt_files.txt'",
         markdown=True,
     )
+
+    print("\n=== Content Search Example ===")
+    agent_content_search.print_response(
+        "Search inside all files for the word 'Python' and summarize what you find",
+        markdown=True,
+    )
+
+    setup_exclusion_sandbox()
+
+    print("\n=== Default Exclusions Example (hides .venv, .git, etc.) ===")
+    agent_default_exclusions.print_response(
+        "List every file in this project and tell me what the project does.",
+        markdown=True,
+    )
+
+    print("\n=== Custom Exclusions Example (inspect .venv) ===")
+    agent_can_read_venv.print_response(
+        "Find the version of the `requests` package installed in this project. "
+        "Show the file path where you found the version string.",
+        markdown=True,
+    )
+
+    print("\n=== No Exclusions Example (see .git internals) ===")
+    agent_sees_everything.print_response(
+        "List every single file in the project, including git internals.",
+        markdown=True,
+    )
 ```
 
 ## Run the Example
-```bash
-# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/91_tools
 
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
 
-python file_tools.py
-```
-For details, see [File Management Tools cookbook](https://github.com/agno-agi/agno/blob/main/cookbook/91_tools/file_tools.py).
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `file_tools.py`, then run:
+    ```bash
+    python file_tools.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/91_tools/file_tools.py](https://github.com/agno-agi/agno/blob/main/cookbook/91_tools/file_tools.py)

@@ -1,14 +1,14 @@
 ---
 title: Document Chunking
+description: Group paragraphs into chunks and split oversized paragraphs at sentence boundaries.
 ---
 
-Document chunking is a method of splitting documents into smaller chunks based on document structure like paragraphs and sections. It analyzes natural document boundaries rather than splitting at fixed character counts. This is useful when you want to process large documents while preserving semantic meaning and context.
+`DocumentChunking` packs double-newline-separated paragraphs toward `chunk_size`. It splits an oversized paragraph at sentence boundaries.
 
 <Steps>
 
   <Step title="Create a Python file">
     ```python document_chunking.py
-    import asyncio
     from agno.agent import Agent
     from agno.knowledge.chunking.document import DocumentChunking
     from agno.knowledge.knowledge import Knowledge
@@ -21,20 +21,21 @@ Document chunking is a method of splitting documents into smaller chunks based o
         vector_db=PgVector(table_name="recipes_document_chunking", db_url=db_url),
     )
 
-    asyncio.run(knowledge.ainsert(
+    knowledge.insert(
         url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
         reader=PDFReader(
             name="Document Chunking Reader",
+            split_on_pages=False,
             chunking_strategy=DocumentChunking(),
         ),
-    ))
+    )
 
     agent = Agent(
         knowledge=knowledge,
         search_knowledge=True,
     )
 
-    agent.print_response("How to make Thai curry?", markdown=True)
+    agent.print_response("How do I make Thai curry?", markdown=True)
     ```
   </Step>
 
@@ -42,8 +43,12 @@ Document chunking is a method of splitting documents into smaller chunks based o
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U agno sqlalchemy psycopg pgvector
+    uv pip install -U agno sqlalchemy psycopg pgvector pypdf openai
     ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <Snippet file="set-openai-key.mdx" />
   </Step>
 
   <Snippet file="run-pgvector-step.mdx" />
@@ -56,7 +61,18 @@ Document chunking is a method of splitting documents into smaller chunks based o
 
 </Steps>
 
+The example sets `split_on_pages=False` so `PDFReader` combines the pages before applying `DocumentChunking`. Keep the default value of `True` to chunk each page independently.
+
+## Chunk Size
+
+`chunk_size` is a target rather than a strict ceiling. Paragraph separators, a sentence longer than the target, and overlap can produce a longer chunk. Overlap is prepended without an added separator.
 
 ## Document Chunking Params
 
 <Snippet file="chunking-document.mdx" />
+
+## Developer Resources
+
+- [Chunking overview](/knowledge/concepts/chunking/overview)
+- [Chunking strategies examples](/examples/knowledge/building-blocks/chunking-strategies)
+- [PDF reader](/knowledge/concepts/readers/pdf-reader)

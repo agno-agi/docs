@@ -1,17 +1,22 @@
 ---
 title: Async SQLite for Workflow
 sidebarTitle: Workflow
+description: Store workflow sessions and run history asynchronously in SQLite with AsyncSqliteDb.
 ---
 
-Agno supports using SQLite asynchronously as a storage backend for Workflows, with the `AsyncSqliteDb` class.
+`AsyncSqliteDb` stores a Workflow's sessions and run history asynchronously in SQLite. Use async Workflow methods such as `arun()` and `aprint_response()`.
 
 ## Usage
 
-```python async_sqlite_for_workflow.py
-"""
-Run: `uv pip install openai sqlalchemy aiosqlite` to install dependencies
-"""
+Install the `sqlalchemy` asyncio extra, `aiosqlite`, `openai`, and `ddgs`:
 
+```shell
+uv pip install "sqlalchemy[asyncio]" aiosqlite openai ddgs
+```
+
+`AsyncSqliteDb` uses an async `db_engine`, then `db_url`, then `db_file`. A `db_url` must use an async driver such as `sqlite+aiosqlite`. If none is provided, it creates `agno.db` in the current directory. The following example uses `db_file`.
+
+```python async_sqlite_for_workflow.py
 import asyncio
 
 from agno.agent import Agent
@@ -19,23 +24,22 @@ from agno.db.sqlite import AsyncSqliteDb
 from agno.models.openai import OpenAIResponses
 from agno.team import Team
 from agno.tools.hackernews import HackerNewsTools
-from agno.tools.hackernews import HackerNewsTools
+from agno.tools.websearch import WebSearchTools
 from agno.workflow.step import Step
 from agno.workflow.workflow import Workflow
 
-# Initialize AsyncSqliteDb with a database file
-db = AsyncSqliteDb(db_file="workflow_storage.db")
+db = AsyncSqliteDb(db_file="tmp/workflow.db")
 
 hackernews_agent = Agent(
-    name="Hackernews Agent",
+    name="HackerNews Agent",
     model=OpenAIResponses(id="gpt-5.2"),
     tools=[HackerNewsTools()],
-    role="Extract key insights and content from Hackernews posts",
+    role="Extract key insights and content from HackerNews posts",
 )
 web_agent = Agent(
     name="Web Agent",
     model=OpenAIResponses(id="gpt-5.2"),
-    tools=[HackerNewsTools()],
+    tools=[WebSearchTools()],
     role="Search the web for the latest news and trends",
 )
 content_planner = Agent(
@@ -50,7 +54,7 @@ content_planner = Agent(
 research_team = Team(
     name="Research Team",
     members=[hackernews_agent, web_agent],
-    instructions="Research tech topics from Hackernews and the web",
+    instructions="Research tech topics from HackerNews and the web",
 )
 
 research_step = Step(
@@ -68,16 +72,20 @@ content_creation_workflow = Workflow(
     steps=[research_step, content_planning_step],
 )
 
-if __name__ == "__main__":
-    asyncio.run(
-        content_creation_workflow.aprint_response(
-            input="AI trends in 2024",
+async def main():
+    try:
+        await content_creation_workflow.aprint_response(
+            input="Recent AI trends",
             markdown=True,
         )
-    )
+    finally:
+        await db.close()
 
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
-## Params
+## Parameters
 
 <Snippet file="db-async-sqlite-params.mdx" />

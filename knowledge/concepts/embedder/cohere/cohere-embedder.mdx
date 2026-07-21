@@ -1,71 +1,66 @@
 ---
 title: Cohere Embedder
+description: Generate Cohere embeddings with an explicit model, input type, and vector dimension.
 ---
 
-## Code
+`CohereEmbedder` defaults to `embed-english-v3.0` and reads `CO_API_KEY` through the Cohere client.
 
-```python
-import asyncio
+```python cohere_embedder.py
 from agno.knowledge.embedder.cohere import CohereEmbedder
-from agno.knowledge.knowledge import Knowledge
-from agno.vectordb.pgvector import PgVector
 
-embeddings = CohereEmbedder().get_embedding(
+document_embedder = CohereEmbedder(
+    id="embed-english-v3.0",
+    dimensions=1024,
+    input_type="search_document",
+)
+query_embedder = CohereEmbedder(
+    id="embed-english-v3.0",
+    dimensions=1024,
+    input_type="search_query",
+)
+
+document_vector = document_embedder.get_embedding(
     "The quick brown fox jumps over the lazy dog."
 )
-# Print the embeddings and their dimensions
-print(f"Embeddings: {embeddings[:5]}")
-print(f"Dimensions: {len(embeddings)}")
+query_vector = query_embedder.get_embedding("Which animal jumps?")
 
-# Example usage:
-knowledge = Knowledge(
-    vector_db=PgVector(
-        db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
-        table_name="cohere_embeddings",
-        embedder=CohereEmbedder(
-            dimensions=1024,
-        ),
-    ),
-    max_results=2,
-)
-
-asyncio.run(
-    knowledge.ainsert(
-        path="cookbook/08_knowledge/testing_resources/cv_1.pdf",
-    )
-)
-
+print(f"Document dimensions: {len(document_vector)}")
+print(f"Query dimensions: {len(query_vector)}")
 ```
 
-## Usage
+<Warning>
+`CohereEmbedder` currently applies one configured `input_type` to every call. A single instance used by a vector database therefore applies the same input type to document insertion and query search. Cohere retrieval models distinguish `search_document` from `search_query`.
+</Warning>
+
+Set `dimensions=1024` with `embed-english-v3.0` so the vector database schema matches the returned vectors. This field configures Agno's expected vector width. It does not change the model's fixed 1024-dimensional output.
+
+## Run the Example
 
 <Steps>
   <Snippet file="create-venv-step.mdx" />
 
-  <Step title="Set your API key">
+  <Step title="Export the API key">
     ```bash
-    export COHERE_API_KEY=xxx
+    export CO_API_KEY=your_cohere_api_key_here
     ```
   </Step>
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U sqlalchemy psycopg pgvector cohere agno
+    uv pip install -U agno cohere
     ```
   </Step>
 
-
-    <Snippet file="run-pgvector-step.mdx" />
-
-  <Step title="Run Agent">
-    <CodeGroup>
-    ```bash Mac
-    python cookbook/08_knowledge/embedders/cohere_embedder.py
+  <Step title="Run the example">
+    ```bash
+    python cohere_embedder.py
     ```
-
-    ```bash Windows
-    python cookbook/08_knowledge/embedders/cohere_embedder.py
-    ```
-    </CodeGroup>
   </Step>
 </Steps>
+
+## Developer Resources
+
+- [CohereEmbedder reference](/reference/knowledge/embedder/cohere)
+- [Embedders overview](/knowledge/concepts/embedder/overview)
+- [Cohere Embed models](https://docs.cohere.com/docs/cohere-embed)
+- [Cohere semantic search](https://docs.cohere.com/docs/sem-search-quickstart)

@@ -1,11 +1,11 @@
 ---
 title: Multi-Step Workflow
-description: This example demonstrates a workflow with history enabled for specific steps.
+description: A multi-step workflow that supplies prior-run history to agent and custom function steps.
 ---
 
+Use `add_workflow_history_to_steps` to inject prior-run history into agent steps. A custom function step reads the same history with `StepInput.get_workflow_history_context()`.
 
-This example shows how to use the `add_workflow_history_to_steps` flag to add workflow history to multiple steps in the workflow.
-In this case we have a workflow with three steps.
+This workflow has three steps:
 - The first step is a meal suggester that suggests meal categories and cuisines.
 - The second step is a preference analysis step that analyzes the conversation history to understand user food preferences.
 - The third step is a recipe specialist that provides recipe recommendations based on the user's preferences.
@@ -16,6 +16,8 @@ from agno.db.sqlite import SqliteDb
 from agno.models.openai import OpenAIResponses
 from agno.workflow.step import Step, StepInput, StepOutput
 from agno.workflow.workflow import Workflow
+
+HISTORY_RUNS = 3
 
 # Define specialized agents for meal planning conversation
 meal_suggester = Agent(
@@ -47,7 +49,10 @@ def analyze_food_preferences(step_input: StepInput) -> StepOutput:
     Smart function that analyzes conversation history to understand user food preferences
     """
     current_request = step_input.input
-    conversation_context = step_input.previous_step_content or ""
+    workflow_history = (
+        step_input.get_workflow_history_context(num_runs=HISTORY_RUNS) or ""
+    )
+    current_run_context = step_input.previous_step_content or ""
 
     # Simple preference analysis based on conversation
     preferences = {
@@ -58,7 +63,7 @@ def analyze_food_preferences(step_input: StepInput) -> StepOutput:
     }
 
     # Analyze conversation for patterns
-    full_context = f"{conversation_context} {current_request}".lower()
+    full_context = f"{workflow_history} {current_run_context} {current_request}".lower()
 
     # Dietary restrictions and preferences
     if any(word in full_context for word in ["healthy", "healthier", "light", "fresh"]):
@@ -144,6 +149,7 @@ meal_workflow = Workflow(
     ),
     steps=[suggestion_step, preference_analysis_step, recipe_step],
     add_workflow_history_to_steps=True,
+    num_history_runs=HISTORY_RUNS,
 )
 
 
@@ -187,3 +193,40 @@ if __name__ == "__main__":
     demonstrate_conversational_meal_planning()
 ```
 
+## Usage
+
+<Steps>
+
+  <Step title="Create a Python file">
+    Create `02_workflow_with_history_enabled_for_steps.py` with the code above.
+  </Step>
+
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai sqlalchemy
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+
+    <CodeGroup>
+
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run Workflow">
+    ```bash
+    python 02_workflow_with_history_enabled_for_steps.py
+    ```
+  </Step>
+
+</Steps>

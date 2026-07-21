@@ -1,156 +1,199 @@
 ---
 title: "Docker Reference"
 sidebarTitle: "Reference"
-description: "Manage, customize, and troubleshoot your Docker deployment."
+description: "Commands, customization, environment variables, and troubleshooting for the self-hosted Docker template."
 ---
+
+The Compose services are `agentos-api` (the app) and `agentos-db` (Postgres with pgvector). Production runs the same files plus the `compose.prod.yaml` override; the full flow is on the [deploy page](/deploy/templates/docker/deploy).
 
 ## Manage
 
 | Task | Command |
-| :--- | :--- |
-| Start containers | `docker compose up -d --build` |
-| View logs | `docker compose logs -f` |
-| Restart containers | `docker compose restart` |
-| Stop containers | `docker compose down` |
-| Stop and remove data | `docker compose down -v` |
-| Rebuild after changes | `docker compose up -d --build` |
+|------|---------|
+| Deploy code changes | `git pull`, then `docker compose -f compose.yaml -f compose.prod.yaml up -d --build` |
+| Apply env changes | `docker compose -f compose.yaml -f compose.prod.yaml up -d` |
+| Tail production logs | `docker compose -f compose.yaml -f compose.prod.yaml logs -f agentos-api` |
+| Stop the platform | `docker compose down` (keeps the `pgdata` volume) |
+| Tear down | `docker compose down -v` (deletes the `pgdata` volume and all platform data) |
+
+## Production auth
+
+Token-Based Authorization is on by default. Production startup requires `JWT_VERIFICATION_KEY` or a readable JWKS file at the container path in `JWT_JWKS_FILE`; otherwise the process exits.
+
+Token-Based Auth gives you three things:
+
+1. **No public access.** The server rejects requests without a valid token.
+2. **Per-request identity.** Middleware validates the token and exposes its `user_id`, optional `session_id`, scopes, and claims to the request.
+3. **Scope-based permissions.** Token scopes control access to AgentOS routes and resources.
+
+The templates do not enable per-user data isolation. To scope non-admin session, memory, trace, and run access to the JWT subject, pass `authorization_config=AuthorizationConfig(user_isolation=True)` to `AgentOS`. See [User Isolation](/agent-os/security/authorization/user-isolation).
+
+To opt out (not recommended), set `authorization=False` in `app/main.py` and restart. Use this only inside a private network behind another auth layer. Without it, anyone who finds your public URL can access your platform.
 
 ## Customize
 
 <AccordionGroup>
   <Accordion title="Add an agent">
+Ask your coding agent to run `/create-new-agent`, or do it by hand. Create `agents/my_agent.py`:
 
-  Create `agents/my_agent.py`:
 ```python
 from agno.agent import Agent
-from agno.models.openai import OpenAIResponses
+
+from app.settings import default_model
 from db import get_postgres_db
+
+INSTRUCTIONS = """\
+What the agent does, which tools it uses, the rules to follow when answering.
+"""
 
 my_agent = Agent(
     id="my-agent",
     name="My Agent",
-    model=OpenAIResponses(id="gpt-5.5"),
+    model=default_model(),
     db=get_postgres_db(),
-    instructions="You are a helpful assistant.",
+    instructions=INSTRUCTIONS,
+    enable_agentic_memory=True,
+    add_datetime_to_context=True,
+    add_history_to_context=True,
+    num_history_runs=5,
 )
 ```
 
-Register in `app/main.py`:
+Register it in `app/main.py`:
+
 ```python
 from agents.my_agent import my_agent
 
 agent_os = AgentOS(
-    name="AgentOS",
-    agents=[web_search, code_search, my_agent],
+    ...
+    agents=[agent_builder, platform_manager, web_search, my_agent],
 )
 ```
 
-Restart: `docker compose restart agentos-api`
-
+Local containers hot-reload on save. For production, rebuild with `docker compose -f compose.yaml -f compose.prod.yaml up -d --build`.
   </Accordion>
 
-  <Accordion title="Add tools">
+  <Accordion title="Change the model">
+`app/settings.py` defines `default_model()`, used by every agent. Change it in one place:
 
-  Agno includes 100+ tool integrations. See the [full list](/tools/overview).
-```python
-from agno.tools.slack import SlackTools
-from agno.tools.google_calendar import GoogleCalendarTools
-
-my_agent = Agent(
-    tools=[
-        SlackTools(),
-        GoogleCalendarTools(),
-    ],
-)
-```
-
-  </Accordion>
-
-  <Accordion title="Use a different model">
-
-  Add your API key to `.env` and update your agent:
 ```python
 from agno.models.anthropic import Claude
 
+def default_model():
+    return Claude(id="claude-sonnet-5")
+```
+
+Add `anthropic` to `pyproject.toml`, set the provider key in your env, and regenerate pins:
+
+```bash
+./scripts/generate_requirements.sh
+```
+
+Rebuild locally with `docker compose up -d --build`. For production:
+
+```bash
+docker compose -f compose.yaml -f compose.prod.yaml up -d --build
+```
+  </Accordion>
+
+  <Accordion title="Add tools">
+Agno ships 100+ toolkits. See [Toolkits](/tools/toolkits/overview).
+
+```python
+from agno.tools.slack import SlackTools
+
 my_agent = Agent(
-    model=Claude(id="claude-sonnet-4-5"),
+    ...
+    tools=[SlackTools()],
 )
 ```
-
-  Add `anthropic` to `pyproject.toml` and rebuild:
-```bash
-./scripts/generate_requirements.sh upgrade
-docker compose up -d --build
-```
-
   </Accordion>
 
   <Accordion title="Add dependencies">
-
-1. Edit `pyproject.toml`
-2. Regenerate requirements: `./scripts/generate_requirements.sh upgrade`
-3. Rebuild: `docker compose up -d --build`
-
+1. Edit `pyproject.toml`.
+2. Regenerate pins: `./scripts/generate_requirements.sh` (add `upgrade` to refresh every pin).
+3. Rebuild locally with `docker compose up -d --build`, or in production with `docker compose -f compose.yaml -f compose.prod.yaml up -d --build`.
   </Accordion>
 
   <Accordion title="Enable Slack">
+Set both variables in `.env`:
 
-  Set both variables in `.env`:
 ```bash
 SLACK_BOT_TOKEN=xoxb-...
 SLACK_SIGNING_SECRET=...
 ```
 
-  The interface activates automatically on restart. See [Slack setup](/deploy/interfaces/slack/overview) for creating the Slack app.
+Apply with `docker compose up -d` (in production, `docker compose -f compose.yaml -f compose.prod.yaml up -d`). The interface activates automatically and routes messages to Agent Builder; change the `agent=` argument in `app/main.py` to point at another agent. See [Slack setup](/agent-os/interfaces/slack/setup).
+  </Accordion>
 
+  <Accordion title="Toggle scheduled workflows">
+The deployment check runs daily by default (`ENABLE_DEPLOY_CHECK=True`); it is deterministic and free. Scheduled evals are off by default (`ENABLE_SCHEDULED_EVALS=False`) because they use model calls. Both workflows stay runnable on demand regardless.
   </Accordion>
 </AccordionGroup>
 
-## Local Development
+## Format, validate, and run evals
 
-Run without Docker for faster iteration:
+The format, validate, and eval scripts run on the host and need a venv. Set it up once:
+
 ```bash
-# Install uv
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Set up environment
 ./scripts/venv_setup.sh
 source .venv/bin/activate
-
-# Start PostgreSQL (required)
-docker compose up -d agentos-db
-
-# Run AgentOS
-python -m app.main
 ```
 
-## Environment Variables
+| Task | Command |
+|------|---------|
+| Format | `./scripts/format.sh` |
+| Lint and type-check | `./scripts/validate.sh` |
+| Run smoke evals | `python -m evals --tag smoke` |
+
+`./scripts/mcp_check.sh` runs inside the container, so it needs no venv.
+
+## Environment variables
 
 | Variable | Required | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `OPENAI_API_KEY` | Yes | — | OpenAI API key |
-| `RUNTIME_ENV` | No | `prd` | `dev` enables hot-reload and disables JWT |
-| `JWT_VERIFICATION_KEY` | Production | — | Public key from os.agno.com |
-| `AGENTOS_URL` | No | `http://127.0.0.1:8000` | Scheduler base URL |
-| `SLACK_BOT_TOKEN` | No | — | Enable Slack interface |
-| `SLACK_SIGNING_SECRET` | No | — | Enable Slack interface |
-| `PARALLEL_API_KEY` | No | — | Parallel SDK key for WebSearch |
-| `DB_HOST` | No | `localhost` | Database host |
-| `DB_PORT` | No | `5432` | Database port |
-| `DB_USER` | No | `ai` | Database user |
-| `DB_PASS` | No | `ai` | Database password |
-| `DB_DATABASE` | No | `ai` | Database name |
+|----------|----------|---------|-------------|
+| `OPENAI_API_KEY` | Yes | - | Models and embeddings. |
+| `RUNTIME_ENV` | No | `prd` | `dev` disables JWT. `compose.yaml` sets `dev` for local; `compose.prod.yaml` sets `prd`. Never hand-set `dev` on a production host, or the platform serves unauthenticated. |
+| `JWT_VERIFICATION_KEY` | Production | - | Public key from os.agno.com. Quote the value so the multi-line PEM parses as one variable. |
+| `JWT_JWKS_FILE` | Production | - | Path inside the container to a JWKS file. Production Compose does not mount this file. Add a read-only bind mount, or bake the file into the image and rebuild. |
+| `MCP_CONNECT_SECRET` | No | - | OAuth consent secret (16+ chars) for connecting claude.ai and ChatGPT to `/mcp`. Set it yourself in `.env`, e.g. `openssl rand -base64 32`. Dev reads the same file, so it gates the local `/mcp` too. |
+| `AGENTOS_MCP_SIGNING_KEY` | No | generated | Optional high-entropy signing-key material (32+ chars) for OAuth tokens. Unset, a strong key is generated and persisted in the database. Rotating it invalidates outstanding tokens. |
+| `AGENTOS_URL` | No | `http://127.0.0.1:8000` | Scheduler base URL. Set it in `.env` to your public URL; `compose.prod.yaml` passes it through. Left at the default in production, the daily deployment check flags the platform as misconfigured. When `MCP_CONNECT_SECRET` is set, OAuth metadata also derives its public origin from this URL. |
+| `ENABLE_DEPLOY_CHECK` | No | `True` | Daily deployment-check cron. |
+| `ENABLE_SCHEDULED_EVALS` | No | `False` | Daily run-evals cron. Uses model calls. |
+| `EVALS_TAG` | No | `smoke` | Eval tag the run-evals workflow runs. |
+| `EVALS_CASE_TIMEOUT_SECONDS` | No | `90` | Per-case timeout for run-evals runs. |
+| `EVALS_SUITE_TIMEOUT_SECONDS` | No | `900` | Whole-suite timeout for run-evals runs. |
+| `PARALLEL_API_KEY` | No | - | WebSearch uses the Parallel SDK when set, keyless MCP otherwise. |
+| `SLACK_BOT_TOKEN` | No | - | Set with the signing secret to enable Slack. |
+| `SLACK_SIGNING_SECRET` | No | - | Set with the bot token to enable Slack. |
+| `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASS` / `DB_DATABASE` | No | matches compose | Postgres connection. Set a strong `DB_PASS` in production. |
+| `DB_DRIVER` | No | `postgresql+psycopg` | SQLAlchemy driver. |
+| `AGNO_DEBUG` | No | `False` | Verbose Agno logs. Compose sets it for dev. |
+| `WAIT_FOR_DB` | No | `False` | If `True`, the entrypoint blocks on the database before starting. Compose sets it. |
 
 ## Troubleshooting
 
 <AccordionGroup>
-  <Accordion title="Port already in use">
-    Modify `compose.yaml`: change `"8000:8000"` to `"8080:8000"` under the `agentos-api` service ports.
+  <Accordion title="The API never comes up after docker compose up">
+The first build takes a few minutes. Read `docker compose logs agentos-api` and fix what you find.
   </Accordion>
-  <Accordion title="Database connection issues">
-    Ensure PostgreSQL is running: `docker compose ps`. If the database isn't ready, wait a few seconds and try again.
+  <Accordion title="Compose errors on !reset or !override">
+The production override uses Compose merge tags that need Docker Compose v2.24.4 or newer. Upgrade Docker Compose and rerun.
   </Accordion>
-  <Accordion title="Container keeps restarting">
-    Check logs: `docker compose logs agentos-api`. Common causes: missing `OPENAI_API_KEY` in `.env` or database not yet available.
+  <Accordion title="App fails to start in production">
+JWT auth is on whenever `RUNTIME_ENV` is not `dev`. Set `JWT_VERIFICATION_KEY` in `.env` and recreate the container. For `JWT_JWKS_FILE`, first add a read-only production bind mount and point the variable at its container path, or bake the file into the image and recreate with `--build`. To opt out inside a private network behind another auth layer, set `authorization=False` in `app/main.py`.
+  </Accordion>
+  <Accordion title="Changing DB_PASS has no effect">
+Postgres reads the password only when the `pgdata` volume is first initialized. On a host that already ran the dev Compose, the database keeps the old password and the API blocks waiting for it. Change the password in place and set `.env` to match:
+
+```bash
+docker compose exec agentos-db psql -U ai -c "ALTER USER ai WITH PASSWORD '<new>';"
+```
+
+Or reinitialize with `docker compose down -v`, which deletes all platform data.
+  </Accordion>
+  <Accordion title="Deployment check flags a misconfigured URL">
+`AGENTOS_URL` is still the localhost default. Set it in `.env` to your public URL and recreate the container with `docker compose -f compose.yaml -f compose.prod.yaml up -d`. Hosted chat apps also need this URL for their `/mcp` connector.
   </Accordion>
 </AccordionGroup>

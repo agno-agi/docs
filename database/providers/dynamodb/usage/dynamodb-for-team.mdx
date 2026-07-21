@@ -1,19 +1,24 @@
 ---
 title: DynamoDB for Team
 sidebarTitle: Team
+description: Store team sessions and run history in DynamoDB with DynamoDb.
 ---
 
-Agno supports using DynamoDB as a storage backend for Teams using the `DynamoDb` class.
+`DynamoDb` stores a Team's sessions and run history in DynamoDB.
 
 ## Usage
 
-You need to provide `aws_access_key_id` and `aws_secret_access_key` parameters to the `DynamoDb` class.
+Pass a configured DynamoDB client as `db_client`. Otherwise, set the `AWS_REGION`, `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY` environment variables or pass `region_name`, `aws_access_key_id`, and `aws_secret_access_key` directly.
+
+On first use, `DynamoDb` creates missing tables with provisioned capacity. The client or credentials must allow table creation and read/write operations.
+
+Install dependencies:
+
+```shell
+uv pip install agno boto3 openai ddgs
+```
 
 ```python dynamo_for_team.py
-"""
-Run: `uv pip install openai newspaper4k lxml_html_clean agno` to install the dependencies
-"""
-
 from typing import List
 
 from agno.agent import Agent
@@ -21,10 +26,9 @@ from agno.db.dynamo import DynamoDb
 from agno.models.openai import OpenAIResponses
 from agno.team import Team
 from agno.tools.hackernews import HackerNewsTools
-from agno.tools.hackernews import HackerNewsTools
+from agno.tools.websearch import WebSearchTools
 from pydantic import BaseModel
 
-# Setup the DynamoDB database
 db = DynamoDb()
 
 class Article(BaseModel):
@@ -35,7 +39,7 @@ class Article(BaseModel):
 hn_researcher = Agent(
     name="HackerNews Researcher",
     model=OpenAIResponses(id="gpt-5.2"),
-    role="Gets top stories from hackernews.",
+    role="Gets top stories from HackerNews.",
     tools=[HackerNewsTools()],
 )
 
@@ -43,7 +47,7 @@ web_searcher = Agent(
     name="Web Searcher",
     model=OpenAIResponses(id="gpt-5.2"),
     role="Searches the web for information on a topic",
-    tools=[HackerNewsTools()],
+    tools=[WebSearchTools()],
     add_datetime_to_context=True,
 )
 
@@ -53,7 +57,7 @@ hn_team = Team(
     members=[hn_researcher, web_searcher],
     db=db,
     instructions=[
-        "First, search hackernews for what the user is asking about.",
+        "First, search HackerNews for what the user is asking about.",
         "Then, ask the web searcher to search for each story to get more information.",
         "Finally, provide a thoughtful and engaging summary.",
     ],
@@ -62,9 +66,9 @@ hn_team = Team(
     show_members_responses=True,
 )
 
-hn_team.print_response("Write an article about the top 2 stories on hackernews")
+hn_team.print_response("Write an article about the top 2 stories on HackerNews")
 ```
 
-## Params
+## Parameters
 
 <Snippet file="db-dynamodb-params.mdx" />

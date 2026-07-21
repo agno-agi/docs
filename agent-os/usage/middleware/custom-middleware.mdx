@@ -1,9 +1,9 @@
 ---
 title: "Custom Middleware"
-description: "AgentOS with custom middleware for rate limiting, logging, and monitoring"
+description: "AgentOS with custom middleware for rate limiting and request logging"
 ---
 
-This example demonstrates how to create and add custom middleware to your AgentOS application. We implement two common middleware types: rate limiting and request/response logging.
+Add custom middleware to your AgentOS application. The example below implements two common middleware types: rate limiting and request/response logging.
 
 ## Code
 
@@ -89,27 +89,27 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         # Basic request info
         client_ip = request.client.host if request.client else "unknown"
         print(
-            f"🔍 Request #{self.request_count}: {request.method} {request.url.path} from {client_ip}"
+            f"[REQ] Request #{self.request_count}: {request.method} {request.url.path} from {client_ip}"
         )
 
         # Optional: Log headers
         if self.log_headers:
-            print(f"📋 Headers: {dict(request.headers)}")
+            print(f"[HEADERS] Headers: {dict(request.headers)}")
 
         # Optional: Log request body
         if self.log_body and request.method in ["POST", "PUT", "PATCH"]:
             body = await request.body()
             if body:
-                print(f"📝 Body: {body.decode()}")
+                print(f"[BODY] Body: {body.decode()}")
 
         # Process request
         response = await call_next(request)
 
         # Log response info
         duration = time.time() - start_time
-        status_emoji = "✅" if response.status_code < 400 else "❌"
+        status_label = "[OK]" if response.status_code < 400 else "[ERROR]"
         print(
-            f"{status_emoji} Response: {response.status_code} in {duration * 1000:.1f}ms"
+            f"{status_label} Response: {response.status_code} in {duration * 1000:.1f}ms"
         )
 
         # Add request count to response header
@@ -153,7 +153,7 @@ app.add_middleware(
 if __name__ == "__main__":
     """
     Run the essential middleware demo using AgentOS serve method.
-    
+
     Features:
     1. Rate Limiting (10 requests/minute)
     2. Request/Response Logging
@@ -202,22 +202,22 @@ if __name__ == "__main__":
   </Step>
 
   <Step title="Test the Middleware">
-    
+
     **Basic Request (observe console logging):**
     ```bash
     curl http://localhost:7777/config
     ```
-    
+
     **Test Rate Limiting (trigger 429 errors after 10 requests):**
     ```bash
     for i in {1..15}; do curl http://localhost:7777/config; done
     ```
-    
+
     **Check Rate Limit Headers:**
     ```bash
     curl -v http://localhost:7777/config
     ```
-    
+
   </Step>
 </Steps>
 
@@ -226,17 +226,17 @@ if __name__ == "__main__":
 <Tabs>
   <Tab title="Rate Limiting">
     **Prevents API abuse by limiting requests per IP:**
-    
-    - **Configurable Limits**: Set requests per minute and time window  
-    - **Per-IP Tracking**: Different limits for different IP addresses
+
+    - **Configurable Limits**: Set requests per minute and time window
+    - **Per-IP Tracking**: Each IP address gets its own request count
     - **Sliding Window**: Uses a sliding time window for accurate limiting
     - **Rate Limit Headers**: Provides client information about limits
-    
+
     **Headers Added:**
     - `X-RateLimit-Limit`: Maximum requests allowed
-    - `X-RateLimit-Remaining`: Requests remaining in current window  
+    - `X-RateLimit-Remaining`: Requests remaining in current window
     - `X-RateLimit-Reset`: Timestamp when the window resets
-    
+
     **Customization:**
     ```python
     app.add_middleware(
@@ -246,24 +246,24 @@ if __name__ == "__main__":
     )
     ```
   </Tab>
-  
+
   <Tab title="Request Logging">
     **Comprehensive request and response logging:**
-    
+
     - **Request Details**: Method, path, client IP, timing
     - **Response Tracking**: Status codes, response time
-    - **Optional Body Logging**: Log request bodies for debugging  
+    - **Optional Body Logging**: Log request bodies for debugging
     - **Optional Header Logging**: Log request headers
     - **Request Counter**: Track total requests processed
-    
+
     **Console Output Example:**
     ```
-    🔍 Request #1: GET /config from 127.0.0.1
-    ✅ Response: 200 in 45.2ms
-    🔍 Request #2: POST /agents/demo-agent/runs from 127.0.0.1  
-    ✅ Response: 200 in 1240.8ms
+    [REQ] Request #1: GET /config from 127.0.0.1
+    [OK] Response: 200 in 45.2ms
+    [REQ] Request #2: POST /agents/demo-agent/runs from 127.0.0.1
+    [OK] Response: 200 in 1240.8ms
     ```
-    
+
     **Customization:**
     ```python
     app.add_middleware(

@@ -1,16 +1,29 @@
 ---
 title: Async MongoDB for Team
 sidebarTitle: Team
+description: Store team sessions and run history asynchronously in MongoDB with AsyncMongoDb.
 ---
 
-Agno supports using MongoDB asynchronously as a storage backend for Teams, with the `AsyncMongoDb` class.
+`AsyncMongoDb` stores a Team's sessions and run history asynchronously in MongoDB. Use async Team methods such as `arun()` and `aprint_response()`.
 
 ## Usage
 
-You need to provide either `db_url` or `client`. The following example uses `db_url`.
+Provide either `db_url` or `db_client`. This example uses `db_url`.
+
+Install the `pymongo` (4.9 or later), `openai`, and `ddgs` packages:
+
+```shell
+uv pip install "pymongo>=4.9" openai ddgs
+```
+
+<Note>
+`motor` clients are also supported, but `motor` is deprecated. Use PyMongo's async client instead.
+</Note>
 
 ### Run MongoDB
-Install [docker desktop](https://docs.docker.com/desktop/install/mac-install/) and run **MongoDB** on port **27017** using:
+
+Install [Docker Desktop](https://docs.docker.com/get-started/get-docker/), then start MongoDB on port `27017`:
+
 ```bash
 docker run -d \
   --name local-mongo \
@@ -21,9 +34,7 @@ docker run -d \
 ```
 
 ```python async_mongodb_for_team.py
-"""
-Run: `uv pip install openai pymongo motor` to install dependencies
-"""
+import asyncio
 from typing import List
 
 from agno.agent import Agent
@@ -31,22 +42,23 @@ from agno.db.mongo import AsyncMongoDb
 from agno.models.openai import OpenAIResponses
 from agno.team import Team
 from agno.tools.hackernews import HackerNewsTools
-from agno.tools.hackernews import HackerNewsTools
+from agno.tools.websearch import WebSearchTools
 from pydantic import BaseModel
 
-# MongoDB connection settings
-db_url = "mongodb://localhost:27017"
+db_url = "mongodb://mongoadmin:secret@localhost:27017"
 db = AsyncMongoDb(db_url=db_url)
+
 
 class Article(BaseModel):
     title: str
     summary: str
     reference_links: List[str]
 
+
 hn_researcher = Agent(
     name="HackerNews Researcher",
     model=OpenAIResponses(id="gpt-5.2"),
-    role="Gets top stories from hackernews.",
+    role="Gets top stories from HackerNews.",
     tools=[HackerNewsTools()],
 )
 
@@ -54,7 +66,7 @@ web_searcher = Agent(
     name="Web Searcher",
     model=OpenAIResponses(id="gpt-5.2"),
     role="Searches the web for information on a topic",
-    tools=[HackerNewsTools()],
+    tools=[WebSearchTools()],
     add_datetime_to_context=True,
 )
 
@@ -64,20 +76,29 @@ hn_team = Team(
     members=[hn_researcher, web_searcher],
     db=db,
     instructions=[
-        "First, search hackernews for what the user is asking about.",
+        "First, search HackerNews for what the user is asking about.",
         "Then, ask the web searcher to search for each story to get more information.",
-        "Finally, provide a thoughtful and engaging summary.",
+        "Finally, summarize each story and include its reference links.",
     ],
     output_schema=Article,
     markdown=True,
-    debug_mode=True,
     show_members_responses=True,
 )
 
-hn_team.print_response("Write an article about the top 2 stories on hackernews")
 
+async def main():
+    try:
+        await hn_team.aprint_response(
+            "Write an article about the top 2 stories on HackerNews"
+        )
+    finally:
+        await db.close()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
-## Params
+## Parameters
 
 <Snippet file="db-async-mongodb-params.mdx" />

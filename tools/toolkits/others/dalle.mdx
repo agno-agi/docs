@@ -1,44 +1,67 @@
 ---
 title: Dalle
+description: "Legacy DalleTools parameters and examples for OpenAI's deprecated DALL-E models."
 ---
 
-## Prerequisites
+**DalleTools** is retained as a legacy reference for generating images with OpenAI's deprecated DALL-E API.
 
-You need to install the `openai` library.
+<Warning>
+DALL-E models are deprecated. This `DalleTools` example is retained as a legacy reference and no longer runs against the current OpenAI API. Use `OpenAITools` with GPT Image 2 in [Image Generation Agent](/models/providers/native/openai/responses/usage/image-generation-agent).
+</Warning>
 
-```bash
-uv pip install openai
-```
+## Legacy Requirements
 
-Set the `OPENAI_API_KEY` environment variable.
-
-```bash
-export OPENAI_API_KEY=****
-```
+This legacy example expected the `openai` package and an `OPENAI_API_KEY`. Its `DalleTools` calls no longer run against the current OpenAI API.
 
 ## Example
 
-The following agent will use DALL-E to generate an image based on a text prompt.
+The pinned agent used DALL-E to generate an image from a text prompt.
 
-```python cookbook/14_tools/dalle_tools.py
+```python cookbook/91_tools/dalle_tools.py
+from pathlib import Path
+
 from agno.agent import Agent
 from agno.tools.dalle import DalleTools
+from agno.utils.media import download_image
 
-# Create an Agent with the DALL-E tool
-agent = Agent(tools=[DalleTools()], name="DALL-E Image Generator")
+# Example 1: Basic DALL-E agent with all functions enabled
+agent = Agent(tools=[DalleTools(all=True)], name="DALL-E Image Generator")
 
-# Example 1: Generate a basic image with default settings
-agent.print_response("Generate an image of a futuristic city with flying cars and tall skyscrapers", markdown=True)
+# Example 2: Enable specific DALL-E functions
+agent_specific = Agent(
+    tools=[
+        DalleTools(
+            enable_create_image=True,
+            model="dall-e-3",
+            size="1024x1024",
+            quality="standard",
+        )
+    ],
+    name="Basic DALL-E Generator",
+)
 
-# Example 2: Generate an image with custom settings
-custom_dalle = Dalle(model="dall-e-3", size="1792x1024", quality="hd", style="natural")
+# Example 3: High-quality custom DALL-E generator
+custom_dalle = DalleTools(all=True, model="dall-e-3", size="1792x1024", quality="hd")
 
 agent_custom = Agent(
     tools=[custom_dalle],
     name="Custom DALL-E Generator",
-    )
+)
 
-agent_custom.print_response("Create a panoramic nature scene showing a peaceful mountain lake at sunset", markdown=True)
+agent.print_response(
+    "Generate an image of a futuristic city with flying cars and tall skyscrapers",
+    markdown=True,
+)
+
+response = agent_custom.run(
+    "Create a panoramic nature scene showing a peaceful mountain lake at sunset",
+    markdown=True,
+)
+if response.images and response.images[0].url:
+    download_image(
+        url=response.images[0].url,
+        output_path=str(Path(__file__).parent.joinpath("tmp/nature.jpg")),
+    )
 ```
 
 ## Toolkit Params
@@ -50,16 +73,16 @@ agent_custom.print_response("Create a panoramic nature scene showing a peaceful 
 | `n`       | `int` | `1`           | Number of images to generate                                      |
 | `size`    | `str` | `"1024x1024"` | Image size (256x256, 512x512, 1024x1024, 1792x1024, or 1024x1792) |
 | `quality` | `str` | `"standard"`  | Image quality (standard or hd)                                    |
-| `style`   | `str` | `"vivid"`     | Image style (vivid or natural)                                    |
-| `api_key` | `str` | `None`        | The OpenAI API key for authentication
+| `style`   | `Optional[str]` | `None`  | Image style (vivid or natural). Only sent to the API when set     |
+| `api_key` | `Optional[str]` | `None`        | The OpenAI API key for authentication. Uses OPENAI_API_KEY if not set |
 | `all`     | `bool` | `False`     | Enable all functionality when set to True                        |
 
 ## Toolkit Functions
 
 | Function         | Description                               |
 | ---------------- | ----------------------------------------- |
-| `generate_image` | Generates an image based on a text prompt |
+| `create_image`   | Generates an image based on a text prompt |
 
 ## Developer Resources
 
-- View [Tools](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/tools/dalle.py)
+- [Tools](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/tools/dalle.py)

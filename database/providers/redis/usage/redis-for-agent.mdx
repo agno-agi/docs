@@ -1,15 +1,34 @@
 ---
 title: Redis for Agent
 sidebarTitle: Agent
+description: Store agent sessions and run history in Redis with RedisDb.
 ---
 
-Agno supports using Redis as a storage backend for Agents using the `RedisDb` class.
+`RedisDb` stores an Agent's sessions and run history in Redis.
 
 ## Usage
 
+Install dependencies:
+
+```shell
+uv pip install agno redis openai ddgs
+```
+
+Export your OpenAI API key:
+
+<CodeGroup>
+```bash Mac/Linux
+export OPENAI_API_KEY="your_openai_api_key_here"
+```
+
+```powershell Windows
+$Env:OPENAI_API_KEY="your_openai_api_key_here"
+```
+</CodeGroup>
+
 ### Run Redis
 
-Install [docker desktop](https://docs.docker.com/desktop/install/mac-install/) and run **Redis** on port **6379** using:
+Install [Docker Desktop](https://docs.docker.com/get-started/get-docker/), then start Redis on port `6379`:
 
 ```bash
 docker run -d \
@@ -22,33 +41,26 @@ docker run -d \
 from agno.agent import Agent
 from agno.db.base import SessionType
 from agno.db.redis import RedisDb
-from agno.tools.hackernews import HackerNewsTools
+from agno.tools.websearch import WebSearchTools
 
-# Initialize Redis db (use the right db_url for your setup)
 db = RedisDb(db_url="redis://localhost:6379")
 
-# Create agent with Redis db
 agent = Agent(
     db=db,
-    tools=[HackerNewsTools()],
+    tools=[WebSearchTools()],
     add_history_to_context=True,
 )
 
 agent.print_response("How many people live in Canada?")
 agent.print_response("What is their national anthem called?")
 
-# Verify db contents
-print("\nVerifying db contents...")
 all_sessions = db.get_sessions(session_type=SessionType.AGENT)
-print(f"Total sessions in Redis: {len(all_sessions)}")
+print(f"Stored sessions: {len(all_sessions)}")
 
 if all_sessions:
-    print("\nSession details:")
-    session = all_sessions[0]
-    print(f"The stored session: {session}")
-
+    print(all_sessions[0])
 ```
 
-## Params
+## Parameters
 
 <Snippet file="db-redis-params.mdx" />

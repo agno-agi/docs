@@ -1,0 +1,172 @@
+---
+title: "AgentOS on Render"
+sidebarTitle: "Deploy"
+description: "AgentOS template for teams that develop locally with Docker and deploy to production on Render."
+---
+
+**The [agentos-render](https://github.com/agno-agi/agentos-render) template is for teams that develop locally with Docker and deploy to production on Render.**
+
+It includes:
+
+- **Agent Builder**, which creates agents, teams, and workflows.
+- **Platform Manager**, which inspects and explains the platform, eval history, deployment checks, and schedules.
+- **Six [skills](/deploy/templates/improve-agents)** for setting up, building, testing, and improving the project with a coding agent.
+
+Coding agents can use these skills with the AgentOS API, evals, traces, and container logs to inspect and improve the platform.
+
+Deployment is Blueprint-driven: Render provisions everything from `render.yaml` when you connect your repo, and one wiring script finishes the setup.
+
+## Get started
+
+Copy the prompt below into Claude Code, Cursor, or Codex to configure and run the template with a coding agent.
+
+<Snippet file="setup-prompt-render.mdx" />
+
+Prefer to drive yourself? Follow the manual steps below.
+
+## Manual setup
+
+**Prerequisites:** [Docker](https://www.docker.com/get-started/) installed and running. An [OpenAI API key](https://platform.openai.com).
+
+<Steps>
+  <Step title="Clone and configure">
+```bash
+git clone https://github.com/agno-agi/agentos-render.git agentos
+cd agentos
+
+cp example.env .env
+```
+
+Edit `.env` and set `OPENAI_API_KEY`.
+  </Step>
+
+  <Step title="Start the platform">
+```bash
+docker compose up -d --build
+```
+
+The first build takes a few minutes. Confirm the API is available at [localhost:8000/docs](http://localhost:8000/docs).
+  </Step>
+
+  <Step title="Verify end to end">
+```bash
+./scripts/mcp_check.sh
+```
+
+Prints `MCP OK` with the tool count and a real agent answer through the MCP endpoint.
+  </Step>
+
+  <Step title="Connect the AgentOS UI">
+1. Open [os.agno.com](https://os.agno.com) and sign in.
+2. Click **Connect OS**, enter `http://localhost:8000`, and name it **Local AgentOS**.
+  </Step>
+
+  <Step title="Build your first agent">
+1. Chat with **Agent Builder**: "Build an agent that tracks AI news and writes a daily brief". Go through the agent development process.
+2. Once created, click **Refresh** on the top right, pick the new agent from the **Agents** dropdown, and ask: "What's new with Anthropic?"
+3. Ask **Platform Manager**: "How healthy is the platform?" It answers from eval history, deployment checks, schedules, and the agent you just built.
+  </Step>
+</Steps>
+
+<Check>At this point, your AgentOS is running locally.</Check>
+
+## Connect your frontends
+
+| Frontend | How |
+|----------|-----|
+| MCP clients on your machine | `uvx agno connect` auto-detects Claude Code, Claude Desktop, Codex, and Cursor and registers `http://localhost:8000/mcp`. Verify from the app: "can you access my agentos mcp?" |
+| AgentOS UI | [os.agno.com](https://os.agno.com) → **Connect OS** → `http://localhost:8000`. |
+| claude.ai and ChatGPT | Hosted sessions can't reach localhost. Deploy to production first, then add `https://<onrender-domain>/mcp` as a custom connector and approve the consent page with the `MCP_CONNECT_SECRET` that `up.sh` generates. |
+| Slack | Set `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET`. See [Slack setup](/agent-os/interfaces/slack/setup). |
+| Your product | Call the AgentOS REST API with 80+ endpoints. Browse them at `/docs`. |
+
+## Deploy to production
+
+**Prerequisites:** A [Render](https://render.com) account with your copy of the repo reachable from Render. A `RENDER_API_KEY` (dashboard → **Account Settings** → **API Keys**) for the scripts.
+
+<Steps>
+  <Step title="Create a production env">
+```bash
+cp .env .env.production
+```
+
+Edit `.env.production` with production values: a different OpenAI key, production-only credentials, a different Slack workspace.
+  </Step>
+
+  <Step title="Launch the Blueprint">
+Open [dashboard.render.com](https://dashboard.render.com) → **New +** → **Blueprint**, connect your copy of the repo, and apply. Render reads `render.yaml`, prompts for `OPENAI_API_KEY`, builds the Dockerfile, and creates the `basic-256mb` Postgres. The first build takes about 10 minutes.
+
+The web service runs on the `starter` plan, the cheapest that never sleeps, which the in-process scheduler and MCP streams require. It runs as a single instance by design; two instances double-fire every cron.
+  </Step>
+
+  <Step title="Wire the rest">
+```bash
+./scripts/render/up.sh
+```
+
+Waits for the Blueprint service to appear, pins `AGENTOS_URL` to the real service URL so scheduled jobs reach the platform (`render.yaml` can't reference its own URL), generates `MCP_CONNECT_SECRET` (the chat-app OAuth consent secret, printed once in the closing summary), and pauses for a JWT verification key.
+  </Step>
+
+  <Step title="Mint your JWT key">
+The script pauses for a `JWT_VERIFICATION_KEY`. Token-Based Authorization is on by default. Production startup requires that verification key or a readable JWKS file at the container path in `JWT_JWKS_FILE`; otherwise the process exits. The script delivers a PEM value directly. For JWKS, commit and push the file into the Docker build context, or configure a mount. Set `JWT_JWKS_FILE` to its container path and let auto-deploy rebuild the service. The script only delivers the path.
+
+1. Open [os.agno.com](https://os.agno.com), click **Connect OS** → **Live**, enter your onrender.com URL, and name it **Live AgentOS**.
+2. Go to **Settings** → **OS & Security** and turn on **Token-Based Authorization (JWT)**.
+3. Copy the public key and paste the full PEM into the `up.sh` prompt. The script saves it to your env file and deploys.
+
+If you skip the prompt, add the key to `.env.production` later and run `./scripts/render/env-sync.sh`.
+
+<Note>Live AgentOS connections are a paid feature. Use code `PLATFORM30` for one month off.</Note>
+  </Step>
+
+  <Step title="Connect your MCP clients">
+Re-run `uvx agno connect`, this time pointed at your deployed domain:
+
+```bash
+uvx agno connect --url https://<onrender-domain>
+```
+
+For claude.ai and ChatGPT on the web: add `https://<onrender-domain>/mcp` as a custom connector in the chat app's connector settings. Leave the form's optional OAuth fields (client ID / client secret) empty. Click **Connect** and, on the consent page, enter the `MCP_CONNECT_SECRET` that `up.sh` generated during deploy (saved in `.env.production`).
+  </Step>
+
+  <Step title="Confirm it's live">
+The script prints your service URL. Open `https://<onrender-domain>/docs` to confirm the API is serving. Logs live in the dashboard: `agent-os` → **Logs**.
+  </Step>
+</Steps>
+
+<Check>Your AgentOS is live on Render.</Check>
+
+### Redeploy after code changes
+
+`autoDeploy: true` is on in `render.yaml`, so pushing to your deploy branch redeploys automatically. Render builds the pushed branch; local uncommitted changes never deploy. To re-run a build without a new commit:
+
+```bash
+./scripts/render/redeploy.sh
+```
+
+### Sync environment variables
+
+```bash
+./scripts/render/env-sync.sh
+```
+
+### Tear down
+
+```bash
+./scripts/render/down.sh
+```
+
+<Warning>
+Deletes the `agent-os` service and the `agentos-db` Postgres, including all data, and verifies both are gone before declaring success. The Blueprint instance itself stays listed in the dashboard; remove it from the **Blueprints** tab.
+</Warning>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Build with coding agents" icon="wand-magic-sparkles" href="/deploy/templates/improve-agents">
+    Skills to create → improve → evaluate your platform using coding agents.
+  </Card>
+  <Card title="Render reference" icon="book" href="/deploy/templates/render/reference">
+    Commands, environment variables, troubleshooting.
+  </Card>
+</CardGroup>

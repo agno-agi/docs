@@ -17,11 +17,13 @@ Agno provides **four specialized reasoning toolkits**, each optimized for differ
 | **MemoryTools**    | Reasoning about user memory operations | `think()`, `get/add/update/delete_memory()`, `analyze()` |
 | **WorkflowTools**  | Reasoning about workflow execution     | `think()`, `run_workflow()`, `analyze()`                 |
 
-> **Note:** All reasoning toolkits register their `think()`/`analyze()` functions under the same names. When you combine toolkits, the agent keeps only the first implementation of each function name and silently drops duplicates. Disable `enable_think`/`enable_analyze` (or rename/customize functions) on the later toolkits if you still want them to expose their domain-specific actions without conflicting with the scratchpad tools.
+<Note>
+All reasoning toolkits register their `think()`/`analyze()` functions under the same names. When you combine toolkits, the agent keeps only the first implementation of each function name, drops the duplicates, and logs a warning. Disable `enable_think`/`enable_analyze` (or rename/customize functions) on the later toolkits if you still want them to expose their domain-specific actions without conflicting with the scratchpad tools.
+</Note>
 
 All four toolkits follow the same **Think → Act → Analyze** pattern but provide domain-specific actions tailored to their use case.
 
-This approach was first popularized by Anthropic in their ["Extended Thinking" blog post](https://www.anthropic.com/engineering/claude-think-tool), though many AI engineers (including our team) were using similar patterns long before.
+This approach was first popularized by Anthropic in their ["think" tool blog post](https://www.anthropic.com/engineering/claude-think-tool), though many AI engineers (including our team) were using similar patterns long before.
 
 ## Why Reasoning Tools?
 
@@ -32,7 +34,7 @@ Reasoning Tools give you the **best of both worlds**:
 3. **Full transparency** - You see exactly what the agent is thinking
 4. **Flexible workflow** - The agent can interleave thinking with tool calls
 5. **Domain-optimized** - Each toolkit is specialized for its specific use case
-6. **Natural reasoning** - Feels more like human problem-solving (think, act, analyze, repeat)
+6. **Iterative loop** - Think, act, analyze, repeat until the agent has enough information
 
 **The key difference:** With Reasoning Agents, the reasoning happens automatically in a structured loop. With Reasoning Tools, the agent explicitly chooses when to use the `think()` and `analyze()` tools, giving you more control and visibility.
 
@@ -93,19 +95,19 @@ For searching and analyzing information from knowledge bases (RAG).
 
 ```python
 from agno.agent import Agent
-from agno.knowledge.pdf import PDFKnowledgeBase
+from agno.knowledge.knowledge import Knowledge
 from agno.models.openai import OpenAIResponses
 from agno.tools.knowledge import KnowledgeTools
 from agno.vectordb.pgvector import PgVector
 
 # Create knowledge base
-knowledge = PDFKnowledgeBase(
-    path="data/research_papers/",
+knowledge = Knowledge(
     vector_db=PgVector(
         table_name="research_papers",
         db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
     ),
 )
+knowledge.insert(path="data/research_papers/")
 
 agent = Agent(
     model=OpenAIResponses(id="gpt-5.2"),
@@ -189,6 +191,8 @@ For executing and analyzing complex workflows.
 - `run_workflow()` - Execute a workflow with specific inputs
 - `analyze()` - Evaluate workflow results
 
+`WorkflowTools` registers only `run_workflow()` by default. Set `enable_think=True` and `enable_analyze=True` to add the thinking tools.
+
 **When to use:**
 
 - Multi-step automated processes
@@ -218,7 +222,14 @@ research_workflow = Workflow(
 # Create agent with workflow tools
 orchestrator = Agent(
     model=OpenAIResponses(id="gpt-5.2"),
-    tools=[WorkflowTools(workflow=research_workflow, add_instructions=True)],
+    tools=[
+        WorkflowTools(
+            workflow=research_workflow,
+            enable_think=True,
+            enable_analyze=True,
+            add_instructions=True,
+        )
+    ],
 )
 
 orchestrator.print_response(
@@ -248,7 +259,7 @@ All four toolkits follow the same reasoning cycle:
 3. **ANALYZE** - Evaluate results, decide next action
 4. **REPEAT** - Loop back to THINK if needed, or provide answer
 
-This mirrors how humans solve complex problems: we think before acting, evaluate results, and adjust our approach based on what we learn.
+The agent thinks before acting, evaluates results, and adjusts its approach based on what it learns.
 
 ## Choosing the Right Reasoning Toolkit
 
@@ -262,11 +273,10 @@ This mirrors how humans solve complex problems: we think before acting, evaluate
 
 ## Combining Multiple Reasoning Toolkits
 
-You can use multiple reasoning toolkits together for powerful multi-domain reasoning. Just remember that tool names must stay unique, so disable overlapping `think`/`analyze` entries (or rename the later ones) to prevent silent overrides:
+You can use multiple reasoning toolkits together for multi-domain reasoning. Tool names must stay unique, so disable overlapping `think`/`analyze` entries (or rename the later ones) to prevent duplicates from being dropped:
 
 ```python
 from agno.agent import Agent
-from agno.knowledge.pdf import PDFKnowledgeBase
 from agno.models.openai import OpenAIResponses
 from agno.tools.knowledge import KnowledgeTools
 from agno.tools.memory import MemoryTools
@@ -366,8 +376,8 @@ Use the think and analyze tools for rigorous scientific reasoning:
 """
 
 ReasoningTools(
-    instructions=custom_instructions,
-    add_instructions=False  # Don't include default instructions
+    instructions=custom_instructions,  # Replaces the default instructions
+    add_instructions=True,  # Inject your custom instructions into the prompt
 )
 ```
 

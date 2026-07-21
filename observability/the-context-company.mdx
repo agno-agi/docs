@@ -1,0 +1,90 @@
+---
+title: The Context Company
+description: Send Agno traces to The Context Company for agent observability and production interaction analysis.
+---
+
+[The Context Company](https://www.thecontextcompany.com) is an AI agent observability and customer analytics platform that helps teams understand and improve agents in production. The Agno integration captures agent runs through OpenTelemetry and sends them to The Context Company.
+
+## Setup
+
+<Steps>
+  <Step title="Install the integration">
+    ```bash
+    uv pip install -U "contextcompany[agno]" agno openai yfinance
+    ```
+  </Step>
+
+  <Step title="Export your API keys">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export TCC_API_KEY="your_tcc_api_key_here"
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:TCC_API_KEY="your_tcc_api_key_here"
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Initialize instrumentation">
+    Call `instrument_agno()` before importing Agno.
+
+    ```python
+    from contextcompany.agno import instrument_agno
+
+    instrument_agno()
+
+    from agno.agent import Agent
+    from agno.models.openai import OpenAIChat
+    from agno.tools.yfinance import YFinanceTools
+
+    agent = Agent(
+        name="Stock Price Agent",
+        model=OpenAIChat(id="gpt-5.2"),
+        tools=[YFinanceTools()],
+    )
+
+    agent.print_response("What is the current price of NVIDIA?")
+    ```
+  </Step>
+</Steps>
+
+## Captured data
+
+The integration records:
+
+- Agent runs and model calls
+- Tool arguments, results, and errors
+- Prompts and responses
+- Token usage and latency
+- Session, user, organization, and custom metadata
+
+The Context Company analyzes production conversations and traces to surface recurring patterns and account-level insights. Teams can inspect the supporting runs and use that context to improve agent behavior.
+
+## Run metadata
+
+Use OpenInference's `using_attributes` context manager to associate a run with a session, user, organization, or named agent:
+
+```python
+from openinference.instrumentation import using_attributes
+
+with using_attributes(
+    metadata={
+        "tcc.sessionId": "session-123",
+        "tcc.conversational": "true",
+        "tcc.agent": "stock-price-agent",
+        "tcc.userId": "user-123",
+        "tcc.orgId": "org-456",
+        "environment": "production",
+    },
+):
+    agent.print_response("What is the current price of NVIDIA?")
+```
+
+## Developer resources
+
+- [Complete Agno integration guide](https://docs.thecontextcompany.com/frameworks/agno)
+- [Runnable Agno example](/examples/integrations/observability/the-context-company)
+- [The Context Company Python SDK](https://pypi.org/project/contextcompany/)

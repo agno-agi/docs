@@ -1,174 +1,215 @@
 ---
 title: "AWS Reference"
 sidebarTitle: "Reference"
-description: "Manage, customize, and troubleshoot your AWS deployment."
+description: "Commands, customization, environment variables, and troubleshooting for the AWS template."
 ---
+
+The template names the Express service `agent-os`, the ECR repo `agentos`, and the RDS instance `agentos-db`. Secrets live under `agentos/*` in Secrets Manager, and the scripts record the service ARN and region in `tmp/agentos-aws.state`.
 
 ## Manage
 
 | Task | Command |
-| :--- | :--- |
-| Deploy updates | `ag infra patch --env prd` |
-| Stop deployment | `ag infra down --env prd` |
-| Force rebuild | `ag infra up --env dev -f` |
-| Restart local | `ag infra up` |
+|------|---------|
+| Deploy code changes | `./scripts/aws/redeploy.sh` |
+| Sync env variables | `./scripts/aws/env-sync.sh` (defaults to `.env.production`; pass `.env` to sync that instead) |
+| Tail logs | `aws logs tail /ecs/agent-os --follow` |
+| Watch a rollout | `aws ecs monitor-express-gateway-service --region <region> --service-arn <arn>` |
+| Tear down | `./scripts/aws/down.sh` (add `--yes` to skip the confirmation) |
 
-<Warning>
-  `ag infra down --env prd` removes all AWS resources, including the database. Back up your data first.
-</Warning>
+## Production auth
+
+Token-Based Authorization is on by default. Production startup requires `JWT_VERIFICATION_KEY` or a readable JWKS file at the container path in `JWT_JWKS_FILE`; otherwise the process exits.
+
+Token-Based Auth gives you three things:
+
+1. **No public access.** The server rejects requests without a valid token.
+2. **Per-request identity.** Middleware validates the token and exposes its `user_id`, optional `session_id`, scopes, and claims to the request.
+3. **Scope-based permissions.** Token scopes control access to AgentOS routes and resources.
+
+The templates do not enable per-user data isolation. To scope non-admin session, memory, trace, and run access to the JWT subject, pass `authorization_config=AuthorizationConfig(user_isolation=True)` to `AgentOS`. See [User Isolation](/agent-os/security/authorization/user-isolation).
+
+`/health` stays open. AgentOS serves it unauthenticated even in production, so the ALB health checks pass.
+
+To opt out (not recommended), set `authorization=False` in `app/main.py` and redeploy. Use this only inside a private VPC behind another auth layer. Without it, anyone who guesses your service URL can access your platform.
 
 ## Customize
 
 <AccordionGroup>
   <Accordion title="Add an agent">
+Ask your coding agent to run `/create-new-agent`, or do it by hand. Create `agents/my_agent.py`:
 
-  Create `agents/my_agent.py`:
 ```python
 from agno.agent import Agent
-from agno.models.openai import OpenAIResponses
+
+from app.settings import default_model
 from db import get_postgres_db
+
+INSTRUCTIONS = """\
+What the agent does, which tools it uses, the rules to follow when answering.
+"""
 
 my_agent = Agent(
     id="my-agent",
     name="My Agent",
-    model=OpenAIResponses(id="gpt-5.5"),
+    model=default_model(),
     db=get_postgres_db(),
-    instructions="You are a helpful assistant.",
+    instructions=INSTRUCTIONS,
+    enable_agentic_memory=True,
+    add_datetime_to_context=True,
+    add_history_to_context=True,
+    num_history_runs=5,
 )
 ```
 
-Register in `app/main.py`:
+Register it in `app/main.py`:
+
 ```python
 from agents.my_agent import my_agent
 
 agent_os = AgentOS(
-    name="AgentOS",
-    agents=[web_search, code_search, my_agent],
+    ...
+    agents=[agent_builder, platform_manager, web_search, my_agent],
 )
 ```
 
-Restart locally:
-```bash
-ag infra up --env dev
-```
-
+Local containers hot-reload on save. For production, run `./scripts/aws/redeploy.sh`.
   </Accordion>
 
-  <Accordion title="Add tools">
+  <Accordion title="Change the model">
+`app/settings.py` defines `default_model()`, used by every agent. Change it in one place:
 
-  Agno includes 100+ tool integrations. See the [full list](/tools/overview).
-```python
-from agno.tools.slack import SlackTools
-from agno.tools.google_calendar import GoogleCalendarTools
-
-my_agent = Agent(
-    tools=[
-        SlackTools(),
-        GoogleCalendarTools(),
-    ],
-)
-```
-
-  </Accordion>
-
-  <Accordion title="Use a different model">
-
-  Update your agent:
 ```python
 from agno.models.anthropic import Claude
 
-my_agent = Agent(
-    model=Claude(id="claude-sonnet-4-5"),
-)
+def default_model():
+    return Claude(id="claude-sonnet-5")
 ```
 
-  Add the dependency to `pyproject.toml` and regenerate requirements:
+Add `anthropic` to `pyproject.toml`, set the provider key in your env, and regenerate pins:
+
 ```bash
 ./scripts/generate_requirements.sh
-ag infra up --env dev
 ```
 
+Rebuild locally with `docker compose up -d --build`. For production:
+
+```bash
+./scripts/aws/redeploy.sh
+```
+
+It rebuilds the image and syncs `.env.production` in one pass.
+  </Accordion>
+
+  <Accordion title="Add tools">
+Agno ships 100+ toolkits. See [Toolkits](/tools/toolkits/overview).
+
+```python
+from agno.tools.slack import SlackTools
+
+my_agent = Agent(
+    ...
+    tools=[SlackTools()],
+)
+```
   </Accordion>
 
   <Accordion title="Add dependencies">
-
-1. Edit `pyproject.toml`
-2. Regenerate requirements: `./scripts/generate_requirements.sh`
-3. Rebuild: `ag infra up --env dev`
-
-To upgrade all libraries:
-```bash
-./scripts/generate_requirements.sh upgrade
-```
-
+1. Edit `pyproject.toml`.
+2. Regenerate pins: `./scripts/generate_requirements.sh` (add `upgrade` to refresh every pin).
+3. Rebuild locally with `docker compose up -d --build`, or redeploy with `./scripts/aws/redeploy.sh`.
   </Accordion>
 
   <Accordion title="Enable Slack">
+Set both variables in your env file:
 
-  Add your credentials to `infra/secrets/prd_api_secrets.yml`:
-```yaml
-SLACK_BOT_TOKEN: xoxb-...
-SLACK_SIGNING_SECRET: ...
-```
-
-  Redeploy to AWS:
 ```bash
-ag infra up prd:aws
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_SIGNING_SECRET=...
 ```
 
-  The interface activates automatically. See [Slack setup](/deploy/interfaces/slack/overview) for creating the Slack app.
+Sync with `./scripts/aws/env-sync.sh`; both land in Secrets Manager. The interface activates automatically and routes messages to Agent Builder; change the `agent=` argument in `app/main.py` to point at another agent. See [Slack setup](/agent-os/interfaces/slack/setup).
+  </Accordion>
 
+  <Accordion title="Toggle scheduled workflows">
+The deployment check runs daily by default (`ENABLE_DEPLOY_CHECK=True`); it is deterministic and free. Scheduled evals are off by default (`ENABLE_SCHEDULED_EVALS=False`) because they use model calls. Both workflows stay runnable on demand regardless.
+  </Accordion>
+
+  <Accordion title="Switch Fargate to ARM">
+ARM cuts the Fargate line item from about $70 to about $57 per month. Edit `runtimePlatform` in `scripts/aws/task-def.json`, change `docker build --platform linux/amd64` to `linux/arm64` in both `up.sh` and `redeploy.sh`, then run `./scripts/aws/redeploy.sh`.
   </Accordion>
 </AccordionGroup>
 
-## Local Development
+## Format, validate, and run evals
 
-Run without Docker for faster iteration:
+The format, validate, and eval scripts run on the host and need a venv. Set it up once:
+
 ```bash
-# Set up environment
 ./scripts/venv_setup.sh
 source .venv/bin/activate
-
-# Start PostgreSQL (required)
-docker run -d --name agentos-db \
-  -e POSTGRES_USER=ai -e POSTGRES_PASSWORD=ai -e POSTGRES_DB=ai \
-  -p 5432:5432 pgvector/pgvector:pg17
-
-# Run AgentOS
-python -m app.main
 ```
 
-## Environment Variables
+| Task | Command |
+|------|---------|
+| Format | `./scripts/format.sh` |
+| Lint and type-check | `./scripts/validate.sh` |
+| Run smoke evals | `python -m evals --tag smoke` |
+
+`./scripts/mcp_check.sh` runs inside the container, so it needs no venv.
+
+## Environment variables
 
 | Variable | Required | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `OPENAI_API_KEY` | Yes | — | OpenAI API key |
-| `RUNTIME_ENV` | No | `prd` | `dev` enables hot-reload and disables JWT |
-| `JWT_VERIFICATION_KEY` | Production | — | Public key from os.agno.com |
-| `AGENTOS_URL` | No | `http://127.0.0.1:8000` | Scheduler base URL |
-| `SLACK_BOT_TOKEN` | No | — | Enable Slack interface |
-| `SLACK_SIGNING_SECRET` | No | — | Enable Slack interface |
-| `PARALLEL_API_KEY` | No | — | Parallel SDK key for WebSearch |
-| `PORT` | No | `8000` | API server port |
-| `DB_HOST` | No | `localhost` | Database host |
-| `DB_PORT` | No | `5432` | Database port |
-| `DB_USER` | No | `ai` | Database user |
-| `DB_PASS` | No | `ai` | Database password |
-| `DB_DATABASE` | No | `ai` | Database name |
+|----------|----------|---------|-------------|
+| `OPENAI_API_KEY` | Yes | - | Models and embeddings. |
+| `RUNTIME_ENV` | No | `prd` | `dev` disables JWT. Compose sets it for local. Never put it in an env file that syncs to AWS, or production deploys unauthenticated. |
+| `JWT_VERIFICATION_KEY` | Production | - | Public key from os.agno.com. Quote the value so the multi-line PEM parses as one variable. |
+| `JWT_JWKS_FILE` | Production | - | Path inside the running container to a JWKS JSON file. The scripts set only this path. Add the file to the image build context, rebuild, and redeploy the image, or configure a platform mount and roll the service. |
+| `MCP_CONNECT_SECRET` | No | generated by `up.sh` | OAuth consent secret (16+ chars) for connecting claude.ai and ChatGPT to `/mcp`. `up.sh` generates one on deploy and writes it to `.env.production`. |
+| `AGENTOS_MCP_SIGNING_KEY` | No | generated | Optional high-entropy signing-key material (32+ chars) for OAuth tokens. Unset, a strong key is generated and persisted in the database. Rotating it invalidates outstanding tokens. |
+| `AGENTOS_URL` | No | `http://127.0.0.1:8000` | Scheduler base URL. `up.sh` sets it to your Express service URL. Scheduled jobs never fire if it stays at the default in production. When `MCP_CONNECT_SECRET` is set, OAuth metadata also derives its public origin from this URL. |
+| `SERVICE_ARN` | No | written by `up.sh` | Deploy metadata the scripts use to find the Express service. `env-sync.sh` never sends it to the container. |
+| `ENABLE_DEPLOY_CHECK` | No | `True` | Daily deployment-check cron. |
+| `ENABLE_SCHEDULED_EVALS` | No | `False` | Daily run-evals cron. Uses model calls. |
+| `EVALS_TAG` | No | `smoke` | Eval tag the run-evals workflow runs. |
+| `EVALS_CASE_TIMEOUT_SECONDS` | No | `90` | Per-case timeout for run-evals runs. |
+| `EVALS_SUITE_TIMEOUT_SECONDS` | No | `900` | Whole-suite timeout for run-evals runs. |
+| `PARALLEL_API_KEY` | No | - | WebSearch uses the Parallel SDK when set, keyless MCP otherwise. |
+| `SLACK_BOT_TOKEN` | No | - | Set with the signing secret to enable Slack. |
+| `SLACK_SIGNING_SECRET` | No | - | Set with the bot token to enable Slack. |
+| `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_DATABASE` | No | matches compose | Postgres connection. `env-sync.sh` skips these; production values come from the provisioned RDS instance. |
+| `DB_PASS` | No | matches compose | Postgres password. `up.sh` generates the production value and stores it in Secrets Manager. |
+| `DB_DRIVER` | No | `postgresql+psycopg` | SQLAlchemy driver. `env-sync.sh` skips it too; production uses the task-definition value. |
+| `AGNO_DEBUG` | No | `False` | Verbose Agno logs. Compose sets it for dev. |
+| `WAIT_FOR_DB` | No | `False` | If `True`, the entrypoint blocks on the database before starting. Compose sets it. |
 
 ## Troubleshooting
 
 <AccordionGroup>
-  <Accordion title="AWS credentials error">
-    Reconfigure credentials with `aws configure`, then validate with `aws sts get-caller-identity`.
+  <Accordion title="up.sh exits: the CLI predates ECS Express Mode">
+Upgrade the AWS CLI (for example `brew upgrade awscli`) until `aws ecs create-express-gateway-service help` works. If credentials are the problem instead, run `aws configure` and confirm `aws sts get-caller-identity` succeeds.
   </Accordion>
-  <Accordion title="RDS connection timeout">
-    RDS can take about 5 minutes to become available. Check status in AWS Console (RDS → Databases).
+  <Accordion title="up.sh exits: no default VPC">
+The RDS instance deploys into the region's default VPC. Create one with `aws ec2 create-default-vpc`, or adapt `scripts/aws/up.sh` to your own VPC.
   </Accordion>
-  <Accordion title="ECS task failing">
-    Check CloudWatch logs for container startup errors, missing environment variables, or database connectivity issues.
+  <Accordion title="up.sh pauses asking for a JWT key">
+Expected. Mint the key at [os.agno.com](https://os.agno.com): connect your OS (**Connect OS** → **Live**, enter your service URL), then turn on **Token-Based Authorization (JWT)** under **Settings** → **OS & Security** and paste the full PEM. To add a PEM later, set `JWT_VERIFICATION_KEY` and run `./scripts/aws/env-sync.sh`. To use JWKS, add the file to the image build context and rebuild, or configure a mount. Set `JWT_JWKS_FILE` to its container path, then redeploy or roll the service. Env sync alone only updates the path.
   </Accordion>
-  <Accordion title="Load Balancer returns 503">
-    The ECS service may still be starting. Wait 2-3 minutes for target health checks to pass.
+  <Accordion title="App fails to start in production">
+JWT auth is on whenever `RUNTIME_ENV` is not `dev`. Set `JWT_VERIFICATION_KEY` and sync. For JWKS, verify the file exists inside the container at `JWT_JWKS_FILE`; changing the variable alone does not deliver it. To opt out inside a private VPC behind another auth layer, set `authorization=False` in `app/main.py`.
+  </Accordion>
+  <Accordion title="The service URL never answers">
+First-time provisioning of the ALB, certificate, and DNS takes 10-25 minutes; `up.sh` waits through it. Past that window, the known first-run cause is freshly created IAM roles: Express's async infrastructure calls get denied before the role policies propagate, and ECS never retries. `up.sh` detects this and recreates the service once; the second attempt provisions reliably. If it still stalls, inspect with `aws ecs monitor-express-gateway-service --region <region> --service-arn <arn>`, look for an AccessDenied `CreateLoadBalancer` event in CloudTrail, then delete the service and re-run `./scripts/aws/up.sh`.
+  </Accordion>
+  <Accordion title="5xx right after deploy">
+The gateway is up; the app is still starting. First boot pulls the image and waits for the database. Wait a few minutes and check `aws logs tail /ecs/agent-os --follow`.
+  </Accordion>
+  <Accordion title="Scheduled jobs never fire">
+`AGENTOS_URL` is still the localhost default. `up.sh` sets it to your service URL automatically; for a custom domain or tunnel, set it by hand and run `./scripts/aws/env-sync.sh`.
+  </Accordion>
+  <Accordion title="env-sync.sh or redeploy.sh can't find the service">
+The scripts resolve the service ARN from `tmp/agentos-aws.state` first, then from a `SERVICE_ARN=` line in `.env.production` or `.env`. On a fresh clone or a new machine, write the ARN of your Express service into the state file: `printf 'SERVICE_ARN=arn:aws:ecs:...' > tmp/agentos-aws.state`.
+  </Accordion>
+  <Accordion title="down.sh says everything is already gone, but the bill continues">
+The commands are hitting the wrong region. The scripts use `AWS_REGION` if set, then the region recorded in `tmp/agentos-aws.state`, then `us-east-1`. Set `AWS_REGION` to the region you deployed to and re-run `./scripts/aws/down.sh`.
   </Accordion>
 </AccordionGroup>

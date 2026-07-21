@@ -1,62 +1,77 @@
 ---
 title: Gemini Embedder
+description: Generate Gemini embeddings with an explicit retrieval task type and vector dimension.
 ---
 
-## Code
+`GeminiEmbedder` defaults to `gemini-embedding-001`, 1536 dimensions, and the `RETRIEVAL_QUERY` task type.
 
-```python
+```python gemini_embedder.py
+from math import sqrt
+
 from agno.knowledge.embedder.google import GeminiEmbedder
-from agno.knowledge.knowledge import Knowledge
-from agno.vectordb.pgvector import PgVector
 
-embeddings = GeminiEmbedder().get_embedding(
-    "The quick brown fox jumps over the lazy dog."
+
+def normalize(vector: list[float]) -> list[float]:
+    magnitude = sqrt(sum(value * value for value in vector))
+    return [value / magnitude for value in vector] if magnitude else vector
+
+
+document_embedder = GeminiEmbedder(
+    id="gemini-embedding-001",
+    dimensions=1536,
+    task_type="RETRIEVAL_DOCUMENT",
+)
+query_embedder = GeminiEmbedder(
+    id="gemini-embedding-001",
+    dimensions=1536,
+    task_type="RETRIEVAL_QUERY",
 )
 
-# Print the embeddings and their dimensions
-print(f"Embeddings: {embeddings[:5]}")
-print(f"Dimensions: {len(embeddings)}")
-
-# Example usage:
-knowledge = Knowledge(
-    vector_db=PgVector(
-        db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
-        table_name="gemini_embeddings",
-        embedder=GeminiEmbedder(),
-    ),
-    max_results=2,
+document_vector = normalize(
+    document_embedder.get_embedding(
+        "The quick brown fox jumps over the lazy dog."
+    )
 )
+query_vector = normalize(query_embedder.get_embedding("Which animal jumps?"))
+
+print(f"Document dimensions: {len(document_vector)}")
+print(f"Query dimensions: {len(query_vector)}")
 ```
 
-## Usage
+<Warning>
+`GeminiEmbedder` currently applies one configured `task_type` to every call. A single instance used by a vector database therefore applies the same task type to document insertion and query search. `gemini-embedding-001` distinguishes `RETRIEVAL_DOCUMENT` from `RETRIEVAL_QUERY`.
+</Warning>
+
+<Note>
+Google requires manual L2 normalization for `gemini-embedding-001` vectors shorter than 3072 dimensions. The example normalizes Agno's 1536-dimensional default. `GeminiEmbedder` returns the provider values unchanged.
+</Note>
+
+## Run the Example
 
 <Steps>
   <Snippet file="create-venv-step.mdx" />
 
-  <Step title="Set your API key">
+  <Step title="Export the API key">
     ```bash
-    export GOOGLE_API_KEY=xxx
+    export GOOGLE_API_KEY=your_google_api_key_here
     ```
   </Step>
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U sqlalchemy psycopg pgvector google-generativeai agno
+    uv pip install -U agno google-genai
     ```
   </Step>
 
-  <Snippet file="run-pgvector-step.mdx" />
-
-
-  <Step title="Run Agent">
-    <CodeGroup>
-    ```bash Mac
-    python cookbook/08_knowledge/embedders/gemini_embedder.py
+  <Step title="Run the example">
+    ```bash
+    python gemini_embedder.py
     ```
-
-    ```bash Windows
-    python cookbook/08_knowledge/embedders/gemini_embedder.py
-    ```
-    </CodeGroup>
   </Step>
 </Steps>
+
+## Developer Resources
+
+- [GeminiEmbedder reference](/reference/knowledge/embedder/gemini)
+- [Embedders overview](/knowledge/concepts/embedder/overview)
+- [Gemini embeddings guide](https://ai.google.dev/gemini-api/docs/embeddings)

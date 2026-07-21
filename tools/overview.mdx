@@ -1,565 +1,143 @@
 ---
 title: What are Tools?
 sidebarTitle: Overview
-description: Tools are functions Agents call to interact with external systems.
+description: Give agents functions they can call to read data and take actions in external systems.
 ---
 
-Tools are what make Agents and Teams capable of real-world action. While using LLMs directly you can only generate text responses, Agents and Teams equipped with tools can interact with external systems and perform practical actions.
-Tools can require confirmation. When that happens, the run pauses until the requirement is resolved.
+Agents use tools to take actions, like looking up records, calling APIs, updating systems, and completing work for users. Add a Python function or toolkit to `tools`, and the model can select it when a request requires it.
 
-Some examples of actions that can be performed with tools are: searching the web, running SQL, sending an email or calling APIs.
-
-Agno comes with 120+ pre-built toolkits, which you can use to give your Agents all kind of abilities. You can also write your own tools, to give your Agents even more capabilities. The general syntax is:
-
-```python
-import random
-
+```python order_agent.py
 from agno.agent import Agent
 from agno.models.openai import OpenAIResponses
-from agno.tools import tool
-
-def get_weather(city: str) -> str:
-    """Get the weather for the given city.
-
-    Args:
-        city (str): The city to get the weather for.
-    """
-
-    # In a real implementation, this would call a weather API
-    weather_conditions = ["sunny", "cloudy", "rainy", "snowy", "windy"]
-    random_weather = random.choice(weather_conditions)
-
-    return f"The weather in {city} is {random_weather}."
-
-# To equipt our Agent with our tool, we simply pass it with the tools parameter
-agent = Agent(
-    model=OpenAIResponses(id="gpt-5.2"),
-    tools=[get_weather],
-    markdown=True,
-)
-
-# Our Agent will now be able to use our tool, when it deems it relevant
-agent.print_response("What is the weather in San Francisco?", stream=True)
-```
-
-<Tip>
-In the example above, the `get_weather` function is a tool. When called, the tool result is shown in the output.
-</Tip>
 
 
-## How do tools work?
-
-The heart of Agent execution is the LLM loop. The typical execution flow of the LLM loop is:
-1. The agent sends the run context (system message, user message, chat history, etc) and tool definitions to the model.
-2. The model responds with a message or a tool call.
-3. If the model makes a tool call, the tool is executed and the result is returned to the model.
-4. The model processes the updated context, repeating this loop until it produces a final message without any tool calls.
-5. The agent returns this final response to the caller.
-
-### Tool definitions
-
-Agno automatically converts your tool functions into the required tool definition format for the model. Typically this is a JSON schema that describes the parameters and return type of the tool.
-
-For example:
-
-```python
-def get_weather(city: str) -> str:
-    """
-    Get the weather for a given city.
+def lookup_order(order_id: str) -> dict:
+    """Return the status and delivery date for an order.
 
     Args:
-        city (str): The city to get the weather for.
+        order_id: The order ID to look up.
     """
-    return f"The weather in {city} is sunny."
-```
-
-This will be converted into the following tool definition:
-
-```json
-{
-    "type": "function",
-    "function": {
-        "name": "get_weather",
-        "description": "Get the weather for a given city.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "city": {
-                    "type": "string",
-                    "description": "The city to get the weather for."
-                }
-            },
-            "required": ["city"]
-        }
+    return {
+        "order_id": order_id,
+        "status": "shipped",
+        "delivery_date": "2026-07-22",
     }
-}
-```
 
-This tool definition is then sent to the model so that it knows how to call the tool when it is requested.
-You'll notice as well that the `Args` section is automatically stripped from the definition, parsed and used to populate the definitions of individual properties.
-
-When using a Pydantic model in an argument of a tool function, Agno will automatically convert the model into the required tool definition format.
-
-For example:
-
-```python
-
-from pydantic import BaseModel, Field
-
-class GetWeatherRequest(BaseModel):
-    city: str = Field(description="The city to get the weather for")
-
-def get_weather(request: GetWeatherRequest) -> str:
-    """
-    Get the weather for a given city.
-
-    Args:
-        request (GetWeatherRequest): The request object containing the city to get the weather for.
-
-    """
-    return f"The weather in {request.city} is sunny."
-```
-
-This will be converted into the following tool definition:
-
-```json
-{
-    "type": "function",
-    "function": {
-        "name": "get_weather",
-        "description": "Get the weather for a given city.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-              "request": {
-                "type": "object",
-                "properties": {
-                  "city": {
-                    "type": "string",
-                    "description": "The city to get the weather for."
-                  }
-                },
-                "required": ["city"]
-              }
-            },
-            "required": ["request"]
-        }
-    }
-}
-```
-
-<Tip>
- - Always create a docstring for your tool functions. Make sure to include the `Args` section and cover each of the arguments of the function.
- - Use sensible names for your tool functions. Remember this is directly used by the model to call the tool when it is requested.
-</Tip>
-
-### Tool Execution
-
-When the model requests a tool call, the tool is executed and the result is returned to the model.
-
-- A model can request multiple tool calls in a single response.
-- When using `arun` to execute the agent or team, and the model requested multiple tool calls, the tools will be executed concurrently.
-
-Agno Agents can execute multiple tools concurrently, allowing you to process function calls that the model makes efficiently. This is especially valuable when the functions involve time-consuming operations. It improves responsiveness and reduces overall execution time.
-
-<Check>
-When you call `arun` or `aprint_response`, your tools will execute concurrently. If you provide synchronous functions as tools, they will execute concurrently on separate threads.
-</Check>
-
-<Note>
-  Concurrent execution of tools requires a model that supports parallel function
-  calling. For example, OpenAI models have a `parallel_tool_calls` parameter
-  (enabled by default) that allows multiple tool calls to be requested and
-  executed simultaneously.
-</Note>
-
-<Accordion title="Async Execution Example">
-
-```python async_tools.py
-import asyncio
-import time
-
-from agno.agent import Agent
-from agno.models.openai import OpenAIResponses
-from agno.utils.log import logger
-
-async def atask1(delay: int):
-    """Simulate a task that takes a random amount of time to complete
-    Args:
-        delay (int): The amount of time to delay the task
-    """
-    logger.info("Task 1 has started")
-    for _ in range(delay):
-        await asyncio.sleep(1)
-        logger.info("Task 1 has slept for 1s")
-    logger.info("Task 1 has completed")
-    return f"Task 1 completed in {delay:.2f}s"
-
-
-async def atask2(delay: int):
-    """Simulate a task that takes a random amount of time to complete
-    Args:
-        delay (int): The amount of time to delay the task
-    """
-    logger.info("Task 2 has started")
-    for _ in range(delay):
-        await asyncio.sleep(1)
-        logger.info("Task 2 has slept for 1s")
-    logger.info("Task 2 has completed")
-    return f"Task 2 completed in {delay:.2f}s"
-
-
-async def atask3(delay: int):
-    """Simulate a task that takes a random amount of time to complete
-    Args:
-        delay (int): The amount of time to delay the task
-    """
-    logger.info("Task 3 has started")
-    for _ in range(delay):
-        await asyncio.sleep(1)
-        logger.info("Task 3 has slept for 1s")
-    logger.info("Task 3 has completed")
-    return f"Task 3 completed in {delay:.2f}s"
-
-
-async_agent = Agent(
-    model=OpenAIResponses(id="gpt-5.2"),
-    tools=[atask2, atask1, atask3],
-    markdown=True,
-)
-
-asyncio.run(
-    async_agent.aprint_response("Please run all tasks with a delay of 3s", stream=True)
-)
-```
-
-In this example, `gpt-5-mini` makes three simultaneous tool calls to `atask1`, `atask2` and `atask3`. Normally these tool calls would execute sequentially, but using the `aprint_response` function, they run concurrently, improving execution time.
-
-<img
-  height="200"
-  src="/images/async-tools.png"
-  style={{ borderRadius: "8px" }}
-/>
-
-</Accordion>
-
-## Using a Toolkit
-
-An Agno Toolkit provides a way to manage multiple tools with additional control over their execution.
-
-```python
-from agno.agent import Agent
-from agno.models.openai import OpenAIResponses
-from agno.tools.hackernews import HackerNewsTools
 
 agent = Agent(
-    model=OpenAIResponses(id="gpt-5.2"),
-    tools=[
-        HackerNewsTools(),
-    ],
+    model=OpenAIResponses(id="gpt-5.4-mini"),
+    tools=[lookup_order],
+    instructions="Use the order tool when a customer asks about a delivery.",
 )
 
-agent.print_response("What are the top stories on HackerNews?", markdown=True)
+agent.print_response("When will order ORD-123 arrive?")
 ```
 
-In this example, the `HackerNewsTools` toolkit is added to the agent. This toolkit enables the agent to fetch stories from HackerNews.
+Agno builds a tool definition from the function name, docstring, and type hints. The model receives that definition, chooses the tool and arguments, then uses the result to produce its response.
+
+## Choose a Tool Source
+
+| Use case | Tool source |
+|----------|-------------|
+| Call application code or an internal API | [Python function](/tools/creating-tools/python-functions) |
+| Add a packaged integration with related operations | [Toolkit](/tools/toolkits/overview) |
+| Connect to a service exposed through Model Context Protocol | [MCPTools](/tools/mcp/overview) |
+| Give an agent a compact interface to a complex external system | [Context Provider](/context-providers/overview) |
+| Select tools for each user or session at run time | [Callable factory](/agents/building-agents#callable-factories) |
+
+## Tool Execution
+
+The execution flow:
+
+1. The agent sends the model its context and available tool definitions.
+2. The model returns a response or requests one or more tool calls.
+3. Agno validates the arguments and executes each requested tool.
+4. Tool results are added to the model context.
+5. The loop continues until the model returns a final response.
+
+When a model requests multiple tool calls, `arun()` and `aprint_response()` can execute them concurrently. The selected model must support parallel tool calls.
+
+## Design Tools for Reliable Calls
+
+The model uses the tool schema to decide when and how to call a function.
+
+| Practice | Why it matters |
+|----------|----------------|
+| Use a specific function name | Helps the model select the correct operation |
+| Write a concise docstring | Explains when the tool should be used |
+| Add type hints and argument descriptions | Produces a precise input schema |
+| Expose only the tools needed for the task | Reduces ambiguous choices and limits access |
+| Return structured, relevant results | Gives the model useful context for its response |
+
+Use `include_tools` and `exclude_tools` to limit operations exposed by a toolkit. See [Including and Excluding Tools](/tools/selecting-tools).
+
+## Control Tool Execution
+
+| Requirement | Configuration |
+|-------------|---------------|
+| Limit calls during one run | Set [`tool_call_limit`](/tools/tool-call-limit) |
+| Review a sensitive action | Mark the tool with [`requires_confirmation=True`](/hitl/user-confirmation) |
+| Collect missing fields from a user | Use [`requires_user_input=True`](/hitl/user-input) |
+| Execute an operation in your application | Use [`external_execution=True`](/hitl/external-execution) |
+| Handle failures from custom tools | Configure [tool exceptions](/tools/exceptions) |
+
+Runs with human-in-the-loop requirements pause until your application resolves the active requirement and continues the run.
 
 ## Tool Built-in Parameters
 
-Agno automatically provides special parameters to your tools that give access to the agent's parameters, state and other variables. These parameters are injected automatically - the agent doesn't need to know about them.
+Agno strips built-in parameters from the schema sent to the model and injects them when the tool runs.
 
-### Using the Run Context
+| Parameter | Use |
+|-----------|-----|
+| `run_context` | Access the current user, session state, dependencies, metadata, and knowledge filters |
+| `agent` | Access the active Agent from an agent tool |
+| `team` | Access the active Team from a team tool |
+| `images`, `videos`, `audios`, `files` | Access media attached to the run |
 
-You can access values from the current run via the `run_context` parameter: `run_context.session_state`, `run_context.dependencies`, `run_context.knowledge_filters`, `run_context.metadata`. See the [RunContext schema](/reference/run/run-context) for more information.
+### Access Run Context
 
-This allows tools to access and modify persistent data across conversations.
-
-This is useful in cases where a tool result is relevant for the next steps of the conversation.
-
-Add `run_context` as a parameter in your tool function to access the agent's persistent state:
+Add a `run_context: RunContext` parameter when a tool needs the current user, session state, dependencies, metadata, or knowledge filters. Agno injects the value at execution time and omits it from the schema sent to the model.
 
 ```python
-from agno.agent import Agent
-from agno.db.sqlite import SqliteDb
-from agno.models.openai import OpenAIResponses
 from agno.run import RunContext
 
 
 def add_item(run_context: RunContext, item: str) -> str:
-    """Add an item to the shopping list."""
-    if not run_context.session_state:
+    """Add an item to the current session's shopping list."""
+    if run_context.session_state is None:
         run_context.session_state = {}
-
-    run_context.session_state["shopping_list"].append(item)  # type: ignore
-    return f"The shopping list is now {run_context.session_state['shopping_list']}"  # type: ignore
-
-
-# Create an Agent that maintains state
-agent = Agent(
-    model=OpenAIResponses(id="gpt-5.2"),
-    # Initialize the session state with a counter starting at 0 (this is the default session state for all users)
-    session_state={"shopping_list": []},
-    db=SqliteDb(db_file="tmp/agents.db"),
-    tools=[add_item],
-    # You can use variables from the session state in the instructions
-    instructions="Current state (shopping list) is: {shopping_list}",
-    markdown=True,
-)
-
-# Example usage
-agent.print_response("Add milk, eggs, and bread to the shopping list", stream=True)
-print(f"Final session state: {agent.get_session_state()}")
+    shopping_list = run_context.session_state.setdefault("shopping_list", [])
+    shopping_list.append(item)
+    return f"Shopping list: {shopping_list}"
 ```
 
-See more in [Agent State](/state/agent/overview).
+See the [RunContext reference](/reference/run/run-context) and [State Management](/state/overview).
 
-### Using the Agent or Team
+## Return Tool Results
 
-You can access the `Agent` or `Team` instance directly in your tool function by adding `agent` or `team` as a parameter. This gives you full access to the agent's or team's properties like model, instructions, etc.
-
-```python
-from agno.agent import Agent
-from agno.models.openai import OpenAIResponses
-
-def get_agent_instructions(agent: Agent) -> str:
-    """Get the model of the agent."""
-    return agent.instructions
-
-agent = Agent(
-    model=OpenAIResponses(id="gpt-5.2"),
-    instructions="You are a helpful assistant that can answer questions about the model.",
-    tools=[get_agent_instructions],
-)
-
-agent.print_response("What is the instructions of the agent?", stream=True)
-```
-
-<Note>
-When using `team` as a parameter, make sure the tool is being used within a Team context. Similarly, use `agent` when the tool is used with an Agent.
-</Note>
-
-### Media Parameters
-
-The built-in parameter `images`, `videos`, `audio`, and `files` allows tools to access and modify the input media to an agent.
-
-<Note>
-Using the `send_media_to_model` parameter, you can control whether the media is sent to the model or not and using `store_media` parameter, you can control whether the
-media is stored in the `RunOutput` or not.
-</Note>
-
-See the [image input example](/multimodal/agent/usage/image-input-for-tool) and [file input example](/multimodal/agent/usage/file-input-for-tool) for an advanced example using media.
-
-## Tool Results
-
-Tools can return different types of results depending on their complexity and what they need to communicate back to the agent.
-
-### Simple Return Types
-
-Most tools can return simple Python types directly like `str`, `int`, `float`, `dict`, and `list`:
-
-```python
-@tool
-def get_weather(city: str) -> str:
-    """Get the weather for a city."""
-    return f"The weather in {city} is sunny and 75°F"
-
-@tool
-def calculate_sum(a: int, b: int) -> int:
-    """Calculate the sum of two numbers."""
-    return a + b
-
-@tool
-def get_user_info(user_id: str) -> dict:
-    """Get user information."""
-    return {
-        "user_id": user_id,
-        "name": "John Doe",
-        "email": "john@example.com",
-        "status": "active"
-    }
-
-@tool
-def search_products(query: str) -> list:
-    """Search for products."""
-    return [
-        {"id": 1, "name": "Product A", "price": 29.99},
-        {"id": 2, "name": "Product B", "price": 39.99}
-    ]
-```
-
-### `ToolResult` for Media Content
-
-When your tool needs to return media artifacts (images, videos, audio), you **must** use `ToolResult`:
+Functions can return strings, numbers, dictionaries, lists, and other serializable values. Use `ToolResult` when a tool needs to return media or files alongside text.
 
 <Snippet file="tool-result-reference.mdx" />
 
-```python
-from agno.tools.function import ToolResult
-from agno.media import Image
-
-@tool
-def generate_image(prompt: str) -> ToolResult:
-    """Generate an image from a prompt."""
-
-    # Create your image (example)
-    image_artifact = Image(
-        id="img_123",
-        url="https://example.com/generated-image.jpg",
-        original_prompt=prompt
-    )
-
-    return ToolResult(
-        content=f"Generated image for: {prompt}",
-        images=[image]
-    )
-```
-
-This would **make generated media available** to the LLM model.
-
-## Callable Factories
-
-Agno tools support callable factory pattern for dynamic configuration. Implement a dynamic tool factory using callables for runtime dependency injection and context-aware toolset customization.
-
-* **Runtime Resolution:** Tools are lazily initialized at the start of each run via signature-based injection.
-
-* **Context Injection:** Automatically maps `agent`/`team`, `run_context`, and `session_state` to the factory parameters.
-
-* **Granular Scoping:** Enables unique tool sets tailored specifically to the `user_id` or s`ession_id`.
-
-* **Performance Optimization:** Includes built-in caching (`cache_callables`) to memoize toolsets based on unique session keys.
-
-
-| Parameters | Purpose |
-| --- | --- |
-| `agent` | Accesses the base agent instance/configuration.|
-| `run_context` | Provides metadata like user_id for scoping tools.|
-| `session_state` | Allows tools to be shaped by current conversation memory.|
-
-```python
-"""
-
-from agno.agent import Agent
-from agno.models.openai import OpenAIResponses
-from agno.run import RunContext
-
-# ---------------------------------------------------------------------------
-# Tools
-# ---------------------------------------------------------------------------
-
-
-def search_web(query: str) -> str:
-    """Search the web for information."""
-    return f"Search results for: {query}"
-
-
-def search_internal_docs(query: str) -> str:
-    """Search internal documentation (admin only)."""
-    return f"Internal doc results for: {query}"
-
-
-def get_account_balance(account_id: str) -> str:
-    """Get account balance (finance only)."""
-    return f"Balance for {account_id}: $42,000"
-
-
-# ---------------------------------------------------------------------------
-# Callable Factory
-# ---------------------------------------------------------------------------
-
-
-def tools_for_user(run_context: RunContext):
-    """Return different tools based on the user's role stored in session_state."""
-    role = (run_context.session_state or {}).get("role", "viewer")
-    print(f"--> Resolving tools for role: {role}")
-
-    base_tools = [search_web]
-    if role == "admin":
-        base_tools.append(search_internal_docs)
-    if role in ("admin", "finance"):
-        base_tools.append(get_account_balance)
-
-    return base_tools
-
-
-# ---------------------------------------------------------------------------
-# Create Agent
-# ---------------------------------------------------------------------------
-agent = Agent(
-    model=OpenAIResponses(id="gpt-5-mini"),
-    tools=tools_for_user,
-    instructions=[
-        "You are a helpful assistant.",
-        "Use the tools available to you to answer the user's question.",
-    ],
-)
-
-
-# ---------------------------------------------------------------------------
-# Run Agent
-# ---------------------------------------------------------------------------
-if __name__ == "__main__":
-    # Run 1: viewer role - only search_web available
-    # Each user_id gets its own cached toolset
-    print("=== Run as viewer ===")
-    agent.print_response(
-        "Search for recent news about AI agents",
-        user_id="viewer_user",
-        session_state={"role": "viewer"},
-        stream=True,
-    )
-
-    # Run 2: admin role - all tools available
-    # Different user_id means the factory is called again with new context
-    print("\n=== Run as admin ===")
-    agent.print_response(
-        "Search internal docs for the deployment guide and check account balance for ACC-001",
-        user_id="admin_user",
-        session_state={"role": "admin"},
-        stream=True,
-    )
-```
-
-## Learn more
+## Next Steps
 
 <CardGroup cols={3}>
-  <Card href="/tools/agent"
-  icon="robot"
-  iconType="duotone"
-  >
-    Equip agents with tools for external actions
+  <Card title="Agent Tools" href="/tools/agent" icon="robot" iconType="duotone">
+    Add functions and toolkits to an agent.
   </Card>
-  <Card href="/tools/team"
-  icon="users"
-  iconType="duotone"
-  >
-    Give teams shared tool capabilities
+  <Card title="Available Toolkits" icon="box-open" href="/tools/toolkits/overview">
+    Browse integrations by data source and operation.
   </Card>
-  <Card
-    title="Available Toolkits"
-    icon="box-open"
-    href="/tools/toolkits/overview"
-  >
-    Browse 120+ pre-built toolkits
+  <Card title="Create Tools" icon="code" href="/tools/creating-tools/overview">
+    Build Python functions and reusable toolkits.
   </Card>
-  <Card
-    title="MCP Tools"
-    icon="robot"
-    href="/tools/mcp/overview"
-  >
-    Connect to Model Context Protocol servers
+  <Card title="MCP Tools" icon="plug" href="/tools/mcp/overview">
+    Connect agents to Model Context Protocol servers.
   </Card>
-  <Card
-    title="Reasoning Tools"
-    icon="brain-circuit"
-    href="/tools/reasoning_tools/reasoning-tools"
-  >
-    Add knowledge, memory, and workflow tools
+  <Card title="Update Tools" href="/tools/attaching-tools" icon="sliders">
+    Add or replace tools after initialization.
   </Card>
-  <Card
-    title="Creating your own tools"
-    icon="code"
-    href="/tools/creating-tools/overview"
-  >
-    Write custom Python functions as tools
+  <Card title="Tool Hooks" href="/tools/hooks" icon="code-branch">
+    Run logic before and after tool calls.
   </Card>
 </CardGroup>

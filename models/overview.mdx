@@ -1,64 +1,86 @@
 ---
 title: What are Models?
 sidebarTitle: Overview
-description: Language Models are machine-learning programs that are trained to understand natural language and code.
+description: Configure the language model that an Agent or Team uses, including provider selection and request retries.
 keywords: [models, llm, language models, ai models, model providers, openai, anthropic, gemini, model configuration]
 mode: wide
 ---
-
-When we discuss Models, we are normally referring to Large Language Models (LLMs).
-
-These models act as the **brain** of your Agents - enabling them to reason, act, and respond to the user. The better the model, the smarter the Agent.
 
 ```python
 from agno.agent import Agent
 from agno.models.openai import OpenAIResponses
 
 agent = Agent(
-    model=OpenAIResponses(id="gpt-5.2"),
-    description="Share 15 minute healthy recipes.",
+    model=OpenAIResponses(id="gpt-5.4"),
     markdown=True,
 )
-agent.print_response("Share a breakfast recipe.", stream=True)
+
+agent.print_response("Share a two-sentence horror story.", stream=True)
 ```
 
-<Tip>
-Use [model strings](/models/model-as-string) (`"provider:model_id"`) for simpler configuration. For advanced use cases requiring custom parameters like `temperature` or `max_tokens`, use the full model class syntax.
-</Tip>
+Models connect Agents and Teams to model-provider APIs. The model class determines the API implementation, while `id` selects the provider's model or deployment.
 
-## Error handling
+Install the provider integration and set its credentials before running the example:
 
-You can configure your Model to retry requests if they fail. This is useful to handle temporary failures or rate limiting errors from the model provider.
+```bash
+uv pip install "agno[openai]"
+export OPENAI_API_KEY="your-api-key"
+```
+
+Model capabilities vary by provider, API, and model ID. Check [model compatibility](/models/compatibility) before relying on features such as multimodal input or native structured output.
+
+## Configure a Model
+
+| Configuration | Use it when |
+|---|---|
+| `model="openai:gpt-5.4"` | You need a built-in provider class with its default settings |
+| `model=OpenAIResponses(id="gpt-5.4", ...)` | You need provider parameters, custom clients, endpoints, or retry settings |
+
+The string form constructs the registered provider class with the supplied model ID. See [Model as String](/models/model-as-string) for provider keys and API variants.
+
+## Retry Model Requests
+
+Configure retries on the model class for transient provider errors such as rate limits and server errors:
 
 ```python
+from agno.models.openai import OpenAIResponses
+
 model = OpenAIResponses(
-  id="gpt-5.2",
-  retries=2, # Number of retries to attempt before raising a ModelProviderError
-  retry_delay=1, # Delay between retries, in seconds
-  exponential_backoff=True, # If True, the delay between retries is doubled each time
+    id="gpt-5.4",
+    retries=2,
+    delay_between_retries=1,
+    exponential_backoff=True,
 )
 ```
 
+| Parameter | Default | Description |
+|---|---:|---|
+| `retries` | `0` | Additional request attempts after the first attempt |
+| `delay_between_retries` | `1` | Seconds to wait before the first retry |
+| `exponential_backoff` | `False` | Double the delay after each failed attempt |
+
+Model retries skip non-retryable errors such as authentication failures, invalid requests, and context-window errors. A retry after a streaming error restarts the entire model stream. Chunks emitted before the failure remain visible to the caller.
+
 <Note>
-You can also configure `retries`, `delay_between_retries`, and `exponential_backoff` directly on your Agent or Team, to retry the full runs instead of just the Model requests.
+Set `retries`, `delay_between_retries`, and `exponential_backoff` on an Agent or Team to retry the full run instead of an individual model request.
 </Note>
 
-## Learn more
+## Learn More
 
 <CardGroup cols={2}>
   <Card title="Supported Model Providers" icon="layer-group" href="/models/providers/model-index">
-    See the full list of supported model providers.
+    Choose a provider and configure its credentials.
   </Card>
-  <Card title="Model-as-string" icon="code" href="/models/model-as-string">
-    Use the convenient provider:model_id string format to specify models without importing model classes.
+  <Card title="Model as String" icon="code" href="/models/model-as-string">
+    Select a registered provider class with `provider:model_id` syntax.
   </Card>
   <Card title="Compatibility" icon="code-compare" href="/models/compatibility">
-    See what features are supported by each model provider.
+    Compare features across model implementations.
   </Card>
   <Card title="Cache Response" icon="database" href="/models/cache-response">
-    Cache the response from the model provider to avoid duplicate API calls.
+    Cache provider responses to avoid duplicate requests.
   </Card>
   <Card title="Fallback Models" icon="rotate" href="/models/fallback-models">
-    Switch to backup models automatically on rate limits, outages, or context window errors.
+    Switch models after rate limits, outages, or context-window errors.
   </Card>
 </CardGroup>

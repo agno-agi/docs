@@ -3,7 +3,7 @@ title: "Classification and span labeling"
 description: "Assign one label, a set of labels, a taxonomy path, or marked spans."
 ---
 
-Classification is extraction where the schema is a closed set. Use a `Literal` for one label, a `List[Literal]` for many.
+Use a `Literal` for one label and a `List[Literal]` for multiple labels.
 
 ```python
 from typing import Literal
@@ -29,7 +29,7 @@ result = agent.run("It works as described, nothing special.").content
 # Classification(label='neutral')
 ```
 
-The `Literal` constrains the model to the closed set. There is no invalid label to clean up downstream.
+The `Literal` constrains the result to the labels defined in the schema.
 
 ## Multi-label
 
@@ -51,16 +51,19 @@ class Tagging(BaseModel):
 
 ## Hierarchical
 
-For a taxonomy, return the path instead of a flat label.
+For a taxonomy, return the parent and child path.
 
 ```python
-from typing import List
+from typing import List, Literal
 
 from pydantic import BaseModel, Field
 
 
+Parent = Literal["sports", "politics", "tech", "business", "health"]
+
+
 class HierarchicalTag(BaseModel):
-    parent: str = Field(..., description="Top-level category")
+    parent: Parent
     child: str = Field(..., description="Sub-category under the parent")
 
 
@@ -103,8 +106,11 @@ result = agent.run(text).content
 
 for e in result.entities:
     start = text.find(e.text)
-    print(e.label, e.text, start, start + len(e.text))
+    end = start + len(e.text) if start >= 0 else None
+    print(e.label, e.text, start, end)
 ```
+
+`str.find()` returns `-1` when the returned text is not a verbatim substring, which is the signal that the model paraphrased despite the instructions. Guard the offset before you use it. `find()` also returns the first match only. When the same substring appears more than once, track the search offset or match occurrences in order before assigning spans.
 
 The same shape drives PII redaction: detect the spans, then replace each with its tag in post-processing.
 
@@ -132,7 +138,7 @@ Image, audio, video, and document classification follow the same schema pattern 
 
 | Task | Guide |
 |------|-------|
-| Extract fields instead of labels | [Structured extraction](/use-cases/data-labeling/structured-extraction) |
+| Extract typed fields | [Data extraction](/use-cases/data-labeling/structured-extraction) |
 | Score outputs against a rubric | [LLM as judge](/use-cases/data-labeling/llm-as-judge) |
 | Add reviewer agreement | [Quality pipeline](/use-cases/data-labeling/quality-pipeline) |
 

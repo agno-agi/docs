@@ -1,20 +1,28 @@
 ---
 title: "Gemini Video Generation"
-description: "Use Gemini for video generation in Agno agents."
+description: "Migrate GeminiTools to Veo 3.1 on Vertex AI and save the returned MP4 correctly."
+source: cookbook/91_tools/models/gemini_video_generation.py
 ---
 
-## Prerequisites
+Use Veo 3.1 through GeminiTools on Vertex AI and decode the returned base64 content before saving the MP4.
 
-- Install dependencies: `uv pip install google-genai agno`
-- Make sure you have set the GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION environment variables.
+<Warning>
+  Google discontinued the example's default `veo-2.0-generate-001` endpoint after June 30, 2026 and recommends `veo-3.1-generate-001`. The source also converts `video.content` to the string representation of a bytes object, which corrupts the saved MP4. Apply both corrections below. See [Vertex AI release notes](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/release-notes#March_24_2026).
+</Warning>
 
-```python
+```python gemini_video_generation.py
 """Example: Using the GeminiTools Toolkit for Video Generation
+
+An Agent using the Gemini video generation tool.
+
+Video generation only works with Vertex AI.
+Make sure you have set the GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION environment variables.
 
 Example prompts to try:
 - "Generate a 5-second video of a kitten playing a piano"
 - "Create a short looping animation of a neon city skyline at dusk"
 
+Run `uv pip install google-genai agno` to install the necessary dependencies.
 """
 
 from agno.agent import Agent
@@ -51,15 +59,53 @@ if __name__ == "__main__":
 ```
 
 ## Run the Example
-```bash
-# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/91_tools/models
 
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
 
-python gemini_video_generation.py
-```
-For details, see [Gemini Video tools cookbook](https://github.com/agno-agi/agno/blob/main/cookbook/91_tools/models/gemini_video_generation.py).
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno google-genai openai
+    ```
+  </Step>
+
+  <Step title="Export environment variables">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export GOOGLE_CLOUD_LOCATION="your_google_cloud_location_here"
+    export GOOGLE_CLOUD_PROJECT="your_google_cloud_project_here"
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:GOOGLE_CLOUD_LOCATION="your_google_cloud_location_here"
+    $Env:GOOGLE_CLOUD_PROJECT="your_google_cloud_project_here"
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Authenticate with Google Cloud">
+    Sign in with Application Default Credentials:
+    ```bash
+    gcloud auth application-default login
+    ```
+  </Step>
+
+  <Step title="Use Veo 3.1">
+    Replace `GeminiTools(vertexai=True)` with `GeminiTools(vertexai=True, video_generation_model="veo-3.1-generate-001", enable_generate_image=False)` in the saved file.
+  </Step>
+
+  <Step title="Decode the returned content">
+    Replace `base64_data=str(video.content)` with `base64_data=video.content.decode("utf-8")` so `save_base64_data()` receives the base64 string instead of a bytes representation.
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `gemini_video_generation.py`, then run:
+    ```bash
+    python gemini_video_generation.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/91_tools/models/gemini_video_generation.py](https://github.com/agno-agi/agno/blob/main/cookbook/91_tools/models/gemini_video_generation.py)

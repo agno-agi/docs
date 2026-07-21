@@ -205,24 +205,22 @@ The `run_context` object will be automatically injected when running the functio
 You can use it to read and modify the session state, via `run_context.session_state`.
 
 <Note>
-On the function of the custom python function step for a workflow
+Example: a custom Python function step reading and writing workflow session state through `run_context`.
 ```python
 from agno.run import RunContext
 
 def custom_function_step(step_input: StepInput, run_context: RunContext):
     """Update the workflow session state"""
-    run_context.session_state["test"] = test_1
+    run_context.session_state["test"] = "test_1"
 ```
 </Note>
 
 See [examples](/state/workflows/access-session-state-in-custom-python-function-step) for more details.
 
-The `run_context` is also available as a parameter in the evaluator and selector functions of the `Condition` and `Router` steps:
+The `run_context` parameter is also injected into the evaluator and selector functions of the `Condition` and `Router` steps:
 
 ```python
-from agno.run import RunContext
-
-def evaluator_function(step_input: StepInput, run_context: RunContext):
+def evaluator_function(step_input: StepInput, run_context: RunContext) -> bool:
     return run_context.session_state["test"] == "test_1"
 
 condition_step = Condition(
@@ -233,10 +231,10 @@ condition_step = Condition(
 ```
 
 ```python
-from agno.run import RunContext
-
-def selector_function(step_input: StepInput, run_context: RunContext):
-    return run_context.session_state["test"] == "test_1"
+def selector_function(step_input: StepInput, run_context: RunContext) -> Step:
+    if run_context.session_state["test"] == "test_1":
+        return step_1
+    return step_2
 
 router_step = Router(
     name="router_step",
@@ -244,6 +242,10 @@ router_step = Router(
     choices=[step_1, step_2],
 )
 ```
+
+<Note>
+Accepting a `session_state` dict parameter directly in custom step functions, evaluators, and selectors is deprecated. Accept `run_context: RunContext` and use `run_context.session_state` instead.
+</Note>
 
 See example of [Session State in Condition Evaluator Function](/state/workflows/access-session-state-in-condition-evaluator-function)
 and [Session State in Router Selector Function](/state/workflows/access-session-state-in-router-selector-function) for more details.
@@ -254,13 +256,13 @@ and [Session State in Router Selector Function](/state/workflows/access-session-
 
 - Data persists across all workflow steps and components
 - Enables complex, stateful workflows with memory
-- Supports deterministic execution with consistent state
+- Keeps shared state available throughout workflow execution
 
 **Cross-Component Coordination**
 
 - Agents, teams, and functions share the same state object
 - Enables sophisticated collaboration patterns
-- Maintains data consistency across workflow execution
+- Coordinates state across workflow execution
 
 **Flexible Data Structure**
 
@@ -270,8 +272,7 @@ and [Session State in Router Selector Function](/state/workflows/access-session-
 
 <Note>
   The `run_context` object, containing the session state, is automatically passed to all agents and teams within a
-  workflow, enabling seamless collaboration and data sharing between different
-  components without manual state management.
+  workflow. Components collaborate and share data without manual state management.
 </Note>
 
 ## Useful Links
@@ -280,14 +281,14 @@ and [Session State in Router Selector Function](/state/workflows/access-session-
   <Card
     title="Agent Examples"
     icon="user"
-    href="https://github.com/agno-agi/agno/tree/main/cookbook/05_workflows/_06_advanced_basics/_04_shared_session_state/shared_session_state_with_agent.py"
+    href="https://github.com/agno-agi/agno/blob/main/cookbook/04_workflows/06_advanced_concepts/session_state/state_with_agent.py"
   >
     See how agents interact with shared session state
   </Card>
   <Card
     title="Team Examples"
     icon="users"
-    href="https://github.com/agno-agi/agno/tree/main/cookbook/05_workflows/_06_advanced_basics/_04_shared_session_state/shared_session_state_with_team.py"
+    href="https://github.com/agno-agi/agno/blob/main/cookbook/04_workflows/06_advanced_concepts/session_state/state_with_team.py"
   >
     Learn how teams coordinate using shared state
   </Card>

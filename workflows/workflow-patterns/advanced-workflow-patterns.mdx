@@ -1,54 +1,72 @@
 ---
 title: Advanced Workflow Patterns
-description: Combine multiple workflow patterns to build sophisticated, production-ready automation systems
+description: Combine Condition, Parallel, Loop, and Router patterns in a single workflow.
 ---
 
-**Pattern Combination**: Conditional Logic + Parallel Execution + Iterative Loops + Custom Processing + Dynamic Routing
+**Pattern combination**: Conditional logic, parallel execution, iterative loops, custom processing, and dynamic routing
 
-This example demonstrates how deterministic patterns can be composed to create complex yet predictable workflows.
+Combine explicit control-flow patterns in one workflow.
 
 ```python advanced_workflow_patterns.py
-from agno.workflow import Condition, Loop, Parallel, Router, Step, Workflow
+from agno.workflow import Condition, Loop, Parallel, Router, Step, StepInput, StepOutput, Workflow
 
-def research_post_processor(step_input) -> StepOutput:
-    """Post-process and consolidate research data from parallel conditions"""
+
+def is_tech_topic(step_input: StepInput) -> bool:
+    return "technology" in str(step_input.input).lower()
+
+
+def is_business_topic(step_input: StepInput) -> bool:
+    text = str(step_input.input).lower()
+    return "business" in text or "market" in text
+
+
+def research_technology(step_input: StepInput) -> StepOutput:
+    return StepOutput(content=f"Technology findings for {step_input.input}")
+
+
+def research_market(step_input: StepInput) -> StepOutput:
+    prior = step_input.previous_step_content or str(step_input.input)
+    return StepOutput(content=f"{prior}\nMarket sizing and competitor notes")
+
+
+def research_quality_check(outputs: list[StepOutput]) -> bool:
+    return any(len(str(output.content or "")) > 80 for output in outputs)
+
+
+def research_post_processor(step_input: StepInput) -> StepOutput:
     research_data = step_input.previous_step_content or ""
+    return StepOutput(content=f"Consolidated research:\n{research_data}")
 
-    try:
-        # Analyze research quality and completeness
-        word_count = len(research_data.split())
-        has_tech_content = any(keyword in research_data.lower()
-                              for keyword in ["technology", "ai", "software", "tech"])
-        has_business_content = any(keyword in research_data.lower()
-                                  for keyword in ["market", "business", "revenue", "strategy"])
 
-        # Create enhanced research summary
-        enhanced_summary = f"""
-            ## Research Analysis Report
+def create_blog_post(step_input: StepInput) -> StepOutput:
+    return StepOutput(content=f"Blog post:\n{step_input.previous_step_content}")
 
-            **Data Quality:** {"✓ High-quality" if word_count > 200 else "⚠ Limited data"}
 
-            **Content Coverage:**
-            - Technical Analysis: {"✓ Completed" if has_tech_content else "✗ Not available"}
-            - Business Analysis: {"✓ Completed" if has_business_content else "✗ Not available"}
+def create_social_post(step_input: StepInput) -> StepOutput:
+    return StepOutput(content=f"Social post:\n{step_input.previous_step_content}")
 
-            **Research Findings:**
-            {research_data}
-        """.strip()
 
-        return StepOutput(
-            content=enhanced_summary,
-            success=True,
-        )
+def create_report(step_input: StepInput) -> StepOutput:
+    return StepOutput(content=f"Report:\n{step_input.previous_step_content}")
 
-    except Exception as e:
-        return StepOutput(
-            content=f"Research post-processing failed: {str(e)}",
-            success=False,
-            error=str(e)
-        )
 
-# Complex workflow combining multiple patterns
+def content_type_selector(step_input: StepInput) -> str:
+    text = str(step_input.input).lower()
+    if "social" in text:
+        return "Social Post"
+    if "blog" in text:
+        return "Blog Post"
+    return "Report"
+
+
+def final_review(step_input: StepInput) -> StepOutput:
+    return StepOutput(content=f"Reviewed deliverable:\n{step_input.previous_step_content}")
+
+
+blog_post_step = Step(name="Blog Post", executor=create_blog_post)
+social_media_step = Step(name="Social Post", executor=create_social_post)
+report_step = Step(name="Report", executor=create_report)
+
 workflow = Workflow(
     name="Advanced Multi-Pattern Workflow",
     steps=[
@@ -56,7 +74,7 @@ workflow = Workflow(
             Condition(
                 name="Tech Check",
                 evaluator=is_tech_topic,
-                steps=[Step(name="Tech Research", agent=tech_researcher)]
+                steps=[Step(name="Tech Research", executor=research_technology)],
             ),
             Condition(
                 name="Business Check",
@@ -64,33 +82,37 @@ workflow = Workflow(
                 steps=[
                     Loop(
                         name="Deep Business Research",
-                        steps=[Step(name="Market Research", agent=market_researcher)],
+                        steps=[Step(name="Market Research", executor=research_market)],
                         end_condition=research_quality_check,
-                        max_iterations=3
-                    )
-                ]
+                        max_iterations=3,
+                        forward_iteration_output=True,
+                    ),
+                ],
             ),
-            name="Conditional Research Phase"
+            name="Conditional Research Phase",
         ),
         Step(
             name="Research Post-Processing",
             executor=research_post_processor,
-            description="Consolidate and analyze research findings with quality metrics"
+            description="Consolidate research findings",
         ),
         Router(
             name="Content Type Router",
             selector=content_type_selector,
-            choices=[blog_post_step, social_media_step, report_step]
+            choices=[blog_post_step, social_media_step, report_step],
         ),
-        Step(name="Final Review", agent=reviewer),
-    ]
+        Step(name="Final Review", executor=final_review),
+    ],
 )
 
-workflow.print_response("Create a comprehensive analysis of sustainable technology trends and their business impact for 2024", markdown=True)
+workflow.print_response(
+    "Create a report on sustainable technology markets",
+    markdown=True,
+)
 ```
 
-**More Examples**:
+## Developer Resources
 
 - [Condition and Parallel Steps (Streaming Example)](/workflows/usage/condition-and-parallel-steps-stream)
 - [Loop with Parallel Steps (Streaming Example)](/workflows/usage/loop-with-parallel-steps-stream)
-- [Router with Loop Steps](/workflows/usage/router-steps-workflow)
+- [Router with Loop Steps](/workflows/usage/router-with-loop-steps)

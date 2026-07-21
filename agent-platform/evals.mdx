@@ -3,32 +3,36 @@ title: Evals
 description: "Lock in agent behavior with regression tests."
 ---
 
-Next, let's lock in our agent behavior with evals.
+Evals are regression tests for your agents. Rerun the same prompts against the same agents and behavior drift becomes visible.
 
-Think of Evals as regression tests for your agents. Same prompts, same agents, run on a schedule. Notify when behavior drifts.
-
-When we run `docs/improve-agent.md`, we're looking for out-of-distribution improvements. Evals make sure in-distribution cases continue to pass. The two work together.
+`/improve-agent` generates probes from an agent's instructions to find new weaknesses. Evals preserve known behavior as repeatable cases.
 
 ## Cases
 
-Cases live in `evals/cases.py`. Each case sends one input to an agent and (optionally) checks two things:
+Cases live in `evals/cases.py`. Each case sends one input to an agent (`agent=`) and optionally checks two things:
 
 - **judge**: `AgentAsJudgeEval` scores the response against `criteria` (binary pass/fail) using an LLM.
 - **reliability**: `ReliabilityEval` checks which tools fired against `expected_tool_calls`.
 
-Results are stored in your database via `eval_db` (visible at [os.agno.com](https://os.agno.com)).
-
 A case looks like this:
 
 ```python evals/cases.py
+from os import getenv
+
+# The WebSearch agent calls parallel_search when PARALLEL_API_KEY is set, web_search otherwise.
+_WEB_SEARCH_TOOL = "parallel_search" if getenv("PARALLEL_API_KEY") else "web_search"
+
 CASES: tuple[Case, ...] = (
     Case(
         name="web_search_recent_anthropic_research",
         agent=web_search,
-        input="What did Anthropic publish about agents recently?",
+        input="What did Anthropic publish about agent research recently?",
+        tags=("live",),
+        timeout_seconds=120,
         criteria=(
             "Answers the question by citing at least one real Anthropic URL "
-            "(anthropic.com domain). The response is grounded in fetched content."
+            "(anthropic.com domain). The response is grounded in fetched content "
+            "rather than refusing to answer."
         ),
         expected_tool_calls=(_WEB_SEARCH_TOOL,),
     ),
@@ -38,18 +42,22 @@ CASES: tuple[Case, ...] = (
 
 A case can use either check or both. If both are set, the agent runs once and feeds the same response into both.
 
+Add tags to group your cases into suites. The template uses three tags: `smoke`, `release`, and `live`. This case uses the `live` tag because its answer depends on the open web.
+
 ## Run the suite
+
+The suite runs on the host, calls the model, and logs results to your local Postgres through `eval_db`. Start the platform first (`docker compose up -d`) and make sure `.env` has your `OPENAI_API_KEY`.
 
 <Steps>
   <Step title="Create a virtual environment">
 
-    To run the eval suite, let's create a local virtual environment
+    The eval suite runs on the host and needs a local virtual environment:
 
     ```bash
     ./scripts/venv_setup.sh
     ```
 
-    Activate it
+    Activate it:
 
     ```bash
     source .venv/bin/activate
@@ -60,6 +68,7 @@ A case can use either check or both. If both are set, the agent runs once and fe
   <Step title="Run the eval suite">
 
     ```bash
+    python -m evals --tag smoke     # fast suite
     python -m evals                # full suite
     ```
 
@@ -67,26 +76,26 @@ A case can use either check or both. If both are set, the agent runs once and fe
 
     ```bash
     python -m evals -v             # stream the agent run with full panels
-    python -m evals --case <name>  # single case while iterating
+    python -m evals --name <case>  # single case while iterating
     ```
 
   </Step>
 
 </Steps>
 
-Each case prints the response, the judge verdict, and the reliability verdict. The run ends with an `Eval Summary` table.
+Each case prints its response and the verdicts for the checks it defines. The run ends with an `Eval Summary` table.
 
-Results write to Postgres via `eval_db`. You can view the Eval history on [os.agno.com](https://os.agno.com) alongside your sessions and traces. You can see when a case started failing and what changed.
+Results write to Postgres via `eval_db`. The eval history shows up on [os.agno.com](https://os.agno.com) alongside your sessions and traces, so you can see when a case started failing and what changed.
 
-## Diagnose failures with Claude Code
+## Diagnose failures with your coding agent
 
-Open Claude Code and paste:
+Open your coding agent and run:
 
+```text
+/eval-and-improve
 ```
-Run docs/eval-and-improve.md
-```
 
-Claude runs the full suite, triages every failure (bad criteria, real regression, flaky LLM judge), and proposes in-scope fixes. It edits the agent or the case, re-runs, and shows you the diff.
+The coding agent runs the suite, triages every failure (bad criteria, real regression, flaky LLM judge), and proposes in-scope fixes. It edits the agent or the case and re-runs until the suite is green.
 
 ## When to run evals
 
@@ -94,10 +103,10 @@ Claude runs the full suite, triages every failure (bad criteria, real regression
 | ------------------------------------- | --------------------- |
 | Before deploying a change to an agent | Every time            |
 | As part of CI                         | Every PR              |
-| Against production                    | On a weekly cron      |
+| Against production                    | On a daily cron       |
 | After bumping a model version         | Every time            |
 
-The weekly production cron is the most valuable one. Wire it into your platform's scheduler. See [scheduling](/features/scheduling) for the cron API.
+The template ships a `run_evals` workflow for scheduled checks. Set `ENABLE_SCHEDULED_EVALS=True` to run the `smoke`-tagged cases daily. See [scheduling](/features/scheduling) for the cron API.
 
 ## What good cases look like
 

@@ -21,11 +21,11 @@ weather_agent = Agent(name="Weather Agent", role="Get weather forecasts")
 team = Team(
     name="Research Team",
     members=[news_agent, weather_agent],
-    model=OpenAIResponses(id="gpt-4o"),
+    model=OpenAIResponses(id="gpt-5.4-mini"),
     debug_mode=True
 )
 
-team.print_response("What is the weather in Tokyo?", show_members_responses=True)
+team.print_response("What is the weather in Tokyo?", show_member_responses=True)
 ```
 
 Three ways to enable debug mode:
@@ -42,7 +42,7 @@ Set `debug_level=2` for more detailed logs:
 team = Team(
     name="Research Team",
     members=[news_agent, weather_agent],
-    model=OpenAIResponses(id="gpt-4o"),
+    model=OpenAIResponses(id="gpt-5.4-mini"),
     debug_mode=True,
     debug_level=2
 )
@@ -54,7 +54,7 @@ When debugging, check:
 
 | Issue | What to inspect |
 |-------|-----------------|
-| Wrong member selected | Leader's reasoning, member roles |
+| Wrong member selected | Leader messages, delegation calls, member roles |
 | Member not responding | Member's tool calls, errors |
 | Slow execution | Token counts, sequential vs parallel execution |
 | Unexpected output | Leader's synthesis step, member responses |
@@ -82,10 +82,10 @@ finance_agent = Agent(name="Finance Agent", role="Get stock prices from Yahoo Fi
 
 ### Member Fails Silently
 
-If a member fails, the leader may synthesize a response without that member's output. Enable `show_members_responses=True` to see what each member returned:
+If a member fails, the leader may synthesize a response without that member's output. Pass `show_member_responses=True` to `print_response()` to see what each member returned:
 
 ```python
-team.print_response("Research AI trends", show_members_responses=True)
+team.print_response("Research AI trends", show_member_responses=True)
 ```
 
 ### Infinite Delegation Loop
@@ -111,7 +111,7 @@ team = Team(
 
 ### High Token Usage
 
-Multi-agent coordination burns tokens. A 4-member team can easily use 10x the tokens of a single agent.
+Teams make leader and member model calls. Token usage increases with the number of delegations, member responses, and synthesis calls.
 
 Check token usage in debug output or metrics:
 
@@ -121,6 +121,7 @@ print(f"Total tokens: {response.metrics.total_tokens}")
 ```
 
 To reduce tokens:
+
 - Use fewer members
 - Keep member responses concise
 - Use `mode=TeamMode.route` (or `respond_directly=True`) to skip synthesis
@@ -141,7 +142,7 @@ weather_agent = Agent(name="Weather Agent", role="Get weather forecasts")
 team = Team(
     name="Research Team",
     members=[news_agent, weather_agent],
-    model=OpenAIResponses(id="gpt-4o"),
+    model=OpenAIResponses(id="gpt-5.4-mini"),
     db=SqliteDb(db_file="tmp/data.db"),
     add_history_to_context=True,
     num_history_runs=3
@@ -154,14 +155,15 @@ Use `await team.acli_app()` for async.
 
 ## Tracing with AgentOS
 
-For production debugging, connect your team to [AgentOS](/agent-os/overview) to get:
+For production debugging, enable [tracing](/tracing/overview) and inspect traces in [AgentOS](/agent-os/overview):
 
 - Visual trace of all delegation and tool calls
 - Token usage breakdown by member
-- Session history and replay
+- Session history
 - Error tracking
 
 ## Developer Resources
 
 - [Team reference](/reference/teams/team)
-- [Team examples](/cookbook/teams/overview)
+- [Team examples](/examples/teams/overview)
+- [Basic team tracing](/tracing/usage/basic-team-tracing)

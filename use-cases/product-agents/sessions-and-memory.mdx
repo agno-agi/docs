@@ -3,7 +3,7 @@ title: "Sessions and memory"
 description: "Persistent multi-turn conversations and per-user memory."
 ---
 
-An agent needs two kinds of state: what was said in this thread, and what the agent knows about this user. Agno gives you both. You do not build a conversation store or a retrieval layer.
+An agent needs two kinds of state: what was said in this thread and what the agent knows about this user. Agno stores both in its configured database.
 
 ```python
 from agno.agent import Agent
@@ -17,7 +17,7 @@ agent = Agent(
     db=db,
     add_history_to_context=True,
     num_history_runs=5,
-    enable_agentic_memory=True,
+    update_memory_on_run=True,
 )
 
 agent.run(
@@ -28,14 +28,14 @@ agent.run(
 reply = agent.run(
     "What's the best way to reach me?",
     user_id="sarah@acme.com",
-    session_id="thread-42",
+    session_id="thread-99",
 ).content
-# Uses both the thread history and the stored memory about Sarah.
+# The sessions have separate histories. Stored user memory can carry the preference.
 ```
 
 ## Sessions vs memory
 
-They solve different problems. Use both.
+Session history and memory solve different problems and can be used together.
 
 | | Session history | Memory |
 |---|---|---|
@@ -51,13 +51,13 @@ They solve different problems. Use both.
 | `user_id` | The person | Your auth subject (user ID, email) |
 | `session_id` | A conversation thread for that person | A chat tab, a Slack thread, a support case |
 
-Pass both on every run. Threads are scoped by `session_id`. Memory is scoped by `user_id`.
+Pass both on every run. `session_id` scopes conversation threads, while `user_id` scopes memory.
 
 ## Memory: automatic or agentic
 
 | Mode | Set | Use when |
 |------|-----|----------|
-| Automatic | `update_memory_on_run=True` | Compute memory after every run. |
+| Automatic | `update_memory_on_run=True` | You want memory computed after every run. Without a `user_id`, memories land under the `default` user. |
 | Agentic | `enable_agentic_memory=True` | The agent decides using tool calls. |
 
 ## Reading memory back
@@ -70,12 +70,12 @@ memories = agent.get_user_memories(user_id="sarah@acme.com")
 
 ## Long conversations
 
-History grows. Two ways to keep token cost bounded without losing continuity:
+`num_history_runs` bounds the history that flows into context. It defaults to `3`. Session summaries give the agent recall of the earlier thread on top of that bounded history.
 
 | Technique | Effect |
 |-----------|--------|
-| `num_history_runs=N` | Only the last N turns flow into context |
-| Session summaries (`enable_session_summaries=True`) | Older turns are condensed into a running summary |
+| `num_history_runs=N` | Only the last N stored runs flow into context |
+| `enable_session_summaries=True` | A running summary of the session is added to the system prompt, in addition to the history already in context |
 
 ## Next steps
 
@@ -83,7 +83,7 @@ History grows. Two ways to keep token cost bounded without losing continuity:
 |------|-------|
 | Put this behind an HTTP API | [Serve as an API](/use-cases/product-agents/serve-as-an-api) |
 | Carry memory across Slack and web | [Interfaces](/use-cases/product-agents/interfaces) |
-| Give the agent live data | [Connecting your data](/use-cases/product-agents/connecting-your-data) |
+| Give the agent external data | [Connecting your data](/use-cases/product-agents/connecting-your-data) |
 
 ## Developer Resources
 

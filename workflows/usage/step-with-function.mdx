@@ -1,143 +1,96 @@
 ---
-title: Step with function
-description: This example demonstrates how to use named steps with custom function executors.
+title: Step with a function
+description: "Run a custom Python function as a named workflow step."
 ---
 
-This example demonstrates **Workflows** using named Step objects with custom function
-executors. This pattern combines the benefits of named steps with the flexibility of
-custom functions, allowing for sophisticated data processing within structured workflow steps.
-
-**When to use**: When you need named step organization but want custom logic that goes
-beyond what agents/teams provide. Ideal for complex data processing, multi-step operations,
-or when you need to orchestrate multiple agents within a single step.
+A `Step` can run a Python function that accepts `StepInput` and returns `StepOutput`.
 
 ```python step_with_function.py
 from agno.agent import Agent
 from agno.db.sqlite import SqliteDb
-from agno.models.openai import OpenAIResponses
-from agno.team import Team
+from agno.models.openai import OpenAIChat
 from agno.tools.hackernews import HackerNewsTools
-from agno.tools.yfinance import YFinanceTools
 from agno.workflow.step import Step, StepInput, StepOutput
 from agno.workflow.workflow import Workflow
 
-# Define agents
-hackernews_agent = Agent(
-    name="Hackernews Agent",
-    model=OpenAIResponses(id="gpt-5.2"),
+research_agent = Agent(
+    name="Hacker News Researcher",
+    model=OpenAIChat(id="gpt-4o"),
     tools=[HackerNewsTools()],
-    instructions="Extract key insights and content from Hackernews posts",
-)
-
-finance_agent = Agent(
-    name="Finance Agent",
-    model=OpenAIResponses(id="gpt-5.2"),
-    tools=[YFinanceTools()],
-    instructions="Get stock prices and financial data",
-)
-
-# Define research team for complex analysis
-research_team = Team(
-    name="Research Team",
-    members=[hackernews_agent, finance_agent],
-    instructions="Analyze content and create comprehensive social media strategy",
+    instructions="Find relevant Hacker News stories and summarize the key points.",
 )
 
 content_planner = Agent(
     name="Content Planner",
-    model=OpenAIResponses(id="gpt-5.2"),
-    instructions=[
-        "Plan a content schedule over 4 weeks for the provided topic and research content",
-        "Ensure that I have posts for 3 posts per week",
-    ],
+    model=OpenAIChat(id="gpt-4o"),
+    instructions="Create an actionable content plan from the supplied research.",
 )
 
 
-def custom_content_planning_function(step_input: StepInput) -> StepOutput:
-    """
-    Custom function that does intelligent content planning with context awareness
-    """
+def create_content_plan(step_input: StepInput) -> StepOutput:
+    """Create a content plan from the previous step's research."""
     message = step_input.input
     previous_step_content = step_input.previous_step_content
 
-    # Create intelligent planning prompt
     planning_prompt = f"""
-        STRATEGIC CONTENT PLANNING REQUEST:
+    Topic: {message}
+    Research: {previous_step_content or "No research results"}
 
-        Core Topic: {message}
-
-        Research Results: {previous_step_content[:500] if previous_step_content else "No research results"}
-
-        Planning Requirements:
-        1. Create a comprehensive content strategy based on the research
-        2. Leverage the research findings effectively
-        3. Identify content formats and channels
-        4. Provide timeline and priority recommendations
-        5. Include engagement and distribution strategies
-
-        Please create a detailed, actionable content plan.
+    Create a four-week content plan with three posts per week.
     """
 
     try:
         response = content_planner.run(planning_prompt)
-
-        enhanced_content = f"""
-            ## Strategic Content Plan
-
-            **Planning Topic:** {message}
-
-            **Research Integration:** {"Research-based" if previous_step_content else "No research foundation"}
-
-            **Content Strategy:**
-            {response.content}
-
-            **Custom Planning Enhancements:**
-            - Research Integration: {"High" if previous_step_content else "Baseline"}
-            - Strategic Alignment: Optimized for multi-channel distribution
-            - Execution Ready: Detailed action items included
-        """.strip()
-
-        return StepOutput(content=enhanced_content)
-
-    except Exception as e:
+        return StepOutput(content=response.content)
+    except Exception as exc:
         return StepOutput(
-            content=f"Custom content planning failed: {str(e)}",
+            content=f"Content planning failed: {exc}",
             success=False,
         )
 
 
-# Define steps using different executor types
-
 research_step = Step(
     name="Research Step",
-    team=research_team,
+    agent=research_agent,
 )
 
 content_planning_step = Step(
     name="Content Planning Step",
-    executor=custom_content_planning_function,
+    executor=create_content_plan,
 )
 
-
-# Define and use examples
 if __name__ == "__main__":
     content_creation_workflow = Workflow(
         name="Content Creation Workflow",
-        description="Automated content creation with custom execution options",
         db=SqliteDb(
             session_table="workflow_session",
             db_file="tmp/workflow.db",
         ),
-        # Define the sequence of steps
-        # First run the research_step, then the content_planning_step
-        # You can mix and match agents, teams, and even regular python functions directly as steps
         steps=[research_step, content_planning_step],
     )
     content_creation_workflow.print_response(
-        input="AI trends in 2024",
+        input="AI agent trends",
         markdown=True,
     )
-
-    print("\n" + "=" * 60 + "\n")
 ```
 
+## Install
+
+```shell
+uv pip install agno openai sqlalchemy
+```
+
+<Snippet file="set-openai-key.mdx" />
+
+## How it works
+
+1. `research_step` runs the agent and produces the first step output.
+2. The workflow exposes that output through `step_input.previous_step_content`.
+3. `create_content_plan` returns a `StepOutput`, which becomes the workflow's final output.
+
+## Next steps
+
+| Task | Guide |
+|------|-------|
+| Stream a function step through AgentOS | [Function step streaming](/workflows/usage/step-with-function-streaming-agentos) |
+| Combine steps into a sequence | [Sequence of steps](/workflows/usage/sequence-of-steps) |

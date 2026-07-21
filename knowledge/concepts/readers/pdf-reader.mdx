@@ -1,78 +1,80 @@
 ---
 title: PDF Reader
+description: Convert local or remote PDF files into documents with PDFReader.
 ---
 
-The **PDF Reader** processes PDF files synchronously and converts them into documents that can be used with Agno's knowledge system.
+Pass `PDFReader` to `Knowledge.insert()` to configure PDF parsing and chunking.
 
-## Code
-
-```python examples/basics/knowledge/concepts/readers/overview/pdf_reader_sync.py
+```python pdf_reader.py
 from agno.agent import Agent
 from agno.knowledge.knowledge import Knowledge
 from agno.knowledge.reader.pdf_reader import PDFReader
+from agno.models.openai import OpenAIResponses
 from agno.vectordb.pgvector import PgVector
 
 db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
 
-# Create a knowledge base with PDF documents
 knowledge = Knowledge(
     vector_db=PgVector(
         table_name="pdf_documents",
         db_url=db_url,
-    )
+    ),
 )
 
-# Add PDF content synchronously
-knowledge.insert(
-    path="cookbook/08_knowledge/testing_resources/cv_1.pdf",
-    reader=PDFReader(),
-)
-
-# Create an agent with the knowledge base
 agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
     knowledge=knowledge,
     search_knowledge=True,
 )
 
-# Query the knowledge base
-agent.print_response(
-    "What skills does an applicant require to apply for the Software Engineer position?",
-    markdown=True,
-)
+if __name__ == "__main__":
+    knowledge.insert(
+        name="Thai Recipes",
+        url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
+        reader=PDFReader(split_on_pages=True),
+    )
+    agent.print_response(
+        "How do I make chicken and galangal in coconut milk soup?",
+        markdown=True,
+    )
 ```
 
-## Usage
+## Run the Agent
 
 <Steps>
   <Snippet file="create-venv-step.mdx" />
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U pypdf sqlalchemy psycopg pgvector agno openai
+    uv pip install -U agno openai pgvector psycopg pypdf sqlalchemy
     ```
   </Step>
 
-  <Step title="Set environment variables">
+  <Step title="Export the API key">
     ```bash
-    export OPENAI_API_KEY=xxx
+    export OPENAI_API_KEY=your_openai_api_key_here
     ```
   </Step>
 
   <Snippet file="run-pgvector-step.mdx" />
 
-  <Step title="Run Agent">
-    <CodeGroup>
-    ```bash Mac
-    python examples/basics/knowledge/concepts/readers/overview/pdf_reader_sync.py
+  <Step title="Run the agent">
+    ```bash
+    python pdf_reader.py
     ```
-
-    ```bash Windows
-    python examples/basics/knowledge/concepts/readers/overview/pdf_reader_sync.py
-    ```
-    </CodeGroup>
   </Step>
 </Steps>
 
-## Params
+## Reader Parameters
 
 <Snippet file="pdf-reader-reference.mdx" />
+
+Use `PDFReader.async_read()` or `Knowledge.ainsert()` in an asynchronous ingestion path.
+
+## Next Steps
+
+| Task | Guide |
+|------|-------|
+| Choose a chunking strategy | [Chunking](/knowledge/concepts/chunking/overview) |
+| Process images with OCR | [Readers Overview](/knowledge/concepts/readers/overview) |
+| Configure another reader | [Docling Reader](/knowledge/concepts/readers/docling-reader) |

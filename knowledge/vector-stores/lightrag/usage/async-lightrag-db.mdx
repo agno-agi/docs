@@ -1,10 +1,11 @@
 ---
 title: LightRAG Async
+description: "Load and query a LightRAG knowledge base asynchronously with ainsert() and aprint_response()."
 ---
 
 ## Code
 
-```python cookbook/08_knowledge/vector_db/lightrag/lightrag.py
+```python async_lightrag_db.py
 import asyncio
 from os import getenv
 
@@ -14,12 +15,13 @@ from agno.knowledge.reader.wikipedia_reader import WikipediaReader
 from agno.vectordb.lightrag import LightRag
 
 vector_db = LightRag(
+    server_url=getenv("LIGHTRAG_SERVER_URL", "http://localhost:9621"),
     api_key=getenv("LIGHTRAG_API_KEY"),
 )
 
 knowledge = Knowledge(
-    name="My LightRag Knowledge Base",
-    description="This is a knowledge base that uses a LightRag Vector DB",
+    name="LightRAG Knowledge Base",
+    description="Knowledge base using LightRAG for graph-based retrieval",
     vector_db=vector_db,
 )
 
@@ -29,49 +31,54 @@ agent = Agent(
     read_chat_history=False,
 )
 
+
+async def main() -> None:
+    await knowledge.ainsert(
+        name="CV",
+        path="data/cv_1.pdf",
+        metadata={"doc_type": "cv"},
+    )
+    await knowledge.ainsert(
+        name="Manchester United",
+        topics=["Manchester United"],
+        reader=WikipediaReader(),
+    )
+    await knowledge.ainsert(
+        name="CV 2",
+        path="data/cv_2.pdf",
+    )
+
+    # Give the server time to index the uploaded documents
+    await asyncio.sleep(60)
+
+    await agent.aprint_response("What skills does Jordan Mitchell have?", markdown=True)
+    await agent.aprint_response(
+        "In what year did Manchester United change their name?",
+        markdown=True,
+    )
+
+    results = await vector_db.async_search("What skills does Jordan Mitchell have?")
+    if results:
+        doc = results[0]
+        print(f"References: {doc.meta_data.get('references', [])}")
+
+
 if __name__ == "__main__":
-    asyncio.run(
-        knowledge.ainsert(
-            name="Recipes",
-            path="cookbook/08_knowledge/testing_resources/cv_1.pdf",
-            metadata={"doc_type": "recipe_book"},
-        )
-    )
-
-    asyncio.run(
-        knowledge.ainsert(
-            name="Recipes",
-            topics=["Manchester United"],
-            reader=WikipediaReader(),
-        )
-    )
-
-    asyncio.run(
-        knowledge.ainsert(
-            name="Recipes",
-            url="https://en.wikipedia.org/wiki/Manchester_United_F.C.",
-        )
-    )
-
-    asyncio.run(
-        agent.aprint_response("What skills does Jordan Mitchell have?", markdown=True)
-    )
-
-    asyncio.run(
-        agent.aprint_response(
-            "In what year did Manchester United change their name?", markdown=True
-        )
-    )
+    asyncio.run(main())
 ```
 
 ## Usage
+
+<Note>
+This example requires a running LightRAG server. It connects to `http://localhost:9621` unless `LIGHTRAG_SERVER_URL` is set.
+</Note>
 
 <Steps>
   <Snippet file="create-venv-step.mdx" />
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U lightrag pypdf openai agno
+    uv pip install -U agno pypdf wikipedia openai
     ```
   </Step>
 
@@ -84,7 +91,7 @@ if __name__ == "__main__":
 
   <Step title="Run Agent">
     ```bash
-    python cookbook/08_knowledge/vector_db/lightrag/lightrag.py
+    python async_lightrag_db.py
     ```
   </Step>
 </Steps>

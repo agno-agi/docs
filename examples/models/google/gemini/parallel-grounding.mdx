@@ -1,0 +1,120 @@
+---
+title: "Grounding with Parallel Web Search on Vertex AI"
+description: "Ground Gemini 3.5 Flash responses with Parallel web search on Vertex AI."
+source: cookbook/90_models/google/gemini/parallel_grounding.py
+---
+
+Ground Gemini 3.5 Flash responses with Parallel web search on Vertex AI after configuring a Marketplace subscription or Parallel API key.
+
+<Warning>
+  Google retired the pinned `gemini-2.0-flash` model on Vertex AI. Replace it with a model that currently supports Parallel grounding, such as `gemini-3.5-flash`, before running. Parallel access also requires either a Google Cloud Marketplace subscription or `PARALLEL_API_KEY`. See [Grounding with Parallel](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/grounding/grounding-with-parallel).
+</Warning>
+
+```python parallel_grounding.py
+"""Grounding with Parallel Web Search on Vertex AI.
+
+Parallel Web Systems offers a search API optimized for LLM grounding,
+providing access to live web data from billions of pages. This is available
+exclusively on Vertex AI through a native first-party integration.
+
+Note: This uses the dedicated `parallelAiSearch` tool type in Vertex AI,
+which is different from the generic `ExternalApi` approach. Parallel has
+a native integration with Google Cloud that handles authentication and
+API communication automatically.
+
+Requirements:
+- Set up Google Cloud credentials: `gcloud auth application-default login`
+- Set environment variables:
+  - GOOGLE_CLOUD_PROJECT: Your GCP project ID
+  - GOOGLE_CLOUD_LOCATION: Your GCP region (e.g., us-central1)
+- Optionally set PARALLEL_API_KEY if not using GCP Marketplace subscription
+
+Run `pip install google-genai` to install dependencies.
+
+For more information, see:
+- https://docs.cloud.google.com/vertex-ai/generative-ai/docs/grounding/grounding-with-parallel
+- https://docs.parallel.ai/integrations/google-vertex
+"""
+
+from agno.agent import Agent
+from agno.models.google import Gemini
+
+# Create an agent with Parallel web search grounding
+agent = Agent(
+    model=Gemini(
+        id="gemini-2.0-flash",
+        vertexai=True,  # Required for Parallel grounding
+        parallel_search=True,
+        # Optional: provide API key directly instead of env var.
+        # If omitted, uses PARALLEL_API_KEY env var or GCP Marketplace subscription.
+        # parallel_api_key="your-api-key",
+        # Optional: custom configuration for domain filtering, excerpt limits, etc.
+        # Passed as custom_configs to ToolParallelAiSearch.
+        # parallel_config={"source_policy": {"exclude_domains": ["example.com"]}},
+    ),
+    add_datetime_to_context=True,
+    markdown=True,
+)
+
+# Ask questions that benefit from real-time web information
+agent.print_response(
+    "What are the latest developments in quantum computing this week?",
+    stream=True,
+)
+
+# The response will include citations from Parallel's web search results
+# agent.print_response(
+#     "What are the top trending topics in AI research today?",
+#     stream=True,
+# )
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno google-genai
+    ```
+  </Step>
+
+  <Step title="Export environment variables">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export GOOGLE_CLOUD_LOCATION="your_google_cloud_location_here"
+    export GOOGLE_CLOUD_PROJECT="your_google_cloud_project_here"
+    ```
+
+    ```bash Windows
+    $Env:GOOGLE_CLOUD_LOCATION="your_google_cloud_location_here"
+    $Env:GOOGLE_CLOUD_PROJECT="your_google_cloud_project_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Authenticate with Google Cloud">
+    Sign in with Application Default Credentials:
+    ```bash
+    gcloud auth application-default login
+    ```
+  </Step>
+
+  <Step title="Configure Parallel access">
+    Subscribe to Parallel through Google Cloud Marketplace, or create a Parallel API key and export it as `PARALLEL_API_KEY` in the shell that runs the example.
+  </Step>
+
+  <Step title="Use a supported Gemini model">
+    Replace `id="gemini-2.0-flash"` with `id="gemini-3.5-flash"` in the saved file.
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `parallel_grounding.py`, then run:
+    ```bash
+    python parallel_grounding.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/90_models/google/gemini/parallel_grounding.py](https://github.com/agno-agi/agno/blob/main/cookbook/90_models/google/gemini/parallel_grounding.py)

@@ -13,7 +13,7 @@ All HITL settings are configured via [`HumanReview`](/workflows/hitl/human-revie
 
 When `requires_confirmation=True`, the pipeline pauses before executing any of its steps:
 - **Confirm**: Execute all steps in the pipeline
-- **Reject**: Skip the entire pipeline
+- **Reject**: Apply the configured `on_reject` action. The default skips the entire pipeline.
 
 ```python
 from agno.workflow import Workflow
@@ -21,6 +21,9 @@ from agno.workflow.step import Step
 from agno.workflow.steps import Steps
 from agno.workflow.types import HumanReview, StepInput, StepOutput
 from agno.db.sqlite import SqliteDb
+
+def collect_data(step_input: StepInput) -> StepOutput:
+    return StepOutput(content="Collection: 1000 records gathered")
 
 def validate_data(step_input: StepInput) -> StepOutput:
     return StepOutput(content="Validation: Schema verified")
@@ -30,6 +33,9 @@ def transform_data(step_input: StepInput) -> StepOutput:
 
 def enrich_data(step_input: StepInput) -> StepOutput:
     return StepOutput(content="Enrichment: External data merged")
+
+def generate_report(step_input: StepInput) -> StepOutput:
+    return StepOutput(content=f"Report: {step_input.previous_step_content}")
 
 workflow = Workflow(
     name="data_pipeline",
@@ -77,7 +83,27 @@ print(run_output.content)
 |-----------|------|-------------|
 | `requires_confirmation` | `bool` | Pause before executing the pipeline |
 | `confirmation_message` | `str` | Message shown to the user |
-| `on_reject` | `OnReject` | Action when rejected: `skip` (default), `cancel` |
+| `on_reject` | `OnReject` | Action when rejected: `skip` (default), `cancel`, or `retry` |
+
+## Rejection Behavior
+
+Set `on_reject` on `HumanReview`:
+
+```python
+from agno.workflow import OnReject
+from agno.workflow.types import HumanReview
+
+review = HumanReview(
+    requires_confirmation=True,
+    on_reject=OnReject.cancel,
+)
+```
+
+| Policy | Result |
+|--------|--------|
+| `OnReject.skip` | Skip every step in the pipeline and continue with the next workflow step. This is the default. |
+| `OnReject.cancel` | Cancel the workflow. |
+| `OnReject.retry` | Resume at the rejected pipeline and execute its steps when `continue_run()` is called. The resolved confirmation does not pause a second time. |
 
 ## Pipeline Behavior
 
@@ -86,7 +112,7 @@ The confirmation happens once before the pipeline starts. Individual steps withi
 | User Action | Result |
 |-------------|--------|
 | Confirm | Execute all steps in sequence |
-| Reject | Skip all steps in the pipeline |
+| Reject | Apply `on_reject` to skip, cancel, or execute the pipeline with `retry` |
 
 ## Streaming
 

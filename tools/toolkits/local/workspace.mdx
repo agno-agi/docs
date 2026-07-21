@@ -8,24 +8,42 @@ description: "Workspace gives an agent read/write/edit/search/shell access to a 
 ## Example
 
 ```python cookbook/91_tools/workspace_tools/basic_usage.py
+import tempfile
+from pathlib import Path
+
 from agno.agent import Agent
 from agno.models.openai import OpenAIResponses
 from agno.tools.workspace import Workspace
+
+# Use a clean tmp directory so the demo doesn't touch real files.
+workspace = Path(tempfile.mkdtemp(prefix="workspace_demo_"))
+(workspace / "README.md").write_text(
+    "# Demo workspace\n\n"
+    "This file lives in a tmp directory.\n"
+    "The agent below will read it and produce a summary file.\n"
+)
 
 agent = Agent(
     model=OpenAIResponses(id="gpt-5.4"),
     tools=[
         Workspace(
-            "/path/to/project",
-            allowed=["read", "list", "search"],
-            confirm=["write", "edit", "move", "delete", "shell"],
+            str(workspace),
+            allowed=Workspace.ALL_TOOLS,
+            confirm=[],
         )
     ],
     markdown=True,
 )
 
-agent.print_response("Read README.md, then write a 2-line summary to NOTES.md.")
+if __name__ == "__main__":
+    agent.print_response(
+        "Read README.md, then write a 2-line summary to NOTES.md. "
+        "After that, list the files to confirm both exist."
+    )
+    print(f"\nWorkspace: {workspace}")
 ```
+
+This example passes `confirm=[]` to disable confirmation so it runs end-to-end without prompts. For production, leave the defaults on.
 
 ## Permission Model
 
@@ -64,7 +82,7 @@ This is a path-scoping boundary, not a process sandbox. Paths resolving outside 
 | `confirm`                   | `Optional[List[str]]`   | `None`       | Aliases that require confirmation.                                          |
 | `require_read_before_write` | `bool`                  | `False`      | Block writes/edits/move/delete on existing files until read this session.   |
 | `max_file_lines`            | `int`                   | `100000`     | Maximum lines `read_file` will load.                                        |
-| `max_file_length`           | `int`                   | `10000000`   | Maximum file size (bytes) `read_file` will load.                            |
+| `max_file_length`           | `int`                   | `10000000`   | Maximum file length (characters) `read_file` will load.                     |
 | `exclude_patterns`          | `Optional[List[str]]`   | noise dirs   | Patterns skipped by `list_files`/`search_content`. Pass `[]` to disable.    |
 
 `list_files` and `search_content` skip common noise directories (`.venv`, `.git`, `__pycache__`, `node_modules`, etc.) by default.

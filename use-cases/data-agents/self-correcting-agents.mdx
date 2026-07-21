@@ -1,62 +1,86 @@
 ---
 title: "Self-correcting agents"
-description: "Turn every diagnosed error into a durable learning to prevent the same mistakes."
+description: "Save diagnosed query errors as learned knowledge and retrieve the corrections on later runs."
 ---
 
-When an agent gets a query wrong, the fix shouldn't live in your head. Agno's LearningMachine diagnoses the error, saves the correction as a learning, and pulls it back into context the next time a similar question comes in.
+Use the Learning Machine to save diagnosed query corrections and retrieve them for related requests.
+
+```bash
+uv pip install "agno[openai,pgvector,psycopg,sql]"
+```
 
 ```python
 from agno.agent import Agent
 from agno.db.postgres import PostgresDb
+from agno.knowledge.knowledge import Knowledge
+from agno.learn import LearningMachine
 from agno.models.openai import OpenAIResponses
 from agno.tools.sql import SQLTools
+from agno.vectordb.pgvector import PgVector
+
+db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
+
+db = PostgresDb(db_url=db_url)
+knowledge = Knowledge(
+    vector_db=PgVector(table_name="agent_learnings", db_url=db_url),
+)
 
 agent = Agent(
+    id="data-analyst",
     model=OpenAIResponses(id="gpt-5.5"),
-    db=PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai"),
+    db=db,
     tools=[SQLTools(db_url="postgresql+psycopg://readonly@warehouse/analytics")],
-    learning=True,
-    instructions="When a query errors, diagnose the cause and record the correction.",
+    learning=LearningMachine(knowledge=knowledge, decision_log=True),
+    instructions=(
+        "Before writing SQL, call search_learnings with terms from the request and "
+        "apply relevant corrections. "
+        "When a query errors, diagnose the cause. Call save_learning for a "
+        "reusable correction. Call log_decision when you change the query shape."
+    ),
 )
 ```
 
-`learning=True` enables capture and recall. The agent accumulates corrections across runs and pulls the relevant ones into context on future questions.
+Passing `knowledge` to `LearningMachine` enables the Learned Knowledge store. It uses `AGENTIC` mode by default, so the model calls `save_learning` when it finds a reusable correction. `decision_log=True` also selects `AGENTIC` mode and adds the `log_decision` and `search_decisions` tools. A decision is saved only when the model calls `log_decision`.
 
 ## The loop
 
 1. The agent writes SQL and runs it.
 2. It errors, or returns a number a human flags as wrong.
 3. The agent diagnoses the cause (wrong column, stale table, a join that double-counts).
-4. The fix is saved as a learning.
-5. The next similar question retrieves that learning before generating SQL.
+4. The fix is saved according to the configured learning mode.
+5. On the next similar request, the agent calls `search_learnings` before generating SQL.
 
-Each diagnosed error is written down and pulled back before the next similar query, so recurring errors stop recurring: the agent accumulates what your warehouse's sharp edges are.
+In `AGENTIC` mode, retrieval occurs when the model calls `search_learnings`. The instruction in this example makes that search part of the query workflow.
 
 ## Choose how learning happens
 
-Each store takes a mode. For a data agent, you usually want errors captured automatically and schema changes proposed for review.
+Each store has its own mode. Choose explicit tool calls, background extraction, or human approval based on the correction.
 
 ```python
-from agno.learn import LearningMachine, LearningMode, UserMemoryConfig
+from agno.learn import LearnedKnowledgeConfig, LearningMachine, LearningMode
 
-agent = Agent(
+always_agent = Agent(
+    id="data-analyst",
     model=OpenAIResponses(id="gpt-5.5"),
     db=db,
     learning=LearningMachine(
-        user_memory=UserMemoryConfig(mode=LearningMode.ALWAYS),
+        knowledge=knowledge,
+        learned_knowledge=LearnedKnowledgeConfig(mode=LearningMode.ALWAYS),
     ),
 )
 ```
 
 | Mode | Behavior | Use for |
 |------|----------|---------|
-| `ALWAYS` | Capture runs automatically after each response | Query-error corrections |
-| `AGENTIC` | The agent decides what is worth saving | Nuanced domain insights |
+| `ALWAYS` | Background extraction from the pre-model message snapshot | Corrections in the current user input, plus prior user and assistant messages when history is enabled |
+| `AGENTIC` | The agent decides what to save with explicit tools | Nuanced domain insights |
 | `PROPOSE` | The agent proposes, a human approves before it persists | Anything that changes how numbers are computed |
+
+`ALWAYS` schedules background extraction after run messages are prepared and before the main model call. With the default `add_history_to_context=False`, this example supplies the current user message. Set `add_history_to_context=True` to include prior user and assistant messages in later snapshots. The extractor ignores system messages, tool calls, and tool results. It may decide there is nothing worth saving.
 
 ## Audit what it learned
 
-A data agent's learnings change the numbers it reports, so they need to be inspectable. Read the Learned Knowledge store to see the corrections it captured, and the Decision Log for the reasoning behind a changed query shape.
+Inspect the Learned Knowledge store for saved corrections and the Decision Log for recorded query-shape decisions.
 
 ```python
 lm = agent.learning_machine

@@ -1,9 +1,9 @@
 ---
 title: "Serve and embed"
-description: "Put the research team and pipeline behind an API so anyone, and any schedule, can ask for a review."
+description: "Serve research agents, teams, and workflows through one AgentOS API."
 ---
 
-A research system that only runs from a script helps the person at the keyboard. Behind an API it answers from Slack, runs as a nightly review, and feeds a dashboard. `AgentOS` serves agents, teams, and workflows on the same contract.
+Serve the research workflow with AgentOS to make it available to Slack, scheduled jobs, dashboards, and backend services. Register the individual analysts, research teams, and workflow in one runtime.
 
 ```python
 from agno.os import AgentOS
@@ -19,7 +19,7 @@ if __name__ == "__main__":
     agent_os.serve(app="main:app", port=8000)
 ```
 
-Every registered agent, team, and workflow gets run and session endpoints. A surface calls the workflow for the auditable review or a team for an open-ended question, with the same request shape.
+Every registered agent, team, and workflow gets a run endpoint. Sessions are served from a shared `/sessions` router, filterable by component and session type. A surface calls the workflow for the auditable review or a team for an open-ended question, with the same request shape.
 
 ```bash
 curl -X POST http://localhost:8000/workflows/investment-workflow/runs \
@@ -29,31 +29,32 @@ curl -X POST http://localhost:8000/workflows/investment-workflow/runs \
   -F 'stream=false'
 ```
 
-## Where a research system lives
+## Delivery surfaces
 
 | Surface | Shape |
 |---------|-------|
 | Slack channel | An analyst asks "review NVDA"; the pipeline replies in-thread with the memo |
 | Scheduled review | A cron runs the workflow nightly on a watchlist and posts the decisions |
 | Dashboard | A widget triggers a review and renders the structured decision |
-| Backend gate | A pipeline calls the workflow before a position changes, blocks on a PASS |
+| Backend gate | A pipeline calls the workflow before a position changes and blocks on a PASS |
 
-The serving model is identical to a [product agent](/use-cases/product-agents/serve-as-an-api) and a [data agent](/use-cases/data-agents/serve-and-embed). The difference is what runs behind the endpoint, not how it is served.
+[Product agents](/use-cases/product-agents/serve-as-an-api), [data agents](/use-cases/data-agents/serve-and-embed), and research systems use the same AgentOS run endpoints. Each surface selects the registered component that matches the request.
 
-## Pick the entry point per request
+## Choose an entry point
 
 | Caller wants | Hit |
 |--------------|-----|
-| The decision of record | The `Workflow` (deterministic, auditable) |
+| The decision of record | The `Workflow` (explicit control flow, inspectable step results) |
 | An open-ended question | A coordinate `Team` |
 | An independent multi-view read | A broadcast `Team` |
-| A single fact | A route `Team` |
 
-One AgentOS exposes all of them. The surface chooses the shape per request.
+One AgentOS exposes all three. The surface chooses the shape per request.
 
-## Scheduled research is the high-leverage pattern
+## Scheduled research
 
-The review nobody remembered to run is the one that mattered. A scheduled workflow turns deep research from on-demand to always-on: every morning the watchlist is reviewed, the memos are written, and the decisions are waiting before anyone asks.
+Use an AgentOS schedule to run a watchlist review at a fixed interval. Each run produces the workflow's memos and decisions for the team.
+
+AgentOS ships the scheduler. Start it with `AgentOS(..., scheduler=True)` and register a cron against the workflow's run endpoint with `ScheduleManager`. See [Scheduling](/features/scheduling).
 
 ## Next steps
 

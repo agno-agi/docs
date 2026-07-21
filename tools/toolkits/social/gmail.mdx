@@ -1,5 +1,6 @@
 ---
 title: Gmail
+description: "Read, search, send, and organize Gmail messages with GmailTools using OAuth or a service account."
 ---
 
 **Gmail** enables an Agent to interact with Gmail, allowing it to read, search, send, manage emails, and organize them with labels. Supports both OAuth and service account authentication.
@@ -9,7 +10,7 @@ title: Gmail
 ### Install dependencies
 
 ```shell
-uv pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib
+uv pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib openai
 ```
 
 ### Setup Google Project and OAuth
@@ -86,7 +87,7 @@ export GOOGLE_DELEGATED_USER=user@yourdomain.com  # Required for Gmail
 
 ## Example
 
-```python cookbook/91_tools/google/gmail_tools.py
+```python
 from agno.agent import Agent
 from agno.tools.google.gmail import GmailTools
 
@@ -117,21 +118,26 @@ agent = Agent(
 )
 ```
 
+<Tip>
+Results are capped at 20 per call by default to prevent context overflow. Increase `max_results` if your model has a larger context window.
+</Tip>
+
 ## Toolkit Params
 
 | Parameter               | Type          | Default        | Description                                                |
 | ----------------------- | ------------- | -------------- | ---------------------------------------------------------- |
-| `creds`                 | `Credentials` | `None`         | Pre-fetched OAuth credentials to skip auth flow           |
+| `creds`                 | `Credentials` | `None`         | Pre-fetched credentials (OAuth or service account) to skip auth flow |
 | `credentials_path`      | `str`         | `None`         | Path to OAuth credentials JSON file                        |
-| `token_path`            | `str`         | `"token.json"` | Path to token file for storing access/refresh tokens       |
+| `token_path`            | `str`         | `None`         | Path to token file for storing access/refresh tokens       |
 | `service_account_path`  | `str`         | `None`         | Path to service account JSON key. When set, OAuth is skipped |
 | `delegated_user`        | `str`         | `None`         | Email to impersonate (required for Gmail with service account) |
 | `scopes`                | `List[str]`   | `None`         | Custom OAuth scopes                                        |
-| `port`                  | `int`         | `None`         | Port for OAuth authentication callback                     |
+| `oauth_port`            | `int`         | `0`            | Port for the OAuth local server. 0 auto-selects a port     |
 | `login_hint`            | `str`         | `None`         | Email to pre-select in OAuth consent screen                |
 | `include_html`          | `bool`        | `False`        | Return raw HTML body instead of stripping tags             |
 | `max_body_length`       | `int`         | `None`         | Truncate message bodies to this length                     |
 | `attachment_dir`        | `str`         | `None`         | Directory to save downloaded attachments                   |
+| `max_results`           | `int`         | `20`           | Maximum results per API request to prevent context overflow |
 | `max_batch_size`        | `int`         | `10`           | Max items per Gmail API batch request (max 100)            |
 | `get_latest_emails`     | `bool`        | `True`         | Enable get_latest_emails tool                              |
 | `get_emails_from_user`  | `bool`        | `True`         | Enable get_emails_from_user tool                           |
@@ -202,13 +208,13 @@ agent = Agent(
 
 | Function             | Description                                        |
 | -------------------- | -------------------------------------------------- |
-| `create_draft_email` | Create draft with attachments. Parameters: `to` (str), `subject` (str), `body` (str), `cc` (str), `bcc` (str), `attachments` (List[str]), `thread_id` (str), `message_id` (str) |
-| `send_email`         | Send email with attachments. Parameters: `to` (str), `subject` (str), `body` (str), `cc` (str), `bcc` (str), `attachments` (List[str]), `thread_id` (str), `message_id` (str) |
-| `send_email_reply`   | Reply to email thread. Parameters: `thread_id` (str), `message_id` (str), `to` (str), `subject` (str), `body` (str), `cc` (str), `attachments` (List[str]) |
+| `create_draft_email` | Create draft with attachments. Parameters: `to` (str), `subject` (str), `body` (str), `cc` (str), `bcc` (str), `attachments` (str or List[str]), `thread_id` (str), `message_id` (str) |
+| `send_email`         | Send email with attachments. Parameters: `to` (str), `subject` (str), `body` (str), `cc` (str), `bcc` (str), `attachments` (str or List[str]), `thread_id` (str), `message_id` (str) |
+| `send_email_reply`   | Reply to email thread. Parameters: `thread_id` (str), `message_id` (str), `to` (str), `subject` (str), `body` (str), `cc` (str), `attachments` (str or List[str]) |
 | `get_draft`          | Get draft by ID. Parameters: `draft_id` (str) |
 | `list_drafts`        | List all drafts. Parameters: `count` (int) |
 | `send_draft`         | Send a draft. Parameters: `draft_id` (str) |
-| `update_draft`       | Update draft content. Parameters: `draft_id` (str), `to` (str), `subject` (str), `body` (str), `cc` (str), `bcc` (str), `attachments` (List[str]), `thread_id` (str), `message_id` (str) |
+| `update_draft`       | Update draft content. Parameters: `draft_id` (str), `to` (str), `subject` (str), `body` (str), `cc` (str), `bcc` (str), `attachments` (str or List[str]), `thread_id` (str), `message_id` (str) |
 
 ### Label Management
 
@@ -219,8 +225,8 @@ agent = Agent(
 | `apply_label`           | Apply label to emails. Parameters: `context` (str), `label_name` (str), `count` (int) |
 | `remove_label`          | Remove label from emails. Parameters: `context` (str), `label_name` (str), `count` (int) |
 | `delete_custom_label`   | Delete a custom label. Parameters: `label_name` (str), `confirm` (bool) |
-| `modify_message_labels` | Modify message labels. Parameters: `message_id` (str), `add_labels` (List[str]), `remove_labels` (List[str]) |
-| `modify_thread_labels`  | Modify thread labels. Parameters: `thread_id` (str), `add_labels` (List[str]), `remove_labels` (List[str]) |
+| `modify_message_labels` | Modify message labels. Parameters: `message_id` (str), `add_labels` (str, comma-separated), `remove_labels` (str, comma-separated) |
+| `modify_thread_labels`  | Modify thread labels. Parameters: `thread_id` (str), `add_labels` (str, comma-separated), `remove_labels` (str, comma-separated) |
 
 You can use `include_tools` or `exclude_tools` to modify the list of tools the agent has access to. Learn more about [selecting tools](/tools/selecting-tools).
 
@@ -228,14 +234,14 @@ You can use `include_tools` or `exclude_tools` to modify the list of tools the a
 
 The agno cookbook includes several Gmail examples demonstrating different use cases:
 
-| Example                      | Description                                       |
-| ---------------------------- | ------------------------------------------------- |
-| `gmail_tools.py`             | Core examples: read-only agent, safe agent, label manager, full agent, thread reply |
-| `gmail_daily_digest.py`      | Summarize recent emails into a structured daily digest grouped by priority |
-| `gmail_draft_reply.py`       | Read a conversation thread and draft a contextual reply for human review |
-| `gmail_inbox_triage.py`      | Personal inbox triage agent with Learning Machine for persistent preferences |
-| `gmail_followup_tracker.py`  | Find unanswered sent emails, draft follow-ups     |
-| `gmail_action_items.py`      | Extract structured action items from email threads |
+| Example                | Description                                       |
+| ---------------------- | ------------------------------------------------- |
+| `basic.py`             | Core examples: read-only agent, safe agent, label manager, full agent, thread reply |
+| `daily_digest.py`      | Summarize recent emails into a structured daily digest grouped by priority |
+| `draft_reply.py`       | Read a conversation thread and draft a contextual reply for human review |
+| `inbox_triage.py`      | Personal inbox triage agent with Learning Machine for persistent preferences |
+| `followup_tracker.py`  | Find unanswered sent emails, draft follow-ups     |
+| `action_items.py`      | Extract structured action items from email threads |
 
 ## Tips for Using Gmail Tools
 
@@ -256,4 +262,4 @@ The agno cookbook includes several Gmail examples demonstrating different use ca
 ## Developer Resources
 
 - [Source Code](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/tools/google/gmail.py)
-- [Cookbook Examples](https://github.com/agno-agi/agno/tree/main/cookbook/91_tools/google)
+- [Cookbook Examples](https://github.com/agno-agi/agno/tree/main/cookbook/91_tools/google/gmail)

@@ -11,7 +11,7 @@ keywords: [middleware, fastapi middleware, agentos middleware, jwt middleware, c
 
 AgentOS is built on FastAPI, so you can add any [FastAPI/Starlette-compatible middleware](https://fastapi.tiangolo.com/tutorial/middleware/) for authentication, logging, monitoring, and security.
 
-Agno ships with a built-in JWT middleware for authentication. You can write your own custom middleware for rate limiting, request logging, and security headers.
+Agno ships with a built-in auth middleware (`AuthMiddleware`) that handles JWTs, service-account tokens, and the OS security key. You can write your own custom middleware for rate limiting, request logging, and security headers.
 
 See the following guides:
 <CardGroup cols={2}>
@@ -41,11 +41,11 @@ See the following guides:
 
 ## Quick Start
 
-Adding middleware to your AgentOS application is straightforward:
+Add middleware to the FastAPI app returned by `get_app()`:
 
 ```python agent_os.py
 from agno.os import AgentOS
-from agno.os.middleware import JWTMiddleware
+from agno.os.middleware.jwt import AuthMiddleware
 from agno.db.postgres import PostgresDb
 from agno.models.openai import OpenAIResponses
 from agno.agent import Agent
@@ -64,7 +64,7 @@ app = agent_os.get_app()
 
 # Add middleware
 app.add_middleware(
-    JWTMiddleware,
+    AuthMiddleware,
     verification_keys=["your-jwt-verification-key"],
     validate=True
 )
@@ -87,46 +87,45 @@ Test middleware thoroughly in your own staging environment before production dep
 <Tabs>
   <Tab title="Authentication">
     **Secure your AgentOS with JWT authentication:**
-    
+
     - Extract tokens from headers or cookies
     - Automatic parameter injection (user_id, session_id)
     - Custom claims extraction for `dependencies` and `session_state`
     - Route exclusion for public endpoints
-    
+
     [Learn more about JWT Middleware](/agent-os/middleware/jwt)
   </Tab>
 
   <Tab title="RBAC Authorization">
     **Control access with permission scopes:**
-    
+
     - Validate JWT scopes against required permissions
     - Per-resource access control (specific agents/teams/workflows)
     - Admin scope for full access
     - Customizable scope mappings
-    
+
     [Authorization](/agent-os/security/authorization/overview)
   </Tab>
-  
+
   <Tab title="Rate Limiting">
     **Prevent API abuse with rate limiting:**
-    
+
     ```python
     class RateLimitMiddleware(BaseHTTPMiddleware):
         def __init__(self, app, requests_per_minute: int = 60):
             super().__init__(app)
             self.requests_per_minute = requests_per_minute
             # ... implementation
-    
+
     app.add_middleware(RateLimitMiddleware, requests_per_minute=100)
     ```
 
   </Tab>
-  
+
   <Tab title="Logging">
     **Monitor requests and responses:**
-    
+
     ```python
-    
     class LoggingMiddleware(BaseHTTPMiddleware):
         async def dispatch(self, request: Request, call_next):
             start_time = time.time()
@@ -137,8 +136,10 @@ Test middleware thoroughly in your own staging environment before production dep
     ```
 
   </Tab>
-  
+
 </Tabs>
+
+See [Custom Middleware](/agent-os/usage/middleware/custom-middleware) for complete rate-limiting and request-logging implementations.
 
 ## Middleware Execution Order
 
@@ -155,9 +156,9 @@ app.add_middleware(MiddlewareC)  # Runs first (outermost)
 # Response: Your Route -> A -> B -> C
 ```
 
-**Best Practice:** Add middleware in logical order:
-1. **Security middleware first** (CORS, security headers)
-2. **Authentication middleware** (JWT, session validation)  
+**Best Practice:** Aim for this execution order. Since the last middleware added runs first, add them in reverse:
+1. **Security middleware** (CORS, security headers)
+2. **Authentication middleware** (JWT, session validation)
 3. **Monitoring middleware** (logging, metrics)
 4. **Business logic middleware** (rate limiting, custom logic)
 

@@ -3,7 +3,7 @@ title: "Invoices and receipts"
 description: "Header fields, line items, and the path from PDF to a database row."
 ---
 
-The shape AP teams need: a header (vendor, totals, dates) and a list of line items. The schema is the contract with downstream systems.
+Accounts payable systems usually need invoice header fields and a list of line items. Define that contract as a Pydantic schema before writing the result downstream.
 
 ```python
 from typing import List, Optional
@@ -54,11 +54,11 @@ invoice = agent.run(
 #         quantity=12, unit_price=99.0, amount=1188.0), LineItem(...)])
 ```
 
-The hard part is the missing-field discipline. A hallucinated `total` corrupts the AP ledger. Two lines in the instructions ("use exactly what the document shows", "null if missing") cut the hallucination rate substantially on noisy scans.
+Handle missing fields explicitly. The instructions tell the agent to return `null` for absent values and prohibit invented line items. Check the resulting `None` values before writing the invoice to the AP ledger.
 
 ## Persist the row
 
-The agent's job ends at a validated `Invoice`. The next step is a normal INSERT. Pydantic `.model_dump()` gives you a dict you can hand to any driver.
+A validated `Invoice` is ready for persistence. Pydantic `.model_dump()` gives you a dictionary you can pass to any database driver.
 
 ```python
 from sqlalchemy import create_engine, text
@@ -68,10 +68,11 @@ engine = create_engine("postgresql+psycopg://ai:ai@localhost:5532/ap")
 with engine.begin() as conn:
     invoice_id = conn.execute(
         text(
-            "INSERT INTO invoices (invoice_number, vendor, invoice_date, "
-            "due_date, currency, subtotal, tax, total) "
-            "VALUES (:invoice_number, :vendor, :invoice_date, :due_date, "
-            ":currency, :subtotal, :tax, :total) RETURNING id"
+            "INSERT INTO invoices (invoice_number, vendor, vendor_tax_id, "
+            "bill_to, invoice_date, due_date, currency, subtotal, tax, total) "
+            "VALUES (:invoice_number, :vendor, :vendor_tax_id, :bill_to, "
+            ":invoice_date, :due_date, :currency, :subtotal, :tax, :total) "
+            "RETURNING id"
         ),
         invoice.model_dump(exclude={"lines"}),
     ).scalar_one()
@@ -88,11 +89,11 @@ with engine.begin() as conn:
         )
 ```
 
-Two writes per invoice. The schema decides the table layout; the agent decides the values.
+Insert the header once, then insert each line item with the returned invoice ID. The schema maps cleanly to separate header and line tables.
 
 ## Receipts
 
-Receipts are invoices with a thinner header. Drop `due_date`, `vendor_tax_id`, and `bill_to`. Keep the same line-item shape. The same agent and the same instructions work; only `output_schema` changes.
+For receipts, use a smaller header with the merchant, purchase date, currency, and total. Keep the same line-item shape and change `output_schema` to `Receipt`.
 
 ```python
 class Receipt(BaseModel):

@@ -10,9 +10,7 @@ Pass a `Workflow` as a step inside another `Workflow`. The inner workflow runs a
 ```python nested_workflow.py
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
-from agno.workflow.step import Step
-from agno.workflow.types import StepInput, StepOutput
-from agno.workflow.workflow import Workflow
+from agno.workflow import Step, StepInput, StepOutput, Workflow
 
 
 def create_summary(step_input: StepInput) -> StepOutput:
@@ -66,8 +64,8 @@ The outer workflow runs `inner_workflow` as its first step. The inner workflow's
 ## How It Works
 
 1. The outer workflow reaches a step with `workflow=inner_workflow`
-2. The inner workflow's `.run()` executes with the prepared input (chained from the previous step)
-3. Session state is deep-copied into the inner workflow and merged back after execution
+2. The inner workflow executes with `.run()` or `.arun()` and receives the prepared input
+3. The parent passes its session ID, user ID, and current session state into the nested run
 4. The inner workflow's output is converted to a `StepOutput` with `step_type=StepType.WORKFLOW`
 5. Execution continues to the next step in the outer workflow
 
@@ -78,15 +76,16 @@ The outer workflow runs `inner_workflow` as its first step. The inner workflow's
 | Explicit `Step` wrapper | `Step(name="research", workflow=inner_workflow)` | Custom step name, clarity |
 | Auto-wrap | `steps=[inner_workflow]` | Concise shorthand (uses the workflow's `name` as step name) |
 
-```python auto_wrap.py
-# These are equivalent:
+Using `inner_workflow` from the basic example:
+
+```python
 steps=[Step(name="Research Workflow", workflow=inner_workflow)]
 steps=[inner_workflow]
 ```
 
-## Inner workflows and primitives
+## Inner Workflows and Primitives
 
-An inner workflow can use the same primitives and combinations as any top-level workflow in Agno: agents, executors, nested `Step`s, `Condition`, `Loop`, `Router`, and `Parallel`, mixed however your pipeline needs.
+An inner workflow can use the same primitives and combinations as a top-level workflow: agents, teams, functions, `Step`, `Steps`, `Condition`, `Loop`, `Router`, `Parallel`, and other nested workflows.
 
 The [basic example](#basic-example) uses agent and executor steps inside the inner workflow. [Deep nesting](#deep-nesting) shows multiple levels with `Parallel` and sub-workflows.
 
@@ -99,26 +98,45 @@ The [basic example](#basic-example) uses agent and executor steps inside the inn
 
 ## Deep Nesting
 
-Workflows can be nested multiple levels deep. Each level runs its own sub-workflows independently.
+Workflows can be nested to a maximum depth of 10. Nested runs keep their own workflow and run IDs while sharing the parent's session context for the call.
 
 ```python deeply_nested.py
-from agno.workflow import Parallel
+from agno.workflow import Parallel, Step, StepInput, StepOutput, Workflow
 
-# Level 3: Mini-workflows
+
+def collect_data(step_input: StepInput) -> StepOutput:
+    return StepOutput(content=f"Collected data for {step_input.input}")
+
+
+def analyze_data(step_input: StepInput) -> StepOutput:
+    return StepOutput(content=f"Analysis of {step_input.previous_step_content}")
+
+
+def collect_opinion(step_input: StepInput) -> StepOutput:
+    return StepOutput(content=f"Expert opinion for {step_input.input}")
+
+
+def merge_results(step_input: StepInput) -> StepOutput:
+    return StepOutput(content=f"Merged research:\n{step_input.previous_step_content}")
+
+
+def write_report(step_input: StepInput) -> StepOutput:
+    return StepOutput(content=f"Report:\n{step_input.previous_step_content}")
+
+
 data_workflow = Workflow(
     name="Data Collection",
     steps=[
-        Step(name="gather", agent=data_agent),
-        Step(name="analyze", agent=analysis_agent),
+        Step(name="gather", executor=collect_data),
+        Step(name="analyze", executor=analyze_data),
     ],
 )
 
 opinion_workflow = Workflow(
     name="Expert Opinion",
-    steps=[Step(name="opinion", agent=opinion_agent)],
+    steps=[Step(name="opinion", executor=collect_opinion)],
 )
 
-# Level 2: Parallel research with Level 3 workflows
 level2_workflow = Workflow(
     name="Comprehensive Research",
     steps=[
@@ -131,14 +149,15 @@ level2_workflow = Workflow(
     ],
 )
 
-# Level 1: Top-level pipeline
 outer_workflow = Workflow(
     name="Full Pipeline",
     steps=[
         Step(name="research", workflow=level2_workflow),
-        Step(name="write", agent=writer),
+        Step(name="write", executor=write_report),
     ],
 )
+
+outer_workflow.print_response("Battery storage markets")
 ```
 
 ## Streaming Events
@@ -148,10 +167,12 @@ When streaming, inner workflow events bubble up with a `nested_depth` field. Use
 | Field | Description |
 |-------|-------------|
 | `nested_depth` | `0` for outer workflow, `1` for first-level inner, `2` for deeper nesting |
-| `workflow_id` | Unique ID of the workflow that emitted the event |
+| `workflow_id` | ID of the workflow that emitted the event |
 | `workflow_name` | Name of the workflow that emitted the event |
 
-```python event_inspection.py
+Using `outer_workflow` from the deep-nesting example:
+
+```python
 from agno.run.workflow import (
     StepCompletedEvent,
     StepStartedEvent,
@@ -159,7 +180,11 @@ from agno.run.workflow import (
     WorkflowStartedEvent,
 )
 
-for event in outer_workflow.run(input="...", stream=True, stream_events=True):
+for event in outer_workflow.run(
+    input="Battery storage markets",
+    stream=True,
+    stream_events=True,
+):
     if isinstance(event, (WorkflowStartedEvent, StepStartedEvent)):
         depth = event.nested_depth
         name = event.workflow_name

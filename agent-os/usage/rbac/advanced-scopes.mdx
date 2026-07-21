@@ -1,8 +1,9 @@
 ---
 title: Advanced Scopes
+description: Use global, per-resource, and wildcard RBAC scope patterns.
 ---
 
-This example demonstrates advanced RBAC scope patterns including global scopes, per-resource scopes, and wildcards.
+Use advanced RBAC scope patterns including global scopes, per-resource scopes, and wildcards.
 
 <Steps>
 
@@ -17,9 +18,11 @@ This example demonstrates advanced RBAC scope patterns including global scopes, 
     from agno.models.openai import OpenAIResponses
     from agno.os import AgentOS
     from agno.os.config import AuthorizationConfig
-    from agno.tools.hackernews import HackerNewsTools
+    from agno.tools.websearch import WebSearchTools
 
-    JWT_SECRET = os.getenv("JWT_VERIFICATION_KEY", "your-secret-key-at-least-256-bits-long")
+    JWT_SECRET = os.getenv("JWT_VERIFICATION_KEY")
+    if not JWT_SECRET:
+        raise RuntimeError("Set JWT_VERIFICATION_KEY before starting AgentOS")
 
     db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
 
@@ -29,7 +32,7 @@ This example demonstrates advanced RBAC scope patterns including global scopes, 
         name="Web Search Agent",
         model=OpenAIResponses(id="gpt-5.2"),
         db=db,
-        tools=[HackerNewsTools()],
+        tools=[WebSearchTools()],
         markdown=True,
     )
 
@@ -52,7 +55,7 @@ This example demonstrates advanced RBAC scope patterns including global scopes, 
     # Create AgentOS with RBAC
     agent_os = AgentOS(
         id="my-agent-os",
-        name="Production AgentOS",
+        name="RBAC Scope Demo",
         agents=[web_search_agent, analyst_agent, admin_agent],
         authorization=True,
         authorization_config=AuthorizationConfig(
@@ -85,7 +88,7 @@ This example demonstrates advanced RBAC scope patterns including global scopes, 
         # 2. POWER USER - Global access to all agents
         power_user_token = create_token(
             "power_user",
-            ["system:read", "agents:read", "agents:run", "sessions:read", "sessions:write"],
+            ["config:read", "agents:read", "agents:run", "sessions:read", "sessions:write"],
         )
 
         # 3. LIMITED USER - Only specific agents
@@ -102,7 +105,7 @@ This example demonstrates advanced RBAC scope patterns including global scopes, 
         # 4. READ-ONLY USER - Can view but not run
         readonly_user_token = create_token(
             "readonly_user",
-            ["agents:*:read", "system:read"],
+            ["agents:*:read", "config:read"],
         )
 
         # 5. WILDCARD USER - Can run any agent
@@ -111,11 +114,12 @@ This example demonstrates advanced RBAC scope patterns including global scopes, 
             ["agents:read", "agents:*:run"],
         )
 
-        print("1. ADMIN (full access):", admin_token[:50] + "...")
-        print("2. POWER USER (global access):", power_user_token[:50] + "...")
-        print("3. LIMITED USER (specific agents):", limited_user_token[:50] + "...")
-        print("4. READ-ONLY USER (view only):", readonly_user_token[:50] + "...")
-        print("5. WILDCARD USER (run any):", wildcard_user_token[:50] + "...")
+        # These are local test tokens. Do not print production credentials.
+        print("1. ADMIN (full access):", admin_token)
+        print("2. POWER USER (global access):", power_user_token)
+        print("3. LIMITED USER (specific agents):", limited_user_token)
+        print("4. READ-ONLY USER (view only):", readonly_user_token)
+        print("5. WILDCARD USER (run any):", wildcard_user_token)
 
         agent_os.serve(app="advanced_scopes:app", port=7777, reload=True)
     ```
@@ -125,18 +129,20 @@ This example demonstrates advanced RBAC scope patterns including global scopes, 
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U agno openai pyjwt "fastapi[standard]" uvicorn sqlalchemy pgvector psycopg
+    uv pip install -U agno openai pyjwt ddgs "fastapi[standard]" uvicorn sqlalchemy pgvector psycopg
     ```
   </Step>
 
-  <Step title="Export your OpenAI API key">
+  <Step title="Export API and JWT keys">
     <CodeGroup>
     ```bash Mac/Linux
     export OPENAI_API_KEY="your_openai_api_key_here"
+    export JWT_VERIFICATION_KEY="$(python -c 'import secrets; print(secrets.token_hex(32))')"
     ```
 
     ```bash Windows
     $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    $Env:JWT_VERIFICATION_KEY = python -c "import secrets; print(secrets.token_hex(32))"
     ```
     </CodeGroup>
   </Step>
@@ -160,16 +166,18 @@ This example demonstrates advanced RBAC scope patterns including global scopes, 
   </Step>
 
   <Step title="Test Different Access Levels">
+    Copy the complete local test tokens printed by the server into the variables below.
+
     ```bash
     # Limited user sees only 2 agents (not admin-agent)
     export LIMITED_TOKEN="<limited_user_token>"
     curl -H "Authorization: Bearer $LIMITED_TOKEN" http://localhost:7777/agents
-    
+
     # Read-only user cannot run agents (403 Forbidden)
     export READONLY_TOKEN="<readonly_user_token>"
     curl -X POST -H "Authorization: Bearer $READONLY_TOKEN" \
       -F "message=test" http://localhost:7777/agents/web-search-agent/runs
-    
+
     # Wildcard user can run any agent including admin-agent
     export WILDCARD_TOKEN="<wildcard_user_token>"
     curl -X POST -H "Authorization: Bearer $WILDCARD_TOKEN" \

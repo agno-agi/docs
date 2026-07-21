@@ -1,26 +1,31 @@
 ---
 title: State in Condition
 sidebarTitle: State in Condition
-description: This example demonstrates how to access the run context in the evaluator function of a condition step
+description: Access session state in the evaluator function of a condition step
 mode: wide
 ---
 
 This example shows:
-1. How to use `run_context` in a Condition evaluator function
-2. Reading and modifying `run_context.session_state` based on condition logic
-3. Accessing `user_id` and `session_id` from `run_context.session_state`
-4. Making conditional decisions based on `run_context.session_state`
+1. Using `run_context.session_state` in a Condition evaluator function
+2. Reading and modifying session state based on condition logic
+3. Accessing `current_user_id` and `current_session_id` from `run_context.session_state`
+4. Making conditional decisions based on session state
+
+<Note>
+Accepting a `session_state` parameter directly is deprecated. Accept `run_context: RunContext` and use `run_context.session_state` instead.
+</Note>
 
 <Steps>
 <Step title="Create a Python file">
 
 ```python access_session_state_in_condition_evaluator_function.py
 from agno.agent import Agent
+from agno.db.in_memory import InMemoryDb
 from agno.models.openai import OpenAIResponses
+from agno.run import RunContext
 from agno.workflow.condition import Condition
 from agno.workflow.step import Step, StepInput, StepOutput
 from agno.workflow.workflow import Workflow
-from agno.run import RunContext
 
 
 def check_user_has_context(step_input: StepInput, run_context: RunContext) -> bool:
@@ -29,7 +34,7 @@ def check_user_has_context(step_input: StepInput, run_context: RunContext) -> bo
 
     Args:
         step_input: The input for this step (contains workflow context)
-        run_context: The run context object
+        run_context: The run context holding the workflow session state
 
     Returns:
         bool: True if user has context, False otherwise
@@ -72,6 +77,7 @@ contextual_agent = Agent(
 # Create workflow with condition
 workflow = Workflow(
     name="Conditional Greeting Workflow",
+    db=InMemoryDb(),
     steps=[
         # First, check if user has been greeted before
         Condition(

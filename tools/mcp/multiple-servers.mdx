@@ -1,20 +1,48 @@
 ---
 title: Multiple MCP Servers
-description: Understanding how to connect to multiple MCP servers with Agno
+description: Connect an Agent to multiple MCP servers with separate MCPTools instances or MultiMCPTools.
 ---
 
-Agno's MCP integration also supports handling connections to multiple servers, specifying server parameters and using your own MCP servers
+Agno's MCP integration supports connecting an Agent to multiple MCP servers at once.
 
 There are two approaches to this:
 1. Using multiple `MCPTools` instances
 2. Using a single `MultiMCPTools` instance
 
+<Note>
+`MultiMCPTools` is deprecated and will be removed in a future version. Use multiple `MCPTools` instances instead.
+</Note>
+
+## Prerequisites
+
+<Snippet file="create-venv-step.mdx" />
+
+Install the Python dependencies and [Node.js](https://nodejs.org/en/download), then verify the runtimes:
+
+```bash
+uv pip install -U "agno[mcp]" openai
+node --version
+npx --version
+```
+
+Export the keys used by the examples you run:
+
+```bash
+export OPENAI_API_KEY="your_openai_api_key_here"
+export GOOGLE_MAPS_API_KEY="your_google_maps_api_key_here"
+export BRAVE_API_KEY="your_brave_api_key_here"
+```
+
+<Warning>
+The `@modelcontextprotocol/server-google-maps` and `@modelcontextprotocol/server-brave-search` npm packages are deprecated and no longer supported. The snippets below document these legacy servers. Use maintained MCP servers for new projects.
+</Warning>
 
 ## Using multiple `MCPTools` instances
 
 ```python multiple_mcp_servers.py
 import asyncio
 import os
+from datetime import date, timedelta
 
 from agno.agent import Agent
 from agno.tools.mcp import MCPTools
@@ -48,10 +76,13 @@ async def run_agent(message: str) -> None:
 
 # Example usage
 if __name__ == "__main__":
+    check_in = date.today() + timedelta(days=30)
+    check_out = check_in + timedelta(days=3)
     # Pull request example
     asyncio.run(
         run_agent(
-            "What listings are available in Cape Town for 2 people for 3 nights from 1 to 4 August 2025?"
+            f"What listings are available in Cape Town for 2 people "
+            f"from {check_in.isoformat()} to {check_out.isoformat()}?"
         )
     )
 ```
@@ -61,6 +92,7 @@ if __name__ == "__main__":
 ```python multiple_mcp_servers.py
 import asyncio
 import os
+from datetime import date, timedelta
 
 from agno.agent import Agent
 from agno.tools.mcp import MultiMCPTools
@@ -98,10 +130,13 @@ async def run_agent(message: str) -> None:
 
 # Example usage
 if __name__ == "__main__":
+    check_in = date.today() + timedelta(days=30)
+    check_out = check_in + timedelta(days=3)
     # Pull request example
     asyncio.run(
         run_agent(
-            "What listings are available in Cape Town for 2 people for 3 nights from 1 to 4 August 2025?"
+            f"What listings are available in Cape Town for 2 people "
+            f"from {check_in.isoformat()} to {check_out.isoformat()}?"
         )
     )
 ```
@@ -110,12 +145,13 @@ if __name__ == "__main__":
 
 If you are connecting to multiple MCP servers using the `MultiMCPTools` class, an error will be raised by default if connection to any MCP server fails.
 
-If you want to avoid raising in that case, you can set the `allow_partial_failures` parameter to `True`.
+If you want to avoid raising in that case, you can set the `allow_partial_failure` parameter to `True`.
 
 This is useful if you are connecting to MCP servers that are not always available, and don't want to exit your program if one of the servers is not available.
 
 ```python
 import asyncio
+from datetime import date
 from os import getenv
 
 from agno.agent import Agent
@@ -153,7 +189,11 @@ async def run_agent(message: str) -> None:
 
 # Example usage
 if __name__ == "__main__":
-    asyncio.run(run_agent("What listings are available in Barcelona tonight?"))
+    asyncio.run(
+        run_agent(
+            f"What listings are available in Barcelona on {date.today().isoformat()}?"
+        )
+    )
     asyncio.run(run_agent("What's the fastest way to get to Barcelona from London?"))
 ```
 

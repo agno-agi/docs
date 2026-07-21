@@ -1,119 +1,137 @@
 ---
 title: "Scout"
 sidebarTitle: "Scout"
-description: "Company intelligence agent that navigates your workspace, builds context, and answers questions."
+description: "Company intelligence agent for teams that need answers across live web, Slack, Drive, wiki, CRM, and MCP sources."
 ---
 
-**Scout is a company intelligence agent that gets smarter as it explores your systems.**
+**Scout is a company intelligence agent for teams that need answers across live web, Slack, Drive, wiki, CRM, and MCP sources.**
 
-Most AI assistants require you to upload documents or paste context. Scout navigates to the source: it connects to your Slack, Google Drive, databases, and wikis, then builds a knowledge graph of your company as it works.
+Scout searches the system that owns the information and assembles context at question time. It can open a document, expand a Slack thread, search the web, and follow related information across sources. Scout also maintains a wiki and CRM so useful company context becomes easier to retrieve over time.
 
-## How It Works
+The code is public at [agno-agi/scout](https://github.com/agno-agi/scout).
 
-Scout uses **Context Providers** to connect to your systems and retrieve information on demand:
+## How it works
 
-| Provider | What It Accesses |
-|----------|------------------|
-| Web | Public URLs, documentation sites |
-| Slack | Channel history, threads, search |
-| Google Drive | Documents, spreadsheets, presentations |
-| Database | CRM records, product data |
-| Wiki | Internal documentation (Git-backed or Notion) |
-| MCP | Any tool exposed via Model Context Protocol |
+Scout is a single agent with multiple **context providers**. Each provider exposes two natural-language tools: `query_<source>` for reads and `update_<source>` for writes, where the source supports them. This thin layer solves three problems that hit any agent with a diverse tool surface: context pollution from too many tools, degrading performance from overlapping scopes, and the main agent forgetting its job because its context is all tool quirks.
 
-Scout doesn't just search. It **navigates**: following links between systems, resolving references, and building a map of how information connects.
+A sub-agent behind each provider owns the source's quirks. Scout sees `query_slack`. Behind it, a sub-agent knows to paginate by cursor and prefer `conversations.replies` for threads. Scout's context never sees any of that.
 
-### Self-Building Knowledge
+| Provider | Active when | Tools |
+|----------|-------------|-------|
+| **Web** | Always on | `query_web`. Uses the Parallel SDK when `PARALLEL_API_KEY` is set, otherwise Parallel's free MCP server. |
+| **Workspace** | Always on | `query_workspace`. Rooted at the Scout repo, so Scout can answer questions about its own codebase. |
+| **CRM** | Always on | `query_crm`, `update_crm`. Contacts, projects, notes, follow-ups. |
+| **Knowledge wiki** | Always on | `query_knowledge`, `update_knowledge`. Scout's prose memory. |
+| **Voice wiki** | Always on | `query_voice`. A code-managed style guide for emails, Slack, X, and long-form writing. |
+| **Slack** | `SLACK_BOT_TOKEN` | Intended to expose `query_slack` for read-only access. The pinned template also exposes `update_slack`; see the warning below. |
+| **Google Drive** | `GOOGLE_SERVICE_ACCOUNT_FILE` | `query_gdrive`. Read-only access to files, folders, and contents. |
+| **MCP** | Registered in `scout/contexts.py` | One `query_mcp_<slug>` per server. |
 
-As Scout answers questions, it maintains two internal systems. See [Knowledge & CRM](/tutorials/scout/knowledge-and-crm) for details.
+<Warning>
+  Scout intends Slack access to be read-only, but the pinned template does not pass `write=False` when it creates `SlackContextProvider`. Configuring Slack currently exposes `update_slack`. Leave write scopes ungranted until the template enforces its intended boundary.
+</Warning>
+
+Setup for each provider is covered in the Scout README's [Context Providers](https://github.com/agno-agi/scout#context-providers) section.
+
+### Self-building knowledge
+
+Most information Scout learns from working with you is perfect for a wiki and a CRM, so it maintains both.
 
 | System | Purpose |
 |--------|---------|
-| **Wiki** | Curated facts about your company: org structure, product names, key metrics |
-| **CRM** | People and relationships: who works on what, who to ask about X |
+| **Wiki** | Scout's prose memory: pages about your company, projects, and runbooks |
+| **CRM** | People and relationships: contacts, projects, notes, follow-ups |
 
-These start empty and grow with use. Scout learns that "the API" means your REST API, not a generic concept. It learns that Sarah owns billing and Marcus handles infrastructure.
+Both start empty and grow with use. Mention that Josh from Anthropic shared a new RLM paper, and Scout adds Josh to the CRM, parses the paper into the wiki, and links them. See [How Scout works](https://github.com/agno-agi/scout#how-scout-works) in the README for how both systems work.
 
-## Run Locally
+## Run locally
 
-See [Setup guide](/tutorials/scout/setup) for detailed instructions.
+You need [Docker Desktop](https://docs.docker.com/desktop/) installed and running.
 
 ```bash
-git clone https://github.com/agno-agi/scout.git && cd scout
+git clone https://github.com/agno-agi/scout && cd scout
 
 cp example.env .env
-# Edit .env: add OPENAI_API_KEY and configure providers
+# set OPENAI_API_KEY in .env
 
 docker compose up -d --build
 ```
 
-Confirm Scout is running at `http://localhost:8000/docs`.
+Scout is now running at `http://localhost:8000`. The [Scout README](https://github.com/agno-agi/scout#quick-start) has the full walkthrough.
 
-### Connect to the Control Plane
+### Chat with Scout
 
-1. Open [os.agno.com](https://os.agno.com)
-2. Click **Connect OS** → **Local**
-3. Enter `http://localhost:8000`
+1. Open [os.agno.com](https://os.agno.com) and log in.
+2. Click **Add OS**, choose **Local**, enter `http://localhost:8000`, then **Connect**.
+3. Try the pre-configured prompts.
 
 ## Deploy to Railway
 
-See [Deploy to Railway](/tutorials/scout/deploy-to-railway) for JWT setup and production configuration.
+Scout runs on any cloud provider. We provide scripts for Railway.
+
+**Prerequisites:** [Railway CLI](https://docs.railway.app/guides/cli) installed and `railway login` run.
 
 ```bash
-railway login
-./scripts/railway_up.sh
+cp .env .env.production
 ```
 
-The script provisions PostgreSQL, configures environment variables, and deploys Scout.
-
-Then connect via the control plane:
-
-1. Open [os.agno.com](https://os.agno.com)
-2. Click **Connect OS** → **Live**
-3. Enter your Railway domain
-
-## Configure Providers
-
-Scout's power comes from the providers you connect. Start with one or two, then add more as needed.
-
-### Slack
-
-See [Slack setup](/tutorials/scout/connect-slack) for bot creation and permissions.
+Edit `.env.production` if any values should differ from local, like a different Slack workspace or production-only credentials. The Railway scripts read `.env.production` first and fall back to `.env`.
 
 ```bash
-# Add to .env
-SLACK_BOT_TOKEN=xoxb-...
-SLACK_SIGNING_SECRET=...
+./scripts/railway/up.sh
 ```
 
-### Google Drive
+The `up.sh` script provisions PostgreSQL and the `scout` service, then creates your public domain.
 
-See [Google Drive setup](/tutorials/scout/connect-google-drive) for service account configuration.
+Your first deploy will fail. That's expected. Production endpoints require RBAC authorization by default, and without a `JWT_VERIFICATION_KEY` the app refuses to serve traffic. Scout's job is to keep your company data off the public web. To get your key:
+
+1. Open [os.agno.com](https://os.agno.com), click **Add OS** → **Live**, and enter your Railway domain.
+2. Enable **Token Based Authorization**.
+3. Paste the public key into `.env.production` as `JWT_VERIFICATION_KEY` (the full PEM block, no surrounding quotes).
+4. Sync the env. Railway auto-deploys when values change.
 
 ```bash
-# Add to .env
-GOOGLE_SERVICE_ACCOUNT_FILE=/path/to/service-account.json
+./scripts/railway/env.sh       # sync .env.production to Railway
+./scripts/railway/redeploy.sh  # push code updates after up.sh
 ```
 
-### MCP Servers
+For production, swap the knowledge wiki to a Git-backed repo so pages survive container restarts. The README's [Deploy to Railway](https://github.com/agno-agi/scout#deploy-to-railway) section covers that, plus connecting the repo to Railway for auto-deploys on every push.
 
-See [MCP setup](/tutorials/scout/connect-mcp-servers) for server configuration. Connect any MCP-compatible tool:
+## Connect to Slack
 
-```python
-from agno.tools.mcp import MCPTools
+Scout is designed to live in Slack as your teammate. Each Slack thread becomes a session with its own context, so follow-ups in the same thread carry forward.
 
-mcp_tools = MCPTools(servers=["npx -y @anthropic/mcp-server-filesystem"])
-```
+1. Get a public URL Slack can reach: `ngrok http 8000` locally, or your Railway domain in production.
+2. Create the Slack app from the manifest in Scout's [Slack setup guide](https://github.com/agno-agi/scout/blob/main/docs/SLACK_CONNECT.md).
+3. Set `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET` in `.env`.
+4. Restart Scout with `docker compose up -d`.
 
-## Example Prompts
+Setting `SLACK_BOT_TOKEN` activates the Slack context provider. The pinned template also exposes `update_slack` as described above. Adding `SLACK_SIGNING_SECRET` enables the Slack interface so Scout can reply in your workspace.
 
-Try these after connecting your providers:
+## Example prompts
 
-- What's the status of Project Phoenix?
-- Who should I talk to about billing issues?
-- Summarize last week's engineering discussions
-- What decisions were made in the Q3 planning doc?
+Try these once Scout is up. Each one routes to the provider that owns the answer.
+
+| Prompt | What Scout does |
+|--------|-----------------|
+| "Find the latest benchmark numbers for model X." | `query_web`, with cited sources |
+| "Save that as a note." | `update_crm` inserts into `scout.scout_notes` |
+| "File a runbook for incident response." | `update_knowledge` writes a markdown page under `wiki/knowledge/runbooks/` |
+| "Track my coffee consumption: flat white, extra shot." | `update_crm` creates `scout.scout_coffee_orders` and inserts the row. Schema on demand. |
+| "Draft a Slack message announcing the launch." | `query_voice` loads the style guide, then Scout drafts in that voice |
+
+## Run evals
+
+Scout ships three eval tiers. PostgreSQL must be running for every tier: `docker compose up -d scout-db`.
+
+| Tier | Command | What it catches |
+|------|---------|-----------------|
+| **Wiring** | `python -m evals wiring` | Tool shape drift and missing schema guards. Code-level invariants, no LLM. |
+| **Behavioral** | `python -m evals` | Wrong tool choices, missing response content, forbidden tools firing. |
+| **Judges** | `python -m evals judges` | Answer quality, LLM-scored. |
+
+Run a single case with `python -m evals --case <id>`. See [EVALS.md](https://github.com/agno-agi/scout/blob/main/docs/EVALS.md) for the full picture.
 
 ## Source
 
-For setup guides, provider configuration, and architecture details, see the [GitHub repo](https://github.com/agno-agi/scout).
+The [GitHub repo](https://github.com/agno-agi/scout) has the full provider setup guides under `docs/` and implementation notes in `AGENTS.md`.

@@ -1,59 +1,70 @@
 ---
 title: SurrealDB for Workflow
 sidebarTitle: Workflow
+description: Store workflow sessions and run history in SurrealDB with SurrealDb.
 ---
 
-Agno supports using SurrealDB as a storage backend for Workflows using the `SurrealDb` class.
+`SurrealDb` stores a Workflow's sessions and run history in SurrealDB.
 
 ## Usage
 
-Run SurreabDB locally with the following command:
+Install dependencies:
+
+```shell
+uv pip install anthropic surrealdb ddgs
+```
+
+### Run SurrealDB
+
+Install [Docker Desktop](https://docs.docker.com/get-started/get-docker/), then start SurrealDB on port `8000`:
 
 ```bash
 docker run --rm --pull always -p 8000:8000 surrealdb/surrealdb:latest start --user root --pass root
 ```
 
 ```python surrealdb_for_workflow.py
-
 from agno.agent import Agent
 from agno.db.surrealdb import SurrealDb
 from agno.models.anthropic import Claude
 from agno.team import Team
 from agno.tools.hackernews import HackerNewsTools
-from agno.tools.hackernews import HackerNewsTools
+from agno.tools.websearch import WebSearchTools
 from agno.workflow.step import Step
 from agno.workflow.workflow import Workflow
 
-# SurrealDB connection parameters
 SURREALDB_URL = "ws://localhost:8000"
 SURREALDB_USER = "root"
 SURREALDB_PASSWORD = "root"
 SURREALDB_NAMESPACE = "agno"
 SURREALDB_DATABASE = "surrealdb_for_workflow"
 
-creds = {"username": SURREALDB_USER, "password": SURREALDB_PASSWORD}
-db = SurrealDb(None, SURREALDB_URL, creds, SURREALDB_NAMESPACE, SURREALDB_DATABASE)
+credentials = {"username": SURREALDB_USER, "password": SURREALDB_PASSWORD}
+db = SurrealDb(
+    client=None,
+    db_url=SURREALDB_URL,
+    db_creds=credentials,
+    db_ns=SURREALDB_NAMESPACE,
+    db_db=SURREALDB_DATABASE,
+)
 
-# Define agents
 hackernews_agent = Agent(
-    name="Hackernews Agent",
+    name="HackerNews Agent",
     model=Claude(id="claude-sonnet-4-5-20250929"),
     tools=[HackerNewsTools()],
-    role="Extract key insights and content from Hackernews posts",
+    role="Extract key insights and content from HackerNews posts",
 )
 web_agent = Agent(
     name="Web Agent",
     model=Claude(id="claude-sonnet-4-5-20250929"),
-    tools=[HackerNewsTools()],
+    tools=[WebSearchTools()],
     role="Search the web for the latest news and trends",
 )
 
-# Define research team for complex analysis
 research_team = Team(
     name="Research Team",
     model=Claude(id="claude-sonnet-4-5-20250929"),
     members=[hackernews_agent, web_agent],
-    instructions="Research tech topics from Hackernews and the web",
+    instructions="Research tech topics from HackerNews and the web",
 )
 
 content_planner = Agent(
@@ -65,7 +76,6 @@ content_planner = Agent(
     ],
 )
 
-# Define steps
 research_step = Step(
     name="Research Step",
     team=research_team,
@@ -76,7 +86,6 @@ content_planning_step = Step(
     agent=content_planner,
 )
 
-# Create and use workflow
 if __name__ == "__main__":
     content_creation_workflow = Workflow(
         name="Content Creation Workflow",
@@ -90,6 +99,6 @@ if __name__ == "__main__":
     )
 ```
 
-## Params
+## Parameters
 
 <Snippet file="db-surrealdb-params.mdx" />

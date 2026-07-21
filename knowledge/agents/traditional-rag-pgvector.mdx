@@ -1,10 +1,9 @@
 ---
 title: Traditional RAG with PgVector
+description: Retrieve from PgVector for a string input and append references before the first model call.
 ---
 
-This example demonstrates traditional RAG implementation using PgVector database with OpenAI embeddings, where knowledge context is automatically added to prompts without search functionality.
-
-## Code
+For a string-input run, set `add_knowledge_to_context=True` to retrieve before the first model call.
 
 ```python traditional_rag_pgvector.py
 from agno.agent import Agent
@@ -16,7 +15,6 @@ from agno.vectordb.pgvector import PgVector, SearchType
 db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
 
 knowledge = Knowledge(
-    # Use PgVector as the vector database and store embeddings in the `ai.recipes` table
     vector_db=PgVector(
         table_name="recipes",
         db_url=db_url,
@@ -25,49 +23,61 @@ knowledge = Knowledge(
     ),
 )
 
-knowledge.insert(
-    url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf"
-)
-
 agent = Agent(
     model=OpenAIResponses(id="gpt-5.2"),
     knowledge=knowledge,
-    # Enable RAG by adding context from the `knowledge` to the user prompt.
     add_knowledge_to_context=True,
-    # Set as False because Agents default to `search_knowledge=True`
     search_knowledge=False,
     markdown=True,
 )
-agent.print_response(
-    "How do I make chicken and galangal in coconut milk soup", stream=True
-)
+
+if __name__ == "__main__":
+    knowledge.insert(
+        name="Thai Recipes",
+        url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
+    )
+    agent.print_response(
+        "How do I make chicken and galangal in coconut milk soup?",
+        stream=True,
+    )
 ```
 
-## Usage
+## Run the Agent
 
 <Steps>
+  <Snippet file="run-pgvector-step.mdx" />
+
   <Snippet file="create-venv-step.mdx" />
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U agno openai sqlalchemy psycopg pgvector
+    uv pip install -U agno openai pgvector psycopg pypdf sqlalchemy
     ```
   </Step>
 
-  <Step title="Setup PgVector">
-    Start PostgreSQL with pgvector extension and update the connection string in the code as needed.
-  </Step>
-
-  <Step title="Export your OpenAI API key">
+  <Step title="Export the API key">
     ```bash
     export OPENAI_API_KEY=your_openai_api_key_here
     ```
   </Step>
 
-  <Step title="Run Agent">
+  <Step title="Run the agent">
     ```bash
     python traditional_rag_pgvector.py
     ```
   </Step>
 </Steps>
 
+## How It Works
+
+1. `add_knowledge_to_context=True` searches with the run's string input.
+2. Returned documents are appended to the user message inside a `<references>` block.
+3. `search_knowledge=False` removes the model-callable search tool.
+
+## Next Steps
+
+| Task | Guide |
+|------|-------|
+| Let the model choose when to search | [Agentic RAG with PgVector](/knowledge/agents/agentic-rag-pgvector) |
+| Tune hybrid ranking | [Hybrid Search](/knowledge/concepts/search-and-retrieval/hybrid-search) |
+| Apply metadata filters | [Filtering](/knowledge/concepts/filters/overview) |

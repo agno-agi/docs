@@ -9,13 +9,17 @@ Learning modes control when and how a Learning Machine captures information. Eac
 
 | Mode | How it works | Tradeoff |
 |------|--------------|----------|
-| **Always** | Extraction runs automatically after each response | Extra LLM call per interaction |
+| **Always** | Extraction runs automatically in the background, without waiting for the response to finish | One extraction call for each enabled Always-mode store |
 | **Agentic** | Agent receives tools and decides what to save | May miss implicit information |
-| **Propose** | Agent proposes learnings, user confirms before saving | Requires user interaction |
+| **Propose** | Agent is instructed to propose learnings and wait for confirmation | Confirmation depends on model compliance |
 
 ## Always Mode
 
 Extraction happens automatically in the background. No agent tools involved.
+
+<Note>
+Extraction starts concurrently with the model call, not after it. It sees the conversation up to the current user message, not the assistant's response or tool calls from that same turn.
+</Note>
 ```python
 from agno.agent import Agent
 from agno.db.postgres import PostgresDb
@@ -74,7 +78,7 @@ Best for: Learned Knowledge, Decision Log
 
 ## Propose Mode
 
-The agent proposes learnings. User must confirm before saving.
+The agent proposes learnings. The user must confirm before saving.
 ```python
 from agno.learn import LearningMachine, LearningMode, LearnedKnowledgeConfig
 
@@ -94,9 +98,15 @@ agent.print_response(
 )
 ```
 
+Propose mode is enforced through system prompt instructions, not application code. The `save_learning` tool stays available throughout the run, so confirmation depends on the agent following its instructions rather than a code-level approval gate.
+
 Note: Propose mode is currently intended for Learned Knowledge.
 
-Best for: High-stakes knowledge, regulated environments, quality control
+<Warning>
+Do not use Propose mode as the sole approval control for high-stakes, regulated, or compliance-sensitive workflows. Enforce required approval in application code before persisting a learning.
+</Warning>
+
+Best for: Low-risk learned knowledge that benefits from prompt-guided review
 
 ## Combining Modes
 
@@ -142,5 +152,4 @@ agent = Agent(
 | Agent-driven knowledge capture | Agentic |
 | Build entity knowledge graphs | Always |
 | Audit agent decisions | Agentic |
-| High-value collective knowledge | Propose |
-| Compliance-sensitive learning | Propose |
+| Prompt-guided review of learned knowledge | Propose |

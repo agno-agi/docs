@@ -45,8 +45,8 @@ workflow = Workflow(
 
 When this workflow runs:
 
-1. Pause 1 (step-level): user sees `confirmation_message`, calls `req.confirm()`.
-2. Pause 2 (executor-level): agent calls `send_alert`, user approves the specific tool call.
+1. Pause 1 (step-level): the user sees `confirmation_message` and calls `req.confirm()`.
+2. Pause 2 (executor-level): the agent calls `send_alert` and the user approves the specific tool call.
 3. Step finishes.
 
 ## The Active-Requirement Pattern
@@ -88,7 +88,9 @@ def resolve_executor_pause(run_output):
     for req in (run_output.step_requirements or [])[-1:]:
         if req.requires_executor_input:
             for executor_req in req.executor_requirements or []:
-                executor_req.confirm()  # or .reject(note=...) / .provide_user_input(...)
+                # Entries are serialized RunRequirement dicts. Mutate them in place.
+                executor_req["confirmation"] = True  # False to reject
+                executor_req["tool_execution"]["confirmed"] = True
 
 
 run_output = workflow.run("Send a weather alert for Tokyo about heavy rain")

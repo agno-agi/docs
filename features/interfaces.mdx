@@ -1,11 +1,11 @@
 ---
 title: Interfaces
-description: "Slack, Telegram, WhatsApp, Discord, plus protocol interfaces for agents and browsers."
+description: "Connect agents to chat interfaces (Slack, Telegram, WhatsApp, Discord), browser applications, and agent protocols."
 ---
 
-An interface is an adapter between AgentOS and a surface where users already are. It receives events from Slack, Telegram, WhatsApp, or other channels, maps them onto AgentOS's run and session model, and routes responses back to the right thread, channel, or user.
+Product and support teams can expose the same component in an application, team chat, and customer channels. AgentOS interfaces connect components to Slack, Telegram, WhatsApp, A2A, and AG-UI. Each interface handles surface-specific routing and session IDs. Chat interfaces verify their own webhooks; protocol interfaces use AgentOS authorization when it is enabled.
 
-The agent doesn't change. The same `Agent` instance answers a Slack DM, a Telegram message, and an AG-UI browser stream. Memory carries across all of them, scoped per `(user_id, session_id)`.
+Session history stays tied to each surface's `session_id`.
 
 ## Available interfaces
 
@@ -17,8 +17,8 @@ Two categories. Chat surfaces meet humans where they already are. Protocol surfa
 |-----------|----------|-------|
 | **Slack** | Team chat, DMs, channel mentions, thread sessions | [Slack](/agent-os/interfaces/slack/introduction) |
 | **Telegram** | Personal assistants, mobile chat | [Telegram](/agent-os/interfaces/telegram/introduction) |
-| **WhatsApp** | Customer support, mobile chat with E2E encryption support | [WhatsApp](/agent-os/interfaces/whatsapp/introduction) |
-| **Discord** | Community servers, gaming, custom commands. Runs in its own process via `agno.integrations.discord`. | [Discord](/deploy/interfaces/discord/overview) |
+| **WhatsApp** | Customer support and mobile chat | [WhatsApp](/agent-os/interfaces/whatsapp/introduction) |
+| **Discord** | Community servers, gaming, custom commands. Runs in its own process via `agno.integrations.discord`. | [Discord](/agent-os/interfaces/discord/introduction) |
 
 ### Protocol surfaces
 
@@ -46,7 +46,7 @@ agent_os = AgentOS(
 )
 ```
 
-If your AgentOS has multiple agents, you can wire each interface to a different one — Slack to your customer support agent, Telegram to a personal assistant — or wire several interfaces to the same agent.
+If your AgentOS has multiple agents, wire each interface to a different one (Slack to your customer support agent, Telegram to a personal assistant) or wire several interfaces to the same agent.
 
 ## Credentials at a glance
 
@@ -57,36 +57,28 @@ Per-interface setup pages have the full OAuth flows, scope lists, and webhook co
 | Slack | Bot token (`xoxb-...`), signing secret, OAuth scopes for the events you handle |
 | Telegram | Bot token from @BotFather |
 | WhatsApp | Business API token, verify token, phone number ID |
-| Discord | Bot token, application ID |
-| A2A | Inbound JWTs validated by AgentOS auth |
-| AG-UI | AgentOS JWT in the SSE request |
+| Discord | Bot token (`DISCORD_BOT_TOKEN`) |
+| A2A | None by default; behind AgentOS JWT auth when `authorization=True` |
+| AG-UI | None by default; behind AgentOS JWT auth when `authorization=True` |
 
 ## Sessions per surface
 
-Every interface maps surface state to AgentOS sessions, so a conversation in Slack carries forward like any other session — the next reply in the same thread reuses the same session and history, no re-mentioning required.
+Every interface maps surface state to AgentOS sessions, so a conversation in Slack carries forward like any other session. The next reply in the same thread reuses the same session and history, no re-mentioning required.
 
 | Interface | Session ID | User ID |
 |-----------|-----------|---------|
-| Slack | Thread timestamp | Slack user ID |
-| Telegram | Chat ID | Telegram user ID |
-| WhatsApp | Phone number | Phone number |
-| Discord | Channel + thread | Discord user ID |
-| A2A | Caller-supplied | Caller-supplied |
-| AG-UI | Browser session | JWT subject |
+| Slack | `<entity_id>:<thread_ts>` | Slack user ID, or resolved email when enabled |
+| Telegram | `tg:<entity_id>:<chat_id>` with an optional topic suffix | Telegram user ID |
+| WhatsApp | `wa:<entity_id>:<user_id>` | Phone number or encrypted user ID |
+| Discord | Thread ID | Discord user ID |
+| A2A | A2A context ID | JWT subject, or request metadata when anonymous |
+| AG-UI | Client thread ID | JWT subject, or client-supplied when anonymous |
 
-### Resolving Slack user IDs to names
-
-By default Slack hands you opaque user IDs like `U07ABCXYZ`. If your agent's responses or memory are clearer when grounded in human names, set `resolve_user_identity=True` on the Slack interface:
-
-```python
-Slack(agent=agent, token=..., signing_secret=..., resolve_user_identity=True)
-```
-
-The interface looks up each user ID against `users.info` and passes the resolved name through to the agent. Off by default because it costs an extra Slack API call per message and isn't always wanted.
+Slack can resolve a member's email as `user_id` when `resolve_user_identity=True`. See the [Slack interface guide](/agent-os/interfaces/slack/introduction) for identity and permission setup.
 
 ## One agent, many surfaces
 
-A single agent can answer on every surface at once. Memory follows the user across surfaces — assuming you can map their Slack ID to the same `user_id` the AG-UI client passes:
+A single agent can answer on every surface at once:
 
 ```python
 agent_os = AgentOS(
@@ -95,17 +87,17 @@ agent_os = AgentOS(
     interfaces=[
         Slack(agent=support_agent, token=..., signing_secret=...),
         Telegram(agent=support_agent, token=...),
-        WhatsApp(agent=support_agent, token=..., verify_token=...),
+        Whatsapp(agent=support_agent, access_token=..., verify_token=...),
         AGUI(agent=support_agent),
     ],
 )
 ```
 
-The same questions the agent answered in Slack last week show up in its memory when the user opens the AG-UI widget on your website. The agent doesn't know which surface a request came from. It just sees a `user_id`, a `session_id`, and a message.
+When user memory is enabled and each interface resolves the same person to the same `user_id`, stored memories are available across surfaces. Session history stays scoped to each surface's `session_id`, and interfaces pass surface context along with the run, such as the Slack channel name.
 
 ## Conditional registration
 
-Don't register interfaces you don't have credentials for:
+Register optional interfaces only when their credentials are available:
 
 ```python
 interfaces = []
@@ -119,13 +111,13 @@ if TELEGRAM_TOKEN:
 agent_os = AgentOS(agents=[agent], db=db, interfaces=interfaces)
 ```
 
-The [Scout](/tutorials/scout/connect-slack), [Dash](/tutorials/dash/connect-slack), and [Coda](/tutorials/coda/connect-slack) tutorials use this pattern. Slack only loads when both env vars are set, so dev runs without credentials don't crash.
+The [Scout](/deploy/templates/scout/overview), [Dash](/deploy/templates/dash/overview), and [Coda](/deploy/templates/coda/overview) apps use this pattern. The Slack interface loads when both environment variables are set, which keeps development runs working before optional channel credentials are configured.
 
 ## Custom interfaces and one-off webhooks
 
-The interface API is small. Subclass `BaseInterface`, register routes on the FastAPI app via `setup`, dispatch incoming messages to the agent. See [BaseInterface](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/os/interfaces/base.py) for the full surface.
+Subclass `BaseInterface`, return your routes from `get_router`, and dispatch incoming messages to the agent. See [BaseInterface](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/os/interfaces/base.py) for the full surface.
 
-For one-off webhooks (a CRM event, a GitHub action, a custom dashboard), don't write an interface. Add a route directly to the FastAPI app:
+Add a route directly to the FastAPI app for an application-specific webhook such as a CRM event, GitHub action, or custom dashboard:
 
 ```python
 app = agent_os.get_app()
@@ -136,8 +128,7 @@ async def handle_stripe(event: dict):
     return {"ok": True, "response": response.content}
 ```
 
-A custom interface is for surfaces you'll reuse across agents and OS instances. A direct route is for one-off integrations.
-
-## Next
-
-[Scheduling →](/features/scheduling)
+| Need | Pattern |
+|------|---------|
+| Reusable surface shared across AgentOS applications | Subclass `BaseInterface` |
+| One application-specific event source | Add a FastAPI route |

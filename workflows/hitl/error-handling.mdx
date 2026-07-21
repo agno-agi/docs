@@ -1,27 +1,30 @@
 ---
 title: Error Handling HITL
 sidebarTitle: Error Handling
-description: Pause on step failures to let users retry or skip.
+description: Pause on Step or Condition failures to let users retry or skip.
 keywords: [workflow, error, HITL, retry, skip, pause, exception]
 ---
 
-Steps can pause when they encounter errors, letting users decide to retry or skip the failed step.
+`Step` and `Condition` can pause when execution fails, letting users decide to retry or skip the failed component.
 
 ## Error Pause Mode
 
 Set `on_error=OnError.pause` to pause when a step fails:
 
 ```python
+import random
+
+from agno.db.sqlite import SqliteDb
 from agno.workflow import Workflow, OnError
 from agno.workflow.step import Step
 from agno.workflow.types import StepInput, StepOutput
-from agno.db.sqlite import SqliteDb
-import random
+
 
 def unreliable_api_call(step_input: StepInput) -> StepOutput:
     if random.random() < 0.7:  # 70% failure rate
         raise Exception("API call failed: Connection timeout")
     return StepOutput(content="API call succeeded")
+
 
 def process_data(step_input: StepInput) -> StepOutput:
     return StepOutput(content=f"Processed: {step_input.previous_step_content}")
@@ -33,6 +36,7 @@ workflow = Workflow(
         Step(
             name="fetch_data",
             executor=unreliable_api_call,
+            max_retries=0,
             on_error=OnError.pause,
         ),
         Step(name="process", executor=process_data),
@@ -45,7 +49,6 @@ while run_output.is_paused:
     for req in run_output.steps_with_errors:
         print(f"Step '{req.step_name}' failed")
         print(f"Error: {req.error_message}")
-        print(f"Retry count: {req.retry_count}")
         
         choice = input("Retry or skip? (r/s): ").lower()
         if choice == "r":
@@ -58,56 +61,66 @@ while run_output.is_paused:
 print(run_output.content)
 ```
 
+`Step` retries executor failures up to `max_retries` times before applying `on_error`. The default, `max_retries=3`, allows four total execution attempts. Set `max_retries=0` to apply the error policy after the first failed attempt.
+
 ## OnError Options
 
 | Value | Behavior |
 |-------|----------|
-| `OnError.fail` | Fail the workflow immediately (default) |
-| `OnError.skip` | Skip the step and continue |
-| `OnError.pause` | Pause for user decision (retry or skip) |
+| `OnError.fail` | Re-raise the error after automatic retries |
+| `OnError.skip` | Skip the component after automatic retries and continue (default) |
+| `OnError.pause` | Pause after automatic retries for a retry-or-skip decision |
 
 ## ErrorRequirement Properties
 
-When a step fails with `on_error=OnError.pause`, an `ErrorRequirement` is created:
+When a `Step` or `Condition` fails with `on_error=OnError.pause`, an `ErrorRequirement` is created:
 
 | Property | Type | Description |
 |----------|------|-------------|
 | `step_name` | `str` | Name of the failed step |
 | `error_message` | `str` | The exception message |
 | `error_type` | `str` | Exception class name (e.g., "ValueError") |
-| `retry_count` | `int` | Number of retry attempts so far |
+| `retry_count` | `int` | Currently always `0`. Track attempts in your resolution loop |
 
 ## ErrorRequirement Methods
 
 | Method | Description |
 |--------|-------------|
 | `req.retry()` | Retry the failed step |
-| `req.skip()` | Skip the step and continue |
+| `req.skip()` | Skip the failed component and continue |
 
 ## Retry Behavior
 
 When you call `req.retry()`:
-1. The step executes again with the same input
-2. `retry_count` increments
-3. If it fails again, the workflow pauses again
-4. You can retry indefinitely or skip after some attempts
+
+1. The component executes again with the same input, including its configured automatic retries.
+2. If it still fails, the workflow pauses again.
+3. You can retry again or skip.
+
+Track attempts in your resolution loop to cap retries:
 
 ```python
-for req in run_output.steps_with_errors:
-    if req.retry_count < 3:
-        print(f"Retrying (attempt {req.retry_count + 1}/3)")
-        req.retry()
-    else:
-        print("Max retries reached, skipping")
-        req.skip()
+attempts = 0
+while run_output.is_paused:
+    for req in run_output.steps_with_errors:
+        if attempts < 3:
+            attempts += 1
+            print(f"Retrying (attempt {attempts}/3)")
+            req.retry()
+        else:
+            print("Max retries reached, skipping")
+            req.skip()
+
+    run_output = workflow.continue_run(run_output)
 ```
 
 ## Skip Behavior
 
 When you call `req.skip()`:
-1. The step is marked as skipped (not failed)
-2. The workflow continues with the next step
-3. `step_input.previous_step_content` will be `None` for the next step
+
+1. The failed component is not re-executed.
+2. The workflow continues with the next top-level step.
+3. The next step's `step_input.previous_step_content` comes from the last successful top-level step, or is `None` if there is none.
 
 ## Combining with Confirmation
 
@@ -125,16 +138,31 @@ Step(
 
 The confirmation happens first. If confirmed and the step fails, the error pause activates.
 
+## Condition Errors
+
+Set `on_error` on a `Condition` to control failures raised by its selected branch. `OnError.pause` creates an `ErrorRequirement` for the Condition after the failing inner Step exhausts its own `max_retries`.
+
+```python
+from agno.workflow.condition import Condition
+
+Condition(
+    name="validate_if_needed",
+    evaluator=should_validate,
+    steps=[Step(name="validate", executor=validate_data, max_retries=0)],
+    on_error=OnError.pause,
+)
+```
+
 ## Streaming
 
 Handle error HITL in streaming workflows:
 
 ```python
-from agno.run.workflow import StepPausedEvent
+from agno.run.workflow import StepErrorEvent
 
 for event in workflow.run("input", stream=True, stream_events=True):
-    if isinstance(event, StepPausedEvent):
-        print(f"Paused at: {event.step_name}")
+    if isinstance(event, StepErrorEvent):
+        print(f"Failed at: {event.step_name} ({event.error})")
 
 session = workflow.get_session()
 run_output = session.runs[-1]
@@ -165,7 +193,8 @@ Common error scenarios and handling:
 ```python
 for req in run_output.steps_with_errors:
     if "timeout" in req.error_message.lower():
-        if req.retry_count < 3:
+        if timeout_attempts < 3:  # counter tracked in your resolution loop
+            timeout_attempts += 1
             req.retry()
         else:
             req.skip()

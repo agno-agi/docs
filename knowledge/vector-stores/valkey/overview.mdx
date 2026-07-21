@@ -1,0 +1,79 @@
+---
+title: Valkey Vector Database
+sidebarTitle: Overview
+description: Use Valkey as a vector database for your Knowledge Base.
+---
+
+<Badge icon="code-branch" color="orange">
+    <Tooltip tip="Introduced in v2.7.3" cta="View release notes" href="https://github.com/agno-agi/agno/releases/tag/v2.7.3">v2.7.3</Tooltip>
+</Badge>
+
+You can use Valkey as a vector database with Agno using the valkey-search module.
+
+## Setup
+
+Install dependencies:
+
+```bash
+uv pip install -U agno openai pypdf valkey-glide-sync
+```
+
+Set the API key used by the default OpenAI embedder and agent model:
+
+<CodeGroup>
+```bash Mac/Linux
+export OPENAI_API_KEY="your_openai_api_key_here"
+```
+
+```bash Windows
+$Env:OPENAI_API_KEY="your_openai_api_key_here"
+```
+</CodeGroup>
+
+Valkey vector search requires the valkey-search module. Use the `valkey/valkey-bundle` Docker image which includes it:
+
+```shell
+docker run -d --name my-valkey \
+  -p 6379:6379 \
+  valkey/valkey-bundle
+```
+
+## Example
+
+```python agent_with_knowledge.py
+from agno.agent import Agent
+from agno.knowledge.knowledge import Knowledge
+from agno.vectordb.valkey import ValkeyDB
+from agno.vectordb.search import SearchType
+
+# Initialize Valkey Vector DB
+vector_db = ValkeyDB(
+    index_name="agno_docs",
+    host="localhost",
+    port=6379,
+    search_type=SearchType.vector,
+)
+
+# Build a Knowledge base backed by Valkey
+knowledge = Knowledge(
+    name="My Valkey Knowledge Base",
+    description="Knowledge base using Valkey as the vector store",
+    vector_db=vector_db,
+)
+
+# Add content
+knowledge.insert(
+    name="Recipes",
+    url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
+    metadata={"category": "recipe_book"},
+    skip_if_exists=True,
+)
+
+# Query with an Agent
+agent = Agent(knowledge=knowledge)
+agent.print_response("List down the ingredients to make Massaman Gai", markdown=True)
+```
+
+## Valkey Params
+
+<Snippet file="vectordb_valkey_params.mdx" />

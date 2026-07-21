@@ -3,46 +3,37 @@ title: Multimodal I/O
 description: Pass images, audio, video, and files to agents.
 ---
 
-Agents can process images, audio, video, and files as input, 
-and generate images and audio as output.
-
-This section introduces Multimodal I/O. Check out the [full guide](/multimodal/overview) for more details.
+Agents can process images, audio, video, and files as input and return generated images or audio. Model support varies by modality.
 
 ## Media Classes
 
-| Class | Parameters |
-|-------|------------|
-| `Image` | `url`, `filepath`, `content` (bytes) |
-| `Audio` | `url`, `filepath`, `content` (bytes), `format` |
-| `Video` | `url`, `filepath`, `content` (bytes) |
-| `File` | `url`, `filepath`, `content` (bytes) |
+| Class | Content Sources | Common Metadata |
+|-------|-----------------|-----------------|
+| `Image` | `url`, `filepath`, `content` | `format`, `mime_type`, `detail` |
+| `Audio` | `url`, `filepath`, `content` | `format`, `mime_type`, `sample_rate`, `channels` |
+| `Video` | `url`, `filepath`, `content` | `format`, `mime_type`, `duration` |
+| `File` | `url`, `filepath`, `content`, `external` | `filename`, `format`, `mime_type` |
 
 ## Quickstart
 
 <Tabs>
     <Tab title="Input">
-        Select Media Type:
         <Tabs>
             <Tab title="Image">
 
-            Pass images via URL, file path, or base64 content:
+            Pass images via URL, file path, or raw bytes:
 
             ```python
-
             from agno.agent import Agent
             from agno.media import Image
             from agno.models.openai import OpenAIResponses
 
             agent = Agent(model=OpenAIResponses(id="gpt-5.2"))
 
-
             # From URL
             agent.run(
-
                 "What's in this image?",
-            
                 images=[Image(url="https://example.com/photo.jpg")]
-
             )
 
             # From file
@@ -68,10 +59,10 @@ This section introduces Multimodal I/O. Check out the [full guide](/multimodal/o
             ```python
             from agno.agent import Agent
             from agno.media import Audio
-            from agno.models.openai import OpenAIResponses
+            from agno.models.openai import OpenAIChat
 
             agent = Agent(
-                model=OpenAIResponses(id="gpt-4o-audio-preview", modalities=["text"])
+                model=OpenAIChat(id="gpt-audio", modalities=["text"])
             )
 
             # From file
@@ -98,7 +89,7 @@ This section introduces Multimodal I/O. Check out the [full guide](/multimodal/o
                 from agno.media import Video
                 from agno.models.google import Gemini
 
-                agent = Agent(model=Gemini(id="gemini-2.0-flash-exp"))
+                agent = Agent(model=Gemini(id="gemini-3.5-flash"))
 
                 agent.run(
                     "Describe what happens in this video",
@@ -107,7 +98,7 @@ This section introduces Multimodal I/O. Check out the [full guide](/multimodal/o
                 ```
 
                 <Note>
-                Video input is currently supported by Gemini models only.
+                Video input is currently supported by Gemini and AWS Bedrock models.
                 </Note>
             </Tab>
             <Tab title="File">
@@ -136,40 +127,46 @@ This section introduces Multimodal I/O. Check out the [full guide](/multimodal/o
         </Tabs>
     </Tab>
     <Tab title="Output">
-        Select Media Type:
        <Tabs>
             <Tab title="Image">
-                Generate images using tools like DALL-E:
+                Generate images with `OpenAITools` and GPT Image 2:
+
                 ```python
+                import base64
+
                 from agno.agent import Agent
-                from agno.models.openai import OpenAIResponses
-                from agno.tools.dalle import DalleTools
+                from agno.models.openai import OpenAIChat
+                from agno.tools.openai import OpenAITools
+                from agno.utils.media import save_base64_data
 
                 agent = Agent(
-                    model=OpenAIResponses(id="gpt-5.2"),
-                    tools=[DalleTools()],
+                    model=OpenAIChat(id="gpt-4o"),
+                    tools=[OpenAITools(image_model="gpt-image-2")],
                 )
 
-                agent.run("Generate an image of a sunset over mountains")
+                response = agent.run("Generate an image of a sunset over mountains")
 
-                # Get generated images
-                
-                images = agent.get_images()
-                for image in images:
-                    print(image.url)
+                if response.images and response.images[0].content:
+                    image_base64 = base64.b64encode(
+                        response.images[0].content
+                    ).decode("utf-8")
+                    save_base64_data(
+                        image_base64,
+                        "tmp/sunset.png",
+                    )
                 ```
-                
+
             </Tab>
             <Tab title="Audio">
                 Generate audio responses:
                 ```python
                 from agno.agent import Agent
-                from agno.models.openai import OpenAIResponses
+                from agno.models.openai import OpenAIChat
                 from agno.utils.audio import write_audio_to_file
 
                 agent = Agent(
-                    model=OpenAIResponses(
-                        id="gpt-4o-audio-preview",
+                    model=OpenAIChat(
+                        id="gpt-audio",
                         modalities=["text", "audio"],
                         audio={"voice": "alloy", "format": "wav"},
                     ),
@@ -178,22 +175,26 @@ This section introduces Multimodal I/O. Check out the [full guide](/multimodal/o
                 response = agent.run("Tell me a short story")
 
                 # Save audio response
-                write_audio_to_file(response.audio, "story.wav")
+                if response.response_audio:
+                    write_audio_to_file(
+                        audio=response.response_audio.content,
+                        filename="story.wav"
+                    )
                 ```
             </Tab>
-       </Tabs> 
+       </Tabs>
     </Tab>
     <Tab title="Combined I/O">
         Process audio input and generate audio output:
         ```python
         from agno.agent import Agent
         from agno.media import Audio
-        from agno.models.openai import OpenAIResponses
+        from agno.models.openai import OpenAIChat
         from agno.utils.audio import write_audio_to_file
 
         agent = Agent(
-            model=OpenAIResponses(
-                id="gpt-4o-audio-preview",
+            model=OpenAIChat(
+                id="gpt-audio",
                 modalities=["text", "audio"],
                 audio={"voice": "alloy", "format": "wav"},
             ),
@@ -215,4 +216,4 @@ This section introduces Multimodal I/O. Check out the [full guide](/multimodal/o
 
 ## Learn More
 
-For more multimodal input-output examples, see the [Multimodal documentation](/multimodal/overview):
+See [Multimodal](/multimodal/overview) for more examples.

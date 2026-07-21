@@ -5,7 +5,7 @@ description: Set deadlines for HITL responses so workflows don't wait indefinite
 keywords: [workflow, HITL, timeout, expiration, auto-approve, deadline]
 ---
 
-HITL timeouts set a deadline for human responses. When the timeout expires, the workflow auto-resolves the pending requirement based on the `on_timeout` policy.
+HITL timeouts set a deadline for Step confirmation and output-review responses. When the timeout expires, the workflow resolves the pending requirement based on the `on_timeout` policy the next time `continue_run()` is called. Step user-input pauses and other workflow primitives do not support timeout policies.
 
 ```python
 from agno.workflow import Workflow
@@ -30,20 +30,20 @@ workflow = Workflow(
 )
 ```
 
-Timeout is checked at `continue_run()` time. There is no background timer. If the timeout has elapsed when `continue_run()` is called, the requirement is auto-resolved.
+There is no background timer.
 
 ## Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `hitl_timeout` | `int` | `None` | Seconds before auto-resolving. `None` = no timeout |
-| `on_timeout` | `OnTimeout` | `None` | Action when timeout expires |
+| `on_timeout` | `OnTimeout` | `OnTimeout.cancel` | Action when timeout expires |
 
 ## OnTimeout Options
 
 | Value | Behavior |
 |-------|----------|
-| `OnTimeout.approve` | Auto-confirm the output |
+| `OnTimeout.approve` | Confirm the requirement and continue |
 | `OnTimeout.skip` | Skip the step |
 | `OnTimeout.cancel` | Cancel the workflow |
 
@@ -66,7 +66,7 @@ The `timeout_at` datetime is available on the `StepRequirement` for frontend cou
 
 ## With Output Review
 
-Timeout is most useful with output review. If a reviewer doesn't respond in time, the workflow proceeds automatically.
+With output review, an expired `approve` policy accepts the output on the next `continue_run()` call.
 
 ```python
 Step(
@@ -98,7 +98,7 @@ Step(
 
 | Policy | Use When |
 |--------|----------|
-| `approve` | Output is low-risk and delays are costly. The step's output is likely acceptable |
+| `approve` | The action or output is low-risk and delays are costly |
 | `skip` | The step is optional. Skipping doesn't break the workflow |
 | `cancel` | The step is critical. Proceeding without review is unacceptable |
 

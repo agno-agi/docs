@@ -1,14 +1,16 @@
 ---
 title: Hybrid Search
-description: Combine vector similarity with keyword matching for better retrieval accuracy.
+description: Combine vector and lexical search signals with a supported vector database.
 keywords: [hybrid search, vector search, keyword search, rrf, reciprocal rank fusion]
 ---
 
-Hybrid search combines vector similarity (semantic meaning) with keyword matching (exact terms) to get the best of both approaches. It's the recommended search type for most production use cases.
+Hybrid search combines vector similarity with a database-specific lexical search signal.
 
 ```python
 from agno.knowledge.knowledge import Knowledge
 from agno.vectordb.pgvector import PgVector, SearchType
+
+db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
 
 knowledge = Knowledge(
     vector_db=PgVector(
@@ -21,62 +23,64 @@ knowledge = Knowledge(
 
 ## How It Works
 
-Hybrid search runs two searches in parallel:
+The implementation depends on the vector database. A hybrid search generally:
 
-1. **Vector search** finds semantically similar content (meaning-based)
-2. **Keyword search** finds exact term matches (text-based)
-3. **Fusion** combines results using Reciprocal Rank Fusion (RRF)
+1. Computes a vector similarity signal.
+2. Computes a lexical signal from the query and document text.
+3. Combines or fuses the signals into one ranking.
 
-The RRF algorithm merges rankings with the formula: `RRF(d) = Σ 1/(k + rank)`
+PgVector combines normalized vector similarity and PostgreSQL full-text ranking in one query. Set `vector_score_weight` between `0` and `1` to control their relative contribution. The default is `0.5`.
 
-This ensures documents that rank well in both searches appear at the top, while documents that only match one method still surface.
+Chroma runs vector search and a lexical candidate search, then merges their rankings with Reciprocal Rank Fusion (RRF). Its lexical path filters on the first query token and scores term overlap.
 
 <Note>
-Not all vector databases support hybrid search or RRF.
+Each vector database maps `SearchType.hybrid` to its own query and ranking algorithm. Check the selected integration before tuning retrieval.
 </Note>
 
 ## When to Use Hybrid Search
 
-| Scenario | Why Hybrid Helps |
-|----------|------------------|
-| User queries vary in phrasing | Vector catches meaning, keywords catch exact terms |
-| Technical content with specific terms | Keywords match error codes, product names exactly |
-| Mixed content types | Balances conceptual and precise matching |
-| Production systems | Best overall accuracy for diverse queries |
+| Query Pattern | Search Type to Test |
+|---------------|---------------------|
+| Conceptual questions with varied phrasing | Vector |
+| IDs, codes, or terms that must occur in the text | Keyword |
+| Queries that mix concepts with specific terminology | Hybrid |
 
-Use **vector-only** if your queries are always conceptual with no specific terms.
-Use **keyword-only** if you need exact matching (e.g., search by ID or code).
+Evaluate the available search types against representative queries and expected documents. Ranking behavior also depends on the embedder, content, chunking strategy, and database configuration.
 
 ## Configuration
 
 ### Basic Setup
+
 ```python
 from agno.vectordb.pgvector import PgVector, SearchType
 
 vector_db = PgVector(
     table_name="docs",
-    db_url=db_url,
+    db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
     search_type=SearchType.hybrid,
+    vector_score_weight=0.7,
 )
 ```
 
 ### With Reranking
 
-Add a reranker to improve result ordering after fusion:
+Apply a reranker to the fused candidates:
+
 ```python
 from agno.knowledge.reranker.cohere import CohereReranker
+from agno.vectordb.pgvector import PgVector, SearchType
 
 vector_db = PgVector(
     table_name="docs",
-    db_url=db_url,
+    db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
     search_type=SearchType.hybrid,
     reranker=CohereReranker(),
 )
 ```
 
-### RRF Constant
+### Chroma RRF Constant
 
-The `k` constant in RRF controls how much weight lower-ranked results receive. Higher values (e.g., 60) smooth out rankings; lower values make top results more dominant.
+For Chroma, `hybrid_rrf_k` controls how strongly rank position affects the fused score. Higher values reduce the difference between adjacent ranks. The default is `60`.
 
 ```python
 from agno.vectordb.chroma import ChromaDb, SearchType
@@ -90,6 +94,12 @@ vector_db = ChromaDb(
 ```
 
 ## Example
+
+Install the dependencies used on this page and start a PostgreSQL instance with pgvector enabled:
+
+```bash
+uv pip install -U agno chromadb cohere openai pgvector psycopg pypdf sqlalchemy
+```
 
 ```python hybrid_search.py
 from agno.knowledge.knowledge import Knowledge
@@ -105,12 +115,10 @@ knowledge = Knowledge(
     ),
 )
 
-# Load content
 knowledge.insert(
     url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
 )
 
-# Search combines semantic similarity + keyword matching
 results = knowledge.search("chicken coconut soup", max_results=5)
 for doc in results:
     print(doc.content[:200])
@@ -118,12 +126,19 @@ for doc in results:
 
 ## Supported Vector Databases
 
-Hybrid search is available in:
-- [PgVector](/knowledge/vector-stores/pgvector/overview)
-- [ChromaDB](/knowledge/vector-stores/chroma/overview)
-- [LanceDB](/knowledge/vector-stores/lancedb/overview)
-- [Weaviate](/knowledge/vector-stores/weaviate/overview)
-- [Milvus](/knowledge/vector-stores/milvus/overview)
-- [Pinecone](/knowledge/vector-stores/pinecone/overview)
+| Vector Database | Hybrid Search Notes |
+|-----------------|---------------------|
+| [PgVector](/knowledge/vector-stores/pgvector/overview) | Weighted PostgreSQL full-text and vector scores |
+| [Chroma](/knowledge/vector-stores/chroma/overview) | Term-overlap lexical ranking and vector ranking fused with RRF |
+| [LanceDB](/knowledge/vector-stores/lancedb/overview) | Supports `SearchType.hybrid` |
+| [Weaviate](/knowledge/vector-stores/weaviate/overview) | Uses Weaviate hybrid queries |
+| [Milvus](/knowledge/vector-stores/milvus/overview) | Uses dense and sparse vectors |
+| [Pinecone](/knowledge/vector-stores/pinecone/overview) | Requires `use_hybrid_search=True` |
+| [Qdrant](/knowledge/vector-stores/qdrant/overview) | Uses dense and sparse named vectors |
+| [MongoDB](/knowledge/vector-stores/mongodb/overview) | Supports `SearchType.hybrid` |
+| [Redis](/knowledge/vector-stores/redis/overview) | Supports vector, keyword, and hybrid search |
 
-Check individual vector database docs for specific hybrid search capabilities.
+## Developer Resources
+
+- [Search and retrieval](/knowledge/concepts/search-and-retrieval/overview)
+- [Vector database integrations](/knowledge/vector-stores/index)

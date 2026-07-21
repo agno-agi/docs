@@ -1,10 +1,11 @@
 ---
-title: Last N Messages
-sidebarTitle: Last N Messages
+title: Limit Past Session Search
+sidebarTitle: Limit Past Session Search
 mode: wide
+description: "Limit the number of prior session previews returned by search_past_sessions."
 ---
 
-This example demonstrates how to configure agents to search through previous sessions and limit the number of historical sessions included in context. This helps manage context length while maintaining relevant conversation history.
+Register the `search_past_sessions` tool and limit how many prior session previews it returns. The previews are tool results that the agent can inspect when it chooses to search past sessions.
 
 <Steps>
 
@@ -17,16 +18,15 @@ This example demonstrates how to configure agents to search through previous ses
     from agno.models.openai import OpenAIResponses
 
     # Remove the tmp db file before running the script
-    os.remove("tmp/data.db")
+    if os.path.exists("tmp/data.db"):
+        os.remove("tmp/data.db")
 
     agent = Agent(
         model=OpenAIResponses(id="gpt-5.2"),
         user_id="user_1",
         db=SqliteDb(db_file="tmp/data.db"),
-        add_history_to_context=True,
-        num_history_runs=3,
-        search_session_history=True,  # allow searching previous sessions
-        num_history_sessions=2,  # only include the last 2 sessions in the search to avoid context length issues
+        search_past_sessions=True,  # register the prior-session search tool
+        num_past_sessions_to_search=2,  # return at most two prior session previews
     )
 
     session_1_id = "session_1_id"
@@ -41,7 +41,7 @@ This example demonstrates how to configure agents to search through previous ses
     agent.print_response("What is the capital of Japan?", session_id=session_4_id)
     agent.print_response(
         "What did I discuss in my previous conversations?", session_id=session_5_id
-    )  # It should only include the last 2 sessions
+    )  # The search tool can return at most two prior session previews.
     ```
   </Step>
 
@@ -49,7 +49,7 @@ This example demonstrates how to configure agents to search through previous ses
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U agno openai
+    uv pip install -U agno openai sqlalchemy
     ```
   </Step>
 

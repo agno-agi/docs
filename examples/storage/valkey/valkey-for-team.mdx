@@ -1,0 +1,131 @@
+---
+title: "Example showing how to use Valkey as the database for a team."
+sidebarTitle: "Valkey For Team"
+description: "Use Valkey as the storage backend for a team."
+source: cookbook/06_storage/valkey/valkey_for_team.py
+---
+Run `uv pip install ddgs openai valkey-glide-sync` to install dependencies.
+
+```python
+"""
+Example showing how to use Valkey as the database for a team.
+
+Run: `uv pip install ddgs valkey-glide-sync` to install the dependencies
+
+We can start Valkey locally using docker:
+1. Start Valkey container
+`docker run --name my-valkey -p 6379:6379 -d valkey/valkey-bundle`
+
+2. Verify container is running
+`docker ps`
+
+3. Run the file
+`python cookbook/06_storage/valkey/valkey_for_team.py`
+"""
+
+from typing import List
+
+from agno.agent import Agent
+from agno.db.valkey import ValkeyDb
+from agno.models.openai import OpenAIResponses
+from agno.team import Team
+from agno.tools.hackernews import HackerNewsTools
+from agno.tools.websearch import WebSearchTools
+from pydantic import BaseModel
+
+# ---------------------------------------------------------------------------
+# Setup
+# ---------------------------------------------------------------------------
+db = ValkeyDb()
+
+
+# ---------------------------------------------------------------------------
+# Create Team
+# ---------------------------------------------------------------------------
+class Article(BaseModel):
+    title: str
+    summary: str
+    reference_links: List[str]
+
+
+hn_researcher = Agent(
+    name="HackerNews Researcher",
+    model=OpenAIResponses(id="gpt-5.5"),
+    role="Gets top stories from hackernews.",
+    tools=[HackerNewsTools()],
+)
+
+web_searcher = Agent(
+    name="Web Searcher",
+    model=OpenAIResponses(id="gpt-5.5"),
+    role="Searches the web for information on a topic",
+    tools=[WebSearchTools()],
+    add_datetime_to_context=True,
+)
+
+
+hn_team = Team(
+    name="HackerNews Team",
+    model=OpenAIResponses(id="gpt-5.5"),
+    members=[hn_researcher, web_searcher],
+    db=db,
+    instructions=[
+        "First, search hackernews for what the user is asking about.",
+        "Then, ask the web searcher to search for each story to get more information.",
+        "Finally, provide a thoughtful and engaging summary.",
+    ],
+    output_schema=Article,
+    markdown=True,
+    show_members_responses=True,
+)
+
+# ---------------------------------------------------------------------------
+# Run Team
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    hn_team.print_response("Write an article about the top 2 stories on hackernews")
+```
+
+## Run the Example
+
+<Steps>
+  <Step title="Clone Agno">
+    Clone the repository and run the remaining commands from its root:
+    ```bash
+    git clone https://github.com/agno-agi/agno.git
+    cd agno
+    ```
+  </Step>
+
+  <Step title="Set up the demo environment">
+    ```bash
+    ./scripts/demo_setup.sh
+    source .venvs/demo/bin/activate
+    uv pip install -U ddgs openai valkey-glide-sync
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run Valkey">
+    ```bash
+    docker run -d --name my-valkey -p 6379:6379 valkey/valkey-bundle
+    ```
+  </Step>
+
+  <Step title="Run the example">
+    ```bash
+    python cookbook/06_storage/valkey/valkey_for_team.py
+    ```
+  </Step>
+</Steps>

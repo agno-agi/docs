@@ -1,10 +1,12 @@
 ---
-title: "CEL Session State"
+title: "Condition with CEL expression: branching on session_state"
 description: "Uses session_state.retry_count to implement retry logic."
+source: cookbook/04_workflows/07_cel_expressions/condition/cel_session_state.py
 ---
+
 Uses session_state.retry_count to implement retry logic. Runs the workflow multiple times to show the counter incrementing and eventually hitting the max retries branch.
 
-```python
+```python cel_session_state.py
 """Condition with CEL expression: branching on session_state.
 ==========================================================
 
@@ -18,6 +20,7 @@ Requirements:
 
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
+from agno.run import RunContext
 from agno.workflow import (
     CEL_AVAILABLE,
     Condition,
@@ -38,19 +41,19 @@ if not CEL_AVAILABLE:
 # ---------------------------------------------------------------------------
 # Define Helpers
 # ---------------------------------------------------------------------------
-def increment_retry_count(step_input: StepInput, session_state: dict) -> StepOutput:
+def increment_retry_count(step_input: StepInput, run_context: RunContext) -> StepOutput:
     """Increment retry count in session state."""
-    current_count = session_state.get("retry_count", 0)
-    session_state["retry_count"] = current_count + 1
+    current_count = run_context.session_state.get("retry_count", 0)
+    run_context.session_state["retry_count"] = current_count + 1
     return StepOutput(
-        content=f"Retry count incremented to {session_state['retry_count']}",
+        content=f"Retry count incremented to {run_context.session_state['retry_count']}",
         success=True,
     )
 
 
-def reset_retry_count(step_input: StepInput, session_state: dict) -> StepOutput:
+def reset_retry_count(step_input: StepInput, run_context: RunContext) -> StepOutput:
     """Reset retry count in session state."""
-    session_state["retry_count"] = 0
+    run_context.session_state["retry_count"] = 0
     return StepOutput(content="Retry count reset to 0", success=True)
 
 
@@ -107,14 +110,34 @@ if __name__ == "__main__":
 ```
 
 ## Run the Example
-```bash
-# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/04_workflows/07_cel_expressions/condition
 
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
 
-python cel_session_state.py
-```
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno cel-python fastapi openai
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `cel_session_state.py`, then run:
+    ```bash
+    python cel_session_state.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/04_workflows/07_cel_expressions/condition/cel_session_state.py](https://github.com/agno-agi/agno/blob/main/cookbook/04_workflows/07_cel_expressions/condition/cel_session_state.py)

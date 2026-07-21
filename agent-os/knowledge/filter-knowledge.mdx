@@ -1,11 +1,11 @@
 ---
 title: Filter Knowledge
-description: Use filter expressions through the Agno API for precise knowledge base filtering.
+description: Use filter expressions through the AgentOS API for precise knowledge base filtering.
 keywords: [api, filtering, filterexpr, knowledge, search, rest api]
 ---
 
-When using the AgentOS API, you can apply filters to precisely control which knowledge base documents your agents search, without changing your agent code. 
-Filter expressions serialize to JSON and are automatically reconstructed server-side for powerful, programmatic filtering.
+When using the AgentOS API, you can apply filters to precisely control which knowledge base documents your agents search, without changing your agent code.
+Filter expressions serialize to JSON and are automatically reconstructed server-side for programmatic filtering.
 
 ## Two Approaches to Filtering
 
@@ -43,6 +43,14 @@ Best for complex filtering with full logical control. Send structured filter obj
 
 Filter expressions support comparison, string-matching, and logical operators.
 
+<Warning>
+Filter expressions execute only against **PgVector**. On every other supported vector database, filter expressions are dropped: a warning is logged and the search runs unfiltered.
+
+Within PgVector, only `EQ`, `IN`, `GT`, `LT`, `AND`, `OR`, and `NOT` are implemented. `NEQ`, `GTE`, `LTE`, `CONTAINS`, and `STARTSWITH` deserialize successfully but raise an error during search, and the run returns no knowledge results.
+
+Use dictionary filters for reliable results across all supported vector databases.
+</Warning>
+
 ### Comparison Operators
 
 - **`EQ(key, value)`** - Equality: field equals value
@@ -73,7 +81,7 @@ Filter expressions support comparison, string-matching, and logical operators.
 Filter expressions support Python's bitwise operators as shorthand for `AND`, `OR`, and `NOT`:
 
 ```python
-from agno.filters import EQ, GT
+from agno.filters import AND, EQ, GT
 
 # These two are equivalent
 EQ("status", "published") & GT("views", 1000)
@@ -154,7 +162,7 @@ The presence of the `"op"` key tells the API to deserialize the filter as a filt
 In all examples below, you pass the serialized JSON string via the `knowledge_filters` field when creating a run.
 
 ### Dictionary Filters (Simple Approach)
- 
+
 For basic filtering, send a JSON object with key-value pairs. All conditions are combined with AND logic:
 
 <CodeGroup>
@@ -328,13 +336,13 @@ def validate_and_send_filter(filter_expr, message):
         # Test serialization
         filter_dict = filter_expr.to_dict()
         filter_json = json.dumps(filter_dict)
-        
+
         # Verify it's valid JSON
         json.loads(filter_json)
-        
+
         # Send request
         return send_filtered_agent_request(message, filter_expr)
-        
+
     except (AttributeError, TypeError, json.JSONDecodeError) as e:
         print(f"Filter validation failed: {e}")
         return None
@@ -344,23 +352,23 @@ def validate_and_send_filter(filter_expr, message):
 
 <CardGroup cols={2}>
   <Card
-    title="Advanced Filtering Guide" 
+    title="Advanced Filtering Guide"
     icon="filter"
     href="/knowledge/concepts/filters/advanced-filtering"
   >
-    Learn about filter expressions and metadata design in detail
+    Filter expressions and metadata design patterns
   </Card>
   <Card
-    title="Agent OS API"
-    icon="code" 
-    href="/agent-os/api/usage"
+    title="AgentOS API"
+    icon="code"
+    href="/agent-os/using-the-api"
   >
-    Explore the full Agent OS API reference
+    Explore the full AgentOS API reference
   </Card>
   <Card
     title="Knowledge Bases"
     icon="database"
-    href="/knowledge/knowledge-bases" 
+    href="/knowledge/overview"
   >
     Understand knowledge base architecture and setup
   </Card>
@@ -370,13 +378,6 @@ def validate_and_send_filter(filter_expr, message):
     href="/knowledge/concepts/search-and-retrieval/overview"
   >
     Optimize your search strategies
-  </Card>
-  <Card
-    title="Filter Expressions Example"
-    icon="code"
-    href="/knowledge/concepts/filters/advanced-filtering"
-  >
-    See working examples of filter expressions via API
   </Card>
 </CardGroup>
 

@@ -1,57 +1,69 @@
 ---
 title: Early Stopping
 sidebarTitle: Early Stopping
-description: How to early stop workflows
+description: Stop a workflow from any step by returning StepOutput with stop=True.
 mode: wide
 ---
 
-Workflows support early termination when specific conditions are met, preventing unnecessary processing and implementing safety gates. Any step can trigger early termination by returning `StepOutput(stop=True)`, immediately halting the entire workflow execution.
-
-<img 
-  className="block dark:hidden" 
-  src="/images/workflows-early-stop-light.png" 
-  alt="Workflows early stop diagram"
-/>
-<img 
-  className="hidden dark:block" 
-  src="/images/workflows-early-stop.png" 
-  alt="Workflows early stop diagram"
-/>
-
-## Example
+Return `StepOutput(stop=True)` from a custom step to skip the remaining workflow steps.
 
 ```python
 from agno.workflow import Step, Workflow, StepInput, StepOutput
 
+
+def security_scan(step_input: StepInput) -> StepOutput:
+    source = str(step_input.input)
+    result = "VULNERABLE" if "exec(" in source else "SECURE"
+    return StepOutput(content=result)
+
+
 def security_gate(step_input: StepInput) -> StepOutput:
-    """Security gate that stops deployment if vulnerabilities found"""
     security_result = step_input.previous_step_content or ""
-    
+
     if "VULNERABLE" in security_result.upper():
         return StepOutput(
             content="SECURITY ALERT: Critical vulnerabilities detected. Deployment blocked.",
-            stop=True  # Stop the entire workflow
-        )
-    else:
-        return StepOutput(
-            content="Security check passed. Proceeding with deployment...",
-            stop=False
+            stop=True,
         )
 
-# Secure deployment pipeline
+    return StepOutput(content="Security check passed.")
+
+
+def deploy_code(step_input: StepInput) -> StepOutput:
+    return StepOutput(content="Code deployed")
+
+
+def configure_monitoring(step_input: StepInput) -> StepOutput:
+    return StepOutput(content="Monitoring configured")
+
+
 workflow = Workflow(
-    name="Secure Deployment Pipeline",
+    name="secure_deployment",
     steps=[
-        Step(name="Security Scan", agent=security_scanner),
-        Step(name="Security Gate", executor=security_gate),  # May stop here
-        Step(name="Deploy Code", agent=code_deployer),       # Only if secure
-        Step(name="Setup Monitoring", agent=monitoring_agent), # Only if deployed
-    ]
+        Step(name="security_scan", executor=security_scan),
+        Step(name="security_gate", executor=security_gate),
+        Step(name="deploy_code", executor=deploy_code),
+        Step(name="configure_monitoring", executor=configure_monitoring),
+    ],
 )
 
-# Test with vulnerable code - workflow stops at security gate
-workflow.print_response("Scan this code: exec(input('Enter command: '))")
+run_output = workflow.run("exec(input('Enter command: '))")
+print(run_output.content)
+# SECURITY ALERT: Critical vulnerabilities detected. Deployment blocked.
 ```
+
+The workflow records the stopping step's output and does not start later top-level steps. `Steps`, `Condition`, `Router`, and `Loop` propagate `stop=True` from nested steps. Other branches in a `Parallel` may already be running when one branch requests a stop.
+
+<img
+  className="block dark:hidden"
+  src="/images/workflows-early-stop-light.png"
+  alt="Workflows early stop diagram"
+/>
+<img
+  className="hidden dark:block"
+  src="/images/workflows-early-stop.png"
+  alt="Workflows early stop diagram"
+/>
 
 ## Developer Resources
 

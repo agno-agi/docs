@@ -1,56 +1,51 @@
 ---
 title: Docker
+description: "DockerTools gives an agent full control over Docker containers, images, volumes, and networks."
 ---
 
 **DockerTools** enable an Agent to interact with Docker containers, images, volumes, and networks.
 
 ## Prerequisites
 
-The Docker tools require the `docker` Python package. You'll also need Docker installed and running on your system.
+The following example requires the `docker` and `openai` Python packages. You'll also need Docker installed and running on your system.
 
 ```shell
-uv pip install docker
+uv pip install docker openai
 ```
 
 ## Example
 
 The following example creates an agent that can manage Docker resources:
 
-```python cookbook/14_tools/docker_tools.py
+```python cookbook/91_tools/docker_tools.py
 import sys
+
 from agno.agent import Agent
 
 try:
     from agno.tools.docker import DockerTools
 
-    docker_tools = DockerTools(
-        enable_container_management=True,
-        enable_image_management=True,
-        enable_volume_management=True,
-        enable_network_management=True,
-    )
+    docker_tools = DockerTools()
 
-    # Create an agent with Docker tools
     docker_agent = Agent(
         name="Docker Agent",
         instructions=[
-            "You are a Docker management assistant that can perform various Docker operations.",
+            "You are a comprehensive Docker management assistant.",
             "You can manage containers, images, volumes, and networks.",
         ],
         tools=[docker_tools],
-                markdown=True,
+        markdown=True,
     )
 
-    # Example: List all running Docker containers
     docker_agent.print_response("List all running Docker containers", stream=True)
-
-    # Example: Pull and run an NGINX container
     docker_agent.print_response("Pull the latest nginx image", stream=True)
-    docker_agent.print_response("Run an nginx container named 'web-server' on port 8080", stream=True)
+    docker_agent.print_response(
+        "Run an nginx container named 'web-server' on port 8080", stream=True
+    )
 
 except ValueError as e:
-    print(f"\n❌ Docker Tool Error: {e}")
-    print("\n🔍 Troubleshooting steps:")
+    print(f"\n[ERROR] Docker Tool Error: {e}")
+    print("\nTroubleshooting steps:")
 
     if sys.platform == "darwin":  # macOS
         print("1. Ensure Docker Desktop is running")
@@ -68,14 +63,18 @@ except ValueError as e:
         print("2. Check Docker Desktop settings")
 ```
 
+<Warning>
+`DockerTools` registers all functions by default, including `remove_container`, `remove_image`, `remove_volume`, `remove_network`, and `exec_in_container`, which runs an arbitrary command inside a container. There's no allowlist or confirmation gate. Use `include_tools`/`exclude_tools` to scope access, and keep human supervision for untrusted prompts.
+</Warning>
+
 ## Toolkit Params
+
+DockerTools registers all functions below by default. Limit them with the base toolkit params:
 
 | Parameter                    | Type   | Default | Description                                        |
 | ---------------------------- | ------ | ------- | -------------------------------------------------- |
-| `enable_container_management` | `bool` | `True`  | Enables container management functions (list, start, stop, etc.) |
-| `enable_image_management`    | `bool` | `True`  | Enables image management functions (pull, build, etc.) |
-| `enable_volume_management`   | `bool` | `False` | Enables volume management functions |
-| `enable_network_management`  | `bool` | `False` | Enables network management functions |
+| `include_tools` | `Optional[list[str]]` | `None`  | Register only these function names |
+| `exclude_tools` | `Optional[list[str]]` | `None`  | Skip these function names |
 
 ## Toolkit Functions
 
@@ -125,4 +124,4 @@ except ValueError as e:
 
 ## Developer Resources
 
-- View [Tools](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/tools/docker.py)
+- [Tools](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/tools/docker.py)

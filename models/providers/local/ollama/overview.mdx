@@ -1,30 +1,31 @@
 ---
 title: Ollama
 sidebarTitle: Overview
-description: Run local models with Ollama in Agno agents.
+description: Run local models and call Ollama Cloud directly from Agno agents.
 ---
 
-Run large language models with Ollama, either locally or through Ollama Cloud.
+Run large language models with [Ollama](https://ollama.com) through a local Ollama server or the direct Ollama Cloud API.
 
-[Ollama](https://ollama.com) is a fantastic tool for running models both locally and in the cloud.
+| Access mode | Host | Authentication | Example model ID |
+|-------------|------|----------------|------------------|
+| Local Ollama server | `http://localhost:11434` | None | `llama3.1` |
+| Direct Ollama Cloud API | `https://ollama.com` | `OLLAMA_API_KEY` | `gpt-oss:120b` |
 
-**Local Usage**: Run models on your own hardware using the Ollama client.
+Ollama also supports cloud-offloaded models through a signed-in local Ollama server. That access mode uses model IDs such as `gpt-oss:120b-cloud`. See the [Ollama Cloud guide](https://docs.ollama.com/cloud).
 
-**Cloud Usage**: Access cloud-hosted models via [Ollama Cloud](https://ollama.com) with an API key. 
-
-Ollama supports multiple open-source models. See the library [here](https://ollama.com/library).
+Ollama supports multiple open-source models. See the [Ollama library](https://ollama.com/library).
 
 Experiment with different models to find the best fit for your use case. Here are some general recommendations:
 
-- `gpt-oss:120b-cloud` is an excellent general-purpose cloud model for most tasks.
-- `llama3.3` models are good for most basic use-cases.
-- `qwen` models perform specifically well with tool use.
+- `gpt-oss:120b` is a general-purpose model available through the direct Ollama Cloud API.
+- `llama3.3` models are good for most basic use cases.
+- `qwen` models perform particularly well with tool use.
 - `deepseek-r1` models have strong reasoning capabilities.
-- `phi4` models are powerful, while being really small in size.
+- `phi4` models offer strong performance at a small size.
 
-## Authentication (Ollama Cloud Only)
+## Direct Ollama Cloud API authentication
 
-To use Ollama Cloud, set your `OLLAMA_API_KEY` environment variable. You can get an API key from [Ollama Cloud](https://ollama.com).
+To call Ollama Cloud directly, set your `OLLAMA_API_KEY` environment variable. Create a key from [Ollama](https://ollama.com/settings/keys).
 
 <CodeGroup>
 
@@ -38,13 +39,19 @@ setx OLLAMA_API_KEY ***
 
 </CodeGroup>
 
-When using Ollama Cloud, the host is automatically set to `https://ollama.com`. For local usage, no API key is required.
+When `OLLAMA_API_KEY` is set, Agno adds bearer authorization and defaults the host to `https://ollama.com`. Local requests use the Ollama server configured by the client.
 
 ## Set up a model
 
+Both local and direct cloud usage require the `ollama` Python package:
+
+```bash
+uv pip install -U ollama agno
+```
+
 ### Local Usage
 
-Install [ollama](https://ollama.com) and run a model:
+Install the [Ollama app](https://ollama.com) and run a model:
 
 ```bash run model
 ollama run llama3.1
@@ -58,9 +65,9 @@ To download the model for use in an Agno agent:
 ollama pull llama3.1
 ```
 
-### Cloud Usage
+### Direct Ollama Cloud API
 
-For Ollama Cloud, no local Ollama server installation is required. Install the Ollama library, set up your API key as described in the Authentication section above, and access cloud-hosted models directly.
+Set `OLLAMA_API_KEY` to access models through `https://ollama.com`. This direct API path runs without a local Ollama server.
 
 ## Examples
 
@@ -85,9 +92,9 @@ agent.print_response("Share a 2 sentence horror story.")
 
 </CodeGroup>
 
-### Cloud Usage
+### Direct Ollama Cloud API
 
-<Note>When using Ollama Cloud with an API key, the host is automatically set to `https://ollama.com`. You can omit the `host` parameter.</Note>
+<Note>When `OLLAMA_API_KEY` is set, the host defaults to `https://ollama.com`. You can omit the `host` parameter.</Note>
 
 <CodeGroup>
 
@@ -96,7 +103,7 @@ from agno.agent import Agent
 from agno.models.ollama import Ollama
 
 agent = Agent(
-    model=Ollama(id="gpt-oss:120b-cloud"),
+    model=Ollama(id="gpt-oss:120b"),
     markdown=True
 )
 
@@ -106,30 +113,35 @@ agent.print_response("Share a 2 sentence horror story.")
 
 </CodeGroup>
 
-<Note> View more examples [here](/models/providers/local/ollama/usage/basic). </Note>
+<Note>See [Ollama usage examples](/models/providers/local/ollama/usage/basic) for more.</Note>
 
 ## Params
 
 | Parameter           | Type                       | Default                        | Description                                                                                                          |
 | ------------------- | -------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
-| `id`                | `str`                      | `"llama3.2"`                   | The name of the Ollama model to use                                                                                 |
+| `id`                | `str`                      | `"llama3.1"`                   | The name of the Ollama model to use                                                                                 |
 | `name`              | `str`                      | `"Ollama"`                     | The name of the model                                                                                                |
 | `provider`          | `str`                      | `"Ollama"`                     | The provider of the model                                                                                            |
-| `host`              | `str`                      | `"http://localhost:11434"`     | The host URL for the Ollama server                                                                                  |
-| `timeout`           | `Optional[int]`            | `None`                         | Request timeout in seconds                                                                                           |
-| `format`            | `Optional[str]`            | `None`                         | The format to return the response in (e.g., "json")                                                               |
-| `options`           | `Optional[Dict[str, Any]]` | `None`                         | Additional model options (temperature, top_p, etc.)                                                                 |
+| `format`            | `Optional[Any]`            | `None`                         | The format to return the response in (e.g., "json")                                                               |
+| `options`           | `Optional[Any]`            | `None`                         | Additional model options (temperature, top_p, etc.)                                                                 |
 | `keep_alive`        | `Optional[Union[float, str]]` | `None`                      | How long to keep the model loaded (e.g., "5m", 3600 seconds)                                                      |
-| `template`          | `Optional[str]`            | `None`                         | The prompt template to use                                                                                           |
-| `system`            | `Optional[str]`            | `None`                         | System message to use                                                                                                |
-| `raw`               | `Optional[bool]`           | `None`                         | Whether to return raw response without formatting                                                                    |
-| `stream`            | `bool`                     | `True`                         | Whether to stream the response                                                                                       |
+| `request_params`    | `Optional[Dict[str, Any]]` | `None`                         | Additional parameters to include in the request                                                                      |
+| `host`              | `Optional[str]`            | `None` (`"http://localhost:11434"`; `"https://ollama.com"` when `api_key` is set) | The host URL for the Ollama server               |
+| `timeout`           | `Optional[Any]`            | `None`                         | Request timeout in seconds                                                                                           |
+| `api_key`           | `Optional[str]`            | `getenv("OLLAMA_API_KEY")`     | API key for Ollama Cloud. When set, the host defaults to Ollama Cloud                                                |
+| `client_params`     | `Optional[Dict[str, Any]]` | `None`                         | Additional parameters for client configuration                                                                       |
+| `client`            | `Optional[OllamaClient]`   | `None`                         | Pre-configured Ollama client                                                                                         |
+| `async_client`      | `Optional[AsyncOllamaClient]` | `None`                      | Pre-configured async Ollama client                                                                                   |
 
 `Ollama` is a subclass of the [Model](/reference/models/model) class and has access to the same params.
 
 ## Responses API
 
-Ollama v0.13.3+ supports the OpenAI Responses API via the `/v1/responses` endpoint. Use `OllamaResponses` for this interface:
+Ollama v0.13.3+ supports the OpenAI Responses API via the `/v1/responses` endpoint. Use `OllamaResponses` for this interface. It uses the OpenAI client, so install the `openai` package:
+
+```bash
+uv pip install -U openai agno
+```
 
 <CodeGroup>
 

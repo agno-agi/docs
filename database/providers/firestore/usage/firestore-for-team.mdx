@@ -1,19 +1,22 @@
 ---
 title: Firestore for Team
 sidebarTitle: Team
+description: Store team sessions in Firestore with FirestoreDb.
 ---
 
 Agno supports using Firestore as a storage backend for Teams using the `FirestoreDb` class.
 
 ## Usage
 
-You need to provide a `project_id` parameter to the `FirestoreDb` class. Firestore will connect automatically using your Google Cloud credentials.
+You need to provide either `project_id` or `db_client` to the `FirestoreDb` class. Firestore will connect automatically using your Google Cloud credentials.
+
+Install dependencies:
+
+```shell
+uv pip install agno openai google-cloud-firestore ddgs
+```
 
 ```python firestore_for_team.py
-"""
-Run: `uv pip install openai newspaper4k lxml_html_clean agno` to install the dependencies
-"""
-
 from typing import List
 
 from agno.agent import Agent
@@ -21,7 +24,7 @@ from agno.db.firestore import FirestoreDb
 from agno.models.openai import OpenAIResponses
 from agno.team import Team
 from agno.tools.hackernews import HackerNewsTools
-from agno.tools.hackernews import HackerNewsTools
+from agno.tools.websearch import WebSearchTools
 from pydantic import BaseModel
 
 # Setup the Firestore database
@@ -36,7 +39,7 @@ class Article(BaseModel):
 hn_researcher = Agent(
     name="HackerNews Researcher",
     model=OpenAIResponses(id="gpt-5.2"),
-    role="Gets top stories from hackernews.",
+    role="Gets top stories from HackerNews.",
     tools=[HackerNewsTools()],
 )
 
@@ -44,7 +47,7 @@ web_searcher = Agent(
     name="Web Searcher",
     model=OpenAIResponses(id="gpt-5.2"),
     role="Searches the web for information on a topic",
-    tools=[HackerNewsTools()],
+    tools=[WebSearchTools()],
     add_datetime_to_context=True,
 )
 
@@ -54,7 +57,7 @@ hn_team = Team(
     members=[hn_researcher, web_searcher],
     db=db,
     instructions=[
-        "First, search hackernews for what the user is asking about.",
+        "First, search HackerNews for what the user is asking about.",
         "Then, ask the web searcher to search for each story to get more information.",
         "Finally, provide a thoughtful and engaging summary.",
     ],
@@ -63,7 +66,7 @@ hn_team = Team(
     show_members_responses=True,
 )
 
-hn_team.print_response("Write an article about the top 2 stories on hackernews")
+hn_team.print_response("Write an article about the top 2 stories on HackerNews")
 ```
 
 ## Params

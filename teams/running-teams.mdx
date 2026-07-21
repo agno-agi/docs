@@ -12,9 +12,9 @@ Run your team with `Team.run()` (sync) or `Team.arun()` (async).
 from agno.team import Team
 from agno.agent import Agent
 from agno.models.openai import OpenAIResponses
+from agno.run.team import TeamRunEvent
 from agno.tools.hackernews import HackerNewsTools
 from agno.tools.yfinance import YFinanceTools
-from agno.utils.pprint import pprint_run_response
 
 news_agent = Agent(name="News Agent", role="Get tech news", tools=[HackerNewsTools()])
 finance_agent = Agent(name="Finance Agent", role="Get stock data", tools=[YFinanceTools()])
@@ -22,7 +22,7 @@ finance_agent = Agent(name="Finance Agent", role="Get stock data", tools=[YFinan
 team = Team(
     name="Research Team",
     members=[news_agent, finance_agent],
-    model=OpenAIResponses(id="gpt-4o")
+    model=OpenAIResponses(id="gpt-5.4-mini")
 )
 
 # Run and get response
@@ -31,9 +31,41 @@ print(response.content)
 
 # Run with streaming
 stream = team.run("What are the trending AI stories?", stream=True)
-for chunk in stream:
-    print(chunk.content, end="", flush=True)
+for event in stream:
+    if event.event == TeamRunEvent.run_content and event.content:
+        print(event.content, end="", flush=True)
 ```
+
+## Run the example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai yfinance
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash macOS / Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```powershell Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code as `running_team.py`, then run:
+    ```bash
+    python running_team.py
+    ```
+  </Step>
+</Steps>
 
 ## Execution Flow
 
@@ -43,12 +75,12 @@ When you call `run()`:
 2. **Reasoning runs** (if enabled) to plan the task
 3. **Context is built** with system message, history, memories, and session state
 4. **Model decides** whether to respond directly, use tools, or delegate to members
-5. **Members execute** their tasks (concurrently in async mode)
-6. **Leader synthesizes** member results into a final response
+5. **Delegated members execute** their tasks. Multiple async member calls can run concurrently.
+6. **Leader completes the run** by returning a routed member response or synthesizing member results, depending on the mode.
 7. **Post-hooks execute** (if configured)
 8. **Session and metrics are stored** (if database configured)
 
-[Callable factories](./overview#callable-factories) are resolved after session state is loaded, so factories can access `run_context` and `session_state`. Async factories require `arun()` or `aprint_response()`.
+[Callable factories](/teams/overview#callable-factories) are resolved after session state is loaded, so factories can access `run_context` and `session_state`. Async factories require `arun()` or `aprint_response()`.
 
 <Snippet file="team-execution-style.mdx" />
 
@@ -56,7 +88,6 @@ In `TeamMode.tasks`, the leader uses task management tools to build and execute 
 
 Teams can pause for human-in-the-loop requirements (e.g., approvals or user input). When a run requires confirmation, the run returns with pending requirements so you can collect input or resolve approvals before continuing.
 Paused runs return `status=RunStatus.paused` and `requirements` on the `TeamRunOutput`.
-Human oversight is a control path. Runs can pause for confirmation or external execution and resume when requirements are resolved.
 
 <Accordion title="Execution Flow Diagram">
 <img
@@ -74,23 +105,26 @@ Human oversight is a control path. Runs can pause for confirmation or external e
 
 ## Streaming
 
-Enable streaming with `stream=True`. This returns an iterator of events instead of a single response.
+Enable streaming with `stream=True`. This returns an iterator of team events and can include delegated member events.
 
 ```python
 stream = team.run("What are the top AI stories?", stream=True)
-for chunk in stream:
-    print(chunk.content, end="", flush=True)
+for event in stream:
+    if event.event == TeamRunEvent.run_content and event.content:
+        print(event.content, end="", flush=True)
 ```
 
 <Note>
-Streaming is not supported in `TeamMode.tasks`. If you set `stream=True`, the run falls back to non-streaming execution.
+In `TeamMode.tasks`, `stream_events=True` also emits `TeamTaskCreated`, `TeamTaskUpdated`, `TeamTaskStateUpdated`, `TeamTaskIterationStarted`, and `TeamTaskIterationCompleted`. See [Task Mode Streaming Events](/examples/teams/modes/tasks/streaming-events).
 </Note>
 
 ### Stream All Events
 
-By default, only content is streamed. Set `stream_events=True` to get tool calls, reasoning steps, and other internal events:
+Team content is streamed by default. Delegated member events are also forwarded because `stream_member_events=True` by default. Set `stream_events=True` to include all team-level tool, reasoning, hook, and lifecycle events:
 
 ```python
+from agno.run.team import TeamRunEvent
+
 stream = team.run(
     "What are the trending AI stories?",
     stream=True,
@@ -105,22 +139,22 @@ for event in stream:
     elif event.event == TeamRunEvent.run_continued:
         print("Run continued")
     elif event.event == TeamRunEvent.tool_call_started:
-        print(f"Tool call started")
+        print("Tool call started")
     elif event.event == TeamRunEvent.tool_call_completed:
-        print(f"Tool call completed")
+        print("Tool call completed")
 ```
 
 ### Stream Member Events
 
-When using `arun()` with multiple members, they execute concurrently. Member events arrive as they happen, not in order.
+Delegated member events are forwarded by default. In async broadcast mode, member runs execute concurrently and their events can interleave.
 
-Disable member event streaming with `stream_member_events=False`:
+Set `stream_member_events=False` to suppress member events:
 
 ```python
 team = Team(
     name="Research Team",
     members=[news_agent, finance_agent],
-    model=OpenAIResponses(id="gpt-4o"),
+    model=OpenAIResponses(id="gpt-5.4-mini"),
     stream_member_events=False
 )
 ```
@@ -131,8 +165,8 @@ team = Team(
 
 | Field | Description |
 |-------|-------------|
-| `content` | The final response text |
-| `messages` | All messages sent to the model |
+| `content` | The final response content, including a structured model when configured |
+| `messages` | Messages used by the team leader's model |
 | `metrics` | Token usage, execution time, etc. |
 | `member_responses` | Responses from delegated members |
 
@@ -154,7 +188,7 @@ asyncio.run(main())
 
 ## Tasks Mode
 
-Tasks mode runs an iterative loop that creates, executes, and updates tasks until the goal is complete.
+Tasks mode runs an iterative loop that creates, executes, and updates tasks until the goal is complete or `max_iterations` is reached.
 
 ```python
 from agno.team.mode import TeamMode
@@ -163,7 +197,7 @@ from agno.models.openai import OpenAIResponses
 team = Team(
     name="Ops Team",
     members=[news_agent, finance_agent],
-    model=OpenAIResponses(id="gpt-4o"),
+    model=OpenAIResponses(id="gpt-5.4-mini"),
     mode=TeamMode.tasks,
     max_iterations=6
 )
@@ -195,7 +229,7 @@ from agno.media import Image
 
 team.run(
     "Analyze this image",
-    images=[Image(url="https://example.com/image.jpg")]
+    images=[Image(url="https://agno-public.s3.amazonaws.com/images/krakow_mariacki.jpg")]
 )
 ```
 
@@ -229,10 +263,10 @@ For development, use `print_response()` to display formatted output:
 team.print_response("What are the top AI stories?", stream=True)
 
 # Show member responses too
-team.print_response("What are the top AI stories?", show_members_responses=True)
+team.print_response("What are the top AI stories?", show_member_responses=True)
 ```
 
-<Accordion title="Event Types Reference">
+<Accordion title="Common Event Types">
 
 ### Core Events
 
@@ -280,7 +314,7 @@ team.print_response("What are the top AI stories?", show_members_responses=True)
 
 ## Background Execution
 
-Run teams in the background with `background=True`. The team continues running even if the client disconnects. Combine with `stream=True` for resumable SSE streaming with automatic event buffering and reconnection.
+Run teams in the background with `arun(background=True)`. Background execution requires a database so Agno can persist run state. With `stream=True`, Agno retains up to 10,000 events per run in memory for reconnection while the AgentOS process remains alive. After a disconnect, an AgentOS client calls the run's `/resume` endpoint with the last received event index.
 
 See [Background Execution](/background-execution/overview) for polling, resumable streaming, and the `/resume` endpoint.
 
@@ -288,4 +322,4 @@ See [Background Execution](/background-execution/overview) for polling, resumabl
 
 - [Team reference](/reference/teams/team)
 - [TeamRunOutput schema](/reference/teams/team-response)
-- [Team examples](/cookbook/teams/overview)
+- [Team examples](/examples/teams/overview)

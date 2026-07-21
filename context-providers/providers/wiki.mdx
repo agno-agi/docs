@@ -1,11 +1,11 @@
 ---
 title: Wiki
 sidebarTitle: Wiki
-description: "Read and write to a Git-backed markdown wiki."
-keywords: [context providers, wiki, markdown, git, knowledge base]
+description: "Read and write a markdown wiki backed by Git, the local filesystem, or Notion."
+keywords: [context providers, wiki, markdown, git, notion, knowledge base]
 ---
 
-Read and write to a directory of markdown files. The provider exposes two tools: `query_wiki` for reading, `update_wiki` for writing. With a Git backend, writes auto-commit and push.
+Read and write to a directory of markdown files. The provider exposes two tools: `query_wiki` for reading, `update_wiki` for writing. With a Git backend, writes auto-commit and push. With a Notion backend, writes sync to a Notion database.
 
 ```python
 from os import getenv
@@ -18,6 +18,7 @@ wiki = WikiContextProvider(
         repo_url="https://github.com/org/wiki.git",
         branch="main",
         github_token=getenv("GITHUB_TOKEN"),
+        local_path="./demo-wiki-git",
     )
 )
 
@@ -46,6 +47,7 @@ await wiki.aclose()
         repo_url="https://github.com/org/wiki.git",
         branch="main",
         github_token=getenv("GITHUB_TOKEN"),
+        local_path="./demo-wiki-git",
     )
     wiki = WikiContextProvider(backend=backend)
     ```
@@ -60,13 +62,34 @@ await wiki.aclose()
     wiki = WikiContextProvider(backend=backend)
     ```
   </Tab>
+  <Tab title="Notion">
+    Mirrors a Notion database. Each row becomes a local markdown page; writes push back to Notion, which stays the source of truth.
+    
+    ```shell
+    uv pip install -U notion-client
+    ```
+    
+    ```python
+    from os import getenv
+    from agno.context.wiki.backend import NotionDatabaseBackend
+    
+    backend = NotionDatabaseBackend(
+        database_id=getenv("NOTION_DATABASE_ID"),
+        token=getenv("NOTION_API_KEY"),
+        local_path="./demo-wiki-notion",
+    )
+    wiki = WikiContextProvider(backend=backend)
+    ```
+    
+    `token` falls back to the `NOTION_API_KEY` environment variable. `NotionPageBackend` (nested page trees) is planned and raises `NotImplementedError` today. See the [Notion wiki example](https://github.com/agno-agi/agno/blob/main/cookbook/12_context/15a_wiki_notion.py).
+  </Tab>
 </Tabs>
 
 ## Configuration
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `backend` | `WikiBackend` | required | GitBackend or FileSystemBackend. |
+| `backend` | `WikiBackend` | required | GitBackend, FileSystemBackend, or NotionDatabaseBackend. |
 | `id` | `str` | `"wiki"` | Tools become `query_<id>` and `update_<id>`. |
 | `web` | `ContextBackend` | `None` | Optional web backend for ingestion (fetch URL → write page). |
 | `model` | `Model` | `None` | Model for sub-agents. |
@@ -88,21 +111,24 @@ Add a web backend to let the agent fetch URLs and write them as wiki pages:
 from agno.context.web import ExaBackend
 
 wiki = WikiContextProvider(
-    backend=GitBackend(...),
+    backend=GitBackend(..., local_path="./demo-wiki-git"),
     web=ExaBackend(),
 )
 
 # Agent can now: "Add this article to the wiki: https://..."
 ```
 
+`ExaBackend` requires the `exa-py` package (`uv pip install -U exa-py`) and the `EXA_API_KEY` environment variable. See [Web](/context-providers/providers/web) for other backends.
+
 ## Lifecycle Management
 
-WikiContextProvider with GitBackend **requires** setup/teardown:
+With GitBackend, `asetup()` clones the repo. Queries and updates run it automatically on first use; call it at startup to surface clone errors early:
 
 ```python
 await wiki.asetup()   # Clone repo
 try:
-    # Use the provider
+    agent = Agent(model=..., tools=wiki.get_tools())
+    await agent.arun("What do we have documented about deployments?")
 finally:
     await wiki.aclose()
 ```
@@ -118,7 +144,7 @@ finally:
 ## Resources
 
 <CardGroup cols={2}>
-  <Card title="File Tools Reference" icon="wrench" href="/tools/toolkits/local/file">
+  <Card title="Workspace Reference" icon="wrench" href="/tools/toolkits/local/workspace">
     Underlying file operations
   </Card>
   <Card title="Cookbook Example" icon="book" href="https://github.com/agno-agi/agno/blob/main/cookbook/12_context/15_wiki_git.py">
