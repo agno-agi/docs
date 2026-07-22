@@ -1,19 +1,11 @@
 ---
 title: "Team with Knowledge Base"
+description: Combine a team-level LanceDB knowledge search with a web-search member.
 ---
 
-This example demonstrates how to create a team with knowledge base integration. The team has access to a knowledge base with Agno documentation and can combine this knowledge with web search capabilities.
+Attach Agno documentation to the team and give one member a web-search tool.
 
-## Code
-
-```python cookbook/02_examples/teams/knowledge/01_team_with_knowledge.py
-"""
-This example demonstrates how to create a team with knowledge base integration.
-
-The team has access to a knowledge base with Agno documentation and can combine
-this knowledge with web search capabilities.
-"""
-
+```python team_with_knowledge.py
 from pathlib import Path
 
 from agno.agent import Agent
@@ -21,15 +13,13 @@ from agno.knowledge.embedder.openai import OpenAIEmbedder
 from agno.knowledge.knowledge import Knowledge
 from agno.models.openai import OpenAIResponses
 from agno.team import Team
-from agno.tools.hackernews import HackerNewsTools
+from agno.tools.websearch import WebSearchTools
 from agno.vectordb.lancedb import LanceDb, SearchType
 
-# Setup paths for knowledge storage
 cwd = Path(__file__).parent
 tmp_dir = cwd.joinpath("tmp")
 tmp_dir.mkdir(parents=True, exist_ok=True)
 
-# Initialize knowledge base with vector database
 agno_docs_knowledge = Knowledge(
     vector_db=LanceDb(
         uri=str(tmp_dir.joinpath("lancedb")),
@@ -39,29 +29,25 @@ agno_docs_knowledge = Knowledge(
     ),
 )
 
-# Add content to knowledge base
-agno_docs_knowledge.insert(url="https://docs.agno.com/llms-full.txt")
-
-# Create HackerNews agent for supplementary tech news
-hackernews_agent = Agent(
-    name="HackerNews Agent",
-    role="Search HackerNews for tech news",
-    model=OpenAIResponses(id="gpt-5.2"),
-    tools=[HackerNewsTools()],
+web_agent = Agent(
+    name="Web Search Agent",
+    role="Handle web search requests",
+    model=OpenAIResponses(id="gpt-5-mini"),
+    tools=[WebSearchTools()],
     instructions=["Always include sources"],
 )
 
-# Create team with knowledge base integration
 team_with_knowledge = Team(
     name="Team with Knowledge",
-    members=[hackernews_agent],
-    model=OpenAIResponses(id="gpt-5.2"),
+    members=[web_agent],
+    model=OpenAIResponses(id="gpt-5-mini"),
     knowledge=agno_docs_knowledge,
     show_members_responses=True,
     markdown=True,
 )
 
 if __name__ == "__main__":
+    agno_docs_knowledge.insert(url="https://docs.agno.com/llms-full.txt")
     team_with_knowledge.print_response("Tell me about the Agno framework", stream=True)
 ```
 
@@ -73,20 +59,28 @@ if __name__ == "__main__":
 
     <Step title="Install dependencies">
         ```bash
-        uv pip install -U agno lancedb
+        uv pip install -U agno lancedb openai ddgs
         ```
     </Step>
 
     <Step title="Set environment variables">
         ```bash
-        export OPENAI_API_KEY=****
+        export OPENAI_API_KEY=your_openai_api_key_here
         ```
     </Step>
 
-    <Step title="Run the agent">
+    <Step title="Run the team">
         ```bash
-        python cookbook/02_examples/teams/knowledge/01_team_with_knowledge.py
+        python team_with_knowledge.py
         ```
     </Step>
 
 </Steps>
+
+## Next Steps
+
+| Task | Guide |
+|------|-------|
+| Give members separate knowledge tables | [Distributed RAG with LanceDB](/knowledge/teams/distributed-rag-lancedb) |
+| Store distributed knowledge in PostgreSQL | [Distributed RAG with PgVector](/knowledge/teams/distributed-rag-pgvector) |
+| Review team-level knowledge behavior | [Teams with Knowledge](/knowledge/teams/overview) |

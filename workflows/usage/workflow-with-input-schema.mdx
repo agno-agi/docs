@@ -1,16 +1,17 @@
 ---
 title: Workflow with Input Schema Validation
-description: This example demonstrates **Workflows** support for input schema validation using Pydantic models to ensure type safety and data integrity at the workflow entry point.
+description: Validate workflow input against a Pydantic model with `input_schema`.
 ---
 
-This example shows how to use input schema validation in workflows to enforce type safety and data structure validation. By defining an `input_schema` with a Pydantic model, you can ensure that your workflow receives properly structured and validated data before execution begins.
+Set `input_schema` on a workflow to validate input with a Pydantic model. The workflow checks that the input is properly structured and typed before execution begins.
 
-## Key Features:
-- **Type Safety**: Automatic validation of input data against Pydantic models
-- **Structure Validation**: Ensure all required fields are present and correctly typed
-- **Clear Contracts**: Define exactly what data your workflow expects
-- **Error Prevention**: Catch invalid inputs before workflow execution begins
-- **Multiple Input Formats**: Support for Pydantic models and matching dictionaries
+## Accepted Input
+
+| Input | Behavior |
+|-------|----------|
+| `ResearchTopic` instance | Accepted as already validated |
+| Matching dictionary or JSON string | Parsed into `ResearchTopic` before the first step runs |
+| Different Pydantic model or invalid data | Raises `ValueError` before the first step runs |
 
 ```python workflow_with_input_schema.py
 from typing import List
@@ -20,7 +21,7 @@ from agno.db.sqlite import SqliteDb
 from agno.models.openai import OpenAIResponses
 from agno.team import Team
 from agno.tools.hackernews import HackerNewsTools
-from agno.tools.yfinance import YFinanceTools
+from agno.tools.websearch import WebSearchTools
 from agno.workflow.step import Step
 from agno.workflow.workflow import Workflow
 from pydantic import BaseModel, Field
@@ -41,23 +42,23 @@ class ResearchTopic(BaseModel):
 
 # Define agents
 hackernews_agent = Agent(
-    name="Hackernews Agent",
+    name="HackerNews Agent",
     model=OpenAIResponses(id="gpt-5.2"),
     tools=[HackerNewsTools()],
-    role="Extract key insights and content from Hackernews posts",
+    role="Extract key insights and content from HackerNews posts",
 )
-finance_agent = Agent(
-    name="Finance Agent",
+web_agent = Agent(
+    name="Web Agent",
     model=OpenAIResponses(id="gpt-5.2"),
-    tools=[YFinanceTools()],
-    role="Get stock prices and financial data",
+    tools=[WebSearchTools()],
+    role="Search the web for current news and trends",
 )
 
 # Define research team for complex analysis
 research_team = Team(
     name="Research Team",
-    members=[hackernews_agent, finance_agent],
-    instructions="Research tech topics from Hackernews and the web",
+    members=[hackernews_agent, web_agent],
+    instructions="Research tech topics from HackerNews and the web",
 )
 
 content_planner = Agent(
@@ -160,3 +161,34 @@ if __name__ == "__main__":
     #     markdown=True,
     # )
 ```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai sqlalchemy ddgs
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `workflow_with_input_schema.py`, then run:
+    ```bash
+    python workflow_with_input_schema.py
+    ```
+  </Step>
+</Steps>

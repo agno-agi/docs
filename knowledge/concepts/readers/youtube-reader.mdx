@@ -1,85 +1,84 @@
 ---
 title: YouTube Reader
+description: Fetch a YouTube transcript and convert it into knowledge documents.
 ---
 
-The **YouTube Reader** allows you to extract transcripts from YouTube videos synchronously and convert them into vector embeddings for your knowledge base.
+`YouTubeReader` fetches the transcript for a YouTube watch URL and applies recursive chunking by default.
 
-## Code
-
-```python examples/basics/knowledge/concepts/readers/overview/youtube_reader_sync.py
+```python youtube_reader.py
 from agno.agent import Agent
 from agno.knowledge.knowledge import Knowledge
 from agno.knowledge.reader.youtube_reader import YouTubeReader
+from agno.models.openai import OpenAIResponses
 from agno.vectordb.pgvector import PgVector
 
 db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
 
-# Create Knowledge Instance
 knowledge = Knowledge(
     name="YouTube Knowledge Base",
     description="Knowledge base from YouTube video transcripts",
     vector_db=PgVector(
-        table_name="youtube_vectors", 
-        db_url=db_url
+        table_name="youtube_vectors",
+        db_url=db_url,
     ),
 )
 
-# Add YouTube video content synchronously
-knowledge.insert(
-    metadata={"source": "youtube", "type": "educational"},
-    urls=[
-        "https://www.youtube.com/watch?v=dQw4w9WgXcQ",  # Replace with actual educational video
-        "https://www.youtube.com/watch?v=example123"   # Replace with actual video URL
-    ],
-    reader=YouTubeReader(),
-)
-
-# Create an agent with the knowledge
 agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
     knowledge=knowledge,
     search_knowledge=True,
 )
 
-# Query the knowledge base
-agent.print_response(
-    "What are the main topics discussed in the videos?",
-    markdown=True
-)
+if __name__ == "__main__":
+    knowledge.insert(
+        url="https://www.youtube.com/watch?v=nLkBNnnA8Ac",
+        metadata={"source": "youtube", "type": "educational"},
+        reader=YouTubeReader(),
+    )
+    agent.print_response(
+        "What are the main topics discussed in the video?",
+        markdown=True,
+    )
 ```
 
-## Usage
+## Run the Agent
 
 <Steps>
   <Snippet file="create-venv-step.mdx" />
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U youtube-transcript-api pytube sqlalchemy psycopg pgvector agno openai
+    uv pip install -U "agno[youtube]" openai pgvector psycopg sqlalchemy
     ```
   </Step>
 
-  <Step title="Set environment variables">
+  <Step title="Export the API key">
     ```bash
-    export OPENAI_API_KEY=xxx
+    export OPENAI_API_KEY=your_openai_api_key_here
     ```
   </Step>
 
   <Snippet file="run-pgvector-step.mdx" />
 
-  <Step title="Run Agent">
-    <CodeGroup>
-    ```bash Mac
-    python examples/basics/knowledge/concepts/readers/overview/youtube_reader_sync.py
+  <Step title="Run the agent">
+    ```bash
+    python youtube_reader.py
     ```
-
-    ```bash Windows
-    python examples/basics/knowledge/concepts/readers/overview/youtube_reader_sync.py
-    ```
-    </CodeGroup>
   </Step>
 </Steps>
 
-## Params
+## Reader Parameters
 
-<Snippet file="youtube-reader-reference.mdx" /> 
+<Snippet file="youtube-reader-reference.mdx" />
 
+<Warning>
+Use `Knowledge.insert()` with `YouTubeReader` in v2.7.2. `Knowledge.ainsert()` passes a document name to `YouTubeReader.async_read()`, which accepts only the URL, so asynchronous knowledge ingestion fails.
+</Warning>
+
+## Next Steps
+
+| Task | Guide |
+|------|-------|
+| Configure recursive chunking | [Recursive Chunking](/knowledge/concepts/chunking/recursive-chunking) |
+| Inspect the complete API | [YouTube Reader Reference](/reference/knowledge/reader/youtube) |
+| Compare available readers | [Readers Overview](/knowledge/concepts/readers/overview) |

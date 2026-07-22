@@ -1,9 +1,11 @@
 ---
 title: "Forms and intake"
-description: "Resumes, applications, KYC. Lists inside lists, same File() plumbing."
+description: "Extract nested fields from resumes, applications, and KYC documents."
 ---
 
-Forms and intake documents bring a different shape: a person identity at the top, then several parallel lists (employment, education, skills, references). The agent fills out the nested structure in one pass.
+Forms and intake documents often combine identity fields with repeated sections such as employment, education, skills, and references. A nested Pydantic schema captures this structure in one run.
+
+Place the resume to extract at `resume.pdf` in the directory where you run this code.
 
 ```python
 from typing import List, Optional
@@ -52,8 +54,9 @@ agent = Agent(
 
 resume = agent.run(
     "Extract this resume.",
-    files=[File(url="https://example.com/resume-sjohnson.pdf")],
+    files=[File(filepath="resume.pdf")],
 ).content
+# Illustrative output. Your values depend on resume.pdf:
 # Resume(full_name='Sarah Johnson', email='sarah@example.com',
 #        headline='Senior Platform Engineer',
 #        employment=[Employment(company='Acme Corp', title='Staff Engineer',
@@ -66,7 +69,7 @@ resume = agent.run(
 #        skills=['Python', 'PostgreSQL', 'Kubernetes', 'Terraform'])
 ```
 
-The same shape covers job applications and KYC intake. Swap the schema's outer model and the instructions; the `File()` plumbing and the agent definition do not change.
+Adapt the outer model and instructions for job applications and KYC intake. Reuse the `File` input and `Agent` configuration.
 
 ## KYC intake
 
@@ -87,16 +90,40 @@ For KYC, every field is review-worthy. Combine this schema with the [confidence 
 
 ## Multi-page applications
 
-Job applications often arrive as multi-page PDFs with attachments. `File(url=...)` handles a single combined PDF. For loose attachments (cover letter, resume, references), run the agent once per attachment, each with the right `output_schema`, and merge.
+Job applications arrive as one combined PDF or as a set of loose attachments. `files` takes a sequence, so the whole bundle goes into a single run against one schema.
 
 ```python
 class Application(BaseModel):
     candidate: Resume
     cover_letter: Optional[str] = None
     references: List[str] = Field(default_factory=list)
+
+
+application_agent = Agent(
+    model=OpenAIResponses(id="gpt-5.5"),
+    instructions=(
+        "Extract the application from the attached documents: a resume, a cover "
+        "letter, and a reference list. Use null when a field is missing."
+    ),
+    output_schema=Application,
+)
+
+application = application_agent.run(
+    "Extract this application.",
+    files=[
+        File(filepath="applications/sjohnson/cover-letter.pdf"),
+        File(filepath="applications/sjohnson/resume.pdf"),
+        File(filepath="applications/sjohnson/references.pdf"),
+    ],
+).content
 ```
 
-For the resume and the references list, two `agent.run(...)` calls return typed objects. Compose them into an `Application` in plain Python.
+Run once per attachment when you want an isolated schema per document, then compose in plain Python. Every run needs its own schema, because `output_schema` takes a Pydantic model: `Resume` for the resume, and a wrapper for the reference list. A bare `List[str]` is not a schema.
+
+```python
+class References(BaseModel):
+    items: List[str] = Field(default_factory=list)
+```
 
 ## Schema-shape comparison
 
@@ -107,7 +134,7 @@ For the resume and the references list, two `agent.run(...)` calls return typed 
 | Resume | Identity, headline | Parallel lists: employment, education, skills | Preserve candidate wording |
 | KYC | Identity | Few sub-lists; conservative typing | Keep IDs as strings |
 
-The agent code is the same across all four. The schema decides the workload.
+Reuse the `Agent` setup across these workloads and change `output_schema` for the document structure.
 
 ## Next steps
 

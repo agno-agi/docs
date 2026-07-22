@@ -1,15 +1,15 @@
 ---
 title: LLMs.txt Reader
+description: Fetch an llms.txt index and convert its linked documentation pages into documents.
 ---
 
-The **LLMs.txt Reader** reads an [llms.txt](https://llmstxt.org) file, follows the linked documentation pages, and turns them into documents for your knowledge base.
+`LLMsTxtReader` creates a document for an [llms.txt](https://llmstxt.org) overview, then fetches up to `max_urls` linked pages.
 
-## Code
-
-```python examples/basics/knowledge/concepts/readers/overview/llms_txt_reader.py
+```python llms_txt_reader.py
 from agno.agent import Agent
 from agno.knowledge.knowledge import Knowledge
 from agno.knowledge.reader.llms_txt_reader import LLMsTxtReader
+from agno.models.openai import OpenAIResponses
 from agno.vectordb.pgvector import PgVector
 
 db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
@@ -19,45 +19,59 @@ knowledge = Knowledge(
     vector_db=PgVector(table_name="llms_txt_docs", db_url=db_url),
 )
 
-knowledge.insert(
-    url="https://docs.agno.com/llms.txt",
-    reader=LLMsTxtReader(max_urls=10),
-)
-
 agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
     knowledge=knowledge,
     search_knowledge=True,
 )
 
-agent.print_response("What is Agno?", markdown=True)
+if __name__ == "__main__":
+    knowledge.insert(
+        url="https://docs.agno.com/llms.txt",
+        reader=LLMsTxtReader(
+            max_urls=10,
+            allowed_hosts=["docs.agno.com"],
+        ),
+    )
+    agent.print_response("What is Agno?", markdown=True)
 ```
 
-## Usage
+## Run the Agent
 
 <Steps>
   <Snippet file="create-venv-step.mdx" />
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U beautifulsoup4 sqlalchemy psycopg pgvector agno openai
+    uv pip install -U agno beautifulsoup4 openai pgvector psycopg sqlalchemy
     ```
   </Step>
 
-  <Step title="Set environment variables">
+  <Step title="Export the API key">
     ```bash
-    export OPENAI_API_KEY=xxx
+    export OPENAI_API_KEY=your_openai_api_key_here
     ```
   </Step>
 
   <Snippet file="run-pgvector-step.mdx" />
 
-  <Step title="Run Agent">
+  <Step title="Run the agent">
     ```bash
-    python examples/basics/knowledge/concepts/readers/overview/llms_txt_reader.py
+    python llms_txt_reader.py
     ```
   </Step>
 </Steps>
 
-## Params
+## Reader Parameters
 
 <Snippet file="llms-txt-reader-reference.mdx" />
+
+`allowed_hosts` applies to the index, linked pages, and redirects. `LLMsTxtReader.async_read()` fetches the linked pages concurrently.
+
+## Next Steps
+
+| Task | Guide |
+|------|-------|
+| Restrict outbound requests | [Restricting URL Fetches](/knowledge/concepts/readers/overview#restricting-url-fetches) |
+| Crawl pages without an llms.txt index | [Website Reader](/knowledge/concepts/readers/website-reader) |
+| Configure content chunking | [Chunking Overview](/knowledge/concepts/chunking/overview) |

@@ -1,8 +1,12 @@
 ---
 title: "State In Function"
-description: "Demonstrates reading and mutating workflow session state inside custom function executors."
+description: "Read and mutate workflow session state in custom function executors."
+source: cookbook/04_workflows/06_advanced_concepts/session_state/state_in_function.py
 ---
-```python
+
+Demonstrates reading and mutating workflow session state inside custom function executors.
+
+```python state_in_function.py
 """
 State In Function
 =================
@@ -16,6 +20,7 @@ from agno.agent import Agent
 from agno.db.in_memory import InMemoryDb
 from agno.db.sqlite import SqliteDb
 from agno.models.openai import OpenAIChat
+from agno.run import RunContext
 from agno.run.workflow import WorkflowRunOutputEvent
 from agno.team import Team
 from agno.tools.hackernews import HackerNewsTools
@@ -75,8 +80,9 @@ research_team = Team(
 # ---------------------------------------------------------------------------
 def custom_content_planning_function(
     step_input: StepInput,
-    session_state: dict,
+    run_context: RunContext,
 ) -> StepOutput:
+    session_state = run_context.session_state
     message = step_input.input
     previous_step_content = step_input.previous_step_content
 
@@ -148,7 +154,8 @@ def custom_content_planning_function(
         )
 
 
-def content_summary_function(step_input: StepInput, session_state: dict) -> StepOutput:
+def content_summary_function(step_input: StepInput, run_context: RunContext) -> StepOutput:
+    session_state = run_context.session_state
     if "content_plans" not in session_state or not session_state["content_plans"]:
         return StepOutput(
             content="No content plans found in session state.", success=False
@@ -182,8 +189,9 @@ def content_summary_function(step_input: StepInput, session_state: dict) -> Step
 
 def custom_content_planning_function_stream(
     step_input: StepInput,
-    session_state: dict,
+    run_context: RunContext,
 ) -> Iterator[Union[WorkflowRunOutputEvent, StepOutput]]:
+    session_state = run_context.session_state
     message = step_input.input
     previous_step_content = step_input.previous_step_content
 
@@ -265,8 +273,9 @@ def custom_content_planning_function_stream(
 
 def content_summary_function_stream(
     step_input: StepInput,
-    session_state: dict,
+    run_context: RunContext,
 ) -> Iterator[StepOutput]:
+    session_state = run_context.session_state
     plans = session_state["content_plans"]
 
     summary = f"""
@@ -391,14 +400,34 @@ if __name__ == "__main__":
 ```
 
 ## Run the Example
-```bash
-# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/04_workflows/06_advanced_concepts/session_state
 
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
 
-python state_in_function.py
-```
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno ddgs fastapi openai sqlalchemy
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `state_in_function.py`, then run:
+    ```bash
+    python state_in_function.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/04_workflows/06_advanced_concepts/session_state/state_in_function.py](https://github.com/agno-agi/agno/blob/main/cookbook/04_workflows/06_advanced_concepts/session_state/state_in_function.py)

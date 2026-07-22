@@ -1,17 +1,15 @@
 ---
 title: Store Events and Events to Skip in a Workflow
-description: This example demonstrates **Workflows 2.0** event storage capabilities
+description: Store workflow execution events and skip noisy ones with `store_events` and `events_to_skip`.
 ---
 
-This example demonstrates **Workflows 2.0** event storage capabilities, showing how to:
-1. **Store execution events** for debugging/auditing (`store_events=True`)
-2. **Filter noisy events** (`events_to_skip`) to focus on critical workflow milestones
-3. **Access stored events** post-execution via `workflow.run_response.events`
+Set `store_events=True` to retain workflow events for debugging or auditing. Add `events_to_skip` to omit noisy events such as `step_started` from the stored `events` list. Skipped events are still emitted to streaming consumers.
 
-## Key Features:
-- **Selective Storage**: Skip verbose events (e.g., `step_started`) while retaining key milestones.
-- **Debugging/Audit**: Capture execution flow for analysis without manual logging.
-- **Performance Optimization**: Reduce storage overhead by filtering non-essential events.
+Install dependencies:
+
+```shell
+uv pip install agno openai sqlalchemy
+```
 
 ```python store_events_and_events_to_skip_in_a_workflow.py
 from agno.agent import Agent
@@ -19,12 +17,12 @@ from agno.db.sqlite import SqliteDb
 from agno.models.openai import OpenAIResponses
 from agno.run.agent import (
     RunContentEvent,
+    RunEvent,
     ToolCallCompletedEvent,
     ToolCallStartedEvent,
 )
 from agno.run.workflow import WorkflowRunEvent, WorkflowRunOutput
 from agno.tools.hackernews import HackerNewsTools
-from agno.run.agent import RunEvent
 from agno.workflow.parallel import Parallel
 from agno.workflow.step import Step
 from agno.workflow.workflow import Workflow
@@ -47,12 +45,6 @@ analysis_agent = Agent(
     name="Analysis Agent",
     model=OpenAIResponses(id="gpt-5.2"),
     instructions="You are an analyst. Analyze the provided information and give insights.",
-)
-
-summary_agent = Agent(
-    name="Summary Agent",
-    model=OpenAIResponses(id="gpt-5.2"),
-    instructions="You are a summarizer. Create concise summaries of the provided content.",
 )
 
 research_step = Step(
@@ -94,7 +86,7 @@ step_workflow = Workflow(
         RunEvent.run_content,
         RunEvent.run_started,
         RunEvent.run_completed,
-    ],  # Skip step started events to reduce noise
+    ],
 )
 
 print("Running Step workflow with streaming...")
@@ -120,11 +112,7 @@ print(
 # Print stored events in a nice format
 print_stored_events(run_response, "Simple Step Workflow")
 
-# ------------------------------------------------------------------------------------------------ #
-# ------------------------------------------------------------------------------------------------ #
-
-# Example 2: Parallel Primitive with Event Storage
-print("=== 2. Parallel Example ===")
+print("=== Parallel Example ===")
 parallel_workflow = Workflow(
     name="Parallel Research Workflow",
     steps=[
@@ -162,4 +150,12 @@ run_response = parallel_workflow.get_last_run_output()
 print(f"Parallel workflow stored {len(run_response.events)} events")
 print_stored_events(run_response, "Parallel Workflow")
 print()
+```
+
+<Snippet file="set-openai-key.mdx" />
+
+## Run
+
+```shell
+python store_events_and_events_to_skip_in_a_workflow.py
 ```

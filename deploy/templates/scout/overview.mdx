@@ -1,12 +1,14 @@
 ---
 title: "Scout"
 sidebarTitle: "Scout"
-description: "Open-source company intelligence agent that navigates web, Slack, Drive, and MCP sources and builds its own wiki and CRM as it learns about your company."
+description: "Company intelligence agent for teams that need answers across live web, Slack, Drive, wiki, CRM, and MCP sources."
 ---
 
-**Scout is an open-source company intelligence agent.** It navigates live information sources (web, Slack, Drive, wiki, CRM, MCP servers) to assemble context on demand, and it builds its own wiki and CRM as it learns about your company. The code is public at [agno-agi/scout](https://github.com/agno-agi/scout).
+**Scout is a company intelligence agent for teams that need answers across live web, Slack, Drive, wiki, CRM, and MCP sources.**
 
-The default move when working with knowledge sources is to ingest everything into a vector database, chunk, embed, and pray. Coding agents figured out the right approach. They navigate: `ls`, `grep`, open the file, follow the import. Scout does the same thing across Slack, Drive, and the rest. It searches the channel, opens the doc, expands the thread, and assembles context at question time from the live source.
+Scout searches the system that owns the information and assembles context at question time. It can open a document, expand a Slack thread, search the web, and follow related information across sources. Scout also maintains a wiki and CRM so useful company context becomes easier to retrieve over time.
+
+The code is public at [agno-agi/scout](https://github.com/agno-agi/scout).
 
 ## How it works
 
@@ -21,15 +23,15 @@ A sub-agent behind each provider owns the source's quirks. Scout sees `query_sla
 | **CRM** | Always on | `query_crm`, `update_crm`. Contacts, projects, notes, follow-ups. |
 | **Knowledge wiki** | Always on | `query_knowledge`, `update_knowledge`. Scout's prose memory. |
 | **Voice wiki** | Always on | `query_voice`. A code-managed style guide for emails, Slack, X, and long-form writing. |
-| **Slack** | `SLACK_BOT_TOKEN` | `query_slack`. Read-only access to messages, channel history, threads, and users. |
+| **Slack** | `SLACK_BOT_TOKEN` | Intended to expose `query_slack` for read-only access. The pinned template also exposes `update_slack`; see the warning below. |
 | **Google Drive** | `GOOGLE_SERVICE_ACCOUNT_FILE` | `query_gdrive`. Read-only access to files, folders, and contents. |
 | **MCP** | Registered in `scout/contexts.py` | One `query_mcp_<slug>` per server. |
 
-Provider setup guides:
+<Warning>
+  Scout intends Slack access to be read-only, but the pinned template does not pass `write=False` when it creates `SlackContextProvider`. Configuring Slack currently exposes `update_slack`. Leave write scopes ungranted until the template enforces its intended boundary.
+</Warning>
 
-- [Slack](/tutorials/scout/connect-slack)
-- [Google Drive](/tutorials/scout/connect-google-drive)
-- [MCP servers](/tutorials/scout/connect-mcp-servers)
+Setup for each provider is covered in the Scout README's [Context Providers](https://github.com/agno-agi/scout#context-providers) section.
 
 ### Self-building knowledge
 
@@ -40,7 +42,7 @@ Most information Scout learns from working with you is perfect for a wiki and a 
 | **Wiki** | Scout's prose memory: pages about your company, projects, and runbooks |
 | **CRM** | People and relationships: contacts, projects, notes, follow-ups |
 
-Both start empty and grow with use. Mention that Josh from Anthropic shared a new RLM paper, and Scout adds Josh to the CRM, parses the paper into the wiki, and links them. See [Knowledge wiki and CRM](/tutorials/scout/knowledge-and-crm) for how both systems work.
+Both start empty and grow with use. Mention that Josh from Anthropic shared a new RLM paper, and Scout adds Josh to the CRM, parses the paper into the wiki, and links them. See [How Scout works](https://github.com/agno-agi/scout#how-scout-works) in the README for how both systems work.
 
 ## Run locally
 
@@ -55,7 +57,7 @@ cp example.env .env
 docker compose up -d --build
 ```
 
-Scout is now running at `http://localhost:8000`. The [Setup guide](/tutorials/scout/setup) has the full walkthrough.
+Scout is now running at `http://localhost:8000`. The [Scout README](https://github.com/agno-agi/scout#quick-start) has the full walkthrough.
 
 ### Chat with Scout
 
@@ -93,18 +95,18 @@ Your first deploy will fail. That's expected. Production endpoints require RBAC 
 ./scripts/railway/redeploy.sh  # push code updates after up.sh
 ```
 
-For production, swap the knowledge wiki to a Git-backed repo so pages survive container restarts. [Deploy to Railway](/tutorials/scout/deploy-to-railway) covers that, plus connecting the repo to Railway for auto-deploys on every push.
+For production, swap the knowledge wiki to a Git-backed repo so pages survive container restarts. The README's [Deploy to Railway](https://github.com/agno-agi/scout#deploy-to-railway) section covers that, plus connecting the repo to Railway for auto-deploys on every push.
 
 ## Connect to Slack
 
 Scout is designed to live in Slack as your teammate. Each Slack thread becomes a session with its own context, so follow-ups in the same thread carry forward.
 
 1. Get a public URL Slack can reach: `ngrok http 8000` locally, or your Railway domain in production.
-2. Create the Slack app from the manifest in [Connect to Slack](/tutorials/scout/connect-slack).
+2. Create the Slack app from the manifest in Scout's [Slack setup guide](https://github.com/agno-agi/scout/blob/main/docs/SLACK_CONNECT.md).
 3. Set `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET` in `.env`.
 4. Restart Scout with `docker compose up -d`.
 
-Setting `SLACK_BOT_TOKEN` on its own activates the read-only Slack context provider. Add `SLACK_SIGNING_SECRET` and the Slack interface lights up too, so Scout can reply in your workspace.
+Setting `SLACK_BOT_TOKEN` activates the Slack context provider. The pinned template also exposes `update_slack` as described above. Adding `SLACK_SIGNING_SECRET` enables the Slack interface so Scout can reply in your workspace.
 
 ## Example prompts
 

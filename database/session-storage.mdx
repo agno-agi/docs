@@ -1,10 +1,10 @@
 ---
 title: Session Storage
-description: "Store and retrieve agent sessions from your database."
+description: "Store and retrieve agent, team, and workflow sessions from a database."
 keywords: [sessions, storage, database, persistence]
 ---
 
-When you add a database to your agent, sessions are stored automatically. A session groups related runs into a conversation thread - every message, response, and piece of metadata is persisted under a `session_id`. This page covers how to access and configure that storage.
+Adding a database persists runs under a `session_id`. Agent and team sessions contain conversation runs. Workflow sessions contain workflow runs.
 
 ## Configure the Session Table
 
@@ -13,10 +13,11 @@ By default, sessions are stored in the `agno_sessions` table. The table is creat
 Use `session_table` to store sessions in a custom table:
 
 ```python
+from agno.agent import Agent
 from agno.db.postgres import PostgresDb
 
 db = PostgresDb(
-    db_url="postgresql://user:password@localhost:5432/mydb",
+    db_url="postgresql+psycopg://user:password@localhost:5432/mydb",
     session_table="my_agent_sessions",
 )
 
@@ -24,7 +25,7 @@ agent = Agent(db=db)
 ```
 
 <Tip>
-Use separate tables for different agents or environments.
+Use separate tables when you need database-level isolation between environments.
 </Tip>
 
 ## What Gets Stored
@@ -71,7 +72,7 @@ print(session.runs)  # List of runs with messages and responses
 
 ## Works With Teams and Workflows
 
-Session storage works identically for Teams and Workflows:
+Teams and workflows expose the same `get_session()` interface:
 ```python
 from agno.team import Team
 from agno.workflow import Workflow
@@ -79,8 +80,8 @@ from agno.db.sqlite import SqliteDb
 
 db = SqliteDb(db_file="agno.db")
 
-team = Team(db=db, ...)
-workflow = Workflow(db=db, ...)
+team = Team(db=db)
+workflow = Workflow(db=db)
 
 # Retrieve sessions the same way
 team_session = team.get_session(session_id="team_session_123")

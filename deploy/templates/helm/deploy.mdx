@@ -1,21 +1,24 @@
 ---
 title: "AgentOS on Kubernetes"
 sidebarTitle: "Deploy"
-description: "Run AgentOS locally using Docker and deploy to production on Kubernetes."
+description: "AgentOS template for teams that develop locally with Docker and deploy to production on Kubernetes with Helm."
 ---
 
-AgentOS is a secure and scalable backend for running agents. The [agentos-helm](https://github.com/agno-agi/agentos-helm) codebase runs AgentOS locally using Docker and deploys to production on Kubernetes. It comes with:
+**The [agentos-helm](https://github.com/agno-agi/agentos-helm) template is for teams that develop locally with Docker and deploy to production on Kubernetes with Helm.**
 
-- **2 platform agents** that build and run the platform for you. **Agent Builder** creates agents, teams, and workflows. **Platform Manager** monitors and manages the platform.
-- **5 [skills](/deploy/templates/improve-agents)** that let coding agents build, test, and improve the platform for you.
+It includes:
 
-Because the trace data, agent code, evals, and system logs all live in one place, the platform can inspect and improve itself automatically.
+- **Agent Builder**, which creates agents, teams, and workflows.
+- **Platform Manager**, which inspects and explains the platform, eval history, deployment checks, and schedules.
+- **Six [skills](/deploy/templates/improve-agents)** for setting up, building, testing, and improving the project with a coding agent.
+
+Coding agents can use these skills with the AgentOS API, evals, traces, and container logs to inspect and improve the platform.
 
 The Helm chart in `charts/agentos` deploys to any Kubernetes cluster, cloud-managed (EKS, GKE, AKS) or your own.
 
 ## Get started
 
-The fastest way to get started is using a coding agent. Copy the prompt below into Claude Code, Cursor or Codex and it'll take you from zero to a running platform.
+Copy the prompt below into Claude Code, Cursor, or Codex to configure and run the template with a coding agent.
 
 <Snippet file="setup-prompt-helm.mdx" />
 
@@ -74,7 +77,7 @@ Prints `MCP OK` with the tool count and a real agent answer through the MCP endp
 | MCP clients on your machine | `uvx agno connect` auto-detects Claude Code, Claude Desktop, Codex, and Cursor and registers `http://localhost:8000/mcp`. Verify from the app: "can you access my agentos mcp?" |
 | AgentOS UI | [os.agno.com](https://os.agno.com) → **Connect OS** → `http://localhost:8000`. |
 | claude.ai and ChatGPT | Hosted sessions can't reach localhost. Deploy to production first, then add `https://<your-agentos-domain>/mcp` as a custom connector and approve the consent page with the `MCP_CONNECT_SECRET` that `up.sh` generates. |
-| Slack | Set `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET`. See [Slack setup](/deploy/interfaces/slack/overview). |
+| Slack | Set `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET`. See [Slack setup](/agent-os/interfaces/slack/setup). |
 | Your product | Call the AgentOS REST API with 80+ endpoints. Browse them at `/docs`. |
 
 ## Deploy to production
@@ -115,13 +118,13 @@ Bringing your own Postgres instead? It must have the [pgvector](https://github.c
   </Step>
 
   <Step title="Mint your JWT key">
-The script pauses for a `JWT_VERIFICATION_KEY`. Token-Based Authorization is on by default and without a verification key or a `JWT_JWKS_FILE`, the platform refuses to serve production traffic.
+The script pauses for a `JWT_VERIFICATION_KEY`. Token-Based Authorization is on by default. Production startup requires that verification key or a readable JWKS file at the pod path in `JWT_JWKS_FILE`; otherwise the process exits.
 
 1. Open [os.agno.com](https://os.agno.com), click **Connect OS** → **Live**, enter your AgentOS URL (your ingress host, or a tunnel while testing), and name it **Live AgentOS**.
 2. Go to **Settings** → **OS & Security** and turn on **Token-Based Authorization (JWT)**.
 3. Copy the public key and paste the full PEM into the `up.sh` prompt. The script saves it to your env file and deploys.
 
-If you skip the prompt, add the key to `.env.production` later and run `./scripts/k8s/env-sync.sh`.
+If you skip the prompt, add `JWT_VERIFICATION_KEY` to `.env.production` later and run `./scripts/k8s/env-sync.sh`. For JWKS, provide the file through a custom image or chart volume, set `JWT_JWKS_FILE` to its pod path, then deploy. The current chart only forwards the path.
 
 <Note>Live AgentOS connections are a paid feature. Use code `PLATFORM30` for one month off.</Note>
   </Step>
@@ -169,7 +172,7 @@ Immutable tags keep rollbacks one `helm rollback` away. Running `./scripts/k8s/r
 ./scripts/k8s/env-sync.sh
 ```
 
-Changed secrets roll the pod automatically. The script syncs the connection and secret keys (including `JWT_JWKS_FILE`); other knobs (`ENABLE_DEPLOY_CHECK`, `ENABLE_SCHEDULED_EVALS`, `EVALS_*`) are chart values. Set them via `extraEnv` and `helm upgrade`.
+Changed supported values roll the pod automatically. `env-sync.sh` updates `RUNTIME_ENV`, `AGENTOS_URL`, `OPENAI_API_KEY`, `JWT_VERIFICATION_KEY`, `MCP_CONNECT_SECRET`, `AGENTOS_MCP_SIGNING_KEY`, `PARALLEL_API_KEY`, `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, and `DB_PASS`. It updates the `JWT_JWKS_FILE` path only. The current chart does not upload or mount the referenced file. Use `JWT_VERIFICATION_KEY`, a custom image containing the file, or a chart extension with a Secret volume. Set `ENABLE_DEPLOY_CHECK`, `ENABLE_SCHEDULED_EVALS`, and `EVALS_*` via `extraEnv` and `helm upgrade`.
 
 ### Tear down
 

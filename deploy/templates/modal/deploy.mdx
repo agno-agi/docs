@@ -1,19 +1,22 @@
 ---
 title: "AgentOS on Modal"
 sidebarTitle: "Deploy"
-description: "Run AgentOS locally using Docker and deploy to production on Modal."
+description: "AgentOS template for teams that develop locally with Docker and deploy to production on Modal."
 ---
 
-AgentOS is a secure and scalable backend for running agents. The [agentos-modal](https://github.com/agno-agi/agentos-modal) codebase runs AgentOS locally using Docker and deploys to production on Modal. It comes with:
+**The [agentos-modal](https://github.com/agno-agi/agentos-modal) template is for teams that develop locally with Docker and deploy to production on Modal.**
 
-- **2 platform agents** that build and run the platform for you. **Agent Builder** creates agents, teams, and workflows. **Platform Manager** monitors and manages the platform.
-- **5 [skills](/deploy/templates/improve-agents)** that let coding agents build, test, and improve the platform for you.
+It includes:
 
-Because the trace data, agent code, evals, and system logs all live in one place, the platform can inspect and improve itself automatically.
+- **Agent Builder**, which creates agents, teams, and workflows.
+- **Platform Manager**, which inspects and explains the platform, eval history, deployment checks, and schedules.
+- **Six [skills](/deploy/templates/improve-agents)** for setting up, building, testing, and improving the project with a coding agent.
+
+Coding agents can use these skills with the AgentOS API, evals, traces, and deployment logs to inspect and improve the platform.
 
 ## Get started
 
-The fastest way to get started is using a coding agent. Copy the prompt below into Claude Code, Cursor or Codex and it'll take you from zero to a running platform.
+Copy the prompt below into Claude Code, Cursor, or Codex to set up the template with a coding agent.
 
 <Snippet file="setup-prompt-modal.mdx" />
 
@@ -72,12 +75,12 @@ Prints `MCP OK` with the tool count and a real agent answer through the MCP endp
 | MCP clients on your machine | `uvx agno connect` auto-detects Claude Code, Claude Desktop, Codex, and Cursor and registers `http://localhost:8000/mcp`. Verify from the app: "can you access my agentos mcp?" |
 | AgentOS UI | [os.agno.com](https://os.agno.com) → **Connect OS** → `http://localhost:8000`. |
 | claude.ai and ChatGPT | Hosted sessions can't reach localhost. Deploy to production first, then add `https://<workspace>--agentos.modal.run/mcp` as a custom connector and approve the consent page with the `MCP_CONNECT_SECRET` that `up.sh` generates. |
-| Slack | Set `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET`. See [Slack setup](/deploy/interfaces/slack/overview). |
+| Slack | Set `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET`. See [Slack setup](/agent-os/interfaces/slack/setup). |
 | Your product | Call the AgentOS REST API with 80+ endpoints. Browse them at `/docs`. |
 
 ## Deploy to production
 
-**Prerequisites:** [Modal CLI](https://modal.com/docs/guide) installed and `modal token new` completed. [neonctl](https://neon.tech/docs/reference/neon-cli) installed and `neonctl auth` completed.
+**Prerequisites:** Python 3 and OpenSSL. [Modal CLI](https://modal.com/docs/guide) installed with `modal token new` completed. [neonctl](https://neon.tech/docs/reference/neon-cli) installed with `neonctl auth` completed.
 
 <Steps>
   <Step title="Create a production env">
@@ -93,19 +96,18 @@ Edit `.env.production` with production values: a different OpenAI key, productio
 ./scripts/modal/up.sh
 ```
 
-Creates a Neon Postgres project for persistence (Modal has no managed Postgres of its own), saves the connection details to your env file, writes your config into the `agentos-secrets` Modal secret, and deploys the app from `modal_app.py` as a single always-warm container. The script then sets `AGENTOS_URL` to the stable `https://<workspace>--agentos.modal.run` URL so scheduled jobs reach the platform, and generates `MCP_CONNECT_SECRET` (the chat-app OAuth consent secret, printed in the closing summary) when your env file doesn't have one.
+Reuses the `DB_HOST` and `DB_PASS` in your env file when both are set. Otherwise, it creates a Neon Postgres project and saves its connection details. The script writes your config into the `agentos-secrets` Modal secret and deploys `modal_app.py` as one always-warm container. It then sets `AGENTOS_URL` to the stable `https://<workspace>--agentos.modal.run` URL and generates `MCP_CONNECT_SECRET` when your env file does not have one.
   </Step>
 
   <Step title="Mint your JWT key">
-The script pauses for a `JWT_VERIFICATION_KEY`. Token-Based Authorization is on by default and without a verification key or a `JWT_JWKS_FILE`, the platform refuses to serve production traffic.
+The script pauses for a `JWT_VERIFICATION_KEY`. Token-Based Authorization is on by default. Production startup requires that verification key or a readable JWKS file at the container path in `JWT_JWKS_FILE`; otherwise the process exits.
 
 1. Open [os.agno.com](https://os.agno.com), click **Connect OS** → **Live**, enter your modal.run URL, and name it **Live AgentOS**.
 2. Go to **Settings** → **OS & Security** and turn on **Token-Based Authorization (JWT)**.
 3. Copy the public key and paste the full PEM into the `up.sh` prompt. The script saves it to your env file and runs a second deploy to apply it.
 
-If you skip the prompt, add the key to `.env.production` later and run `./scripts/modal/env-sync.sh`.
+If you skip the prompt, add `JWT_VERIFICATION_KEY` to `.env.production` later and run `./scripts/modal/env-sync.sh`. For JWKS, add the file to the Docker build context or configure a Modal mount, set `JWT_JWKS_FILE` to its container path, then deploy. Env sync only forwards the path.
 
-<Note>Live AgentOS connections are a paid feature. Use code `PLATFORM30` for one month off.</Note>
   </Step>
 
   <Step title="Connect your MCP clients">
@@ -152,7 +154,7 @@ Rewrites the `agentos-secrets` Modal secret from `.env.production` and redeploys
 ```
 
 <Warning>
-Stops the Modal app, deletes the `agentos-secrets` secret, and deletes the Neon Postgres project, including all data. The `NEON_PROJECT_ID` and `DB_*` values stay in your env file; delete them before running `up.sh` again so it provisions a fresh database.
+Stops the Modal app and deletes the `agentos-secrets` secret. If `NEON_PROJECT_ID` is set, it also deletes that template-managed Neon project and its data. A supplied external database is retained. Database values stay in your env file; remove the Neon values only when you want `up.sh` to provision a fresh database.
 </Warning>
 
 ## Next steps

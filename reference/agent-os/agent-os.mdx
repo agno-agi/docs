@@ -1,6 +1,7 @@
 ---
 title: AgentOS
 sidebarTitle: AgentOS
+description: "Parameter and method reference for the AgentOS class that serves agents, teams, and workflows as a FastAPI app."
 ---
 
 ## Parameters
@@ -11,10 +12,11 @@ sidebarTitle: AgentOS
 | `name` | `Optional[str]` | `None` | AgentOS name |
 | `description` | `Optional[str]` | `None` | AgentOS description |
 | `version` | `Optional[str]` | `None` | AgentOS version |
-| `agents` | `Optional[List[Agent]]` | `None` | List of agents available in the AgentOS |
-| `teams` | `Optional[List[Team]]` | `None` | List of teams available in the AgentOS |
-| `workflows` | `Optional[List[Workflow]]` | `None` | List of workflows available in the AgentOS |
-| `db` | `Optional[BaseDb]` | `None` | Database to use for the AgentOS |
+| `agents` | `Optional[List[Union[Agent, RemoteAgent, AgentProtocol, AgentFactory]]]` | `None` | List of agents available in the AgentOS. Also accepts [factories](/reference/agent-os/factories), remote agents, and [multi-framework adapters](/agent-os/multi-framework/overview) |
+| `teams` | `Optional[List[Union[Team, RemoteTeam, TeamFactory]]]` | `None` | List of teams available in the AgentOS. Also accepts factories and remote teams |
+| `workflows` | `Optional[List[Union[Workflow, RemoteWorkflow, WorkflowFactory]]]` | `None` | List of workflows available in the AgentOS. Also accepts factories and remote workflows |
+| `db` | `Optional[Union[BaseDb, AsyncBaseDb]]` | `None` | Default database for the AgentOS. Agents, teams and workflows with no db use this one |
+| `checkpoint` | `Optional[Literal["runs", "tool-batch", "tools"]]` | `None` | Default checkpoint level for agents in this AgentOS. Agents without their own `checkpoint` setting inherit this one. `None` means no OS-level default and each agent falls back to `"runs"` |
 | `knowledge` | `Optional[List[Knowledge]]` | `None` | List of standalone knowledge instances available in the AgentOS |
 | `interfaces` | `Optional[List[BaseInterface]]` | `None` | List of interfaces available in the AgentOS |
 | `a2a_interface` | `bool` | `False` | Whether to expose the OS agents and teams in an A2A server |
@@ -25,22 +27,25 @@ sidebarTitle: AgentOS
 | `settings` | `Optional[AgnoAPISettings]` | `None` | Settings for the AgentOS API |
 | `base_app` | `Optional[FastAPI]` | `None` | Custom FastAPI APP to use for the AgentOS |
 | `lifespan` | `Optional[Any]` | `None` | Lifespan context manager for the FastAPI app |
-| `mcp_server` | `Union[bool, MCPServerConfig]` | `False` | Whether to serve the OS over MCP (Model Context Protocol) at `/mcp` |
+| `mcp_server` | `Union[bool, MCPServerConfig]` | `False` | Serve the OS over MCP (Model Context Protocol) at `/mcp`. Pass `True` for the default surface (all built-in tools), or an `MCPServerConfig` to register custom tools via `tools` and scope the built-in tools via `enable_builtin_tools`, `include_tags`, and `exclude_tags` |
+| `mcp_auth` | `Optional[AuthProvider]` | `None` | `AuthProvider` that owns authentication for the MCP endpoint (OAuth for connector clients like claude.ai and ChatGPT). Use `AgentOSBuiltinAuth.from_env()` from `agno.os` for the built-in authorization server, or an external provider such as WorkOS `AuthKitProvider`. Requires the MCP server to be enabled via `mcp_server` |
 | `on_route_conflict` | `Literal["preserve_agentos", "preserve_base_app", "error"]` | `"preserve_agentos"` | What to do when a route conflict is detected in case a custom base_app is provided. |
 | `tracing` | `bool` | `False` | Enable OpenTelemetry tracing for all agents and teams |
-| `db` | `Optional[Union[BaseDb, AsyncBaseDb]]` | `None` | Dedicated database for storing traces |
 | `auto_provision_dbs` | `bool` | `True` | Whether to automatically provision databases |
 | `run_hooks_in_background` | `bool` | `False` | Run agent/team pre/post hooks as FastAPI background tasks |
 | `telemetry` | `bool` | `True` | Log minimal telemetry for analytics |
-| `registry` | `Optional[str]` | `None` | What to do when a route conflict is detected in case a custom base_app is provided. |
+| `registry` | `Optional[Registry]` | `None` | Registry to use for the AgentOS |
+| `scheduler` | `bool` | `False` | Whether to enable the cron scheduler |
+| `scheduler_poll_interval` | `int` | `15` | Seconds between scheduler poll cycles |
+| `scheduler_base_url` | `Optional[str]` | `None` | Base URL the scheduler uses for HTTP calls to the OS. Defaults to `http://127.0.0.1:7777` |
+| `internal_service_token` | `Optional[str]` | `None` | Token for scheduler-to-OS authentication. Auto-generated when the scheduler is enabled and no token is provided |
 
 ## Authorization
 
-Enable RBAC by setting `authorization=True` and setting the `JWT_VERIFICATION_KEY` environment variable to the public key of the JWT verification key:
+Enable RBAC by setting `authorization=True` and setting the `JWT_VERIFICATION_KEY` environment variable to your JWT public key:
 
 ```python
 from agno.os import AgentOS
-from agno.os.config import AuthorizationConfig
 
 agent_os = AgentOS(
     id="my-agent-os",
@@ -89,6 +94,11 @@ Run the app, effectively starting the AgentOS.
 - `port` (int): Port to bind. Defaults to `7777`
 - `workers` (Optional[int]): Number of workers to use. Defaults to `None`
 - `reload` (bool): Enable auto-reload for development. Defaults to `False`
+- `reload_includes` (Optional[List[str]]): Extra file patterns to watch when `reload=True`. Defaults to `None`
+- `reload_excludes` (Optional[List[str]]): File patterns to ignore when `reload=True`. Defaults to `None`
+- `access_log` (bool): Enable the uvicorn access log. Defaults to `False`
+
+`AGENT_OS_HOST` and `AGENT_OS_PORT` environment variables override `host` and `port`.
 
 ### `resync`
 

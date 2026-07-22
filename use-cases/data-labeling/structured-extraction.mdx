@@ -1,13 +1,9 @@
 ---
 title: "Data extraction"
-description: "Extract typed Pydantic objects from text, images, audio, video, and PDF."
+description: "Extract typed Pydantic objects from text, images, audio, video, and PDFs."
 ---
 
 Define the schema, pass the input, get a validated object back.
-
-<Tip>
-Use a fast, low-cost model like `gemini-3.5-flash` for high-volume extraction.
-</Tip>
 
 ```python
 from typing import Optional
@@ -42,7 +38,7 @@ result = agent.run(
 #         phone='+1-555-0102', company='Acme Corp.', title='VP of Marketing')
 ```
 
-> The hard part is getting missing fields as `null` instead of a hallucinated value.
+Tell the agent how to handle missing fields: "If a field is missing, leave it null. Do not guess."
 
 ## Nested objects
 
@@ -73,47 +69,73 @@ When downstream needs to route uncertain fields to a human, wrap each value in a
 ```python
 from typing import Literal, Optional
 
-from pydantic import BaseModel
-
-Confidence = Literal["high", "medium", "low"]
+from agno.agent import Agent
+from agno.models.google import Gemini
+from pydantic import BaseModel, Field
 
 
 class ConfidentField(BaseModel):
     value: Optional[str] = None
-    confidence: Confidence
+    confidence: Literal["high", "medium", "low"] = Field(
+        ..., description="Confidence in the extracted value"
+    )
 
 
 class Contact(BaseModel):
     name: ConfidentField
     email: ConfidentField
     company: ConfidentField
+
+
+instructions = """\
+Extract contact information from the input. For each field:
+- value:      what the text shows; null if the field is missing
+- confidence: high if explicit and unambiguous;
+              medium if implied or partially formatted;
+              low if guessed or ambiguous
+
+Use exactly what the text shows. Do not normalize or paraphrase.
+"""
+
+confidence_agent = Agent(
+    model=Gemini(id="gemini-3.5-flash"),
+    instructions=instructions,
+    output_schema=Contact,
+)
 ```
 
-<Warning>
-OpenAI strict structured output rejects a `description` on a field whose type is itself a referenced model. Keep `Field(..., description=...)` off fields typed as a sub-model; put the explanation in a comment or the instructions instead.
-</Warning>
+Define each confidence level in the instructions so labels use the same criteria across records.
 
 ## Any modality, same pattern
 
-The only thing that changes per modality is the input argument and the model. See [Multimodal inputs](/use-cases/data-labeling/multimodal-inputs) for the input plumbing.
+The input argument changes per modality. Use a model that supports both that modality and structured output. See [Multimodal inputs](/use-cases/data-labeling/multimodal-inputs) for the input arguments.
 
 | Input | Argument | Cookbook |
 |-------|----------|----------|
 | Text | `agent.run(text)` | [text_extraction](https://github.com/agno-agi/agno/tree/main/cookbook/data_labeling/_03_text_extraction) |
 | Image | `images=[Image(url=...)]` | [image_extraction](https://github.com/agno-agi/agno/tree/main/cookbook/data_labeling/_07_image_extraction) |
 | Audio | `audio=[Audio(content=...)]` | [audio_extraction](https://github.com/agno-agi/agno/tree/main/cookbook/data_labeling/_12_audio_extraction) |
-| Video | `videos=[Video(content=...)]` | [video_extraction](https://github.com/agno-agi/agno/tree/main/cookbook/data_labeling/_14_video_extraction) |
+| Video | `videos=[Video(content=..., format="mp4")]` | [video_extraction](https://github.com/agno-agi/agno/tree/main/cookbook/data_labeling/_14_video_extraction) |
 | PDF | `files=[File(url=...)]` | [document_extraction](https://github.com/agno-agi/agno/tree/main/cookbook/data_labeling/_16_document_extraction) |
 
-## Extract then embed
+## Extract then index
 
-`image_extraction_to_vectordb` extends extraction with an embed-and-store step: describe each image into a typed object, flatten it to a searchable string, embed it, and store it in LanceDb for similarity search. See the [cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/data_labeling/_09_image_extraction_to_vectordb).
+The [image extraction to vector database cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/data_labeling/_09_image_extraction_to_vectordb) is the minimal pipeline. It describes each image as a typed object, flattens the object into searchable text, embeds it, and stores it in LanceDb.
+
+This recipe needs LanceDb on top of the Google provider:
+
+```bash
+uv pip install lancedb tantivy
+```
+
+The [Image Search application](/use-cases/data-labeling/image-search) expands the same pattern into an ingest workflow, PgVector hybrid search, AgentOS endpoints, and a browser UI.
 
 ## Next steps
 
 | Task | Guide |
 |------|-------|
-| Assign labels instead of fields | [Classification](/use-cases/data-labeling/classification) |
+| Assign labels | [Classification](/use-cases/data-labeling/classification) |
+| Build a searchable image library | [Image Search](/use-cases/data-labeling/image-search) |
 | Feed non-text input | [Multimodal inputs](/use-cases/data-labeling/multimodal-inputs) |
 | Add a reviewer and adjudicator | [Quality pipeline](/use-cases/data-labeling/quality-pipeline) |
 

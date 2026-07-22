@@ -1,110 +1,56 @@
 ---
 title: How to Switch Between Different Models
 sidebarTitle: Switching Models
+description: "Switch models and supported providers within one agent session while preserving message and tool-call history."
 ---
 
-When working with Agno, you may need to switch between different models. While Agno supports 20+ model providers, switching between different providers can cause compatibility issues. Switching models within the same provider is generally safer and more reliable.
+Reuse one `Agent` and assign a new model to `agent.model` between turns. Agno reformats stored messages and tool-call IDs for supported providers before sending the history to the next model.
 
-## Recommended Approach
+## Provider Support
 
-**Safe:** Switch models within the same provider (OpenAI → OpenAI, Google → Google)  
-**Risky:** Switch between different providers (OpenAI ↔ Google ↔ Anthropic)
+| Switch | Guidance |
+|--------|----------|
+| Different model from the same provider | Supported |
+| OpenAI Chat, OpenAI Responses, Anthropic Claude, Google Gemini, and AWS Claude | Supported, including stored tool calls and results |
+| Other provider combinations | Test provider-specific content such as reasoning blocks, server tools, and multimodal messages before production |
 
-Cross-provider switching is risky because message history between model providers are often not interchangeable, as some require messages that others don't. However, we are actively working to improve interoperability.
+Install dependencies:
 
-## Safe Model Switching
-
-The safest way to switch models is to change the model ID while keeping the same provider:
-
-```python
-from uuid import uuid4
-from agno.agent import Agent
-from agno.db.sqlite import SqliteDb
-from agno.models.openai.chat import OpenAIChat
-
-db = SqliteDb(db_file="tmp/agent_sessions.db")
-
-session_id = str(uuid4())
-user_id = "user@example.com"
-
-# Create initial agent with expensive model
-expensive_agent = Agent(
-    model=OpenAIChat(id="gpt-4o"),
-    instructions="You are a helpful assistant for technical discussions.",
-    db=db,
-    add_history_to_context=True,
-)
-
-# Have a conversation
-expensive_agent.print_response(
-    "Explain quantum computing basics", session_id=session_id, user_id=user_id
-)
-expensive_agent.print_response(
-    "What are the main applications?", session_id=session_id, user_id=user_id
-)
-
-# Switch to budget model within same provider (safe)
-budget_agent = Agent(
-    model=OpenAIChat(id="gpt-4o-mini"),
-    instructions="You are a helpful assistant for technical discussions.",
-    db=db,
-    add_history_to_context=True,
-)
-
-# Continue conversation - history shared via session_id
-budget_agent.print_response(
-    "Can you summarize our discussion so far?", session_id=session_id, user_id=user_id
-)
+```shell
+uv pip install agno google-genai openai sqlalchemy
 ```
 
-## Cross-Provider Switching
+Set the API keys required by each provider before running the example. See [Environment variables](/faq/environment-variables).
 
-Switching between providers can cause compatibility issues and is not recommended for production use without thorough testing:
+## Switch Models
 
 ```python
-from uuid import uuid4
 from agno.agent import Agent
 from agno.db.sqlite import SqliteDb
-from agno.models.openai.chat import OpenAIChat
 from agno.models.google import Gemini
+from agno.models.openai import OpenAIChat
 
-db = SqliteDb(db_file="tmp/cross_provider_demo.db")
-
-session_id = str(uuid4())
-user_id = "user@example.com"
-
-# Create OpenAI agent
-openai_agent = Agent(
-    model=OpenAIChat(id="gpt-4o"),
-    instructions="You are a helpful assistant.",
-    db=db,
+agent = Agent(
+    model=OpenAIChat(id="gpt-5.4"),
+    instructions="You are a helpful assistant for technical discussions.",
+    db=SqliteDb(db_file="tmp/model_switching.db"),
     add_history_to_context=True,
+    num_history_runs=10,
 )
 
-# Have a conversation with OpenAI
-openai_agent.print_response(
-    "Explain machine learning basics", session_id=session_id, user_id=user_id
-)
-openai_agent.print_response(
-    "What about deep learning?", session_id=session_id, user_id=user_id
-)
+agent.print_response("Explain quantum computing basics")
 
-# Now switch to Google Gemini using same session
-gemini_agent = Agent(
-    model=Gemini(id="gemini-2.0-flash-exp"),
-    instructions="You are a helpful assistant.",
-    db=db,
-    add_history_to_context=True,
-)
+# Switch models within the same provider
+agent.model = OpenAIChat(id="gpt-5.4-mini")
+agent.print_response("What are the main applications?")
 
-# This may work but with unpredictable results due to message format differences
-gemini_agent.print_response(
-    "Continue our discussion about machine learning", session_id=session_id, user_id=user_id
-)
-# Note: Gemini may not properly interpret OpenAI's message history format
+# Switch providers and keep the same session history
+agent.model = Gemini(id="gemini-3.5-flash")
+agent.print_response("Summarize our discussion so far.")
 ```
 
 ## Learn More
 
+- [Five-provider model switching example](/examples/agents/advanced/interchange-model/all-providers)
 - [All supported models](/models/overview)
-- [Environment variables setup](/faq/environment-variables)
+- [Environment variables](/faq/environment-variables)

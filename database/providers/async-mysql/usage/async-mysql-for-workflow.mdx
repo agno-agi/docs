@@ -1,15 +1,22 @@
 ---
-title: Async MySQL for Workflows
-sidebarTitle: Workflow with AsyncDb
+title: Async MySQL for Workflow
+sidebarTitle: Workflow
+description: Store workflow sessions and run history asynchronously in MySQL with AsyncMySQLDb.
 ---
 
-Agno supports using [MySQL](https://www.mysql.com/) asynchronously, with the `AsyncMySQLDb` class.
+`AsyncMySQLDb` stores a Workflow's sessions and run history asynchronously in [MySQL](https://www.mysql.com/). Use async Workflow methods such as `arun()` and `aprint_response()`.
 
 ## Usage
 
+Install the `sqlalchemy`, `asyncmy`, `openai`, and `ddgs` packages:
+
+```shell
+uv pip install sqlalchemy asyncmy openai ddgs
+```
+
 ### Run MySQL
 
-Install [docker desktop](https://docs.docker.com/desktop/install/mac-install/) and run **MySQL** on port **3306** using:
+Install [Docker Desktop](https://docs.docker.com/get-started/get-docker/), then start MySQL on port `3306`:
 
 ```bash
 docker run -d \
@@ -19,14 +26,10 @@ docker run -d \
   -e MYSQL_USER=ai \
   -e MYSQL_PASSWORD=ai \
   -p 3306:3306 \
-  -d mysql:8
+  mysql:8
 ```
 
 ```python async_mysql_for_workflow.py
-"""Use Async MySQL as the database for a workflow.
-Run `uv pip install openai sqlalchemy asyncmy agno` to install dependencies.
-"""
-
 import asyncio
 import uuid
 from typing import List
@@ -34,7 +37,7 @@ from typing import List
 from agno.agent import Agent
 from agno.db.base import SessionType
 from agno.db.mysql import AsyncMySQLDb
-from agno.tools.hackernews import HackerNewsTools
+from agno.tools.websearch import WebSearchTools
 from agno.workflow.types import WorkflowExecutionInput
 from agno.workflow.workflow import Workflow
 from pydantic import BaseModel
@@ -42,36 +45,31 @@ from pydantic import BaseModel
 db_url = "mysql+asyncmy://ai:ai@localhost:3306/ai"
 db = AsyncMySQLDb(db_url=db_url)
 
+
 class ResearchTopic(BaseModel):
     topic: str
     key_points: List[str]
     summary: str
 
-# Create researcher agent
+
 researcher = Agent(
     name="Researcher",
-    tools=[HackerNewsTools()],
-    instructions="Research the given topic thoroughly and provide key insights",
+    tools=[WebSearchTools()],
+    instructions="Research the topic and return key points and a summary",
     output_schema=ResearchTopic,
 )
 
-# Create writer agent
 writer = Agent(
     name="Writer",
-    instructions="Write a well-structured blog post based on the research provided",
+    instructions="Write a blog post based on the research provided",
 )
 
-# Define the workflow
+
 async def blog_workflow(workflow: Workflow, execution_input: WorkflowExecutionInput):
-    """
-    A workflow that researches a topic and writes a blog post about it.
-    """
     topic = execution_input.input
 
-    # Step 1: Research the topic
     research_result = await researcher.arun(f"Research this topic: {topic}")
 
-    # Step 2: Write the blog post
     if research_result and research_result.content:
         blog_result = await writer.arun(
             f"Write a blog post about {topic}. Use this research: {research_result.content.model_dump_json()}"
@@ -80,32 +78,35 @@ async def blog_workflow(workflow: Workflow, execution_input: WorkflowExecutionIn
 
     return "Failed to complete workflow"
 
-# Create and run the workflow
+
 workflow = Workflow(
     name="Blog Generator",
     steps=blog_workflow,
     db=db,
 )
 
-async def main():
-    """Run the workflow with a sample topic"""
-    session_id = str(uuid.uuid4())
 
-    await workflow.aprint_response(
-        input="The future of artificial intelligence",
-        session_id=session_id,
-        markdown=True,
-    )
-    session_data = await db.get_session(
-        session_id=session_id, session_type=SessionType.WORKFLOW
-    )
-    print("\n=== SESSION DATA ===")
-    print(session_data.to_dict())
+async def main():
+    try:
+        session_id = str(uuid.uuid4())
+        await workflow.aprint_response(
+            input="The future of artificial intelligence",
+            session_id=session_id,
+            markdown=True,
+        )
+        session_data = await db.get_session(
+            session_id=session_id, session_type=SessionType.WORKFLOW
+        )
+        print("\n=== SESSION DATA ===")
+        print(session_data.to_dict())
+    finally:
+        await db.close()
+
 
 if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-## Params
+## Parameters
 
 <Snippet file="db-async-mysql-params.mdx" />

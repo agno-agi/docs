@@ -1,5 +1,6 @@
 ---
 title: Eleven Labs
+description: "Generate speech and sound effects from text using the ElevenLabs API."
 ---
 
 **ElevenLabsTools** enable an Agent to perform audio generation tasks using [ElevenLabs](https://elevenlabs.io/docs/product/introduction)
@@ -9,7 +10,7 @@ title: Eleven Labs
 You need to install the `elevenlabs` library and an API key which can be obtained from [Eleven Labs](https://elevenlabs.io/)
 
 ```bash
-uv pip install elevenlabs
+uv pip install elevenlabs google-genai
 ```
 
 Set the `ELEVEN_LABS_API_KEY` environment variable.
@@ -22,29 +23,47 @@ export ELEVEN_LABS_API_KEY=****
 
 The following agent will use Eleven Labs to generate audio based on a user prompt.
 
-```python cookbook/14_tools/eleven_labs_tools.py
+```python cookbook/91_tools/elevenlabs_tools.py
+import base64
+
 from agno.agent import Agent
+from agno.models.google import Gemini
 from agno.tools.eleven_labs import ElevenLabsTools
+from agno.utils.media import save_base64_data
 
-# Create an Agent with the ElevenLabs tool
-agent = Agent(tools=[
-    ElevenLabsTools(
-        voice_id="JBFqnCBsd6RMkjVDRZzb", model_id="eleven_multilingual_v2", target_directory="audio_generations"
-    )
-], name="ElevenLabs Agent")
+audio_agent = Agent(
+    model=Gemini(id="gemini-2.5-pro"),
+    tools=[
+        ElevenLabsTools(
+            voice_id="21m00Tcm4TlvDq8ikWAM",
+            model_id="eleven_multilingual_v2",
+        )
+    ],
+    description="You are an AI agent that can generate audio using the ElevenLabs API.",
+    instructions=[
+        "Use the `text_to_speech` tool to convert text into natural voice audio.",
+        "Use the `generate_sound_effect` tool to create sound effects from text descriptions.",
+    ],
+    markdown=True,
+)
 
-agent.print_response("Generate a audio summary of the big bang theory", markdown=True)
+response = audio_agent.run("Generate an audio summary of the french revolution")
+
+if response.audio:
+    print("Agent response:", response.content)
+    base64_audio = base64.b64encode(response.audio[0].content).decode("utf-8")
+    save_base64_data(base64_audio, "tmp/french_revolution.mp3")
 ```
 
 ## Toolkit Params
 
 | Parameter          | Type            | Default                  | Description                                                                                                                                                                    |
 | ------------------ | --------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `api_key`          | `str`           | `None`                   | The Eleven Labs API key for authentication                                                                                                                                     |
+| `api_key`          | `Optional[str]` | `None`                   | The Eleven Labs API key for authentication                                                                                                                                     |
 | `voice_id`         | `str`           | `JBFqnCBsd6RMkjVDRZzb`   | The voice ID to use for the audio generation                                                                                                                                   |
 | `target_directory` | `Optional[str]` | `None`                   | The directory to save the audio file                                                                                                                                           |
 | `model_id`         | `str`           | `eleven_multilingual_v2` | The model's id to use for the audio generation                                                                                                                                 |
-| `output_format`    | `str`           | `mp3_44100_64`           | The output format to use for the audio generation (check out [the docs](https://elevenlabs.io/docs/api-reference/text-to-speech#parameter-output-format) for more information) |
+| `output_format`    | `str`           | `mp3_44100_64`           | The output format to use for the audio generation (see [the docs](https://elevenlabs.io/docs/api-reference/text-to-speech#parameter-output-format)) |
 | `enable_text_to_speech` | `bool` | `True` | Enable the text_to_speech functionality. |
 | `enable_generate_sound_effect` | `bool` | `True` | Enable the generate_sound_effect functionality. |
 | `enable_get_voices` | `bool` | `True` | Enable the get_voices functionality. |
@@ -60,4 +79,4 @@ agent.print_response("Generate a audio summary of the big bang theory", markdown
 
 ## Developer Resources
 
-- View [Tools](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/tools/eleven_labs.py)
+- [Tools](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/tools/eleven_labs.py)

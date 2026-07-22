@@ -1,18 +1,34 @@
 ---
-title: Sqlite for Team
+title: SQLite for Team
 sidebarTitle: Team
+description: Store team sessions and run history in a local SQLite database with SqliteDb.
 ---
 
-Agno supports using Sqlite as a storage backend for Teams using the `SqliteDb` class.
+`SqliteDb` stores a Team's sessions and run history in SQLite.
 
 ## Usage
 
-You need to provide either `db_url`, `db_file` or `db_engine`. The following example uses `db_file`.
+`SqliteDb` uses `db_engine`, then `db_url`, then `db_file`. If none is provided, it creates `agno.db` in the current directory. The following example uses `db_file`.
+
+Install dependencies:
+
+```shell
+uv pip install agno openai ddgs sqlalchemy
+```
+
+Set your OpenAI API key:
+
+<CodeGroup>
+```bash Mac/Linux
+export OPENAI_API_KEY=your_api_key
+```
+
+```powershell Windows
+$env:OPENAI_API_KEY = "your_api_key"
+```
+</CodeGroup>
 
 ```python sqlite_for_team.py
-"""
-Run: `uv pip install openai newspaper4k lxml_html_clean agno` to install the dependencies
-"""
 from typing import List
 
 from agno.agent import Agent
@@ -20,7 +36,7 @@ from agno.db.sqlite import SqliteDb
 from agno.models.openai import OpenAIResponses
 from agno.team import Team
 from agno.tools.hackernews import HackerNewsTools
-from agno.tools.hackernews import HackerNewsTools
+from agno.tools.websearch import WebSearchTools
 from pydantic import BaseModel
 
 db = SqliteDb(db_file="tmp/data.db")
@@ -33,7 +49,7 @@ class Article(BaseModel):
 hn_researcher = Agent(
     name="HackerNews Researcher",
     model=OpenAIResponses(id="gpt-5.2"),
-    role="Gets top stories from hackernews.",
+    role="Gets top stories from HackerNews.",
     tools=[HackerNewsTools()],
 )
 
@@ -41,7 +57,7 @@ web_searcher = Agent(
     name="Web Searcher",
     model=OpenAIResponses(id="gpt-5.2"),
     role="Searches the web for information on a topic",
-    tools=[HackerNewsTools()],
+    tools=[WebSearchTools()],
     add_datetime_to_context=True,
 )
 
@@ -51,7 +67,7 @@ hn_team = Team(
     members=[hn_researcher, web_searcher],
     db=db,
     instructions=[
-        "First, search hackernews for what the user is asking about.",
+        "First, search HackerNews for what the user is asking about.",
         "Then, ask the web searcher to search for each story to get more information.",
         "Finally, provide a thoughtful and engaging summary.",
     ],
@@ -60,10 +76,15 @@ hn_team = Team(
     show_members_responses=True,
 )
 
-hn_team.print_response("Write an article about the top 2 stories on hackernews")
-
+hn_team.print_response("Write an article about the top 2 stories on HackerNews")
 ```
 
-## Params
+Run the team:
+
+```shell
+python sqlite_for_team.py
+```
+
+## Parameters
 
 <Snippet file="db-sqlite-params.mdx" />

@@ -1,15 +1,24 @@
 ---
 title: MongoDB for Workflow
 sidebarTitle: Workflow
+description: Store workflow runs in MongoDB with MongoDb.
 ---
 
-Agno supports using MongoDB as a storage backend for Workflows using the `MongoDBDb` class.
+`MongoDb` stores a Workflow's sessions and run history in MongoDB.
 
 ## Usage
 
+Provide either `db_url` or `db_client`. The default database name is `agno`; set `db_name` to use another database. The following example uses `db_url`.
+
+Install the `agno`, `pymongo`, `openai`, and `ddgs` packages:
+
+```shell
+uv pip install agno pymongo openai ddgs
+```
+
 ### Run MongoDB
 
-Install [docker desktop](https://docs.docker.com/desktop/install/mac-install/) and run **MongoDB** on port **27017** using:
+Install [Docker Desktop](https://docs.docker.com/get-started/get-docker/), then start MongoDB on port `27017`:
 
 ```bash
 docker run -d \
@@ -22,29 +31,29 @@ docker run -d \
 
 ```python mongodb_for_workflow.py
 from agno.agent import Agent
-from agno.db.mongodb import MongoDBDb
+from agno.db.mongo import MongoDb
 from agno.models.openai import OpenAIResponses
 from agno.team import Team
 from agno.tools.hackernews import HackerNewsTools
-from agno.tools.hackernews import HackerNewsTools
+from agno.tools.websearch import WebSearchTools
 from agno.workflow.step import Step
 from agno.workflow.workflow import Workflow
 
-db_url = "mongodb://localhost:27017"
+db_url = "mongodb://mongoadmin:secret@localhost:27017"
 
 db = MongoDb(db_url=db_url)
 
 # Define agents
 hackernews_agent = Agent(
-    name="Hackernews Agent",
+    name="HackerNews Agent",
     model=OpenAIResponses(id="gpt-5.2"),
     tools=[HackerNewsTools()],
-    role="Extract key insights and content from Hackernews posts",
+    role="Extract key insights and content from HackerNews posts",
 )
 web_agent = Agent(
     name="Web Agent",
     model=OpenAIResponses(id="gpt-5.2"),
-    tools=[HackerNewsTools()],
+    tools=[WebSearchTools()],
     role="Search the web for the latest news and trends",
 )
 
@@ -52,7 +61,7 @@ web_agent = Agent(
 research_team = Team(
     name="Research Team",
     members=[hackernews_agent, web_agent],
-    instructions="Research tech topics from Hackernews and the web",
+    instructions="Research tech topics from HackerNews and the web",
 )
 
 content_planner = Agent(
@@ -60,7 +69,7 @@ content_planner = Agent(
     model=OpenAIResponses(id="gpt-5.2"),
     instructions=[
         "Plan a content schedule over 4 weeks for the provided topic and research content",
-        "Ensure that I have posts for 3 posts per week",
+        "Ensure there are 3 posts per week",
     ],
 )
 
@@ -84,12 +93,11 @@ if __name__ == "__main__":
         steps=[research_step, content_planning_step],
     )
     content_creation_workflow.print_response(
-        input="AI trends in 2024",
+        input="Recent AI trends",
         markdown=True,
     )
-
 ```
 
-## Params
+## Parameters
 
-<Snippet file="db-mongodb-params.mdx" />  
+<Snippet file="db-mongodb-params.mdx" />

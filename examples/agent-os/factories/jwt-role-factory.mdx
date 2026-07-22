@@ -2,6 +2,7 @@
 title: "JWT-Driven Factory"
 sidebarTitle: "JWT Role Factory"
 description: "RBAC tool grants from trusted claims. Authorization from verified JWT, customization from client input."
+curated_source: cookbook/05_agent_os/factories/agent/03_jwt_role_factory.py
 ---
 
 The trust split: authorization decisions (which tools to grant) come from `ctx.trusted.claims` (set by verified JWT middleware), while non-privileged customization comes from `ctx.input` (the client request body).
@@ -34,6 +35,30 @@ With `validate=False` (as written below):
 Demonstrates the trust split: authorization decisions (which tools to grant)
 come from `ctx.trusted.claims` (set by verified JWT middleware), while
 non-privileged customization comes from `ctx.input` (untrusted client input).
+
+This is the most realistic multi-tenant pattern. The factory uses the JWT role
+to decide tool access, and the client can customize the theme but not escalate
+their privileges.
+
+Run:
+    .venvs/demo/bin/python cookbook/05_agent_os/factories/agent/03_jwt_role_factory.py
+
+Test:
+    # Generate test tokens (printed at startup) and use them:
+
+    # As viewer (read-only tools)
+    curl -X POST http://localhost:7777/agents/workspace-agent/runs \
+        -H "Authorization: Bearer <VIEWER_TOKEN>" \
+        -F 'message=List the workspace documents' \
+        -F 'factory_input={"theme": "dark"}' \
+        -F 'stream=false'
+
+    # As admin (full tool access)
+    curl -X POST http://localhost:7777/agents/workspace-agent/runs \
+        -H "Authorization: Bearer <ADMIN_TOKEN>" \
+        -F 'message=Add member jane@acme.com as editor' \
+        -F 'factory_input={"theme": "light"}' \
+        -F 'stream=false'
 """
 
 from datetime import UTC, datetime, timedelta
@@ -150,7 +175,7 @@ agent_os = AgentOS(
 )
 app = agent_os.get_app()
 
-# Standard JWTMiddleware -- sets request.state.claims automatically
+# Standard JWTMiddleware -- now sets request.state.claims automatically
 app.add_middleware(
     JWTMiddleware,
     verification_keys=[JWT_SECRET],
@@ -158,6 +183,10 @@ app.add_middleware(
     user_id_claim="sub",
     validate=False,  # Set True in production
 )
+
+# ---------------------------------------------------------------------------
+# Run
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
 
@@ -195,5 +224,10 @@ source .venvs/demo/bin/activate
 # Start Postgres for session storage
 ./cookbook/scripts/run_pgvector.sh
 
+# Set your OpenAI API key
+export OPENAI_API_KEY="your_openai_api_key_here"
+
 python cookbook/05_agent_os/factories/agent/03_jwt_role_factory.py
 ```
+
+Full source: [cookbook/05_agent_os/factories/agent/03_jwt_role_factory.py](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/factories/agent/03_jwt_role_factory.py)

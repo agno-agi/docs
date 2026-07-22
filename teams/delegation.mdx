@@ -19,10 +19,11 @@ When you call `run()` on a team, the leader decides how to handle the request: r
 />
 
 The default flow:
+
 1. Team receives user input
 2. Leader analyzes the input and decides which members to delegate to
 3. Leader formulates a task for each selected member
-4. Members execute and return results (concurrently in async mode)
+4. Members execute and return results. Multiple async member calls can run concurrently.
 5. Leader synthesizes results into a final response
 
 Modes define whether the leader delegates, routes to one member, broadcasts to all members, or runs a task loop.
@@ -34,17 +35,17 @@ You can customize this flow with team modes:
 | Mode | Configuration | Behavior |
 |------|--------------|----------|
 | **Coordinate** (default) | `mode=TeamMode.coordinate` (or omit `mode`) | Leader selects members, formulates tasks, synthesizes results |
-| **Route** | `mode=TeamMode.route` | Leader routes to one member and returns their response directly |
-| **Broadcast** | `mode=TeamMode.broadcast` | Leader delegates the same task to all members simultaneously |
+| **Route** | `mode=TeamMode.route` | When delegating, the leader routes to one member and returns that response directly |
+| **Broadcast** | `mode=TeamMode.broadcast` | When delegating, the leader sends the same task to every member |
 | **Tasks** | `mode=TeamMode.tasks` | Leader builds and executes a shared task list until the goal is complete |
 
-Use `TeamMode` from `agno.team.mode` to set the mode explicitly. The legacy flags still work, but `mode` is the recommended approach.
+Use `TeamMode` from `agno.team.mode` to set the mode explicitly. The leader can still answer directly or use its own tools. The legacy flags still work, but `mode` is the recommended approach.
 
 Member selection and run tracking use member IDs. Set explicit `id` values on members for stable delegation identity.
 
 ## Coordinate Mode (Default)
 
-The leader controls everything: which members to use, what task to give them, and how to combine their outputs.
+The leader selects members, writes their tasks, and combines their outputs.
 
 ```python
 from agno.team import Team
@@ -56,7 +57,7 @@ from agno.tools.yfinance import YFinanceTools
 
 team = Team(
     name="Research Team",
-    model=OpenAIResponses(id="gpt-4o"),
+    model=OpenAIResponses(id="gpt-5.4-mini"),
     members=[
         Agent(name="News Agent", role="Get tech news", tools=[HackerNewsTools()]),
         Agent(name="Finance Agent", role="Get stock data", tools=[YFinanceTools()])
@@ -69,6 +70,7 @@ team.print_response("What's happening with AI companies and their stock prices?"
 ```
 
 Use this when:
+
 - Tasks need decomposition into subtasks
 - You want quality control over the final output
 - The leader should add context or reasoning to member outputs
@@ -97,7 +99,7 @@ from agno.models.openai import OpenAIResponses
 
 team = Team(
     name="Language Router",
-    model=OpenAIResponses(id="gpt-4o"),
+    model=OpenAIResponses(id="gpt-5.4-mini"),
     members=[
         Agent(name="English Agent", role="Answer questions in English"),
         Agent(name="Japanese Agent", role="Answer questions in Japanese"),
@@ -111,8 +113,9 @@ team.print_response("お元気ですか?")        # Routes to Japanese Agent
 ```
 
 Use this when:
+
 - You have specialized agents and want automatic routing
-- The leader shouldn't modify the request or response
+- The member should receive the request unchanged
 - You want lower latency (no synthesis step)
 
 ### Legacy Configuration Flags
@@ -133,7 +136,7 @@ These flags still work, but are overridden by `mode` when set.
   alt="Direct response flow"
 />
 
-**`determine_input_for_members=False`**: Send user input directly to members instead of having the leader formulate a task (works with any mode).
+**`determine_input_for_members=False`**: Send the user-message content to members instead of having the leader formulate a task. This applies to coordinate, route, and broadcast delegation.
 
 <img
   className="block dark:hidden"
@@ -151,15 +154,15 @@ Combine both for a full passthrough:
 
 ```python
 team = Team(
+    members=[...],
     respond_directly=True,
     determine_input_for_members=False,
-    ...
 )
 ```
 
 ## Broadcast Mode
 
-The leader delegates to all members at once. Useful for gathering multiple perspectives or parallel research.
+The leader delegates the same task to all members. Synchronous runs execute members sequentially. Asynchronous runs execute them concurrently.
 
 <img
   className="block dark:hidden"
@@ -185,7 +188,7 @@ from agno.tools.duckduckgo import DuckDuckGoTools
 
 team = Team(
     name="Research Team",
-    model=OpenAIResponses(id="gpt-4o"),
+    model=OpenAIResponses(id="gpt-5.4-mini"),
     members=[
         Agent(name="HackerNews Researcher", role="Find discussions on HackerNews", tools=[HackerNewsTools()]),
         Agent(name="Academic Researcher", role="Find academic papers", tools=[ArxivTools()]),
@@ -200,17 +203,18 @@ asyncio.run(team.aprint_response("Research the current state of AI agents"))
 ```
 
 Use this when:
+
 - You want multiple perspectives on the same topic
 - Members can work independently
-- Parallel execution improves latency
+- You can use `arun()` for concurrent member execution
 
 <Note>
-If both `delegate_to_all_members=True` and `respond_directly=True` are set, broadcast wins and `respond_directly` is disabled.
+If both `delegate_to_all_members=True` and `respond_directly=True` are set and `mode` is not set, Agno logs a warning and disables `respond_directly`. The task is still delegated to all members, but `team.mode` reports `TeamMode.route`. Set `mode` explicitly instead of combining these flags.
 </Note>
 
 ## Tasks Mode
 
-Tasks mode is an autonomous loop where the leader decomposes the goal into tasks, executes them, and marks the goal complete.
+Tasks mode is an autonomous loop where the leader decomposes the goal into tasks, executes them, and marks the goal complete. The run stops if it reaches `max_iterations` first.
 
 ```python
 from agno.team import Team
@@ -220,7 +224,7 @@ from agno.models.openai import OpenAIResponses
 
 team = Team(
     name="Ops Team",
-    model=OpenAIResponses(id="gpt-4o"),
+    model=OpenAIResponses(id="gpt-5.4-mini"),
     members=[
         Agent(name="Research Agent", role="Collect findings"),
         Agent(name="Writer Agent", role="Draft the final report"),
@@ -234,7 +238,7 @@ team.print_response("Compile a short report on recent AI agent frameworks.")
 
 ## Structured Input
 
-When using `determine_input_for_members=False`, you can pass structured Pydantic models directly to members:
+When using `determine_input_for_members=False`, a Pydantic input is serialized to JSON in the user-message content sent to members:
 
 ```python
 from pydantic import BaseModel, Field
@@ -255,9 +259,9 @@ research_agent = Agent(
 
 team = Team(
     name="Research Team",
-    model=OpenAIResponses(id="gpt-4o"),
+    model=OpenAIResponses(id="gpt-5.4-mini"),
     members=[research_agent],
-    determine_input_for_members=False  # Pass input directly to member
+    determine_input_for_members=False  # Pass serialized user-message content to the member
 )
 
 request = ResearchRequest(topic="AI Agents", num_sources=10)
@@ -266,34 +270,27 @@ team.print_response(input=request)
 
 ## Production Considerations
 
-### Token Costs
+### Model Calls
 
-Each mode has different token overhead:
-
-| Mode | Coordination Cost | When to Use |
-|------|------------------|-------------|
-| Coordinate | High (decomposition + synthesis) | Quality matters more than cost |
-| Route | Low (selection only) | Simple routing, cost-sensitive |
-| Broadcast | Medium (synthesis only) | Parallel research, multiple perspectives |
-| Tasks | High (planning + iterative loop) | Multi-step goals with dependencies |
+| Mode | Delegated run pattern |
+|------|-----------------------|
+| Coordinate | Leader selection, one or more member runs, then leader synthesis |
+| Route | Leader selection and one member run. The member response is returned directly |
+| Broadcast | Leader delegation, every member run, then leader synthesis |
+| Tasks | Repeated leader and member calls until completion or `max_iterations` |
 
 ### Latency
 
-- **Coordinate**: Sequential (leader thinks → members execute → leader synthesizes)
-- **Route**: Fast (leader selects → member executes)
-- **Broadcast with async**: Parallel member execution, but synthesis adds latency
-- **Tasks**: Iterative; multiple cycles until tasks are complete or `max_iterations` is reached
+- **Coordinate**: Selection and synthesis add leader model calls. Multiple async delegations can overlap.
+- **Route**: Skips leader synthesis after a member is selected.
+- **Broadcast**: Sync runs members sequentially. Async runs members concurrently before synthesis.
+- **Tasks**: Runs multiple cycles until tasks are complete or `max_iterations` is reached.
 
 ### Error Handling
 
-What happens when a member fails?
-
-- **Coordinate**: Leader can work with partial results from other members
-- **Route**: Failure is returned directly to caller
-- **Broadcast**: Leader synthesizes available results, may note missing data
-- **Tasks**: Task list tracks failed/blocked tasks; the leader can retry or reassign until completion
+Member and team retries are configured separately. Inspect `TeamToolCallError`, `TeamRunError`, member events, and member responses instead of assuming a partial result is complete. Test failure behavior for the selected mode and sync or async path.
 
 ## Developer Resources
 
 - [Team reference](/reference/teams/team)
-- [Team examples](/cookbook/teams/overview)
+- [Team examples](/examples/teams/overview)

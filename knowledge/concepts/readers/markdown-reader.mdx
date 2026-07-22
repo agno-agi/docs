@@ -1,17 +1,17 @@
 ---
 title: Markdown Reader
+description: "Convert Markdown files into knowledge base documents with MarkdownReader."
 ---
 
-The **Markdown Reader** processes Markdown files synchronously and converts them into documents that can be used with Agno's knowledge system.
+Pass `MarkdownReader` to `Knowledge.insert()` to load a Markdown file.
 
-## Code
-
-```python examples/basics/knowledge/concepts/readers/overview/markdown_reader_sync.py
+```python markdown_reader.py
 from pathlib import Path
 
 from agno.agent import Agent
 from agno.knowledge.knowledge import Knowledge
 from agno.knowledge.reader.markdown_reader import MarkdownReader
+from agno.models.openai import OpenAIResponses
 from agno.vectordb.pgvector import PgVector
 
 db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
@@ -23,52 +23,65 @@ knowledge = Knowledge(
     ),
 )
 
-# Add Markdown content to knowledge base
-knowledge.insert(
-    path=Path("README.md"),
-    reader=MarkdownReader(),
-)
-
 agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
     knowledge=knowledge,
     search_knowledge=True,
 )
 
-# Query the knowledge base
-agent.print_response(
-    "What can you tell me about this project?",
-    markdown=True,
-)
+if __name__ == "__main__":
+    markdown_path = Path("tmp/project.md")
+    markdown_path.parent.mkdir(parents=True, exist_ok=True)
+    markdown_path.write_text(
+        "# Project Atlas\n\nProject Atlas tracks deployment readiness.\n",
+        encoding="utf-8",
+    )
+    knowledge.insert(path=markdown_path, reader=MarkdownReader())
+    agent.print_response("What does Project Atlas track?", markdown=True)
 ```
 
-## Usage
+## Run the Agent
 
 <Steps>
   <Snippet file="create-venv-step.mdx" />
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U markdown sqlalchemy psycopg pgvector agno openai
+    uv pip install -U "agno[markdown]" openai pgvector psycopg sqlalchemy
     ```
   </Step>
 
-  <Step title="Set environment variables">
+  <Step title="Export the API key">
     ```bash
-    export OPENAI_API_KEY=xxx
+    export OPENAI_API_KEY=your_openai_api_key_here
     ```
   </Step>
 
   <Snippet file="run-pgvector-step.mdx" />
 
-  <Step title="Run Agent">
-    <CodeGroup>
-    ```bash Mac
-    python examples/basics/knowledge/concepts/readers/overview/markdown_reader_sync.py
+  <Step title="Run the agent">
+    ```bash
+    python markdown_reader.py
     ```
-
-    ```bash Windows
-    python examples/basics/knowledge/concepts/readers/overview/markdown_reader_sync.py
-    ```
-    </CodeGroup>
   </Step>
 </Steps>
+
+## Reader Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `chunking_strategy` | `Optional[ChunkingStrategy]` | `MarkdownChunking()` when available | Strategy used to chunk the Markdown content |
+
+`MarkdownReader` also accepts the base [Reader](/reference/knowledge/reader/base) constructor parameters.
+
+The `agno[markdown]` extra installs `unstructured`, `markdown`, and `aiofiles`, so this setup uses `MarkdownChunking`. With the base `agno` package alone, the reader falls back to `FixedSizeChunking`.
+
+`MarkdownReader.async_read()` uses `aiofiles` when it is installed and falls back to synchronous file I/O otherwise.
+
+## Next Steps
+
+| Task | Guide |
+|------|-------|
+| Configure Markdown chunking | [Markdown Chunking](/knowledge/concepts/chunking/markdown-chunking) |
+| Choose another chunking strategy | [Chunking Overview](/knowledge/concepts/chunking/overview) |
+| Compare available readers | [Readers Overview](/knowledge/concepts/readers/overview) |

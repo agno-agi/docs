@@ -1,15 +1,22 @@
 ---
 title: Async MySQL for Team
-sidebarTitle: Team with AsyncDb
+sidebarTitle: Team
+description: Store team sessions and run history asynchronously in MySQL with AsyncMySQLDb.
 ---
 
-Agno supports using [MySQL](https://www.mysql.com/) asynchronously, with the `AsyncMySQLDb` class.
+`AsyncMySQLDb` stores a Team's sessions and run history asynchronously in [MySQL](https://www.mysql.com/). Use async Team methods such as `arun()` and `aprint_response()`.
 
 ## Usage
 
+Install the `sqlalchemy`, `asyncmy`, `openai`, and `ddgs` packages:
+
+```shell
+uv pip install sqlalchemy asyncmy openai ddgs
+```
+
 ### Run MySQL
 
-Install [docker desktop](https://docs.docker.com/desktop/install/mac-install/) and run **MySQL** on port **3306** using:
+Install [Docker Desktop](https://docs.docker.com/get-started/get-docker/), then start MySQL on port `3306`:
 
 ```bash
 docker run -d \
@@ -19,7 +26,7 @@ docker run -d \
   -e MYSQL_USER=ai \
   -e MYSQL_PASSWORD=ai \
   -p 3306:3306 \
-  -d mysql:8
+  mysql:8
 ```
 
 ```python async_mysql_for_team.py
@@ -32,27 +39,29 @@ from agno.db.base import SessionType
 from agno.db.mysql import AsyncMySQLDb
 from agno.team import Team
 from agno.tools.hackernews import HackerNewsTools
-from agno.tools.hackernews import HackerNewsTools
+from agno.tools.websearch import WebSearchTools
 from pydantic import BaseModel
 
 db_url = "mysql+asyncmy://ai:ai@localhost:3306/ai"
 db = AsyncMySQLDb(db_url=db_url)
+
 
 class Article(BaseModel):
     title: str
     summary: str
     reference_links: List[str]
 
+
 hn_researcher = Agent(
     name="HackerNews Researcher",
-    role="Gets top stories from hackernews.",
+    role="Gets top stories from HackerNews.",
     tools=[HackerNewsTools()],
 )
 
 web_searcher = Agent(
     name="Web Searcher",
     role="Searches the web for information on a topic",
-    tools=[HackerNewsTools()],
+    tools=[WebSearchTools()],
     add_datetime_to_context=True,
 )
 
@@ -61,31 +70,36 @@ hn_team = Team(
     members=[hn_researcher, web_searcher],
     db=db,
     instructions=[
-        "First, search hackernews for what the user is asking about.",
+        "First, search HackerNews for what the user is asking about.",
         "Then, ask the web searcher to search for each story to get more information.",
-        "Finally, provide a thoughtful and engaging summary.",
+        "Finally, summarize each story and include its reference links.",
     ],
     output_schema=Article,
     markdown=True,
     show_members_responses=True,
 )
 
+
 async def main():
-    """Run the agent queries in the same event loop"""
-    session_id = str(uuid.uuid4())
-    await hn_team.aprint_response(
-        "Write an article about the top 2 stories on hackernews", session_id=session_id
-    )
-    session_data = await db.get_session(
-        session_id=session_id, session_type=SessionType.TEAM
-    )
-    print("\n=== SESSION DATA ===")
-    print(session_data.to_dict())
+    try:
+        session_id = str(uuid.uuid4())
+        await hn_team.aprint_response(
+            "Write an article about the top 2 stories on HackerNews",
+            session_id=session_id,
+        )
+        session_data = await db.get_session(
+            session_id=session_id, session_type=SessionType.TEAM
+        )
+        print("\n=== SESSION DATA ===")
+        print(session_data.to_dict())
+    finally:
+        await db.close()
+
 
 if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-## Params
+## Parameters
 
 <Snippet file="db-async-mysql-params.mdx" />

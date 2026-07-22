@@ -1,37 +1,85 @@
 ---
-title: Connecting to Tableplus
-sidebarTitle: Connecting to Tableplus
+title: Connecting to TablePlus
+sidebarTitle: Connecting to TablePlus
+description: "Inspect your pgvector container's sessions and knowledge tables with TablePlus."
 ---
 
-If you want to inspect your pgvector container to explore your storage or knowledge base, you can use TablePlus. Follow these steps:
+Use TablePlus to inspect the tables Agno creates in your pgvector container: sessions, memories, and knowledge embeddings.
 
 ## Step 1: Start Your `pgvector` Container
-
-Run the following command to start a `pgvector` container locally:
 
 ```bash
 docker run -d \
   -e POSTGRES_DB=ai \
   -e POSTGRES_USER=ai \
   -e POSTGRES_PASSWORD=ai \
-  -e PGDATA=/var/lib/postgresql/data/pgdata \
-  -v pgvolume:/var/lib/postgresql/data \
+  -e PGDATA=/var/lib/postgresql \
+  -v pgvolume:/var/lib/postgresql \
   -p 5532:5432 \
   --name pgvector \
-  agno/pgvector:16
+  agnohq/pgvector:18
 ```
 
 - `POSTGRES_DB=ai` sets the default database name.
 - `POSTGRES_USER=ai` and `POSTGRES_PASSWORD=ai` define the database credentials.
-- The container exposes port `5432` (mapped to `5532` on your local machine).
+- The container exposes port `5432`, mapped to `5532` on your local machine.
 
-## Step 2: Configure TablePlus
+## Step 2: Create the Session Table
 
-1. **Open TablePlus**: Launch the TablePlus application.
-2. **Create a New Connection**: Click on the `+` icon to add a new connection.
-3. **Select `PostgreSQL`**: Choose PostgreSQL as the database type.
+Agno creates database tables when a database-backed feature first uses them. Run this example to create the default `agno_sessions` table:
 
-Fill in the following connection details:
+```python create_session.py
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIResponses
+
+db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.4-mini"),
+    db=db,
+)
+agent.print_response("What is the capital of France?", session_id="tableplus-demo")
+```
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai "psycopg[binary]" sqlalchemy
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash macOS / Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```powershell Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code as `create_session.py`, then run:
+    ```bash
+    python create_session.py
+    ```
+  </Step>
+</Steps>
+
+Only table types exercised against this database appear. Run the [Postgres memory guide](/memory/working-with-memories/postgres-memory) to create memory tables and the [PgVector guide](/knowledge/vector-stores/pgvector/overview) to create knowledge tables.
+
+## Step 3: Configure TablePlus
+
+1. Launch TablePlus.
+2. Click the `+` icon to add a new connection.
+3. Choose PostgreSQL as the database type.
+
+Fill in the connection details:
 
 - **Host**: `localhost`
 - **Port**: `5532`
@@ -39,4 +87,4 @@ Fill in the following connection details:
 - **User**: `ai`
 - **Password**: `ai`
 
-<img src="/images/tableplus.png" />
+<img src="/images/tableplus.png" alt="TablePlus PostgreSQL connection settings" />

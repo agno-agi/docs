@@ -1,26 +1,33 @@
 ---
 title: Async Postgres for Team
 sidebarTitle: Team
+description: Store team sessions and run history asynchronously in PostgreSQL with AsyncPostgresDb.
 ---
 
-Agno supports using [PostgreSQL](https://www.postgresql.org/) asynchronously, with the `AsyncPostgresDb` class.
+`AsyncPostgresDb` stores a Team's sessions and run history asynchronously in [PostgreSQL](https://www.postgresql.org/). Use async Team methods such as `arun()` and `aprint_response()`.
 
 ## Usage
 
-### Run PgVector
+Install the `sqlalchemy`, `psycopg`, `openai`, and `ddgs` packages:
 
-Install [docker desktop](https://docs.docker.com/desktop/install/mac-install/) and run **PgVector** on port **5532** using:
+```shell
+uv pip install sqlalchemy psycopg openai ddgs
+```
+
+### Run PostgreSQL
+
+Install [Docker Desktop](https://docs.docker.com/get-started/get-docker/), then start PostgreSQL with pgvector on port `5532`:
 
 ```bash
 docker run -d \
   -e POSTGRES_DB=ai \
   -e POSTGRES_USER=ai \
   -e POSTGRES_PASSWORD=ai \
-  -e PGDATA=/var/lib/postgresql/data/pgdata \
-  -v pgvolume:/var/lib/postgresql/data \
+  -e PGDATA=/var/lib/postgresql \
+  -v pgvolume:/var/lib/postgresql \
   -p 5532:5432 \
   --name pgvector \
-  agnohq/pgvector:16
+  agnohq/pgvector:18
 ```
 
 ```python async_postgres_for_team.py
@@ -32,21 +39,23 @@ from agno.db.postgres import AsyncPostgresDb
 from agno.models.openai import OpenAIResponses
 from agno.team import Team
 from agno.tools.hackernews import HackerNewsTools
-from agno.tools.hackernews import HackerNewsTools
+from agno.tools.websearch import WebSearchTools
 from pydantic import BaseModel
 
 db_url = "postgresql+psycopg_async://ai:ai@localhost:5532/ai"
 db = AsyncPostgresDb(db_url=db_url)
+
 
 class Article(BaseModel):
     title: str
     summary: str
     reference_links: List[str]
 
+
 hn_researcher = Agent(
     name="HackerNews Researcher",
     model=OpenAIResponses(id="gpt-5.2"),
-    role="Gets top stories from hackernews.",
+    role="Gets top stories from HackerNews.",
     tools=[HackerNewsTools()],
 )
 
@@ -54,7 +63,7 @@ web_searcher = Agent(
     name="Web Searcher",
     model=OpenAIResponses(id="gpt-5.2"),
     role="Searches the web for information on a topic",
-    tools=[HackerNewsTools()],
+    tools=[WebSearchTools()],
     add_datetime_to_context=True,
 )
 
@@ -64,20 +73,29 @@ hn_team = Team(
     members=[hn_researcher, web_searcher],
     db=db,
     instructions=[
-        "First, search hackernews for what the user is asking about.",
+        "First, search HackerNews for what the user is asking about.",
         "Then, ask the web searcher to search for each story to get more information.",
-        "Finally, provide a thoughtful and engaging summary.",
+        "Finally, summarize each story and include its reference links.",
     ],
     output_schema=Article,
     markdown=True,
     show_members_responses=True,
 )
 
-asyncio.run(
-    hn_team.aprint_response("Write an article about the top 2 stories on hackernews")
-)
+
+async def main():
+    try:
+        await hn_team.aprint_response(
+            "Write an article about the top 2 stories on HackerNews"
+        )
+    finally:
+        await db.close()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
-## Params
+## Parameters
 
 <Snippet file="db-async-postgres-params.mdx" />

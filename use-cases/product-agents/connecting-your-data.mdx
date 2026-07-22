@@ -3,7 +3,9 @@ title: "Connecting your data"
 description: "Give agents access to external sources using context providers."
 ---
 
-An agent is only as good as the context it has access to. Context providers give the agent live access to a source through two natural-language tools: `query_<source>` for reads and `update_<source>` for writes. A sub-agent behind each provider owns the source's quirks, so the main agent's context stays clean.
+Product agents that work with live business state need current records and product actions. Context providers connect them to sources such as web search, files, databases, Slack, Google Drive, and MCP servers.
+
+In default mode, context providers expose a source through `query_<source>` and, where enabled, `update_<source>`. The query surface can delegate source-specific work to a sub-agent. Set `mode=ContextMode.tools` when the calling agent should receive the provider's underlying tools directly.
 
 ```python
 from agno.agent import Agent
@@ -21,43 +23,53 @@ agent = Agent(
 agent.run("What's the latest pricing for Anthropic's models?")
 ```
 
-## Navigation over search
+## Query sources at run time
 
-Context providers navigate the source at query time, the way a coding agent runs `ls`, `grep`, and `cat`. The state is always live and every citation is a path the user can open.
+Context providers call the configured source when the agent invokes their tools. Freshness depends on the source API, backend, and any caching it applies. Providers can return source URIs or synthesized text; links and citations depend on the provider and its output.
 
-The common "company brain" approach ingests everything into a vector database for top-k retrieval. That works for static corpora. For live product data, the index goes stale and citations point at fragments.
+Vector retrieval remains useful for indexed corpora. Context providers are useful when a task needs source-specific navigation or current records from an external system.
 
-| Win | Why it matters for your product |
-|-----|---------------------------------------------|
-| Live state | The Slack message sent thirty seconds ago is queryable now |
-| Real citations | Every reference is a path the user can open |
-| Permissions stay put | The source enforces who can read what; the agent sees what its credentials see |
+| Behavior | What determines it |
+|----------|--------------------|
+| Source freshness | The source API, provider backend, and caching |
+| Links and citations | The provider's returned documents and the agent's response |
+| Accessible records | The permissions granted to the provider's credentials |
 
-## Why a provider, not raw tools
+## Provider modes
 
-Attaching a source's twelve raw tools to the agent pollutes context and degrades routing. A provider collapses the source to one tool the agent reasons about.
+Each provider ships a recommended tool surface. Override `mode` to trade tool count against direct control.
 
-| Problem with raw tools | What a context provider does |
-|------------------------|------------------------------|
-| Too many tools crowd the prompt | The agent sees one tool: `query_slack` |
-| Overlapping scopes confuse routing | One sub-agent owns one scope; routing is one tool call |
-| Intermediate results bury the task | Pagination and lookups stay inside the sub-agent |
+| Need | Mode |
+|------|------|
+| Provider-recommended tool surface | `ContextMode.default` |
+| One natural-language query tool backed by a sub-agent | `ContextMode.agent` |
+| Direct control over provider operations | `ContextMode.tools` exposes the underlying tools |
+
+```python
+from agno.context import ContextMode
+from agno.context.web import ExaBackend, WebContextProvider
+
+web = WebContextProvider(backend=ExaBackend(), mode=ContextMode.tools)
+```
 
 ## Sources
 
 | Source | Tools | Backed by |
 |--------|-------|-----------|
 | Web | `query_web` | Exa, Parallel, or an MCP search backend |
+| Filesystem | `query_fs` | A local directory of files, read-only |
 | Workspace | `query_workspace` | A filesystem path or repo, read-only |
-| Database | `query_<db>`, `update_<db>` | Postgres, with a read engine and a schema-guarded write engine |
-| Knowledge wiki | `query_knowledge`, `update_knowledge` | Filesystem or a Git repo for durable prose memory |
-| Slack | `query_slack` | Slack API, read-only |
-| Google Drive | `query_gdrive` | A service account, scoped to shared folders |
+| Database | `query_database`, `update_database` | SQLAlchemy read and write engines |
+| Knowledge wiki | `query_wiki`, `update_wiki` | Filesystem, a Git repo, or Notion for durable prose memory |
+| Slack | `query_slack`, `update_slack` | Slack API, reads and writes |
+| Google Drive | `query_gdrive` | A service account or OAuth credentials, read-only |
+| Gmail | `query_gmail`, `update_gmail` | Gmail API with Google credentials; writes are off by default |
+| Google Calendar | `query_calendar`, `update_calendar` | Google Calendar API; writes are off by default |
 | MCP servers | `query_mcp_<slug>` | Any MCP server: Linear, GitHub, Notion |
 
 ## Read-only providers
 
-Providers that can write take `write=False`, which removes the update tool so the agent cannot mutate the source under any prompt. A read-only source like the web has no write tool to begin with. This is how a style guide or a reference corpus stays immutable while still being queryable.
+For providers that support writes, `write=False` removes the update tool from the default surface. A read-only provider such as the web has no update tool. This setting does not change permissions for other clients or integrations that can access the same source.
 
 ## Next steps
 
@@ -70,5 +82,5 @@ Providers that can write take `write=False`, which removes the update tool so th
 
 - [Context engineering](/context/overview)
 - [Context providers cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/12_context)
-- [Context providers in the runtime](/features/context)
-- [Scout: connect MCP servers](/tutorials/scout/connect-mcp-servers)
+- [What are Context Providers?](/context-providers/overview)
+- [Scout: connect MCP servers](/deploy/templates/scout/overview)

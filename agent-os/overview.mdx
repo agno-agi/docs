@@ -1,110 +1,95 @@
 ---
-title: "Overview"
-description: "The production runtime and control plane for your agentic systems."
+title: "AgentOS Runtime"
+sidebarTitle: "Runtime"
+description: "Configure the FastAPI runtime that serves your agents, teams, and workflows."
 ---
 
-AgentOS transforms your agents into a production-ready API.
+Platform teams use AgentOS to serve agents, teams, and workflows through one FastAPI application. The runtime provides execution APIs, persistent state, authorization, tracing, and operational endpoints.
 
-A minimal application looks like this:
-
-```python my_os.py
+```python agent_os.py
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIResponses
 from agno.os import AgentOS
 
+db = SqliteDb(db_file="tmp/agentos.db")
+
+assistant = Agent(
+    id="assistant",
+    model=OpenAIResponses(id="gpt-5.4"),
+)
+
 agent_os = AgentOS(
-    name="My AgentOS",
-    agents=[my_agent],
-    teams=[my_team],
-    workflows=[my_workflow],
-    tracing=True
+    id="product-agent-os",
+    agents=[assistant],
+    db=db,
+    tracing=True,
 )
 
 app = agent_os.get_app()
 
 if __name__ == "__main__":
-    agent_os.serve(app="my_os:app", reload=True)
+    agent_os.serve(app="agent_os:app", reload=True)
 ```
 
-## Parameters
+The AgentOS database becomes the default for local agents, teams, and workflows that do not define their own database. In this example it stores the agent's sessions and the runtime's traces.
 
-| Parameter                 | Type                     | Default | Description                                                    |
-| ------------------------- | ------------------------ | ------- | -------------------------------------------------------------- |
-| `name`                    | `str`                    | `None`  | AgentOS name                                                   |
-| `agents`                  | `List[Agent]`            | `None`  | Agents to include                                              |
-| `teams`                   | `List[Team]`             | `None`  | Teams to include                                               |
-| `workflows`               | `List[Workflow]`         | `None`  | Workflows to include                                           |
-| `db`                      | `BaseDb`                 | `None`  | Database used for the AgentOS                                  |
-| `tracing`                 | `bool`                   | `False` | Enable tracing to AgentOS `db`                                 |
-| `knowledge`               | `List[Knowledge]`        | `None`  | Knowledge bases                                                |
-| `interfaces`              | `List[BaseInterface]`    | `None`  | Agent interfaces ([docs](/agent-os/interfaces/overview))                |
-| `config`                  | `str` or `AgentOSConfig` | `None`  | Configuration path or object ([docs](/agent-os/config))        |
-| `base_app`                | `FastAPI`                | `None`  | Custom FastAPI app ([docs](/agent-os/custom-fastapi/overview)) |
-| `lifespan`                | `Any`                    | `None`  | Lifespan context manager ([docs](/agent-os/lifespan))          |
-| `authorization`           | `bool`                   | `False` | Enable authorization ([docs](/agent-os/security/authorization/overview))                  |
-| `authorization_config`    | `AuthorizationConfig`    | `None`  | JWT verification config                                        |
-| `mcp_server`              | `bool` or `MCPServerConfig` | `False` | Enable MCP server ([docs](/agent-os/mcp/mcp))               |
-| `cors_allowed_origins`    | `List[str]`              | `None`  | Allowed CORS origins                                           |
-| `auto_provision_dbs`      | `bool`                   | `True`  | Auto-provision databases                                       |
-| `run_hooks_in_background` | `bool`                   | `False` | Run hooks in background                                        |
+## Choose Runtime Capabilities
 
-See [AgentOS class reference](/reference/agent-os/agent-os) for details.
+Add capabilities as the application needs them:
 
-## Methods
+| Requirement | AgentOS configuration | Guide |
+|---|---|---|
+| Serve agents, teams, and workflows | `agents`, `teams`, `workflows` | [Using the API](/agent-os/using-the-api) |
+| Use a shared default database | `db` | [Database](/database/overview) |
+| Require JWT authorization | `authorization=True` | [Authorization](/agent-os/security/authorization/overview) |
+| Store execution traces | `tracing=True` | [Tracing](/agent-os/tracing/overview) |
+| Expose an MCP server | `mcp_server=True` | [AgentOS as MCP Server](/agent-os/mcp/mcp) |
+| Mount product and messaging interfaces | `interfaces=[...]` | [Interfaces](/agent-os/interfaces/overview) |
+| Run cron schedules | `scheduler=True` | [Scheduler](/agent-os/scheduler/overview) |
+| Extend an existing FastAPI application | `base_app=app` | [Bring Your Own FastAPI App](/agent-os/custom-fastapi/overview) |
 
-### `get_app()`
+## Database Behavior
 
-Returns the configured FastAPI application.
+| Configuration | Behavior |
+|---|---|
+| Set `db` on AgentOS | Components without a database inherit the AgentOS database |
+| Set a database on a component | That component keeps its own database |
+| Set `db` and `tracing=True` | AgentOS stores all traces in the AgentOS database |
+| Omit `db` with `tracing=True` | AgentOS uses the first component database it discovers |
+| Keep `auto_provision_dbs=True` | AgentOS creates the required tables when the application starts |
 
-### `serve()`
+Set an explicit AgentOS database when the runtime manages several component databases. This gives tracing, service accounts, and scheduled jobs a predictable store.
 
-Starts the AgentOS server.
+## Runtime Methods
 
-| Parameter | Type               | Default     | Description                         |
-| --------- | ------------------ | ----------- | ----------------------------------- |
-| `app`     | `str` or `FastAPI` | Required    | FastAPI app instance or module path |
-| `host`    | `str`              | `localhost` | Host to bind                        |
-| `port`    | `int`              | `7777`      | Port to bind                        |
-| `workers` | `int`              | `None`      | Number of workers                   |
-| `reload`  | `bool`             | `False`     | Enable auto-reload                  |
+| Method | Purpose |
+|---|---|
+| `get_app()` | Build and return the configured FastAPI application |
+| `serve()` | Start the application with Uvicorn |
+| `get_routes()` | Return the FastAPI routes mounted by AgentOS |
+| `resync(app)` | Discover, initialize, and configure agents, teams, workflows, databases, and knowledge on an existing app |
 
-#### Environment variable fallbacks
+### Host and Port
 
-When `host` or `port` are not passed explicitly, `serve()` reads from environment variables before using defaults.
+`serve()` reads `AGENT_OS_HOST` and `AGENT_OS_PORT`. Environment variables take precedence over method arguments.
 
-| Environment Variable | Fallback For | Default     |
-| -------------------- | ------------ | ----------- |
-| `AGENT_OS_HOST`      | `host`       | `localhost` |
-| `AGENT_OS_PORT`      | `port`       | `7777`      |
-
-Precedence: explicit argument > environment variable > default value.
-
-This is useful for containerized deployments where host and port are configured externally:
+| Setting | Default |
+|---|---|
+| `AGENT_OS_HOST` | `localhost` |
+| `AGENT_OS_PORT` | `7777` |
 
 ```bash
-# In your Dockerfile or orchestrator config
-ENV AGENT_OS_HOST=0.0.0.0
-ENV AGENT_OS_PORT=8000
+export AGENT_OS_HOST=0.0.0.0
+export AGENT_OS_PORT=8000
+python agent_os.py
 ```
 
-```python my_os.py
-# No host/port needed. serve() reads from AGENT_OS_HOST and AGENT_OS_PORT.
-if __name__ == "__main__":
-    agent_os.serve(app="my_os:app", reload=True)
-```
+## Next Steps
 
-### `resync()`
-
-Reloads agents, teams, workflows, and resources.
-
-## Configuration
-
-The `config` parameter accepts a YAML path or `AgentOSConfig` object. Use it to configure prompts, display names, and database settings.
-
-```python
-agent_os = AgentOS(
-    name="My AgentOS",
-    agents=[my_agent],
-    config="config.yaml",  # or AgentOSConfig(...)
-)
-```
-
-See [Configuration](/agent-os/config) for details.
+| Task | Guide |
+|---|---|
+| Call the runtime from an application | [Using the API](/agent-os/using-the-api) |
+| Add AgentOS to an existing backend | [Bring Your Own FastAPI App](/agent-os/custom-fastapi/overview) |
+| Configure the Control Plane experience | [AgentOS Configuration](/agent-os/config) |
+| Review every constructor parameter | [AgentOS class reference](/reference/agent-os/agent-os) |

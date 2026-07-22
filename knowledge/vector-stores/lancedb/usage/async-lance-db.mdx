@@ -1,57 +1,73 @@
 ---
-title: LanceDB Async
+title: Async LanceDB Usage
+description: "Insert knowledge and run an agent with Agno's async methods and a LanceDB backend."
 ---
 
-## Code
-
-```python cookbook/08_knowledge/vector_db/lance_db/lance_db.py
+```python async_lance_db.py
 import asyncio
 
 from agno.agent import Agent
 from agno.knowledge.knowledge import Knowledge
 from agno.vectordb.lancedb import LanceDb
 
-vector_db = LanceDb(
-    table_name="vectors",
-    uri="tmp/lancedb",
-)
-
 knowledge = Knowledge(
-    name="Basic SDK Knowledge Base",
-    description="Agno 2.0 Knowledge Implementation with LanceDB",
-    vector_db=vector_db,
+    vector_db=LanceDb(
+        table_name="async_recipes",
+        uri="tmp/lancedb",
+    )
 )
+agent = Agent(knowledge=knowledge, search_knowledge=True)
 
-agent = Agent(knowledge=knowledge)
+
+async def main() -> None:
+    await knowledge.ainsert(
+        name="Recipes",
+        url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
+        metadata={"doc_type": "recipe_book"},
+    )
+    await agent.aprint_response(
+        "List the ingredients for Massaman Gai.",
+        markdown=True,
+    )
+
 
 if __name__ == "__main__":
-    asyncio.run(
-        knowledge.ainsert(
-            name="Recipes",
-            url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
-            metadata={"doc_type": "recipe_book"},
-        )
-    )
-
-    asyncio.run(
-        agent.aprint_response("List down the ingredients to make Massaman Gai", markdown=True)
-    )
+    asyncio.run(main())
 ```
 
-## Usage
+`Knowledge.ainsert()` awaits reader and embedding work. In Agno v2.7.2, `LanceDb.async_upsert()` calls the synchronous upsert and table methods, and `LanceDb.async_search()` calls the synchronous search directly.
+
+<Warning>
+For LanceDB Cloud async calls, set `LANCEDB_API_KEY` in the environment. Passing only `api_key=` authenticates the synchronous connection, while the v2.7.2 adapter does not forward that value to `lancedb.connect_async()`.
+</Warning>
+
+## Run the Example
 
 <Steps>
   <Snippet file="create-venv-step.mdx" />
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U lancedb pypdf openai agno
+    uv pip install -U agno lancedb openai pypdf
     ```
   </Step>
 
-  <Step title="Run Agent">
+  <Step title="Export the API key">
     ```bash
-    python cookbook/08_knowledge/vector_db/lance_db/lance_db.py
+    export OPENAI_API_KEY=your_openai_api_key_here
+    ```
+  </Step>
+
+  <Step title="Run the example">
+    ```bash
+    python async_lance_db.py
     ```
   </Step>
 </Steps>
+
+## Next Steps
+
+| Task | Guide |
+|------|-------|
+| Use the synchronous API | [LanceDB usage](/knowledge/vector-stores/lancedb/usage/lance-db) |
+| Configure search behavior | [LanceDB overview](/knowledge/vector-stores/lancedb/overview) |

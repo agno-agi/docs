@@ -1,59 +1,78 @@
 ---
 title: Could Not Connect To Docker
 sidebarTitle: Docker Connection Error
+description: "Diagnose Docker daemon connection errors on macOS, Linux, and Windows."
 ---
 
-If you have Docker up and running and get the following error, please read on:
+Agno uses the [Docker Engine SDK for Python](https://docs.docker.com/reference/api/engine/sdk/) to run containers. This error means the SDK cannot reach the Docker daemon:
 
 ```bash
 ERROR    Could not connect to docker. Please confirm docker is installed and running
 ERROR    Error while fetching server API version: ('Connection aborted.', FileNotFoundError(2, 'No such file or directory'))
 ```
 
-## Quick fix
+Run this command in the same shell where you run Agno:
 
-Create the `/var/run/docker.sock` symlink using:
-
-```shell
-sudo ln -s "$HOME/.docker/run/docker.sock" /var/run/docker.sock
+```bash
+docker version
 ```
 
-In 99% of the cases, this should work. If it doesnt, try:
+A working connection prints both `Client` and `Server` sections. Use the instructions for your Docker installation if the `Server` section is missing or reports a connection error.
 
-```shell
-sudo chown $USER /var/run/docker.sock
+## macOS with Docker Desktop
+
+1. Start Docker Desktop and wait for the engine to report that it is running.
+2. Open **Settings > Advanced**.
+3. Enable **Allow the default Docker socket to be used**, then apply the change.
+4. Run `docker version` again.
+
+This setting creates `/var/run/docker.sock` for SDK clients that use the default socket path. See Docker's [macOS permission requirements](https://docs.docker.com/desktop/setup/install/mac-permission-requirements/#installing-symlinks) and [Advanced settings](https://docs.docker.com/desktop/settings-and-maintenance/settings/#advanced).
+
+If you cannot enable the setting, point the SDK to Docker Desktop's per-user socket before running Agno:
+
+```bash
+export DOCKER_HOST="unix://$HOME/.docker/run/docker.sock"
 ```
 
-## Full details
+## Linux with Docker Desktop
 
-Agno uses [docker-py](https://github.com/docker/docker-py) to run containers, and if the `/var/run/docker.sock` is missing or has incorrect permissions, it cannot connect to docker.
+Docker Desktop for Linux uses the `desktop-linux` context and a per-user socket instead of `/var/run/docker.sock`.
 
-**To fix, please create the `/var/run/docker.sock` file using:**
+Start Docker Desktop, then run:
 
-```shell
-sudo ln -s "$HOME/.docker/run/docker.sock" /var/run/docker.sock
+```bash
+docker context use desktop-linux
+export DOCKER_HOST="unix://$HOME/.docker/desktop/docker.sock"
+docker version
 ```
 
-If that does not work, check the permissions using `ls -l /var/run/docker.sock`.
+The context configures the Docker CLI. `DOCKER_HOST` configures SDK clients such as the one Agno uses. See [Using Docker SDKs with Docker Desktop for Linux](https://docs.docker.com/desktop/troubleshoot-and-support/faqs/linuxfaqs/#how-do-i-use-docker-sdks-with-docker-desktop-for-linux).
 
-If the `/var/run/docker.sock` does not exist, check if the `$HOME/.docker/run/docker.sock` file is missing. If its missing, please reinstall Docker.
+## Linux with Docker Engine
 
-**If none of this works and the `/var/run/docker.sock` exists:**
+Start the Docker daemon:
 
-- Give your user permissions to the `/var/run/docker.sock` file:
-
-```shell
-sudo chown $USER /var/run/docker.sock
+```bash
+sudo systemctl start docker
+docker version
 ```
 
-- Give your user permissions to the docker group:
+If `sudo docker version` succeeds but `docker version` fails with a permission error, add your user to the `docker` group:
 
-```shell
-sudo usermod -a -G docker $USER
+```bash
+sudo usermod -aG docker "$USER"
 ```
 
-## More info
+Sign out and back in, then run `docker version` again. The `docker` group grants root-level privileges. Review Docker's [Linux post-installation steps](https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user) before adding users to it.
 
-- [Docker-py Issue](https://github.com/docker/docker-py/issues/3059#issuecomment-1294369344)
-- [Stackoverflow answer](https://stackoverflow.com/questions/48568172/docker-sock-permission-denied/56592277#56592277)
+See [Start the daemon](https://docs.docker.com/engine/daemon/start/) for distributions that do not use `systemd`.
 
+## Windows with Docker Desktop
+
+Start Docker Desktop from the Start menu and wait for the engine to report that it is running. Run `docker version` from the same PowerShell, Command Prompt, or WSL distribution where you run Agno.
+
+Windows clients use the `npipe:////./pipe/docker_engine` named pipe by default. Do not create a `/var/run/docker.sock` symlink in PowerShell or Command Prompt. Remove a `DOCKER_HOST` value that points to a Unix socket, then retry. See Docker's [daemon socket reference](https://docs.docker.com/reference/cli/docker/#environment-variables).
+
+If you run Agno inside WSL, enable that distribution under **Docker Desktop > Settings > Resources > WSL Integration**, apply the change, and retry from the WSL shell. See [Enable Docker in a WSL 2 distribution](https://docs.docker.com/desktop/features/wsl/#enable-docker-in-a-wsl-2-distribution).
+
+If Docker Desktop itself does not start, use the [Docker Desktop troubleshooting guide](https://docs.docker.com/desktop/troubleshoot-and-support/troubleshoot/).

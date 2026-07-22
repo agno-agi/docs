@@ -1,36 +1,46 @@
 ---
 title: "Querying your data"
-description: "Give an agent read-only SQL access and schema introspection"
+description: "Give an agent read-only SQL access and schema introspection."
 ---
 
 `SQLTools` connects an agent to a database. Point it at a read-only connection and the agent can introspect the schema and run queries.
+
+```bash
+uv pip install "agno[openai,psycopg,sql]"
+```
 
 ```python
 from agno.agent import Agent
 from agno.db.postgres import PostgresDb
 from agno.models.openai import OpenAIResponses
 from agno.tools.sql import SQLTools
+from sqlalchemy import create_engine
+
+warehouse_url = "postgresql+psycopg://readonly@warehouse/analytics"
+readonly_engine = create_engine(
+    warehouse_url,
+    connect_args={"options": "-c default_transaction_read_only=on"},
+)
 
 agent = Agent(
     model=OpenAIResponses(id="gpt-5.5"),
     db=PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai"),
-    tools=[
-        SQLTools(db_url="postgresql+psycopg://readonly@warehouse/analytics")
-    ],
+    tools=[SQLTools(db_engine=readonly_engine)],
     instructions=(
         "Introspect the schema before writing SQL. Answer with the numbers "
-        "and the exact query you ran. Never guess a column name."
+        "and the exact query you ran. Never guess a column name. Pass "
+        "limit=None to run_sql_query when the answer needs every row."
     ),
 )
 
 agent.print_response("How many active subscriptions are on the Pro plan?")
 ```
 
-The agent's `db` and the `SQLTools` connection are separate. `db` stores the agent's own sessions and learnings. `SQLTools` points at the warehouse you are answering questions about. Keep them distinct.
+The agent's `db` and the `SQLTools` connection are separate. `db` stores the agent's sessions. `SQLTools` points at the warehouse you are answering questions about. Keep them distinct.
 
 ## Introspect before generating
 
-A data agent that guesses column names is wrong confidently. `SQLTools` ships `list_tables` and `describe_table` so the agent grounds SQL in the real schema. The instruction to introspect first is what makes it reliable.
+`SQLTools` provides `list_tables` and `describe_table` so the agent can read the current schema before generating SQL. The instruction above makes schema introspection part of each request.
 
 | Tool | Use |
 |------|-----|
@@ -38,9 +48,11 @@ A data agent that guesses column names is wrong confidently. `SQLTools` ships `l
 | `describe_table` | Get exact column names and types |
 | `run_sql_query` | Execute the generated SQL |
 
+`run_sql_query(query, limit=10)` returns at most 10 rows unless the agent passes a different `limit`. Pass `limit=None` for the full result set. Otherwise a `GROUP BY` over more than 10 groups comes back truncated with no sign that rows were dropped, so tell the agent when an answer needs every row.
+
 ## Scope the connection
 
-The cleanest boundary is the connection itself. The `readonly` Postgres role has no write grant, so the connection physically cannot write, regardless of what the model is prompted to do. For the full read vs write split, see [Safe data access](/use-cases/data-agents/safe-data-access).
+`SQLTools` executes any SQL the engine permits. It does not classify statements as read-only. This engine starts transactions with `default_transaction_read_only=on`, which blocks ordinary write statements. Because that setting is a configurable session default, use a non-owner database role with no write grants as the hard boundary. See [Safe data access](/use-cases/data-agents/safe-data-access) for the full read and write split.
 
 ## Next steps
 
@@ -52,5 +64,5 @@ The cleanest boundary is the connection itself. The `readonly` Postgres role has
 
 ## Developer Resources
 
-- [SQL tools cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/91_tools)
-- [Dash: the multi-agent data team](/tutorials/dash/overview)
+- [SQL tools cookbook](https://github.com/agno-agi/agno/blob/main/cookbook/91_tools/sql_tools.py)
+- [Dash: the multi-agent data team](/deploy/templates/dash/overview)

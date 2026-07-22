@@ -1,5 +1,6 @@
 ---
 title: Zoom
+description: "Schedule, list, and manage Zoom meetings and recordings with ZoomTools using Server-to-Server OAuth credentials."
 ---
 
 **Zoom** enables an Agent to interact with Zoom, allowing it to schedule meetings, manage recordings, and handle various meeting-related operations through the Zoom API. The toolkit uses Zoom's Server-to-Server OAuth authentication for secure API access.
@@ -11,7 +12,7 @@ The Zoom toolkit requires the following setup:
 1. Install required dependencies:
 
 ```shell
-uv pip install requests
+uv pip install requests openai
 ```
 
 2. Set up Server-to-Server OAuth app in Zoom Marketplace:
@@ -20,9 +21,9 @@ uv pip install requests
    - Click "Develop" → "Build App"
    - Choose "Server-to-Server OAuth" app type
    - Configure the app with required scopes:
-     - `/meeting:write:admin`
-     - `/meeting:read:admin`
-     - `/recording:read:admin`
+     - `meeting:write:admin`
+     - `meeting:read:admin`
+     - `cloud_recording:read:admin`
    - Note your Account ID, Client ID, and Client Secret
 
 3. Set up environment variables:
@@ -50,7 +51,7 @@ zoom_tools = ZoomTools(
 agent = Agent(tools=[zoom_tools])
 
 # Schedule a meeting
-response = agent.print_response("""
+agent.print_response("""
 Schedule a team meeting with the following details:
 - Topic: Weekly Team Sync
 - Time: Tomorrow at 2 PM UTC
@@ -65,11 +66,13 @@ Schedule a team meeting with the following details:
 | `account_id`    | `Optional[str]` | `None`  | Zoom account ID. If not provided, uses ZOOM_ACCOUNT_ID environment variable.       |
 | `client_id`     | `Optional[str]` | `None`  | Zoom client ID. If not provided, uses ZOOM_CLIENT_ID environment variable.         |
 | `client_secret` | `Optional[str]` | `None`  | Zoom client secret. If not provided, uses ZOOM_CLIENT_SECRET environment variable. |
+| `timeout`       | `int`           | `30`    | Per-request HTTP timeout in seconds.                                               |
 
 ## Toolkit Functions
 
 | Function                 | Description                                       |
 | ------------------------ | ------------------------------------------------- |
+| `get_access_token`       | Get or refresh the Server-to-Server OAuth access token |
 | `schedule_meeting`       | Schedule a new Zoom meeting                       |
 | `get_upcoming_meetings`  | Get a list of upcoming meetings                   |
 | `list_meetings`          | List all meetings based on type                   |
@@ -81,14 +84,10 @@ You can use `include_tools` or `exclude_tools` to modify the list of tools the a
 
 ## Rate Limits
 
-The Zoom API has rate limits that vary by endpoint and account type:
+The Zoom API groups endpoints into Light, Medium, Heavy, and Resource-intensive categories, each with its own requests-per-second limit that scales with your account plan. Each endpoint's documentation lists which category it falls under.
 
-- Server-to-Server OAuth apps: 100 requests/second
-- Meeting endpoints: Specific limits apply based on account type
-- Recording endpoints: Lower rate limits, check Zoom documentation
-
-For detailed rate limits, refer to [Zoom API Rate Limits](https://developers.zoom.us/docs/api/#rate-limits).
+For exact per-plan values, refer to [Zoom API Rate Limits](https://developers.zoom.us/docs/api/rate-limits/).
 
 ## Developer Resources
 
-- View [Tools](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/tools/zoom.py)
+- [Tools](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/tools/zoom.py)

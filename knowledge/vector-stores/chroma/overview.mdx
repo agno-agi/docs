@@ -7,7 +7,7 @@ description: Use ChromaDB as a vector database for your Knowledge Base.
 ## Setup
 
 ```shell
-uv pip install chromadb
+uv pip install -U chromadb pypdf openai agno
 ```
 
 ## Example
@@ -44,7 +44,7 @@ agent.print_response("List down the ingredients to make Massaman Gai", markdown=
 vector_db = knowledge.vector_db
 vector_db.delete_by_name("Recipes")
 # or
-vector_db.delete_by_metadata({"user_tag": "Recipes from website"})
+vector_db.delete_by_metadata({"doc_type": "recipe_book"})
 ```
 
 ### For hosted ChromaDB (Chroma Cloud)
@@ -53,16 +53,21 @@ from chromadb.config import Settings
 
 vector_db = ChromaDb(
     collection="vectors",
+    tenant="your-tenant",
+    database="your-database",
     settings=Settings(
         chroma_api_impl="chromadb.api.fastapi.FastAPI",
-        chroma_server_host="your-tenant-id.api.trychroma.com",
+        chroma_server_host="api.trychroma.com",
         chroma_server_http_port=443,
         chroma_server_ssl_enabled=True,
         chroma_client_auth_provider="chromadb.auth.token_authn.TokenAuthClientProvider",
-        chroma_client_auth_credentials="your-api-key"
-    )
+        chroma_client_auth_credentials="your-api-key",
+        chroma_auth_token_transport_header="X-Chroma-Token",
+    ),
 )
 ```
+
+The `tenant`, `database`, and `settings` arguments are forwarded to the ChromaDB client.
 
 <Card title="Async Support ⚡">
   <div className="mt-2">
@@ -71,8 +76,6 @@ vector_db = ChromaDb(
     </p>
 
     ```python async_chroma_db.py
-    # install chromadb - `pip install chromadb`
-
     import asyncio
 
     from agno.agent import Agent
@@ -93,7 +96,7 @@ vector_db = ChromaDb(
     if __name__ == "__main__":
         # Comment out after first run
         asyncio.run(
-            knowledge.ainsert(url="https://docs.agno.com/introduction/agents.md")
+            knowledge.ainsert(url="https://docs.agno.com/agents/overview.md")
         )
 
         # Create and use the agent

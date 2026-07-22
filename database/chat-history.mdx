@@ -4,7 +4,7 @@ description: "Include previous messages in context for multi-turn conversations.
 keywords: [chat history, history, conversation history, multi-turn, context]
 ---
 
-Chat history enables multi-turn conversations. Without it, each run is isolated—the agent has no idea what was said before. With a database and `add_history_to_context=True`, previous messages are automatically included in every request.
+Chat history gives each run messages from earlier runs in the same session. Configure a database and set `add_history_to_context=True` to add those messages to the model context.
 
 ## Enable Chat History
 
@@ -19,7 +19,7 @@ from agno.db.sqlite import SqliteDb
 agent = Agent(
     db=SqliteDb(db_file="agent.db"),
     add_history_to_context=True,
-    num_history_runs=3,  # Include last 3 turns
+    num_history_runs=3,  # Include the last 3 runs
 )
 
 agent.print_response("My name is Sarah", session_id="chat_123")
@@ -30,9 +30,10 @@ from agno.team import Team
 from agno.db.sqlite import SqliteDb
 
 team = Team(
+    members=[...],
     db=SqliteDb(db_file="team.db"),
     add_history_to_context=True,
-    num_history_runs=3,  # Include last 3 turns
+    num_history_runs=3,  # Include the last 3 runs
 )
 
 team.print_response("My name is Sarah", session_id="chat_123")
@@ -41,7 +42,7 @@ team.print_response("What's my name?", session_id="chat_123")  # Team knows: "Sa
 </CodeGroup>
 
 <Note>
-Chat history requires a database. Without one, there's nothing to retrieve.
+Chat history requires a database that stores the session runs.
 </Note>
 
 ## Control History Size
@@ -57,10 +58,11 @@ More history means more tokens. Use these parameters to control what gets includ
 agent = Agent(
     db=SqliteDb(db_file="agent.db"),
     add_history_to_context=True,
-    num_history_runs=5,
     num_history_messages=20,  # Cap at 20 messages total
 )
 ```
+
+Set `num_history_runs` or `num_history_messages`, not both. If both are set, `num_history_runs` is used.
 
 <Tip>
 Start with `num_history_runs=3`. Increase only if your agent needs more context. For long conversations, combine limited history with [session summaries](/sessions/session-summaries).
@@ -84,20 +86,22 @@ Search across multiple sessions for context that spans conversations:
 ```python
 agent = Agent(
     db=SqliteDb(db_file="agent.db"),
-    search_session_history=True,
-    num_history_sessions=2,  # Search last 2 sessions
+    search_past_sessions=True,
+    num_past_sessions_to_search=2,  # Search last 2 sessions
 )
 ```
 
+The agent gets `search_past_sessions` and `read_past_session` tools to look up previous conversations.
+
 <Warning>
-Keep `num_history_sessions` low (2-3). Cross-session history can quickly fill your context window.
+Keep `num_past_sessions_to_search` low (2-3). Cross-session history can quickly fill your context window.
 </Warning>
 
 ## Programmatic Access
 
 Retrieve history directly in your code:
 ```python
-# Get user-assistant message pairs
+# Get user and assistant messages
 chat_history = agent.get_chat_history(session_id="chat_123")
 
 # Get all messages from the session
@@ -114,6 +118,7 @@ Use this for building custom UIs, debugging, or exporting transcripts.
 Teams support additional history sharing between members:
 ```python
 team = Team(
+    members=[...],
     db=SqliteDb(db_file="team.db"),
     add_history_to_context=True,
     num_history_runs=3,
@@ -121,7 +126,7 @@ team = Team(
 )
 ```
 
-With `add_team_history_to_members=True`, member agents see the full team conversation, not just their own interactions.
+With `add_team_history_to_members=True`, member agents see the full team conversation rather than only their own interactions.
 
 ## Workflow History
 
@@ -148,7 +153,7 @@ Workflow history passes previous workflow outputs to steps, not conversation mes
 | Chat-style products | `add_history_to_context=True`, `num_history_runs=3` |
 | Long conversations | Limited history + [session summaries](/sessions/session-summaries) |
 | Tool-heavy agents | Add `max_tool_calls_from_history` to reduce noise |
-| Cross-session recall | `search_session_history=True`, `num_history_sessions=2` |
+| Cross-session recall | `search_past_sessions=True`, `num_past_sessions_to_search=2` |
 | Selective lookup | `read_chat_history=True` (agent decides when to look up) |
 | Custom UIs | Use `get_chat_history()` programmatically |
 

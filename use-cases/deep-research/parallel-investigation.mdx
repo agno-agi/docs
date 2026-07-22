@@ -1,9 +1,9 @@
 ---
 title: "Parallel investigation"
-description: "Run independent specialists at the same time, then synthesize, so deep research stays fast."
+description: "Run independent specialist steps concurrently, then synthesize their results."
 ---
 
-Most research work is independent. The fundamental analyst does not need the technical analyst's output to do its job. Run them at the same time. A `Parallel` block in a Workflow does exactly that: every step inside it runs concurrently, and the pipeline waits for all of them before moving on.
+Place independent specialist steps in a Workflow `Parallel` block. Each step in the block runs concurrently, and the Workflow waits for the block to finish before continuing. In this review, fundamental and technical analysis both start after market assessment and complete before risk assessment.
 
 ```python
 from agno.workflow import Parallel, Step, Workflow
@@ -26,37 +26,38 @@ result = workflow.run("Run a full review on NVDA")
 final = result.content  # the last step's output
 
 # Gotcha: result.step_results is positional, and a Parallel block is one
-# nested list, not flattened:
+# StepOutput whose .steps holds the sub-steps, not flattened:
 #   [ StepOutput("Market Assessment"),
-#     [ StepOutput("Fundamental Analysis"), StepOutput("Technical Analysis") ],
+#     StepOutput("Deep Dive", steps=[StepOutput("Fundamental Analysis"),
+#                                    StepOutput("Technical Analysis")]),
 #     StepOutput("Risk Assessment") ]
 ```
 
-The market assessment runs first because risk and the deep dive depend on it. Fundamental and technical analysis have no dependency on each other, so they run together. Risk waits for both.
+Market assessment runs first. Fundamental and technical analysis both use that market context, so they run together. Risk assessment starts after both analyses finish.
 
 ## Two ways to fan out
 
 | Shape | Use when |
 |-------|----------|
-| `Parallel` step in a Workflow | The set of investigations is fixed and the pipeline is auditable |
+| `Parallel` step in a Workflow | The investigations and their position in the step graph are fixed |
 | Broadcast Team | A lead should synthesize independent opinions on one question |
 
-A Broadcast team is the adaptive version: every member evaluates the same question simultaneously and the lead reconciles them. See [Orchestration patterns](/use-cases/deep-research/orchestration-patterns#broadcast-everyone-evaluates-the-lead-synthesizes).
+A Broadcast team is the adaptive version: every member evaluates the same question simultaneously and the lead reconciles them. See [Orchestration patterns](/use-cases/deep-research/orchestration-patterns#broadcast-independent-evaluations-one-synthesis).
 
-## Sequence only what depends
+## Model the dependencies
 
-The skill is dependency analysis, not maximum parallelism. Put a step in `Parallel` only when it does not read another step's output. Keep the genuine dependencies sequential.
+Use the step graph to express data dependencies. Group steps that share the same prerequisite in `Parallel`. Place downstream steps after the block.
 
 | Step | Depends on | Runs |
 |------|-----------|------|
-| Market assessment | Nothing | First, alone |
+| Market assessment | Research request | First, alone |
 | Fundamental analysis | Market context | In parallel with technical |
 | Technical analysis | Market context | In parallel with fundamental |
 | Risk assessment | Both analyses | After the parallel block |
 
-## Why this matters for deep research
+## Reduce research latency
 
-Deep research is slow because it is thorough. Parallelism is what keeps thoroughness affordable in wall-clock time. A five-specialist review that runs the three independent specialists at once finishes in roughly the time of the longest one, not the sum of all five.
+Running independent analyses concurrently reduces wall-clock latency while preserving each specialist's full analysis.
 
 ## Next steps
 

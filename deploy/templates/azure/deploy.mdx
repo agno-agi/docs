@@ -1,21 +1,24 @@
 ---
 title: "AgentOS on Azure Container Apps"
 sidebarTitle: "Deploy"
-description: "Run AgentOS locally using Docker and deploy to production on Azure Container Apps."
+description: "AgentOS template for teams that develop locally with Docker and deploy to production on Azure Container Apps."
 ---
 
-AgentOS is a secure and scalable backend for running agents. The [agentos-azure](https://github.com/agno-agi/agentos-azure) codebase runs AgentOS locally using Docker and deploys to production on Azure Container Apps. It comes with:
+**The [agentos-azure](https://github.com/agno-agi/agentos-azure) template is for teams that develop locally with Docker and deploy to production on Azure Container Apps.**
 
-- **2 platform agents** that build and run the platform for you. **Agent Builder** creates agents, teams, and workflows. **Platform Manager** monitors and manages the platform.
-- **5 [skills](/deploy/templates/improve-agents)** that let coding agents build, test, and improve the platform for you.
+It includes:
 
-Because the trace data, agent code, evals, and system logs all live in one place, the platform can inspect and improve itself automatically.
+- **Agent Builder**, which creates agents, teams, and workflows.
+- **Platform Manager**, which inspects and explains the platform, eval history, deployment checks, and schedules.
+- **Six [skills](/deploy/templates/improve-agents)** for setting up, building, testing, and improving the project with a coding agent.
+
+Coding agents can use these skills with the AgentOS API, evals, traces, and container logs to inspect and improve the platform.
 
 Everything runs in your own Azure subscription, and one script provisions the network, database, registry, and app into a single resource group.
 
 ## Get started
 
-The fastest way to get started is using a coding agent. Copy the prompt below into Claude Code, Cursor or Codex and it'll take you from zero to a running platform.
+Copy the prompt below into Claude Code, Cursor, or Codex to configure and run the template with a coding agent.
 
 <Snippet file="setup-prompt-azure.mdx" />
 
@@ -74,7 +77,7 @@ Prints `MCP OK` with the tool count and a real agent answer through the MCP endp
 | MCP clients on your machine | `uvx agno connect` auto-detects Claude Code, Claude Desktop, Codex, and Cursor and registers `http://localhost:8000/mcp`. Verify from the app: "can you access my agentos mcp?" |
 | AgentOS UI | [os.agno.com](https://os.agno.com) → **Connect OS** → `http://localhost:8000`. |
 | claude.ai and ChatGPT | Hosted sessions can't reach localhost. Deploy to production first, then add `https://<container-app-domain>/mcp` as a custom connector and approve the consent page with the `MCP_CONNECT_SECRET` that `up.sh` generates. |
-| Slack | Set `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET`. See [Slack setup](/deploy/interfaces/slack/overview). |
+| Slack | Set `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET`. See [Slack setup](/agent-os/interfaces/slack/setup). |
 | Your product | Call the AgentOS REST API with 80+ endpoints. Browse them at `/docs`. |
 
 ## Deploy to production
@@ -99,13 +102,13 @@ The first run takes 15-20 minutes (Postgres Flexible Server is the long pole) an
   </Step>
 
   <Step title="Mint your JWT key">
-The script pauses for a `JWT_VERIFICATION_KEY`. Token-Based Authorization is on by default and without a verification key or a `JWT_JWKS_FILE`, the platform refuses to serve production traffic.
+The script pauses for a `JWT_VERIFICATION_KEY`. Token-Based Authorization is on by default. Production startup requires that verification key or a readable JWKS file at the container path in `JWT_JWKS_FILE`; otherwise the process exits.
 
 1. Open [os.agno.com](https://os.agno.com), click **Connect OS** → **Live**, enter your Container Apps URL, and name it **Live AgentOS**.
 2. Go to **Settings** → **OS & Security** and turn on **Token-Based Authorization (JWT)**.
-3. Copy the public key and paste the full PEM into the `up.sh` prompt. The script saves it to your env file, stores it as a Container Apps secret, and applies it together with `AGENTOS_URL` in a single second revision.
+3. Copy the public key and paste the full PEM into the `up.sh` prompt. The script saves it to your env file, stores it as a Container Apps secret, and applies it together with `AGENTOS_URL` in a second revision.
 
-If your env file already sets `JWT_JWKS_FILE`, the script skips the pause and applies it in the same revision. If you skip the prompt, add `JWT_VERIFICATION_KEY` or `JWT_JWKS_FILE` to `.env.production` later and run `./scripts/azure/env-sync.sh`.
+If your env file already sets `JWT_JWKS_FILE`, the script skips the pause, but it only applies the path. Bake or mount the file before deployment. If you skip the prompt, add `JWT_VERIFICATION_KEY` to `.env.production` and run `./scripts/azure/env-sync.sh`. Adding JWKS later requires an image rebuild or mount plus a redeploy. Env sync alone is insufficient.
 
 <Note>Live AgentOS connections are a paid feature. Use code `PLATFORM30` for one month off.</Note>
   </Step>

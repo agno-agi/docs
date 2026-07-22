@@ -41,7 +41,7 @@ result = agent.run(build_input(prompt, a, b)).content
 # Preference(winner='A')
 ```
 
-Each `(prompt, A, B, winner)` row is the input format for reward-model training and DPO. Agno produces the row; the trainer is out of scope.
+Each `(prompt, A, B, winner)` row is a raw pairwise comparison. Convert the winner into the `chosen` and `rejected` fields or other schema required by your reward-model or DPO trainer. Ties usually need separate handling.
 
 ## Add a rationale
 
@@ -55,12 +55,12 @@ from pydantic import BaseModel, Field
 
 class Preference(BaseModel):
     winner: Literal["A", "B", "tie"] = Field(..., description="Better response")
-    rationale: str = Field(..., description="Why the winner is better")
+    rationale: str = Field(..., description="Why this comparison received its verdict")
 ```
 
-## Score against a rubric
+## Compare against a rubric
 
-When preference should follow explicit criteria, put the rubric in the instructions and keep the output binary.
+When preference should follow explicit criteria, put the rubric in the instructions and keep the output constrained to `A`, `B`, or `tie`.
 
 ```python
 instructions = """\
@@ -80,7 +80,7 @@ they differ. Use 'tie' only if they are equal on all three.
 |----------|--------|
 | Bare preference label | `Literal["A", "B", "tie"]` |
 | Preference plus justification | Add a `rationale` field |
-| Criteria-driven preference | Rubric in instructions, binary output |
+| Criteria-driven preference | Rubric in instructions, closed-set output |
 
 ## Reducing position bias
 

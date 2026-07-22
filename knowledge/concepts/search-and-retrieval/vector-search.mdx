@@ -1,14 +1,16 @@
 ---
 title: Vector Search
-description: Find content by semantic meaning using vector similarity.
+description: Rank knowledge documents by the distance between query and document embeddings.
 keywords: [vector search, semantic search, embeddings, similarity search]
 ---
 
-Vector search finds content by meaning rather than exact word matches. When you search for "How do I reset my password?", it finds documents about "changing credentials" even if those exact words don't appear.
+Vector search compares an embedded query with the embeddings stored for knowledge documents.
 
 ```python
 from agno.knowledge.knowledge import Knowledge
 from agno.vectordb.pgvector import PgVector, SearchType
+
+db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
 
 knowledge = Knowledge(
     vector_db=PgVector(
@@ -21,34 +23,39 @@ knowledge = Knowledge(
 
 ## How It Works
 
-1. **Query embedding**: Your search query is converted to a vector (list of numbers capturing meaning)
-2. **Similarity matching**: The system finds stored vectors closest to the query vector
-3. **Ranking**: Results are ordered by cosine similarity (how close the meanings are)
+1. The embedder converts the query to a vector.
+2. The vector database compares it with stored document vectors.
+3. The database orders results using its configured distance metric.
 
-The embedding model determines how well semantic relationships are captured. General-purpose models like OpenAI's `text-embedding-3-small` work well for most content.
+PgVector uses cosine distance by default. It also supports L2 distance and maximum inner product.
 
 ## When to Use Vector Search
 
-| Scenario | Why Vector Search Works |
-|----------|------------------------|
-| Conceptual questions | Matches meaning, not just words |
-| Users phrase things differently | Finds relevant content regardless of terminology |
-| Natural language queries | Understands intent behind questions |
-| Content with varied vocabulary | Connects synonyms and related concepts |
+| Query Pattern | Why Test Vector Search |
+|---------------|------------------------|
+| Conceptual questions | Embedding similarity can retrieve related language |
+| Natural-language queries | The query and documents use the same embedding space |
+| Varied vocabulary | Relevant documents may use different terms than the query |
 
-Use **hybrid search** if you also need exact term matching (product names, error codes).
-Use **keyword search** if you need precise text matching only.
+Test hybrid or keyword search when specific tokens such as IDs and error codes affect relevance.
 
 ## Configuration
 
 ### Basic Setup
 
+Set the API key used by `OpenAIEmbedder`:
+
+```bash
+export OPENAI_API_KEY=your_openai_api_key_here
+```
+
 ```python
 from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.vectordb.pgvector import PgVector, SearchType
 
 vector_db = PgVector(
     table_name="docs",
-    db_url=db_url,
+    db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
     search_type=SearchType.vector,
     embedder=OpenAIEmbedder(id="text-embedding-3-small"),
 )
@@ -56,14 +63,22 @@ vector_db = PgVector(
 
 ### With Reranking
 
-Add a reranker to improve result ordering:
+Set the API keys used by the default OpenAI embedder and Cohere reranker:
+
+```bash
+export OPENAI_API_KEY=your_openai_api_key_here
+export COHERE_API_KEY=your_cohere_api_key_here
+```
+
+Apply `CohereReranker` to the vector-search candidates:
 
 ```python
 from agno.knowledge.reranker.cohere import CohereReranker
+from agno.vectordb.pgvector import PgVector, SearchType
 
 vector_db = PgVector(
     table_name="docs",
-    db_url=db_url,
+    db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
     search_type=SearchType.vector,
     reranker=CohereReranker(),
 )
@@ -71,7 +86,24 @@ vector_db = PgVector(
 
 ## Example
 
+<Steps>
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno cohere openai pgvector psycopg pypdf sqlalchemy
+    ```
+  </Step>
+
+  <Snippet file="run-pgvector-step.mdx" />
+
+  <Step title="Export the OpenAI API key">
+    ```bash
+    export OPENAI_API_KEY=your_openai_api_key_here
+    ```
+  </Step>
+</Steps>
+
 ```python vector_search.py
+from agno.knowledge.embedder.openai import OpenAIEmbedder
 from agno.knowledge.knowledge import Knowledge
 from agno.vectordb.pgvector import PgVector, SearchType
 
@@ -86,12 +118,10 @@ knowledge = Knowledge(
     ),
 )
 
-# Load content
 knowledge.insert(
     url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
 )
 
-# Search by semantic meaning
 results = knowledge.search("chicken coconut soup", max_results=5)
 for doc in results:
     print(doc.content[:200])

@@ -1,0 +1,79 @@
+---
+title: Workflow Automation
+description: "Run repeatable processes with workflows, background execution, human review, and schedules."
+---
+
+Engineering and operations teams use workflows to automate processes that need consistent execution and a traceable result. Agno combines model-driven steps with branches, loops, parallel work, approval gates, background execution, schedules, and persisted run history.
+
+```python incident_workflow.py
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.workflow import Workflow
+
+triage = Agent(
+    name="Triage",
+    model="openai:gpt-5.5",
+    instructions="Extract the issue, severity, and responsible team.",
+)
+
+action_plan = Agent(
+    name="Action Plan",
+    model="openai:gpt-5.5",
+    instructions="Turn the triage result into a short action plan.",
+)
+
+incident_workflow = Workflow(
+    name="Incident Triage",
+    steps=[triage, action_plan],
+    db=SqliteDb(db_file="tmp/workflows.db"),
+)
+
+incident_workflow.print_response(
+    "Checkout requests return HTTP 500 after the latest deployment."
+)
+```
+
+Create a virtual environment, install the OpenAI, AgentOS, and SQLite integrations, and set `OPENAI_API_KEY` before running the workflow:
+
+```bash
+uv venv --python 3.12
+uv pip install -U "agno[openai,os,sqlite]"
+uv run python incident_workflow.py
+```
+
+Each step receives the previous step's output. The database stores workflow runs so they can be inspected after execution.
+
+## Choose the control model
+
+| Requirement | Use |
+|-------------|-----|
+| One model-driven task | [Agent](/agents/overview) |
+| Dynamic delegation among specialists | [Team](/teams/overview) |
+| Fixed steps, branches, loops, or parallel groups | [Workflow](/workflows/overview) |
+
+## Production building blocks
+
+| Need | Capability |
+|------|------------|
+| Continue work after the client disconnects | [Background execution](/background-execution/overview) |
+| Pause before sensitive or irreversible work | [Human-in-the-loop workflows](/workflows/hitl/overview) |
+| Run recurring jobs | [Scheduling](/features/scheduling) |
+| Trigger work from another service | [Agent API](/features/api) |
+| Inspect runs, latency, and failures | [Observability](/features/observability) |
+
+## Common patterns
+
+| Pattern | Workflow shape |
+|---------|----------------|
+| Intake and triage | Extract input, classify it, route it, and request review when needed. |
+| Data enrichment | Fetch records, enrich them in parallel, validate output, and persist results. |
+| Recurring reports | Collect data, analyze it, render a report, and run on a schedule. |
+| Long-running research | Start in the background, persist events, and reconnect to the stream. |
+
+## Next steps
+
+| Task | Guide |
+|------|-------|
+| Define workflow steps | [Building workflows](/workflows/building-workflows) |
+| Choose an orchestration pattern | [Workflow patterns](/workflows/workflow-patterns/overview) |
+| Run a workflow through AgentOS | [Using the AgentOS API](/agent-os/using-the-api) |

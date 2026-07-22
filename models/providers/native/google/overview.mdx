@@ -13,12 +13,12 @@ Gemini stands out with native multimodal understanding across images, video, and
 
 | Model | Best For | Key Strengths |
 |-------|----------|---------------|
-| `gemini-2.0-flash` | Most use-cases | Balanced speed and intelligence |
-| `gemini-2.0-flash-lite` | High-volume tasks | Most cost-effective |
+| `gemini-3.5-flash` | Most use cases | Balanced speed and intelligence |
+| `gemini-2.5-flash-lite` | High-volume tasks | Most cost-effective |
 | `gemini-2.5-pro` | Complex tasks | Advanced reasoning, largest context |
 | `gemini-3-pro-preview` | Latest features | Thought signatures support |
 
-Google has rate limits on their APIs. See the [docs](https://ai.google.dev/gemini-api/docs/rate-limits) for more information.
+Google has rate limits on their APIs. See the [rate limit docs](https://ai.google.dev/gemini-api/docs/rate-limits).
 
 ## Installation
 
@@ -58,7 +58,7 @@ To use Vertex AI in Google Cloud:
 gcloud auth application-default login
 ```
 
-3. Enable Vertex AI API and set the project ID environment variable (alternatively, you can set `project_id` in the `Agent` config):
+3. Enable Vertex AI API and set the project ID environment variable (alternatively, you can set `project_id` on the `Gemini` model):
 
 Export the following variables:
 
@@ -76,7 +76,7 @@ from agno.models.google import Gemini
 
 agent = Agent(
     model=Gemini(
-        id="gemini-2.0-flash",
+        id="gemini-3.5-flash",
         vertexai=True,
         project_id="your-project-id",
         location="us-central1",
@@ -97,7 +97,7 @@ from agno.agent import Agent
 from agno.models.google import Gemini
 
 agent = Agent(
-    model=Gemini(id="gemini-2.0-flash-001"),
+    model=Gemini(id="gemini-3.5-flash"),
     markdown=True,
 )
 
@@ -142,7 +142,7 @@ from agno.media import Image
 from agno.models.google import Gemini
 
 agent = Agent(
-    model=Gemini(id="gemini-2.0-flash"),
+    model=Gemini(id="gemini-3.5-flash"),
     markdown=True,
 )
 
@@ -188,6 +188,8 @@ if run_response and isinstance(run_response, RunOutput) and run_response.images:
             image.save("generated_image.png")
 ```
 
+This example uses Pillow to save the image. Install it with `uv pip install pillow`.
+
 Read more about image generation [here](/models/providers/native/google/usage/image-generation).
 
 ## Grounding and Search
@@ -201,19 +203,19 @@ from agno.agent import Agent
 from agno.models.google import Gemini
 
 agent = Agent(
-    model=Gemini(id="gemini-2.0-flash-exp", search=True),
+    model=Gemini(id="gemini-3.5-flash", search=True),
     markdown=True,
 )
 
 agent.print_response("What are the latest developments in AI?")
 ```
 
-For legacy models, use `grounding=True` instead:
+`grounding=True` uses the legacy grounding API. Prefer `search` on Gemini 2.0+ models:
 
 ```python
 agent = Agent(
     model=Gemini(
-        id="gemini-2.0-flash",
+        id="gemini-3.5-flash",
         grounding=True,
         grounding_dynamic_threshold=0.7,  # Optional: set threshold
     ),
@@ -340,7 +342,7 @@ client = genai.Client()
 # Upload file and create cache
 txt_file = client.files.upload(file="large_document.txt")
 cache = client.caches.create(
-    model="gemini-2.0-flash-001",
+    model="gemini-3.5-flash",
     config={
         "system_instruction": "You are an expert at analyzing transcripts.",
         "contents": [txt_file],
@@ -350,7 +352,7 @@ cache = client.caches.create(
 
 # Use the cached content - no need to resend the file
 agent = Agent(
-    model=Gemini(id="gemini-2.0-flash-001", cached_content=cache.name),
+    model=Gemini(id="gemini-3.5-flash", cached_content=cache.name),
 )
 run_output = agent.run("Find a lighthearted moment from this transcript")
 ```
@@ -397,7 +399,7 @@ class MovieScript(BaseModel):
     storyline: str
 
 agent = Agent(
-    model=Gemini(id="gemini-2.0-flash-001"),
+    model=Gemini(id="gemini-3.5-flash"),
     output_schema=MovieScript,
 )
 ```
@@ -414,12 +416,12 @@ from agno.models.google import Gemini
 from agno.tools.hackernews import HackerNewsTools
 
 agent = Agent(
-    model=Gemini(id="gemini-2.0-flash-001"),
+    model=Gemini(id="gemini-3.5-flash"),
     tools=[HackerNewsTools()],
     markdown=True,
 )
 
-agent.print_response("Whats happening in France?")
+agent.print_response("Summarize the top stories on HackerNews.")
 ```
 
 Read more about tool use [here](/models/providers/native/google/usage/tool-use).
@@ -428,13 +430,14 @@ Read more about tool use [here](/models/providers/native/google/usage/tool-use).
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `id` | `str` | `"gemini-2.0-flash-001"` | The id of the Gemini model to use |
+| `id` | `str` | `"gemini-3.5-flash"`     | The id of the Gemini model to use |
 | `name` | `str` | `"Gemini"` | The name of the model |
 | `provider` | `str` | `"Google"` | The provider of the model |
 | `api_key` | `Optional[str]` | `None` | Google API key (defaults to `GOOGLE_API_KEY` env var) |
 | `vertexai` | `bool` | `False` | Use Vertex AI instead of AI Studio |
 | `project_id` | `Optional[str]` | `None` | Google Cloud project ID for Vertex AI |
 | `location` | `Optional[str]` | `None` | Google Cloud region for Vertex AI |
+| `credentials` | `Optional[Credentials]` | `None` | Google Cloud service account credentials for Vertex AI |
 | `temperature` | `Optional[float]` | `None` | Controls randomness in the model's output |
 | `top_p` | `Optional[float]` | `None` | Controls diversity via nucleus sampling |
 | `top_k` | `Optional[int]` | `None` | Controls diversity via top-k sampling |
@@ -450,6 +453,9 @@ Read more about tool use [here](/models/providers/native/google/usage/tool-use).
 | `url_context` | `bool` | `False` | Enable URL context extraction |
 | `vertexai_search` | `bool` | `False` | Enable Vertex AI Search |
 | `vertexai_search_datastore` | `Optional[str]` | `None` | Vertex AI Search datastore path |
+| `parallel_search` | `bool` | `False` | Enable Parallel web search grounding (Vertex AI only) |
+| `parallel_api_key` | `Optional[str]` | `None` | Parallel API key (defaults to `PARALLEL_API_KEY` env var) |
+| `parallel_config` | `Optional[Dict[str, Any]]` | `None` | Custom configuration for Parallel search, e.g. domain filtering |
 | `file_search_store_names` | `Optional[list[str]]` | `None` | File Search store names for RAG |
 | `file_search_metadata_filter` | `Optional[str]` | `None` | Metadata filter for File Search |
 | `response_modalities` | `Optional[list[str]]` | `None` | Output types: `"TEXT"`, `"IMAGE"`, `"AUDIO"` |
@@ -465,5 +471,6 @@ Read more about tool use [here](/models/providers/native/google/usage/tool-use).
 | `request_params` | `Optional[Dict[str, Any]]` | `None` | Additional parameters for the request |
 | `timeout` | `Optional[float]` | `None` | Request timeout in seconds |
 | `client_params` | `Optional[Dict[str, Any]]` | `None` | Additional parameters for client configuration |
+| `client` | `Optional[Client]` | `None` | Preconfigured `google.genai` client to use instead of creating one |
 
 `Gemini` is a subclass of the [Model](/reference/models/model) class and has access to the same params.

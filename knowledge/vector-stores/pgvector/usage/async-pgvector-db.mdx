@@ -1,56 +1,66 @@
 ---
-title: PgVector Async
+title: Async PgVector Usage
+description: "Insert knowledge and run an agent with Agno's async methods and a PgVector backend."
 ---
 
-## Code
-
-```python cookbook/08_knowledge/vector_db/pgvector/async_pg_vector.py
+```python async_pgvector_db.py
 import asyncio
 
 from agno.agent import Agent
 from agno.knowledge.knowledge import Knowledge
 from agno.vectordb.pgvector import PgVector
 
-db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
-
-vector_db = PgVector(table_name="recipes", db_url=db_url)
-
-knowledge_base = Knowledge(
-    vector_db=vector_db,
+knowledge = Knowledge(
+    vector_db=PgVector(
+        table_name="async_recipes",
+        db_url="postgresql+psycopg://ai:ai@localhost:5532/ai",
+    )
 )
+agent = Agent(knowledge=knowledge, search_knowledge=True)
 
-agent = Agent(knowledge=knowledge_base)
+
+async def main() -> None:
+    await knowledge.ainsert(
+        url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf"
+    )
+    await agent.aprint_response("How do I make pad thai?", markdown=True)
+
 
 if __name__ == "__main__":
-
-    asyncio.run(
-        knowledge_base.ainsert(url="https://docs.agno.com/introduction/agents.md")
-    )
-
-    asyncio.run(
-        agent.aprint_response("What is the purpose of an Agno Agent?", markdown=True)
-    )
+    asyncio.run(main())
 ```
 
-## Usage
+`Knowledge.ainsert()` awaits reader and embedding work. PgVector uses a synchronous SQLAlchemy engine for database writes. `PgVector.async_search()` runs the synchronous search method in a worker thread.
+
+## Run the Example
 
 <Steps>
   <Snippet file="create-venv-step.mdx" />
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U psycopg2-binary pgvector pypdf openai agno
+    uv pip install -U agno openai pgvector psycopg pypdf sqlalchemy
     ```
   </Step>
+
   <Snippet file="run-pgvector-docker.mdx" />
-  <Step title="Set environment variables">
+
+  <Step title="Export the API key">
     ```bash
-    export OPENAI_API_KEY=xxx
+    export OPENAI_API_KEY=your_openai_api_key_here
     ```
   </Step>
-  <Step title="Run Agent">
+
+  <Step title="Run the example">
     ```bash
-    python cookbook/08_knowledge/vector_db/pgvector/async_pg_vector.py
+    python async_pgvector_db.py
     ```
   </Step>
 </Steps>
+
+## Next Steps
+
+| Task | Guide |
+|------|-------|
+| Use the synchronous API | [PgVector usage](/knowledge/vector-stores/pgvector/usage/pgvector-db) |
+| Configure search behavior | [PgVector overview](/knowledge/vector-stores/pgvector/overview) |

@@ -1,23 +1,26 @@
 ---
 title: Agent with Storage
+description: Persist a Groq agent's chat history to Postgres and reuse it across runs.
 ---
+
+Set `db` and `add_history_to_context=True` so the agent recalls earlier messages in the same session.
 
 ## Code
 
-```python cookbook/11_models/groq/db.py
+```python db.py
 from agno.agent import Agent
 from agno.db.postgres import PostgresDb
 from agno.models.groq import Groq
-from agno.tools.hackernews import HackerNewsTools
+from agno.tools.websearch import WebSearchTools
 
 # Setup the database
 db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
 db = PostgresDb(db_url=db_url)
 
 agent = Agent(
-    model=Groq(id="llama-3.3-70b-versatile"),
+    model=Groq(id="openai/gpt-oss-120b"),
     db=db,
-    tools=[HackerNewsTools()],
+    tools=[WebSearchTools()],
     add_history_to_context=True,
 )
 agent.print_response("How many people live in Canada?")
@@ -37,7 +40,7 @@ agent.print_response("What is their national anthem called?")
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U sqlalchemy groq agno
+    uv pip install -U ddgs psycopg sqlalchemy groq agno
     ```
   </Step>
 
@@ -47,17 +50,23 @@ agent.print_response("What is their national anthem called?")
       -e POSTGRES_DB=ai \
       -e POSTGRES_USER=ai \
       -e POSTGRES_PASSWORD=ai \
-      -e PGDATA=/var/lib/postgresql/data/pgdata \
-      -v pgvolume:/var/lib/postgresql/data \
+      -e PGDATA=/var/lib/postgresql \
+      -v pgvolume:/var/lib/postgresql \
       -p 5532:5432 \
       --name pgvector \
-      agnohq/pgvector:16
+      agnohq/pgvector:18
     ```
   </Step>
 
   <Step title="Run Agent">
+    Save the code above as `db.py`, then run:
     ```bash
-    python cookbook/11_models/groq/db.py
+    python db.py
     ```
   </Step>
 </Steps>
+
+## Developer Resources
+
+- [Agent storage](/features/storage)
+- [WebSearchTools](/tools/toolkits/search/websearch)

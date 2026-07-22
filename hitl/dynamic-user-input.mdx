@@ -31,10 +31,9 @@ The key difference from other HITL patterns: the *agent* decides what fields to 
 from typing import List
 
 from agno.agent import Agent
-from agno.tools.function import UserInputField
 from agno.models.openai import OpenAIResponses
-from agno.tools import tool
-from agno.tools.toolkit import Toolkit
+from agno.tools import Toolkit
+from agno.tools.function import UserInputField
 from agno.tools.user_control_flow import UserControlFlowTools
 from agno.utils import pprint
 
@@ -121,7 +120,7 @@ while run_response.is_paused:
         break
 ```
 
-In this example, the agent identifies that it's missing the email subject and recipient address, so it proactively calls `get_user_input` to collect that information. Pretty smart!
+In this example, the agent identifies that it's missing the email subject and recipient address, so it proactively calls `get_user_input` to collect that information.
 
 ## Understanding the `get_user_input` Tool
 
@@ -144,7 +143,7 @@ The agent constructs these fields intelligently based on what it needs. For exam
 ]
 ```
 
-These fields then appear in `tool.user_input_schema` as `UserInputField` objects that you can iterate through and fill. For a detailed breakdown of the `UserInputField` structure, see [Understanding UserInputField](/hitl/user-input#understanding-userinputfield).
+These fields then appear in `requirement.user_input_schema` as `UserInputField` objects that you can iterate through and fill. For a detailed breakdown of the `UserInputField` structure, see [Understanding UserInputField](/hitl/user-input#understanding-userinputfield).
 
 ## The While Loop Pattern
 
@@ -172,7 +171,7 @@ The agent could:
 4. Pause again to request those fields
 5. Complete the task
 
-This multi-round capability makes the pattern extremely flexible.
+This multi-round capability lets the agent adapt what it asks for based on prior answers.
 
 <Note>
 **Important**: Always check `field.value` before prompting. If the agent has already filled a field based on context (like extracting it from the user's message), `field.value` won't be `None` and you shouldn't overwrite it.
@@ -215,10 +214,10 @@ UserControlFlowTools(enable_get_user_input=False)
 
 ## Handling Pre-Filled Values
 
-The agent can pre-fill some fields based on the conversation context. This works the same way as in [User Input](/hitl/user-input#handling-pre-filled-values)—always check `field.value` before prompting:
+The agent can pre-fill some fields based on the conversation context. This works the same way as in [User Input](/hitl/user-input#handling-pre-filled-values). Always check `field.value` before prompting:
 
 ```python
-for field in tool.user_input_schema:
+for field in requirement.user_input_schema:
     if field.value is None:
         user_value = input(f"Please enter {field.name}: ")
         field.value = user_value
@@ -238,7 +237,7 @@ For a more detailed explanation of how pre-filled values work, see the [Handling
 
 ## Async Support
 
-Dynamic user input works seamlessly with async agents. Use `arun()` and `acontinue_run()` for asynchronous flows:
+Dynamic user input works with async agents. Use `arun()` and `acontinue_run()` for asynchronous flows:
 
 ```python
 from agno.agent import Agent
@@ -268,10 +267,12 @@ while run_response.is_paused:
 Dynamic user input also works with streaming. The agent will emit events until it needs user input, then pause:
 
 ```python
+from agno.run.agent import RunPausedEvent
+
 run_response = agent.run("Send an email", stream=True)
 
 for run_event in run_response:
-    if run_event.is_paused:
+    if isinstance(run_event, RunPausedEvent):
         for requirement in run_event.active_requirements:
             if requirement.needs_user_input:
                 for field in requirement.user_input_schema:
@@ -319,3 +320,5 @@ A tool can only use one of these patterns at a time.
 
 ## Developer Resources
 
+- [UserControlFlowTools reference](/tools/toolkits/others/user-control-flow)
+- [User Input](/hitl/user-input)

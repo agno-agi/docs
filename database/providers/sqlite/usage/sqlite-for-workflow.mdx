@@ -1,11 +1,20 @@
 ---
 title: SQLite for Workflow
 sidebarTitle: Workflow
+description: Store workflow sessions and run history in a local SQLite database with SqliteDb.
 ---
 
-Agno supports using SQLite as a storage backend for Workflows using the `SqliteDb` class.
+`SqliteDb` stores a Workflow's sessions and run history in SQLite.
 
 ## Usage
+
+`SqliteDb` uses `db_engine`, then `db_url`, then `db_file`. If none is provided, it creates `agno.db` in the current directory. The following example uses `db_file`.
+
+Install dependencies:
+
+```shell
+uv pip install agno openai ddgs sqlalchemy
+```
 
 ```python sqlite_for_workflow.py
 from agno.agent import Agent
@@ -13,7 +22,7 @@ from agno.db.sqlite import SqliteDb
 from agno.models.openai import OpenAIResponses
 from agno.team import Team
 from agno.tools.hackernews import HackerNewsTools
-from agno.tools.hackernews import HackerNewsTools
+from agno.tools.websearch import WebSearchTools
 from agno.workflow.step import Step
 from agno.workflow.workflow import Workflow
 
@@ -21,15 +30,15 @@ db = SqliteDb(db_file="tmp/workflow.db")
 
 # Define agents
 hackernews_agent = Agent(
-    name="Hackernews Agent",
+    name="HackerNews Agent",
     model=OpenAIResponses(id="gpt-5.2"),
     tools=[HackerNewsTools()],
-    role="Extract key insights and content from Hackernews posts",
+    role="Extract key insights and content from HackerNews posts",
 )
 web_agent = Agent(
     name="Web Agent",
     model=OpenAIResponses(id="gpt-5.2"),
-    tools=[HackerNewsTools()],
+    tools=[WebSearchTools()],
     role="Search the web for the latest news and trends",
 )
 
@@ -37,7 +46,7 @@ web_agent = Agent(
 research_team = Team(
     name="Research Team",
     members=[hackernews_agent, web_agent],
-    instructions="Research tech topics from Hackernews and the web",
+    instructions="Research tech topics from HackerNews and the web",
 )
 
 content_planner = Agent(
@@ -69,12 +78,11 @@ if __name__ == "__main__":
         steps=[research_step, content_planning_step],
     )
     content_creation_workflow.print_response(
-        input="AI trends in 2024",
+        input="Recent AI trends",
         markdown=True,
     )
-
 ```
 
-## Params
+## Parameters
 
 <Snippet file="db-sqlite-params.mdx" />

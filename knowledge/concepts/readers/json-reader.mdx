@@ -1,12 +1,11 @@
 ---
 title: JSON Reader
+description: "Convert JSON files into knowledge base documents with JSONReader."
 ---
 
-The **JSON Reader** processes JSON files and converts them into documents that can be used with Agno's knowledge system.
+`JSONReader` creates one source document for a top-level object or each item in a top-level array, then applies fixed-size chunking.
 
-## Code
-
-```python examples/basics/knowledge/concepts/readers/overview/json_reader.py
+```python json_reader.py
 import json
 from pathlib import Path
 
@@ -15,58 +14,49 @@ from agno.knowledge.reader.json_reader import JSONReader
 reader = JSONReader()
 
 json_path = Path("tmp/test.json")
-test_data = {"key": "value"}
-json_path.write_text(json.dumps(test_data))
+json_path.parent.mkdir(parents=True, exist_ok=True)
+json_path.write_text(
+    json.dumps([{"name": "Jordan"}, {"name": "Taylor"}]),
+    encoding="utf-8",
+)
 
-try:
-    print("Starting read...")
-    documents = reader.read(json_path)
-
-    if documents:
-        for doc in documents:
-            print(doc.name)
-            print(doc.content)
-            print(f"Content length: {len(doc.content)}")
-            print("-" * 80)
-    else:
-        print("No documents were returned")
-
-except Exception as e:
-    print(f"Error type: {type(e)}")
-    print(f"Error occurred: {str(e)}")
+documents = reader.read(json_path)
+for document in documents:
+    print(document.meta_data["page"], document.content)
 ```
 
-## Usage
+## Run the Reader
 
 <Steps>
   <Snippet file="create-venv-step.mdx" />
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U agno openai
+    uv pip install -U agno
     ```
   </Step>
 
-  <Step title="Set environment variables">
+  <Step title="Run the script">
     ```bash
-    export OPENAI_API_KEY=xxx
+    python json_reader.py
     ```
-  </Step>
-
-  <Step title="Run Agent">
-    <CodeGroup>
-    ```bash Mac
-    python examples/basics/knowledge/concepts/readers/overview/json_reader.py
-    ```
-
-    ```bash Windows
-    python examples/basics/knowledge/concepts/readers/overview/json_reader.py
-    ```
-    </CodeGroup>
   </Step>
 </Steps>
 
-## Params
+## Reader Parameters
 
 <Snippet file="json-reader-reference.mdx" />
 
+<Note>
+Use a top-level object or array. In v2.7.2, number, boolean, and null roots raise a `TypeError`, and a string root splits into one document per character.
+</Note>
+
+`JSONReader.async_read()` runs the synchronous reader in a worker thread.
+
+## Next Steps
+
+| Task | Guide |
+|------|-------|
+| Configure fixed-size chunking | [Fixed-Size Chunking](/knowledge/concepts/chunking/fixed-size-chunking) |
+| Inspect the complete API | [JSON Reader Reference](/reference/knowledge/reader/json) |
+| Compare available readers | [Readers Overview](/knowledge/concepts/readers/overview) |

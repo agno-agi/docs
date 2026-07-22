@@ -15,13 +15,15 @@ If you have questions during your migration, we can help! See [Get Help](/get-he
 
 If you are already using Agno, you can upgrade to v2 by running:
 ```bash
-pip install -U agno
+pip install -U "agno[os,agui]" openai
 ```
 
 Otherwise, you can install the latest version of Agno v2 by running:
 ```bash
-pip install agno
+pip install "agno[os,agui]" openai
 ```
+
+The `os` and `agui` extras and `openai` cover the examples in this guide.
 
 ## Migrating your Agno DB
 
@@ -63,25 +65,25 @@ run_output: RunOutput = agent.run(...)
 ```
 
 1.3. The events you get when streaming an Agent result have been renamed:
-- `RunOutputStartedEvent` → `RunStartedEvent`
-- `RunOutputCompletedEvent` → `RunCompletedEvent`
-- `RunOutputErrorEvent` → `RunErrorEvent`
-- `RunOutputCancelledEvent` → `RunCancelledEvent`
-- `RunOutputContinuedEvent` → `RunContinuedEvent`
-- `RunOutputPausedEvent` → `RunPausedEvent`
-- `RunOutputContentEvent` → `RunContentEvent`
+- `RunResponseStartedEvent` → `RunStartedEvent`
+- `RunResponseCompletedEvent` → `RunCompletedEvent`
+- `RunResponseErrorEvent` → `RunErrorEvent`
+- `RunResponseCancelledEvent` → `RunCancelledEvent`
+- `RunResponseContinuedEvent` → `RunContinuedEvent`
+- `RunResponsePausedEvent` → `RunPausedEvent`
+- `RunResponseContentEvent` → `RunContentEvent`
 
-1.4. Similarly, for Team output events:
-- `TeamRunOutputStartedEvent` → `TeamRunStartedEvent`
-- `TeamRunOutputCompletedEvent` → `TeamRunCompletedEvent`
-- `TeamRunOutputErrorEvent` → `TeamRunErrorEvent`
-- `TeamRunOutputCancelledEvent` → `TeamRunCancelledEvent`
-- `TeamRunOutputContentEvent` → `TeamRunContentEvent`
+1.4. Similarly, for Team output events (imported from `agno.run.team`):
+- `RunResponseStartedEvent` → `RunStartedEvent`
+- `RunResponseCompletedEvent` → `RunCompletedEvent`
+- `RunResponseErrorEvent` → `RunErrorEvent`
+- `RunResponseCancelledEvent` → `RunCancelledEvent`
+- `RunResponseContentEvent` → `RunContentEvent`
 
 1.5. The `add_state_in_messages` parameter has been deprecated. Variables in instructions are now resolved automatically by default.
 1.6. The `context` parameter has been renamed to `dependencies`.
 
-This is how it looked like on v1:
+This is how it looked in v1:
 ```python v1_context.py
 from agno.agent import Agent
 
@@ -92,7 +94,7 @@ agent = Agent(
 )
 ```
 
-This is how it looks like now, on v2:
+This is how it looks now, in v2:
 
 ```python v2_dependencies.py
 from agno.agent import Agent
@@ -113,7 +115,7 @@ agent = Agent(
 
 Storage is used to persist Agent sessions, state and memories in a database.
 
-This is how Storage looks like on v1:
+This is how Storage looks in v1:
 
 ```python v1_storage.py
 from agno.agent import Agent
@@ -141,10 +143,10 @@ agent = Agent(db=db)
 2.3. The `table_name` parameter has been deprecated. One instance now handles multiple tables, you can define their names individually.
 
 ```python v2_storage_table_names.py
-db = SqliteDb(db_file="agno.db", sessions_table="your_sessions_table_name", ...)
+db = SqliteDb(db_file="agno.db", session_table="your_session_table_name")
 ```
 
-These are all the supported tables, each used to persist data related to a specific domain:
+These are the main supported tables, each used to persist data related to a specific domain:
 
 ```python v2_storage_all_tables.py
 db = SqliteDb(
@@ -167,7 +169,7 @@ db = SqliteDb(
 ```python v2_storage_team_sessions.py
 team.run(...)
 
-team_session = team.get_latest_session()
+team_session = team.get_session()
 
 # The runs for the team leader and all team members are here
 team_session.runs
@@ -182,7 +184,7 @@ team_session.runs
 
 Memory gives an Agent the ability to recall relevant information.
 
-This is how Memory looks like on V1:
+This is how Memory looks in v1:
 
 ```python v1_memory.py
 from agno.agent import Agent
@@ -198,7 +200,7 @@ agent = Agent(memory=memory)
 These are the changes we have made for v2:
 
 3.1. The `MemoryDb` classes have been deprecated. The main `Db` classes are to be used.
-3.2. The `Memory` class has been deprecated. You now just need to set `enable_user_memories=True` on an Agent with a `db` for Memory to work.
+3.2. The `Memory` class has been deprecated. You now just need to set `update_memory_on_run=True` on an Agent with a `db` for Memory to work.
 
 ```python v2_memory.py
 from agno.agent import Agent
@@ -206,16 +208,16 @@ from agno.db.sqlite import SqliteDb
 
 db = SqliteDb(db_file="agno.db")
 
-agent = Agent(db=db, enable_user_memories=True)
+agent = Agent(db=db, update_memory_on_run=True)
 ```
 
-3.3. The generated memories will be stored in the `memories_table`. By default, the `agno_memories` will be used. It will be created if needed. You can also set the memory table like this:
+3.3. The generated memories will be stored in the table set with `memory_table`. By default, the `agno_memories` table will be used. It will be created if needed. You can also set the memory table like this:
 
 ```python v2_memory_set_table.py
 db = SqliteDb(db_file="agno.db", memory_table="your_memory_table_name")
 ```
 
-3.4. The methods you previously had access to through the Memory class, are now direclty available on the relevant `db` object. For example:
+3.4. The methods you previously had access to through the Memory class are now directly available on the relevant `db` object. For example:
 
 ```python v2_memory_db_methods.py
 agent.get_user_memories(user_id="123")
@@ -243,10 +245,10 @@ the option to override it at any time.
 from any sources. For a full example of the usage, see the [Content Types](/knowledge/concepts/content-types) page.
 
 4.3. `Knowledge` now supports a `contents_db`. This allows the storage and management of every piece of content that is added to your knowledge.
-Furthermore, we now support deletion of individual vectors using the `remove_vectors_by_id()`, `remove_vectors_by_name()` and remove_vectors by metadata()`methods.
-You can also delete all vectors created by a specific piece of content using`remove_content_by_id()`.
+Furthermore, we now support deletion of individual vectors using the `remove_vector_by_id()`, `remove_vectors_by_name()` and `remove_vectors_by_metadata()` methods.
+You can also delete all vectors created by a specific piece of content using `remove_content_by_id()`.
 
-4.4 In order to support the deletion mentioned above, VectorDB tables have been updated. Two new columns, `content_hash` and `content_id` have been added.
+4.4 To support the deletion mentioned above, VectorDB tables have been updated. Two new columns, `content_hash` and `content_id`, have been added.
 
 4.5. The `retriever` field has been renamed to `knowledge_retriever`.
 
@@ -288,17 +290,19 @@ These are the changes we have made for v2:
 
 ### 6. Teams
 
-We have refactored the `Team` class to be more flexible and powerful.
+We have refactored the `Team` class to be more flexible.
 
-The biggest changes is that the `mode` parameter has been deprecated. Instead there are attributes that can be used to control the behavior of the team:
+The biggest change is that the v1 string-based `mode` parameter has been removed. Instead there are attributes that can be used to control the behavior of the team:
     - `respond_directly` -> If True, the team leader won't process responses from the members and instead will return them directly
     - `delegate_to_all_members` -> If True, the team leader will delegate tasks to all members simultaneously, instead of one by one. When running async (using `arun`) members will run concurrently.
-    - `determine_input_for_members` -> `True` by default. Set to False if you want to send the run input directly to the member agents without the team leader synthesizing its own input. This is useful if you want to send pydantic model input directly to the member agents.
+    - `determine_input_for_members` -> `True` by default. Set to False if you want to send the run input directly to the member agents without the team leader synthesizing its own input. This is useful if you want to send Pydantic model input directly to the member agents.
+
+Since v2.7, `mode` is available again as a `TeamMode` enum (`from agno.team import TeamMode`). When set, it overrides the boolean flags above. See [Teams overview](/teams/overview).
 
 Here is a quick migration guide:
-- If you previously used `mode=coordinate`, this is now the default behaviour and you can use the `Team` without any modifications.
-- If you previously used `mode=route`, you can now use `respond_directly=True` and `determine_input_for_members=False` to achieve the same behaviour.
-- If you previously used `mode=collaborate`, you can set `delegate_to_all_members=True` to achieve the same behaviour.
+- If you previously used `mode="coordinate"`, this is now the default behaviour and you can use the `Team` without any modifications.
+- If you previously used `mode="route"`, use `mode=TeamMode.route`. For exact v1 behavior, where the run input is forwarded to the member unchanged, also set `determine_input_for_members=False`.
+- If you previously used `mode="collaborate"`, use `mode=TeamMode.broadcast` (or `delegate_to_all_members=True`).
 
 See the [Team updates](/other/v2-changelog#team-updates) section of the changelog for more details.
 
@@ -311,36 +315,36 @@ We have heavily updated our Workflows, aiming to provide top-of-the-line tooling
   Workflows](/other/workflows-migration).
 </Tip>
 
-### 7. Apps -> Interfaces
+### 8. Apps -> Interfaces
 
-The old "apps" system (`AGUIApp`, `SlackApi`, `WhatsappApi`) has been replaced with a unified interfaces system within AgentOS.
+The old "apps" system (`AGUIApp`, `SlackAPI`, `WhatsappAPI`) has been replaced with a unified interfaces system within AgentOS.
 
 #### Before - Standalone Apps
-```python
+```python main.py
 from agno.app.agui.app import AGUIApp
 
 agui_app = AGUIApp(agent=agent)
 app = agui_app.get_app()
-agui_app.serve(port=8000)
+agui_app.serve(app="main:app", port=8000)
 ```
 
 #### After - Unified Interfaces
-```python
+```python main.py
 from agno.os import AgentOS
 from agno.os.interfaces.agui import AGUI
 
 agent_os = AgentOS(agents=[agent], interfaces=[AGUI(agent=agent)])
 app = agent_os.get_app()
-agent_os.serve(port=8000)
+agent_os.serve(app="main:app", port=8000)
 ```
 
 #### Migration Steps
 1. **Update imports**: Replace app imports with interface imports
 2. **Use AgentOS**: Wrap agents with `AgentOS` and specify interfaces
-3. **Update serving**: Use `agent_os.serve()` instead of `app.serve()`
+3. **Update serving**: Use `agent_os.serve()` instead of `agui_app.serve()`
 
-### 8. Playground -> AgentOS
+### 9. Playground -> AgentOS
 
-Our `Playground` has been deprecated. Our new [AgentOS](/agent-os/introduction) offering will substitute all usecases.
+Our `Playground` has been deprecated. Our new [AgentOS](/agent-os/introduction) offering will substitute all use cases.
 
 See [AgentOS](/agent-os/introduction) for more details!

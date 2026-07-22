@@ -1,11 +1,14 @@
 ---
 title: Authorization Failed - JWT Verification
 sidebarTitle: Authorization Failed - JWT Verification
+description: "Diagnose AgentOS 'Authorization Failed' errors: algorithm mismatch, mangled PEM keys, missing scopes, and conflicting auth modes."
 ---
 
-If you see "Authorization Failed" in your AgentOS, the entries below cover the most common causes.
+The entries below cover the most common causes of "Authorization Failed" in AgentOS.
 
 ![Authorization Failed Error](/images/auth-failed.png)
+
+Authenticating with `agno_pat_` service-account tokens instead of JWTs? See [Service Accounts](/agent-os/security/authorization/service-accounts) for their failure modes.
 
 ## 401 Unauthorized: algorithm mismatch
 
@@ -17,7 +20,7 @@ You see "Authorization Failed" on every request, consistently across machines.
 
 | Setup | What to set |
 |-------|-------------|
-| AgentOS platform | `algorithm="RS256"` or omit it (RS256 is the default). Platform-issued public keys are always RS256, so any other value fails verification. |
+| AgentOS Control Plane | `algorithm="RS256"` or omit it (RS256 is the default). Control Plane-issued public keys are always RS256, so any other value fails verification. |
 | Standalone AgentOS | `algorithm` must match how you signed the token. |
 
 ```python
@@ -29,7 +32,7 @@ AuthorizationConfig(
 )
 ```
 
-Supported algorithms: `RS256` and `ES256` (asymmetric, public key), `HS256` (symmetric, shared secret).
+Supported algorithms: `RS256`, `RS384`, `RS512`, `HS256`, `HS384`, `HS512`, `ES256`, `ES384`, and `ES512`.
 
 ## 401 Unauthorized: PEM key may be mangled in env var
 
@@ -60,19 +63,19 @@ The token is valid but AgentOS returns `403` on a specific endpoint.
 
 **Cause:** The token's `scopes` claim does not include the scope required by the endpoint. Unlike a `401`, the token itself is fine.
 
-**Fix:** Check the [Scope Reference](/agent-os/security/authorization/scopes#scope-reference) for which scope each endpoint needs. A few scopes act as gates in the platform and a token missing any of them fails before finer-grained checks run. See [Access Prerequisites](/agent-os/security/authorization/scopes#access-prerequisites) for the full list.
+**Fix:** Check the [Scope Reference](/agent-os/security/authorization/scopes#scope-reference) for which scope each endpoint needs. A few scopes act as gates in the AgentOS backend, and a token missing any of them fails before finer-grained checks run. See [Access Prerequisites](/agent-os/security/authorization/scopes#access-prerequisites) for the full list.
 
 ## Both security key and JWT authorization enabled
 
 You enabled both security key authentication and JWT authorization on the AgentOS Control Plane at the same time.
 
-**Cause:** Authorization is preferred over security key. When both are enabled, security key requests fail. Learn more about [security key](https://docs.agno.com/agent-os/security/overview#security-key-authentication).
+**Cause:** Authorization takes precedence over security key authentication, so when both are enabled, security key requests fail. See [security key authentication](/agent-os/security/overview#security-key).
 
 **Fix:** depends on your AgentOS version.
 
 ### Before v2.3.13
 
-The platform only supports security key authentication on these versions. Disable Authorization on the AgentOS Control Plane and continue using security key.
+The AgentOS Control Plane only supports security key authentication on these versions. Disable Authorization on the AgentOS Control Plane and continue using security key.
 
 ### v2.3.13 and later <Badge icon="code-branch" color="orange"><Tooltip tip="Introduced in v2.3.13" cta="View release notes" href="https://github.com/agno-agi/agno/releases/tag/v2.3.13">v2.3.13</Tooltip></Badge>
 

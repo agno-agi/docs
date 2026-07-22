@@ -1,6 +1,6 @@
 ---
 title: Conversational Workflows
-description: Build multi-turn conversational workflows in Agno.
+description: Route messages between workflow history and execution with WorkflowAgent.
 tag: beta
 ---
 
@@ -8,78 +8,67 @@ tag: beta
     <Tooltip tip="Introduced in v2.2.6" cta="View release notes" href="https://github.com/agno-agi/agno/releases/tag/v2.2.6">v2.2.6</Tooltip>
 </Badge>
 
-If your users interact directly with a Workflow, it is often useful to make it a **Conversational Workflow**. Users will then be able to chat with the Workflow, 
-in the same way you'd interact with an Agent or a Team.
-
-This feature allows you to add a `WorkflowAgent` to your workflow that intelligently decides whether to:
-1. **Answer directly** based on the current input and past workflow results
-2. **Run the workflow** when the input cannot be answered based on past results
-
-<Note>
-What is a **WorkflowAgent**?
-
-`WorkflowAgent` is a restricted version of the `Agent` class specifically designed for workflow orchestration.
-</Note>
+Add a `WorkflowAgent` to give a workflow a multi-turn interface. For each message, the agent either answers from recent workflow history or runs the workflow for new work.
 
 ## Quick Start
 
-This is how you can add a `WorkflowAgent` to your workflow:
 ```python
-from agno.workflow import WorkflowAgent
-from agno.workflow.workflow import Workflow
+from agno.db.sqlite import SqliteDb
 from agno.models.openai import OpenAIResponses
+from agno.workflow import Step, WorkflowAgent
+from agno.workflow.types import StepInput, StepOutput
+from agno.workflow.workflow import Workflow
+
+
+def draft_response(step_input: StepInput) -> StepOutput:
+    return StepOutput(content=f"Processed: {step_input.input}")
+
 
 workflow_agent = WorkflowAgent(
-    model=OpenAIResponses(id="gpt-5.2"),  # Set the model that should be used
-    num_history_runs=4  # How many of the previous runs should it take into account
+    model=OpenAIResponses(id="gpt-5.2"),
+    num_history_runs=4,
 )
 
 workflow = Workflow(
-    name="Story Generation Workflow",
-    description="A workflow that generates stories, formats them, and adds references",
+    name="support_workflow",
+    description="Process support requests",
     agent=workflow_agent,
+    steps=[Step(name="draft_response", executor=draft_response)],
+    db=SqliteDb(db_file="workflow.db"),
 )
 ```
 
+`WorkflowAgent` is a restricted `Agent` configured for workflow orchestration. The workflow supplies its `run_workflow` tool.
+
 ## Architecture
 
-<img 
-  className="block dark:hidden" 
-  src="/images/workflow-agent-flow-light.png" 
+<img
+  className="block dark:hidden"
+  src="/images/workflow-agent-flow-light.png"
   alt="Workflows conversational workflows diagram"
   style={{ maxWidth: '500px', width: '100%', height: 'auto' }}
 />
-<img 
-  className="hidden dark:block" 
-  src="/images/workflow-agent-flow-dark.png" 
+<img
+  className="hidden dark:block"
+  src="/images/workflow-agent-flow-dark.png"
   alt="Workflows conversational workflows diagram"
   style={{ maxWidth: '500px', width: '100%', height: 'auto' }}
 />
 
-## Workflow History for Conversational Workflows:
+## Workflow History for Conversational Workflows
 
-Similar to [workflow history for steps](/history/workflow/overview), the `WorkflowAgent` has access to the full history of workflow runs for the current session.
-This makes it possible to answer questions about previous results, compare outputs from multiple runs, and maintain conversation continuity.
+The `WorkflowAgent` receives recent workflow runs from the current session. This context supports follow-up questions and comparisons across prior results.
 
-<Tip>
-How to control the number of previous runs the workflow agent can see?
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `add_workflow_history` | `True` | Add recent workflow runs to the agent context |
+| `num_history_runs` | `5` | Maximum number of recent runs to include |
 
-The `num_history_runs` parameter controls how many previous workflow runs the agent can see when making decisions. This is crucial for:
+Configure a database on the workflow to persist session history between process restarts. See [Workflow history](/history/workflow/overview).
 
-- **Context awareness**: The agent needs to see past runs to answer follow-up questions
-- **Memory limits**: Including too many runs can exceed the model context window
-- **Performance**: Fewer runs mean faster processing and lower input tokens
-</Tip>
+## Instructions for the WorkflowAgent
 
-## Instructions for the WorkflowAgent:
-
-You can provide custom instructions to the `WorkflowAgent` to control its behavior. Although default instructions are provided which instruct the agent to answer directly from history 
-or to run the workflow when new processing is needed, you can override them by providing your own instructions.
-
-<Warning>
-We recommend using the default instructions unless you have a specific use case where you want the agent to answer in a particular way or include some specific information in the response.
-The default instructions should be sufficient for most use cases.
-</Warning>
+The default instructions direct the agent to answer from history when possible and call `run_workflow` once for new work. Pass `instructions` to replace that decision policy. Workflow context is appended automatically unless the instructions already contain `{workflow_context}`.
 
 ```python
 workflow_agent = WorkflowAgent(
@@ -104,28 +93,22 @@ db_url = "postgresql+psycopg://ai:ai@localhost:5532/ai"
 
 story_writer = Agent(
     model=OpenAIResponses(id="gpt-5.2"),
-    instructions="You are tasked with writing a 100 word story based on a given topic",
+    instructions="Write a 100-word story about the requested topic.",
 )
 
 story_formatter = Agent(
     model=OpenAIResponses(id="gpt-5.2"),
-    instructions="You are tasked with breaking down a short story in prelogues, body and epilogue",
+    instructions="Format the story into a prologue, body, and epilogue.",
 )
 
 
-def add_references(step_input: StepInput):
-    """Add references to the story"""
-
-    previous_output = step_input.previous_step_content
-
-    if isinstance(previous_output, str):
-        return previous_output + "\n\nReferences: https://www.agno.com"
+def add_references(step_input: StepInput) -> str:
+    previous_output = step_input.previous_step_content or ""
+    return previous_output + "\n\nReferences: https://www.agno.com"
 
 
-# Create a WorkflowAgent that will decide when to run the workflow
 workflow_agent = WorkflowAgent(model=OpenAIResponses(id="gpt-5.2"), num_history_runs=4)
 
-# Create workflow with the WorkflowAgent
 workflow = Workflow(
     name="Story Generation Workflow",
     description="A workflow that generates stories, formats them, and adds references",
@@ -134,22 +117,22 @@ workflow = Workflow(
     db=PostgresDb(db_url),
 )
 
-# First call - will run the workflow (new topic)
+# New topic
 workflow.print_response(
     "Tell me a story about a dog named Rocky", stream=True
 )
 
-# Second call - will answer directly from history
+# Follow-up about a previous result
 workflow.print_response(
     "What was Rocky's personality?", stream=True
 )
 
-# Third call - will run the workflow (new topic)
+# Another new topic
 workflow.print_response(
     "Now tell me a story about a cat named Luna", stream=True
 )
 
-# Fourth call - will answer directly from history
+# Comparison across previous results
 workflow.print_response(
     "Compare Rocky and Luna", stream=True
 )
@@ -157,4 +140,4 @@ workflow.print_response(
 
 ## Developer Resources
 
-Explore the different examples in [Conversational Workflows Examples](/workflows/conversational-workflows) section for more details.
+- [Workflow Agent Examples](/examples/workflows/advanced-concepts/workflow-agent/overview)

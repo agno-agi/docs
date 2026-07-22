@@ -1,10 +1,12 @@
 ---
 title: "Custom Scope Mappings Example"
-description: "This example demonstrates how to define custom scope mappings for your AgentOS endpoints."
+description: "Attach JWTMiddleware with RS256 keys and a per-endpoint scope_mappings table so routes such as POST /agents/*/runs require multiple custom scopes."
+source: cookbook/05_agent_os/rbac/asymmetric/custom_scope_mappings.py
 ---
-This example demonstrates how to define custom scope mappings for your AgentOS endpoints. You can specify exactly which scopes are required for each endpoint.
 
-```python
+Define custom scope mappings for your AgentOS endpoints. You can specify exactly which scopes are required for each endpoint.
+
+```python custom_scope_mappings.py
 """
 Custom Scope Mappings Example
 
@@ -27,7 +29,7 @@ from datetime import UTC, datetime, timedelta
 import jwt
 from agno.agent import Agent
 from agno.db.postgres import PostgresDb
-from agno.models.openai import OpenAIChat
+from agno.models.openai import OpenAIResponses
 from agno.os import AgentOS
 from agno.os.middleware import JWTMiddleware
 from agno.tools.websearch import WebSearchTools
@@ -75,7 +77,7 @@ db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
 research_agent = Agent(
     id="research-agent",
     name="Research Agent",
-    model=OpenAIChat(id="gpt-4o"),
+    model=OpenAIResponses(id="gpt-5.5"),
     db=db,
     tools=[WebSearchTools()],
     add_history_to_context=True,
@@ -203,18 +205,40 @@ if __name__ == "__main__":
 ```
 
 ## Run the Example
-```bash
-# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/05_agent_os/rbac/asymmetric
 
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
 
-# Export relevant API keys
-export JWT_SIGNING_KEY="***"
-export JWT_VERIFICATION_KEY="***"
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U "agno[os]" "psycopg[binary]" cryptography ddgs openai
+    ```
+  </Step>
 
-python custom_scope_mappings.py
-```
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Snippet file="run-pgvector-step.mdx" />
+
+  <Step title="Configure optional JWT keys">
+    To supply your own RSA keys, set `JWT_SIGNING_KEY` and `JWT_VERIFICATION_KEY` to a valid PEM-format keypair. When they are unset, the example generates a pair and caches it at `/tmp/agno_rbac_demo_keys.json`.
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `custom_scope_mappings.py`, then run:
+    ```bash
+    python custom_scope_mappings.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/05_agent_os/rbac/asymmetric/custom_scope_mappings.py](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/rbac/asymmetric/custom_scope_mappings.py)

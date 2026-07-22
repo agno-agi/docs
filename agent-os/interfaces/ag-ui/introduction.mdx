@@ -6,7 +6,7 @@ description: Expose Agno agents via the AG-UI protocol
 AG-UI, the [Agent-User Interaction Protocol](https://github.com/ag-ui-protocol/ag-ui), standardizes how AI agents connect to frontend applications.
 
 <Note>
-**Migration from Apps**: For migration from `AGUIApp`, see the [v2 migration guide](/other/v2-migration#7-apps-interfaces) for complete steps.
+**Migration from Apps**: For migration from `AGUIApp`, see the [v2 migration guide](/other/v2-migration#8-apps-interfaces) for complete steps.
 </Note>
 
 ## Example usage
@@ -15,7 +15,7 @@ AG-UI, the [Agent-User Interaction Protocol](https://github.com/ag-ui-protocol/a
   <Step title="Install backend dependencies">
 
 ```bash
-uv pip install ag-ui-protocol
+uv pip install 'agno[os,agui]' openai
 ```
 
   </Step>
@@ -28,7 +28,7 @@ from agno.models.openai import OpenAIResponses
 from agno.os import AgentOS
 from agno.os.interfaces.agui import AGUI
 
-chat_agent = Agent(model=OpenAIResponses(id="gpt-5.5"))
+chat_agent = Agent(model=OpenAIResponses(id="gpt-5.4"))
 
 agent_os = AgentOS(agents=[chat_agent], interfaces=[AGUI(agent=chat_agent)])
 app = agent_os.get_app()
@@ -43,8 +43,8 @@ if __name__ == "__main__":
 Use Dojo (`ag-ui`'s frontend) as an advanced, customizable interface for AG-UI agents.
 
 1. Clone: `git clone https://github.com/ag-ui-protocol/ag-ui.git`
-2. Install dependencies in `/ag-ui/typescript-sdk`: `pnpm install`
-3. Build the Agno package in `/ag-ui/integrations/agno`: `pnpm run build`
+2. Install dependencies from the repository root: `pnpm install`
+3. Build Dojo and its dependencies (including the Agno package): `pnpm build --filter=demo-viewer`
 4. Start Dojo following the instructions in the repository.
 
   </Step>
@@ -65,12 +65,14 @@ Custom events created in tools are automatically delivered to AG-UI in the AG-UI
 
 ```python
 from dataclasses import dataclass
+from typing import Optional
+
 from agno.run.agent import CustomEvent
 
 @dataclass
 class CustomerProfileEvent(CustomEvent):
-    customer_name: str
-    customer_email: str
+    customer_name: Optional[str] = None
+    customer_email: Optional[str] = None
 ```
 
 **Yielding from tools:**
@@ -81,13 +83,13 @@ from agno.tools import tool
 @tool()
 async def get_customer_profile(customer_id: str):
     customer = fetch_customer(customer_id)
-    
+
     yield CustomerProfileEvent(
         customer_name=customer["name"],
         customer_email=customer["email"],
     )
-    
-    return f"Profile retrieved for {customer['name']}"
+
+    yield f"Profile retrieved for {customer['name']}"
 ```
 
 Custom events are streamed in real-time to the AG-UI frontend.
@@ -131,6 +133,12 @@ Mounted at the interface's route prefix (root by default):
 
 Refer to `ag-ui-protocol` docs for payload details.
 
+## Authorization
+
+With [authorization](/agent-os/security/authorization/overview) enabled, `POST /agui` requires the run scope for the interface's bound entity: `agents:run` for an agent, `teams:run` for a team. Send the JWT as `Authorization: Bearer <token>`. `GET /status` requires a valid token but no scope.
+
+For anonymous callers, `forwardedProps.user_id` attributes the run to a user. Authenticated callers are pinned to their token's principal, and a client-supplied `user_id` is ignored. See [Scopes](/agent-os/security/authorization/scopes) for the full route-to-scope mapping.
+
 ## Serving AgentOS
 
 Use `AgentOS.serve` to run the app with Uvicorn.
@@ -143,7 +151,7 @@ Use `AgentOS.serve` to run the app with Uvicorn.
 | `host`            | `str`                 | `"localhost"` | Host to bind. Override with `AGENT_OS_HOST` env var. |
 | `port`            | `int`                 | `7777`        | Port to bind. Override with `AGENT_OS_PORT` env var. |
 | `reload`          | `bool`                | `False`       | Enable auto-reload for development.                  |
-| `reload_includes` | `Optional[List[str]]` | `None`        | File patterns to watch. Auto-adds `*.yaml`, `*.yml`. |
+| `reload_includes` | `Optional[List[str]]` | `None`        | File patterns to watch for auto-reload.              |
 | `reload_excludes` | `Optional[List[str]]` | `None`        | File patterns to exclude from reload.                |
 | `workers`         | `Optional[int]`       | `None`        | Number of Uvicorn worker processes.                  |
 | `access_log`      | `bool`                | `False`       | Enable Uvicorn access logging.                       |

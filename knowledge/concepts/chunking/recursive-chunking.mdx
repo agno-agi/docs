@@ -1,14 +1,14 @@
 ---
 title: Recursive Chunking
+description: Split text at newline or period boundaries with optional overlap.
 ---
 
-Recursive chunking is a method of splitting documents into smaller chunks by recursively applying a chunking strategy. This is useful when you want to process large documents in smaller, manageable pieces.
+`RecursiveChunking` searches backward from each size limit for a newline, then a period, before using the limit itself.
 
 <Steps>
 
   <Step title="Create a Python file">
     ```python recursive_chunking.py
-    import asyncio
     from agno.agent import Agent
     from agno.knowledge.chunking.recursive import RecursiveChunking
     from agno.knowledge.knowledge import Knowledge
@@ -21,20 +21,21 @@ Recursive chunking is a method of splitting documents into smaller chunks by rec
         vector_db=PgVector(table_name="recipes_recursive_chunking", db_url=db_url),
     )
 
-    asyncio.run(knowledge.ainsert(
+    knowledge.insert(
         url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
         reader=PDFReader(
             name="Recursive Chunking Reader",
+            split_on_pages=False,
             chunking_strategy=RecursiveChunking(),
         ),
-    ))
+    )
 
     agent = Agent(
         knowledge=knowledge,
         search_knowledge=True,
     )
 
-    agent.print_response("How to make Thai curry?", markdown=True)
+    agent.print_response("How do I make Thai curry?", markdown=True)
     ```
   </Step>
 
@@ -42,8 +43,12 @@ Recursive chunking is a method of splitting documents into smaller chunks by rec
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U agno sqlalchemy psycopg pgvector
+    uv pip install -U agno sqlalchemy psycopg pgvector pypdf openai
     ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <Snippet file="set-openai-key.mdx" />
   </Step>
 
   <Snippet file="run-pgvector-step.mdx" />
@@ -56,7 +61,14 @@ Recursive chunking is a method of splitting documents into smaller chunks by rec
 
 </Steps>
 
+The example sets `split_on_pages=False` so `PDFReader` combines the pages before applying `RecursiveChunking`. Keep the default value of `True` to chunk each page independently.
 
 ## Recursive Chunking Params
 
 <Snippet file="chunking-recursive.mdx" />
+
+## Developer Resources
+
+- [Chunking overview](/knowledge/concepts/chunking/overview)
+- [Chunking strategies examples](/examples/knowledge/building-blocks/chunking-strategies)
+- [PDF reader](/knowledge/concepts/readers/pdf-reader)

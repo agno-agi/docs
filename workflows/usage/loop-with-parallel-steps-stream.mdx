@@ -1,31 +1,44 @@
 ---
 title: Loop with Parallel Steps Workflow
-description: This example demonstrates **Workflows 2.0** most sophisticated pattern combining loop execution with parallel processing and real-time streaming.
+description: "Run parallel steps inside a loop until an end condition is met."
 ---
 
-This example shows how to create iterative
-workflows that execute multiple independent tasks simultaneously within each iteration,
-optimizing both quality and performance.
+Put a `Parallel` block inside a `Loop` to run several research steps at once on each
+iteration. The end condition checks the combined output and decides whether the loop
+needs another pass.
 
-**When to use**: When you need iterative quality improvement with parallel task execution
-in each iteration. Ideal for comprehensive research workflows where multiple independent
-tasks contribute to overall quality, and you need to repeat until quality thresholds are met.
+**When to use**: A loop whose iteration contains independent tasks that can run
+concurrently before the end condition is evaluated.
+
+Install dependencies:
+
+```shell
+uv pip install agno openai ddgs
+```
 
 ```python loop_with_parallel_steps_stream.py
 from typing import List
 
 from agno.agent import Agent
 from agno.tools.hackernews import HackerNewsTools
-from agno.tools.yfinance import YFinanceTools
+from agno.tools.websearch import WebSearchTools
 from agno.workflow import Loop, Parallel, Step, Workflow
 from agno.workflow.types import StepOutput
 
 # Create agents for research
-research_agent = Agent(
-    name="Research Agent",
+news_research_agent = Agent(
+    name="HackerNews Research Agent",
     role="Research specialist",
-    tools=[HackerNewsTools(), YFinanceTools()],
-    instructions="You are a research specialist. Research the given topic thoroughly.",
+    tools=[HackerNewsTools()],
+    instructions="Research the given topic on Hacker News.",
+    markdown=True,
+)
+
+web_research_agent = Agent(
+    name="Web Research Agent",
+    role="Research specialist",
+    tools=[WebSearchTools()],
+    instructions="Research the given topic on the web.",
     markdown=True,
 )
 
@@ -46,13 +59,13 @@ content_agent = Agent(
 # Create research steps
 research_hackernews_step = Step(
     name="Research HackerNews",
-    agent=research_agent,
+    agent=news_research_agent,
     description="Research trending topics on HackerNews",
 )
 
 research_web_step = Step(
     name="Research Web",
-    agent=research_agent,
+    agent=web_research_agent,
     description="Research additional information from web sources",
 )
 
@@ -113,10 +126,10 @@ workflow = Workflow(
                 Parallel(
                     research_hackernews_step,
                     research_web_step,
-                    trend_analysis_step,
-                    name="Parallel Research & Analysis",
-                    description="Execute research and analysis in parallel for efficiency",
+                    name="Parallel Research",
+                    description="Run Hacker News and web research concurrently",
                 ),
+                trend_analysis_step,
                 sentiment_analysis_step,
             ],
             end_condition=research_evaluator,
@@ -132,4 +145,3 @@ if __name__ == "__main__":
         stream=True,
     )
 ```
-

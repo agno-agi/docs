@@ -3,7 +3,7 @@ title: "Multimodal inputs"
 description: "Feed images, audio, video, and PDFs into any labeling or extraction agent."
 ---
 
-Every labeler on the other pages takes text. To label other modalities, change the input argument and the model. The schema and the `output_schema` pattern stay the same.
+Pass media through the matching `Agent.run()` argument and choose a model that supports the input modality. The `output_schema` pattern stays the same.
 
 ```python
 from typing import Literal
@@ -15,39 +15,61 @@ from pydantic import BaseModel, Field
 
 
 class Classification(BaseModel):
-    label: Literal["dog", "cat", "bird", "fish", "other"] = Field(
-        ..., description="What kind of animal is in the image"
+    label: Literal["wildlife", "landscape", "sports", "architecture", "other"] = Field(
+        ..., description="The primary scene type of the image"
     )
 
 
 agent = Agent(
     model=Gemini(id="gemini-3.5-flash"),
-    instructions="You classify images by animal type.",
+    instructions="You classify images by scene type.",
     output_schema=Classification,
 )
 
-url = "https://upload.wikimedia.org/wikipedia/commons/4/4d/Cat_November_2010-1a.jpg"
+url = "https://storage.googleapis.com/generativeai-downloads/images/generated_elephants_giraffes_zebras_sunset.jpg"
 result = agent.run("Classify this image.", images=[Image(url=url)]).content
-# Classification(label='cat')
+# Classification(label='wildlife')
 ```
 
 ## Input argument per modality
 
-| Modality | Import | Argument | Model in the cookbook |
-|----------|--------|----------|-----------------------|
-| Image | `from agno.media import Image` | `images=[Image(url=...)]` | `Gemini(id="gemini-3.5-flash")` |
-| Audio | `from agno.media import Audio` | `audio=[Audio(content=...)]` | `Gemini(id="gemini-3.5-flash")` |
-| Video | `from agno.media import Video` | `videos=[Video(content=..., format="mp4")]` | `Gemini(id="gemini-3.5-flash")` |
-| PDF | `from agno.media import File` | `files=[File(url=...)]` | `Gemini(id="gemini-3.5-flash")` |
+| Modality | Import | Argument |
+|----------|--------|----------|
+| Image | `from agno.media import Image` | `images=[Image(url=...)]` |
+| Audio | `from agno.media import Audio` | `audio=[Audio(content=...)]` |
+| Video | `from agno.media import Video` | `videos=[Video(content=..., format="mp4")]` |
+| PDF | `from agno.media import File` | `files=[File(url=...)]` |
 
-`Image` and `File` accept a `url`. `Audio` and `Video` take raw bytes via `content`; fetch them first.
+All four classes accept `url`, `filepath`, or raw bytes via `content`. The cookbook examples fetch audio and video bytes first. Agno installs `httpx`.
 
 ```python
-import requests
-from agno.media import Audio
+import httpx
 
-audio_bytes = requests.get("https://example.com/clip.mp3").content
-agent.run("Transcribe this.", audio=[Audio(content=audio_bytes)])
+from agno.agent import Agent
+from agno.media import Audio
+from agno.models.google import Gemini
+from pydantic import BaseModel, Field
+
+
+class Transcript(BaseModel):
+    text: str = Field(..., description="Verbatim transcript of all spoken audio")
+
+
+transcription_agent = Agent(
+    model=Gemini(id="gemini-3.5-flash"),
+    instructions="Transcribe all spoken audio. Return only the transcript.",
+    output_schema=Transcript,
+)
+
+url = "https://agno-public.s3.us-east-1.amazonaws.com/demo_data/QA-01.mp3"
+response = httpx.get(url, timeout=30.0)
+response.raise_for_status()
+
+result = transcription_agent.run(
+    "Transcribe this audio.",
+    audio=[Audio(content=response.content)],
+).content
+# Transcript(text='...')
 ```
 
 ## Bounding boxes
@@ -67,12 +89,14 @@ class BoundingBox(BaseModel):
 ```
 
 <Warning>
-The per-field `description` on `x`, `y`, `width`, and `height` is load-bearing. Without it, and without the `[0, 1]` convention spelled out in the instructions, models return degenerate boxes (all-zero or whole-image). Spell out the coordinate system in both places.
+State the `[0, 1]` coordinate system in both the field descriptions and the agent instructions. This keeps the four values consistent across images.
 </Warning>
+
+The [bounding boxes cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/data_labeling/_08_image_bounding_boxes) has runnable single-object, multi-object, and per-box confidence variants.
 
 ## Transcription and diarization
 
-Audio extraction covers transcription, speaker diarization, and timestamped segments. Each is a schema change, not a different API.
+Audio extraction covers transcription, speaker diarization, and timestamped segments. Each is a schema change over the same API.
 
 | Output | Schema shape |
 |--------|--------------|
@@ -82,18 +106,20 @@ Audio extraction covers transcription, speaker diarization, and timestamped segm
 
 ## Model choice
 
-`gemini-3.5-flash` handles text, image, audio, video, and PDF natively, so the cookbook uses it across every modality. Each cookbook README notes alternatives if you want to swap.
+The cookbook uses `gemini-3.5-flash` across its text, image, audio, video, and PDF recipes. A replacement model must support the input modality and structured output.
 
 ## Next steps
 
 | Task | Guide |
 |------|-------|
-| Define the output schema | [Structured extraction](/use-cases/data-labeling/structured-extraction) |
+| Define the output schema | [Data extraction](/use-cases/data-labeling/structured-extraction) |
 | Assign labels to media | [Classification](/use-cases/data-labeling/classification) |
 | Review media labels | [Quality pipeline](/use-cases/data-labeling/quality-pipeline) |
 
 ## Developer Resources
 
-- [Image cookbooks](https://github.com/agno-agi/agno/tree/main/cookbook/data_labeling/_07_image_extraction)
-- [Audio cookbooks](https://github.com/agno-agi/agno/tree/main/cookbook/data_labeling/_11_audio_transcription)
+- [Image extraction cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/data_labeling/_07_image_extraction)
+- [Audio transcription cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/data_labeling/_11_audio_transcription)
+- [Video extraction cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/data_labeling/_14_video_extraction)
+- [Document extraction cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/data_labeling/_16_document_extraction)
 - [Multimodal agents](/multimodal/overview)

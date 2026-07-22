@@ -1,21 +1,24 @@
 ---
 title: "AgentOS on AWS"
 sidebarTitle: "Deploy"
-description: "Run AgentOS locally using Docker and deploy to production on AWS."
+description: "AgentOS template for teams that develop locally with Docker and deploy to production on AWS."
 ---
 
-AgentOS is a secure and scalable backend for running agents. The [agentos-aws](https://github.com/agno-agi/agentos-aws) codebase runs AgentOS locally using Docker and deploys to production on AWS. It comes with:
+**The [agentos-aws](https://github.com/agno-agi/agentos-aws) template is for teams that develop locally with Docker and deploy to production on AWS.**
 
-- **2 platform agents** that build and run the platform for you. **Agent Builder** creates agents, teams, and workflows. **Platform Manager** monitors and manages the platform.
-- **5 [skills](/deploy/templates/improve-agents)** that let coding agents build, test, and improve the platform for you.
+It includes:
 
-Because the trace data, agent code, evals, and system logs all live in one place, the platform can inspect and improve itself automatically.
+- **Agent Builder**, which creates agents, teams, and workflows.
+- **Platform Manager**, which inspects and explains the platform, eval history, deployment checks, and schedules.
+- **Six [skills](/deploy/templates/improve-agents)** for setting up, building, testing, and improving the project with a coding agent.
+
+Coding agents can use these skills with the AgentOS API, evals, traces, and container logs to inspect and improve the platform.
 
 Production runs in your own AWS account: the deploy scripts use ECS Express Mode for the service and RDS for Postgres.
 
 ## Get started
 
-The fastest way to get started is using a coding agent. Copy the prompt below into Claude Code, Cursor or Codex and it'll take you from zero to a running platform.
+Copy the prompt below into Claude Code, Cursor, or Codex to configure and run the template with a coding agent.
 
 <Snippet file="setup-prompt-aws.mdx" />
 
@@ -74,7 +77,7 @@ Prints `MCP OK` with the tool count and a real agent answer through the MCP endp
 | MCP clients on your machine | `uvx agno connect` auto-detects Claude Code, Claude Desktop, Codex, and Cursor and registers `http://localhost:8000/mcp`. Verify from the app: "can you access my agentos mcp?" |
 | AgentOS UI | [os.agno.com](https://os.agno.com) → **Connect OS** → `http://localhost:8000`. |
 | claude.ai and ChatGPT | Hosted sessions can't reach localhost. Deploy to production first, then add `https://<service-url>/mcp` as a custom connector and approve the consent page with the `MCP_CONNECT_SECRET` that `up.sh` generates. |
-| Slack | Set `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET`. See [Slack setup](/deploy/interfaces/slack/overview). |
+| Slack | Set `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET`. See [Slack setup](/agent-os/interfaces/slack/setup). |
 | Your product | Call the AgentOS REST API with 80+ endpoints. Browse them at `/docs`. |
 
 ## Deploy to production
@@ -103,13 +106,13 @@ The first run takes 30-45 minutes end to end. Certificate and DNS provisioning i
   </Step>
 
   <Step title="Mint your JWT key">
-The script pauses for a `JWT_VERIFICATION_KEY`. Token-Based Authorization is on by default and without a verification key or a `JWT_JWKS_FILE`, the platform refuses to serve production traffic.
+The script pauses for a `JWT_VERIFICATION_KEY`. Token-Based Authorization is on by default. Production startup requires that verification key or a readable JWKS file at the container path in `JWT_JWKS_FILE`; otherwise the process exits.
 
 1. Open [os.agno.com](https://os.agno.com), click **Connect OS** → **Live**, enter your service URL, and name it **Live AgentOS**.
 2. Go to **Settings** → **OS & Security** and turn on **Token-Based Authorization (JWT)**.
 3. Copy the public key and paste the full PEM into the `up.sh` prompt. The script saves it to your env file, pushes it to Secrets Manager, and rolls a fresh task-definition revision.
 
-If you skip the prompt, add the key to `.env.production` later and run `./scripts/aws/env-sync.sh`. If `.env.production` sets `JWT_JWKS_FILE` instead, the script skips the prompt and delivers the path through the task-definition env.
+If you skip the prompt, add `JWT_VERIFICATION_KEY` to `.env.production` later and run `./scripts/aws/env-sync.sh`. For JWKS, add the file to the image build context and rebuild, or configure a mount. Set `JWT_JWKS_FILE` to its container path, then redeploy the service. `up.sh` and `env-sync.sh` only forward the path.
 
 <Note>Live AgentOS connections are a paid feature. Use code `PLATFORM30` for one month off.</Note>
   </Step>

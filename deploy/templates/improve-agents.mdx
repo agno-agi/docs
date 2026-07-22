@@ -1,40 +1,51 @@
 ---
 title: "Build with Coding Agents"
 sidebarTitle: "Coding Agents"
-description: "Bundled skills that let Claude Code, Codex, and Cursor create, improve, evaluate, and maintain your agents."
+description: "Use Claude Code, Codex, or Cursor to set up, build, improve, evaluate, and maintain an AgentOS Starter."
 ---
 
-Every template is designed for coding agents to drive the full agent-development lifecycle: create, improve, evaluate, maintain.
+Use Claude Code, Codex, or Cursor to set up, build, improve, evaluate, and maintain an AgentOS Starter.
 
-Everything on this page runs inside a cloned template. If you don't have one running yet, [pick a Starter](/deploy/introduction) first.
+The repository gives your coding agent the source code, a live MCP endpoint, evals, and runtime logs in one place. It can make a change, exercise it against the running platform, and bring back a verified result.
 
-The skills live in `.agents/skills/`. Claude Code picks them up on clone through a committed `.claude/skills` symlink; other harnesses like Codex and Cursor can symlink the same folder. Invoke a skill by name (`/create-new-agent`) or describe the task and the coding agent matches it.
+Everything on this page runs inside a cloned AgentOS Starter. If you don't have one running yet, [pick a Starter](/deploy/introduction) first.
 
 ## Skills
 
-| Skill | What it does | Who drives |
-|-------|--------------|------------|
-| `/create-new-agent` | Scaffolds an agent, registers it in `app/main.py`, smoke-tests it live. | You + the agent |
-| `/extend-agent` | Adds a tool or capability, refines instructions, fixes a known bug. | You |
-| `/improve-agent` | Derives probes from the agent's `INSTRUCTIONS`, judges responses, edits until they pass. | The agent |
-| `/eval-and-improve` | Runs the eval suite, diagnoses failures, fixes in scope until green. | The agent |
-| `/review-and-improve` | Sweeps for drift between docs, code, and config. Auto-fixes mechanical drift. | The agent |
+Each AgentOS Starter stores its coding-agent workflows in `.agents/skills/`.
 
-## Your platform as an MCP tool
+| Skill | Use it when |
+|-------|-------------|
+| `/setup-platform` | Bring up a fresh clone, verify the platform, and build the first agent |
+| `/create-new-agent` | Turn an idea into a registered agent and smoke-test it live |
+| `/extend-agent` | Add a tool, capability, instruction change, or targeted fix |
+| `/improve-agent` | Derive probes from an agent's instructions and harden its behavior |
+| `/eval-and-improve` | Diagnose failing evals and repair the affected behavior |
+| `/review-and-improve` | Check code, documentation, configuration, and registered components for drift |
 
-Coding agents edit the platform's code and call its live agents over MCP. Register your AgentOS with the MCP clients on your machine:
+Claude Code discovers the skills through the Starter's committed `.claude/skills` symlink. Codex and Cursor can link to the same `.agents/skills/` directory.
+
+## Connect the live platform
+
+Connect the local AgentOS to the supported clients on your machine:
 
 ```bash
 uvx agno connect
 ```
 
-It auto-detects Claude Code, Claude Desktop, Codex, and Cursor and registers `http://localhost:8000/mcp`. To check the connection, open one of those apps and ask: "can you access my agentos mcp?". Your coding agent can then call `run_agent`, `run_team`, and `run_workflow` against the live platform: build an agent with `/create-new-agent`, then test it over MCP in the same session.
+The command registers AgentOS with detected Claude Code, Claude Desktop, Codex, and Cursor clients. Your coding agent can then call `run_agent`, `run_team`, and `run_workflow` while it works on the repository.
 
-For a deployed platform, point the same command at your domain: `uvx agno connect --url https://<your-domain>`. Production is JWT-gated, so the command mints a service-account token (`agno_pat_...`) for the connection.
+For a deployed platform:
 
-## Evals
+```bash
+uvx agno connect --url https://<your-domain>
+```
 
-Lock in agent behavior with the eval suite in `evals/`. The evals run on the host machine, so set up the venv once:
+See [Connect Your Clients](/cli/connect) for authentication modes and client-specific setup.
+
+## Keep behavior stable with evals
+
+Use the bundled eval suite to check response quality and tool calls as you change instructions, tools, and models. The evals run on the host machine, so set up the virtual environment once:
 
 ```bash
 ./scripts/venv_setup.sh
@@ -44,7 +55,7 @@ source .venv/bin/activate
 Then run:
 
 ```bash
-python -m evals --tag smoke      # fast checks of the self-driving surfaces
+python -m evals --tag smoke      # fast checks of the platform agents
 python -m evals --tag release    # broader pre-release confidence
 python -m evals --name <case>    # one case while iterating
 python -m evals -v               # stream the full run with rich panels
@@ -64,22 +75,21 @@ The bundled agents demonstrate three patterns to copy:
 | Context provider | `agents/platform_manager.py` | You want many tools collapsed into one `query_<thing>` interface that hands off to a sub-agent. |
 | Studio builder | `agents/agent_builder.py` | Users create and refine components from chat; deletes keep a confirmation gate. |
 
-## Teams and workflows
-
-| Pattern | When to use |
-|---------|-------------|
-| [Teams](/teams/overview) | Route to specialists, coordinate parallel work, synthesize results. |
-| [Workflows](/workflows/overview) | Deterministic pipelines that run the same way every time. |
-
-Agents for open questions, teams for routing, workflows for processes.
-
 ## Scheduled tasks
 
 The scheduler is on by default. Two reference workflows are registered out of the box:
 
 | Workflow | What it does | Default |
 |----------|--------------|---------|
-| Deployment check | Daily readiness report: database, auth, scheduler, MCP, Slack config. Deterministic, no LLM calls. | On. Disable with `ENABLE_DEPLOY_CHECK=False`. |
+| Deployment check | Daily readiness report: database, auth, scheduler, MCP, Slack config. Fixed checks, no LLM calls. | On. Disable with `ENABLE_DEPLOY_CHECK=False`. |
 | Run evals | Daily smoke-tag eval run. Uses model calls. | Off. Enable with `ENABLE_SCHEDULED_EVALS=True`. |
 
 See [Scheduler](/agent-os/scheduler/overview) for the cron API.
+
+## Next steps
+
+| Task | Guide |
+|------|-------|
+| Choose a Starter | [AgentOS Templates](/deploy/introduction) |
+| Connect coding clients | [Connect Your Clients](/cli/connect) |
+| Add or customize evals | [Evals](/evals/overview) |

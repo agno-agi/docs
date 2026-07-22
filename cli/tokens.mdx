@@ -1,0 +1,59 @@
+---
+title: "Manage Tokens"
+sidebarTitle: "agno tokens"
+description: "Mint, list, and revoke AgentOS service-account tokens from the terminal."
+---
+
+```bash
+agno tokens create ci-runner
+agno tokens list
+agno tokens revoke ci-runner
+```
+
+`agno tokens` manages [service accounts](/agent-os/security/authorization/service-accounts) on a running AgentOS: long-lived tokens for CI jobs, scripts, and other non-human callers. On an AgentOS with authorization enabled, the commands need an admin credential from `AGNO_ADMIN_TOKEN` or `OS_SECURITY_KEY` (or an interactive prompt).
+
+## Create
+
+```bash
+agno tokens create ci-runner --scopes agents:run --scopes sessions:read --expires 30
+```
+
+This is the only time you'll see the plaintext token, so save it somewhere safe. There's no way to get it back later.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--scopes`, `-s` | `agents:run`, `teams:run`, `workflows:run`, `sessions:read`, `config:read` | Scope to grant (repeatable) |
+| `--expires` | `90d` | Days until expiry (`90d`, `30`) or `never` |
+| `--privileged` | off | Required to grant write, delete, admin, or service_accounts scopes |
+| `--url` | autodiscover | AgentOS base URL |
+| `--allow-http` | off | Permit credentials over plaintext HTTP to a non-loopback host |
+| `--yes`, `-y` | off | Trust a remote `AGENTOS_URL` from a `.env` file without prompting |
+| `--json` | off | Emit a single JSON document, including the token |
+
+Names are lowercase slugs: letters, digits, `-`, and `_`, starting with a letter or digit. If the name already exists, the command fails; revoke the old account first or pick a different name.
+
+## List
+
+```bash
+agno tokens list
+```
+
+The output shows each account's name, token prefix, scopes, expiry, last use, and status. Full tokens are never stored or displayed.
+
+## Revoke
+
+```bash
+agno tokens revoke ci-runner --yes
+```
+
+Revocation is irreversible and takes effect on the account's next request. Interactive runs confirm first; `--yes`, `--json`, and non-TTY runs proceed without prompting.
+
+<Warning>
+A client with a live connection keeps using its revoked token until it reconnects, so restart any long-running clients after you revoke.
+</Warning>
+
+## Developer Resources
+
+- [Service accounts](/agent-os/security/authorization/service-accounts)
+- [Scopes](/agent-os/security/authorization/scopes)
+- [agnoctl reference](/reference/cli/agnoctl)

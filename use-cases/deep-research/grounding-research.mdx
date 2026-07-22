@@ -1,24 +1,24 @@
 ---
 title: "Grounding research"
-description: "Ground every agent in a mandate, a research library, and prior work, so conclusions are defensible."
+description: "Give each research agent a mandate, a shared research library, and access to prior work."
 ---
 
-Ungrounded research is confident and wrong. A research agent needs to know the rules it operates under, the body of knowledge it can draw on, and what was decided before. Agno layers these so each agent carries the right context without carrying everything.
+Ground each research agent with three forms of context: rules in the prompt, shared source material in a knowledge base, and complete prior work in an archive. Each layer supports a distinct part of the review.
 
 | Layer | Holds | Mechanism |
 |-------|-------|-----------|
-| Static context | The mandate, policy, and process that never change per query | Injected into every system prompt |
+| Static context | The mandate, policy, and process shared across queries | Injected into every system prompt |
 | Research library | Company profiles, sector analyses, source documents | RAG over a vector database |
 | Prior work | Past decisions and memos | File navigation tools |
 
 ## Layer 1: static context in the prompt
 
-Rules that apply to every question belong in the prompt, not in retrieval. Load them once and inject them into every agent.
+Place rules that apply to every question in the prompt. Load them once and inject them into every agent.
 
 ```python
 from pathlib import Path
 
-CONTEXT_DIR = Path(__file__).parent
+CONTEXT_DIR = Path(__file__).parent / "context"
 
 
 def load_context() -> str:
@@ -40,11 +40,11 @@ Enforce position limits and sector caps on every recommendation.
 """
 ```
 
-Mandate, risk policy, and process are markdown files. Every agent gets the identical rules verbatim, so no specialist can drift from the mandate.
+Mandate, risk policy, and process are markdown files. The loader places the same text in each agent's instructions. Model instructions guide behavior; enforce position limits and other hard policy in code or tool permissions.
 
 ## Layer 2: the research library in RAG
 
-The corpus the agents reason over goes in a shared knowledge base, searched per query. Instantiate it once and import it everywhere, never recreate it per agent.
+The corpus the agents reason over goes in a shared knowledge base, searched per query. Reuse one configured instance when agents share the same corpus.
 
 ```python
 from agno.agent import Agent
@@ -61,25 +61,48 @@ analyst = Agent(
 )
 
 reply = analyst.run("What does our research say about semiconductor supply?").content
-# Answers from the library and cites the profiles and analyses it pulled,
-# instead of from the model's prior.
+# The instruction tells the analyst to search and cite retrieved material.
 ```
 
-`search_knowledge=True` lets the agent pull the relevant profiles and analyses per question instead of carrying the whole library in context.
+`search_knowledge` is on by default. The agent retrieves relevant profiles and analyses for each question, which keeps the full library out of the prompt.
 
 ## Layer 3: prior work on disk
 
-Past memos and decisions are durable artifacts, not vectors. Give a read agent file tools so it can navigate the archive and ground new work in what was already concluded. The agent that writes new memos gets write access; the agent that reads them does not. Keep the boundary explicit.
+Keep complete past memos as files when a reviewer needs the original reasoning trail. Give the reading agent file tools scoped to that archive.
 
-## Why three layers, not one
+```python
+from pathlib import Path
 
-| If you only had | You would lose |
-|-----------------|----------------|
-| The prompt | A corpus too large to inline |
-| RAG | Hard rules that must apply to every query, verbatim |
-| The archive | The reasoning trail behind past decisions |
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.tools.file import FileTools
 
-Each layer answers a different question: what are the rules, what do we know, what did we decide.
+memos_dir = Path(__file__).parent / "memos"
+
+archivist = Agent(
+    model=OpenAIResponses(id="gpt-5.5"),
+    tools=[
+        FileTools(
+            base_dir=memos_dir,
+            enable_save_file=False,
+            enable_replace_file_chunk=False,
+        )
+    ],
+    instructions="Check prior memos before drawing new conclusions.",
+)
+```
+
+Give the memo writer write access. This archival agent receives read and search tools. Keep sensitive files outside `memos_dir` because every file under the tool's base directory may be readable.
+
+## What each layer contributes
+
+| Layer | Contribution |
+|-------|--------------|
+| Prompt | Instructions and context shared across queries |
+| RAG | Retrieval from a corpus too large to inline |
+| Archive | The reasoning trail behind past decisions |
+
+Together, the layers cover operating rules, available research, and prior decisions.
 
 ## Next steps
 

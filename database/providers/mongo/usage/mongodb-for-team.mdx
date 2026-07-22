@@ -1,16 +1,25 @@
 ---
 title: MongoDB for Team
 sidebarTitle: Team
+description: Store team sessions and run history in MongoDB with MongoDb.
 ---
 
-Agno supports using MongoDB as a storage backend for Teams using the `MongoDb` class.
+`MongoDb` stores a Team's sessions and run history in MongoDB.
 
 ## Usage
 
-You need to provide either `db_url` or `client`. The following example uses `db_url`.
+Provide either `db_url` or `db_client`. The default database name is `agno`; set `db_name` to use another database. The following example uses `db_url`.
+
+Install the `agno`, `pymongo`, `openai`, and `ddgs` packages:
+
+```shell
+uv pip install agno pymongo openai ddgs
+```
 
 ### Run MongoDB
-Install [docker desktop](https://docs.docker.com/desktop/install/mac-install/) and run **MongoDB** on port **27017** using:
+
+Install [Docker Desktop](https://docs.docker.com/get-started/get-docker/), then start MongoDB on port `27017`:
+
 ```bash
 docker run -d \
   --name local-mongo \
@@ -21,9 +30,6 @@ docker run -d \
 ```
 
 ```python mongodb_for_team.py
-"""
-Run: `uv pip install openai newspaper4k lxml_html_clean agno` to install the dependencies
-"""
 from typing import List
 
 from agno.agent import Agent
@@ -31,11 +37,10 @@ from agno.db.mongo import MongoDb
 from agno.models.openai import OpenAIResponses
 from agno.team import Team
 from agno.tools.hackernews import HackerNewsTools
-from agno.tools.hackernews import HackerNewsTools
+from agno.tools.websearch import WebSearchTools
 from pydantic import BaseModel
 
-# MongoDB connection settings
-db_url = "mongodb://localhost:27017"
+db_url = "mongodb://mongoadmin:secret@localhost:27017"
 db = MongoDb(db_url=db_url)
 
 class Article(BaseModel):
@@ -46,7 +51,7 @@ class Article(BaseModel):
 hn_researcher = Agent(
     name="HackerNews Researcher",
     model=OpenAIResponses(id="gpt-5.2"),
-    role="Gets top stories from hackernews.",
+    role="Gets top stories from HackerNews.",
     tools=[HackerNewsTools()],
 )
 
@@ -54,7 +59,7 @@ web_searcher = Agent(
     name="Web Searcher",
     model=OpenAIResponses(id="gpt-5.2"),
     role="Searches the web for information on a topic",
-    tools=[HackerNewsTools()],
+    tools=[WebSearchTools()],
     add_datetime_to_context=True,
 )
 
@@ -64,20 +69,18 @@ hn_team = Team(
     members=[hn_researcher, web_searcher],
     db=db,
     instructions=[
-        "First, search hackernews for what the user is asking about.",
+        "First, search HackerNews for what the user is asking about.",
         "Then, ask the web searcher to search for each story to get more information.",
         "Finally, provide a thoughtful and engaging summary.",
     ],
     output_schema=Article,
     markdown=True,
-    debug_mode=True,
     show_members_responses=True,
 )
 
-hn_team.print_response("Write an article about the top 2 stories on hackernews")
-
+hn_team.print_response("Write an article about the top 2 stories on HackerNews")
 ```
 
-## Params
+## Parameters
 
 <Snippet file="db-mongodb-params.mdx" />
