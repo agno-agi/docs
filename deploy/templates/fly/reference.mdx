@@ -36,7 +36,7 @@ To opt out (not recommended), set `authorization=False` in `app/main.py` and red
 
 <AccordionGroup>
   <Accordion title="Add an agent">
-Ask your coding agent to run `/create-new-agent`, or do it by hand. Create `agents/my_agent.py`:
+Ask your coding agent to run `/create-agent`, or do it by hand. Create `agents/my_agent.py`:
 
 ```python
 from agno.agent import Agent
@@ -70,6 +70,17 @@ agent_os = AgentOS(
     ...
     agents=[agent_builder, platform_manager, web_search, my_agent],
 )
+```
+
+Add its UI metadata beneath the existing `manifest:` key in `app/config.yaml`:
+
+```yaml
+  my-agent:
+    description: "What the agent does."
+    quick_prompts:
+      - "First example prompt"
+      - "Second example prompt"
+      - "Third example prompt"
 ```
 
 Local containers hot-reload on save. For production, run `./scripts/fly/redeploy.sh`.
@@ -130,7 +141,7 @@ Sync with `./scripts/fly/env-sync.sh`. The interface activates automatically and
   </Accordion>
 
   <Accordion title="Toggle scheduled workflows">
-The deployment check runs daily by default (`ENABLE_DEPLOY_CHECK=True`); it is deterministic and free. Scheduled evals are off by default (`ENABLE_SCHEDULED_EVALS=False`) because they use model calls. Both workflows stay runnable on demand regardless.
+The deployment check runs daily by default (`ENABLE_DEPLOY_CHECK=True`); it is deterministic and free. The `run-evals` schedule is always registered but starts disabled because it uses model calls. Enable it from the AgentOS UI. Both workflows remain runnable on demand.
   </Accordion>
 
   <Accordion title="Enable pgvector for knowledge bases">
@@ -174,7 +185,6 @@ source .venv/bin/activate
 | `AGENTOS_MCP_SIGNING_KEY` | No | generated | Optional high-entropy signing-key material (32+ chars) for OAuth tokens. Unset, a strong key is generated and persisted in the database. Rotating it invalidates outstanding tokens. |
 | `AGENTOS_URL` | No | `http://127.0.0.1:8000` | Scheduler base URL. `up.sh` sets it to `https://<app>.fly.dev`. Scheduled jobs never fire if it stays at the default in production. Re-running `up.sh` resets a hand-set value to the generated fly.dev URL, so re-pin the domain (or re-run `env-sync.sh`) afterwards. When `MCP_CONNECT_SECRET` is set, OAuth metadata also derives its public origin from this URL. |
 | `ENABLE_DEPLOY_CHECK` | No | `True` | Daily deployment-check cron. |
-| `ENABLE_SCHEDULED_EVALS` | No | `False` | Daily run-evals cron. Uses model calls. |
 | `EVALS_TAG` | No | `smoke` | Eval tag the run-evals workflow runs. |
 | `EVALS_CASE_TIMEOUT_SECONDS` | No | `90` | Per-case timeout for run-evals runs. |
 | `EVALS_SUITE_TIMEOUT_SECONDS` | No | `900` | Whole-suite timeout for run-evals runs. |
@@ -201,7 +211,7 @@ source .venv/bin/activate
 Install [flyctl](https://fly.io/docs/flyctl/install/), then run `fly auth login`. The scripts accept either binary name, `flyctl` or `fly`.
   </Accordion>
   <Accordion title="up.sh pauses asking for a JWT key">
-Expected. Mint the key at [os.agno.com](https://os.agno.com): connect your OS (**Connect OS** → **Live**, enter your Fly URL), then turn on **Token-Based Authorization (JWT)** under **Settings** → **OS & Security** and paste the full PEM. To add a PEM later, set `JWT_VERIFICATION_KEY` and run `./scripts/fly/env-sync.sh`. To use JWKS, bake or mount the file in the Fly Machine, set `JWT_JWKS_FILE` to its container path, then sync the variable.
+Expected. At [os.agno.com](https://os.agno.com), choose **Connect OS** → **Live**, enter your Fly URL, name it **Live AgentOS**, turn on **Token-Based Authorization (JWT)** on the connection panel, and connect. The UI generates the public key. If the OS is already connected, enable the setting under **Settings** → **OS & Security**. Paste the full PEM into the script prompt. To add a PEM later, set `JWT_VERIFICATION_KEY` and run `./scripts/fly/env-sync.sh`. To use JWKS, bake or mount the file in the Fly Machine, set `JWT_JWKS_FILE` to its container path, then sync the variable.
   </Accordion>
   <Accordion title="up.sh exits: fly.toml carries an app name this script doesn't manage">
 The script only manages names it generated. A different name means continuing would overwrite `fly.toml` and abandon that app. Restore the `agentos` placeholder (or an `agentos-*` name from a previous run), or tear down first with `./scripts/fly/down.sh`.

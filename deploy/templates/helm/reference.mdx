@@ -36,7 +36,7 @@ To opt out (not recommended), set `authorization=False` in `app/main.py`, then b
 
 <AccordionGroup>
   <Accordion title="Add an agent">
-Ask your coding agent to run `/create-new-agent`, or do it by hand. Create `agents/my_agent.py`:
+Ask your coding agent to run `/create-agent`, or do it by hand. Create `agents/my_agent.py`:
 
 ```python
 from agno.agent import Agent
@@ -70,6 +70,17 @@ agent_os = AgentOS(
     ...
     agents=[agent_builder, platform_manager, web_search, my_agent],
 )
+```
+
+Add its UI metadata beneath the existing `manifest:` key in `app/config.yaml`:
+
+```yaml
+  my-agent:
+    description: "What the agent does."
+    quick_prompts:
+      - "First example prompt"
+      - "Second example prompt"
+      - "Third example prompt"
 ```
 
 Local containers hot-reload on save. For production, build and push a new image tag, then run `IMAGE_TAG=<tag> ./scripts/k8s/redeploy.sh`. If the release still runs the official image, point it at your registry first: `IMAGE_REPOSITORY=<registry>/agentos IMAGE_TAG=<tag> ./scripts/k8s/up.sh`.
@@ -132,9 +143,9 @@ Sync with `./scripts/k8s/env-sync.sh`. The interface activates automatically and
   </Accordion>
 
   <Accordion title="Toggle scheduled workflows">
-The deployment check runs daily by default (`ENABLE_DEPLOY_CHECK=True`); it is deterministic and free. Scheduled evals are off by default (`ENABLE_SCHEDULED_EVALS=False`) because they use model calls. Both workflows stay runnable on demand regardless.
+The deployment check runs daily by default (`ENABLE_DEPLOY_CHECK=True`); it is deterministic and free. The `run-evals` schedule is always registered but starts disabled because it uses model calls. Enable it from the AgentOS UI. Both workflows remain runnable on demand.
 
-In the cluster these are chart values. Set them via `extraEnv` and `helm upgrade`; `env-sync.sh` does not sync `ENABLE_DEPLOY_CHECK`, `ENABLE_SCHEDULED_EVALS`, or `EVALS_*`.
+In the cluster these are chart values. Set `ENABLE_DEPLOY_CHECK` and `EVALS_*` via `extraEnv` and `helm upgrade`; `env-sync.sh` does not sync them. Enable the registered `run-evals` schedule from the AgentOS UI.
   </Accordion>
 </AccordionGroup>
 
@@ -167,7 +178,6 @@ source .venv/bin/activate
 | `AGENTOS_MCP_SIGNING_KEY` | No | generated | Optional high-entropy signing-key material (32+ chars) for OAuth tokens. Unset, a strong key is generated and persisted in the database. Rotating it invalidates outstanding tokens. |
 | `AGENTOS_URL` | No | `http://agentos:8000` | Scheduler base URL. The chart resolves an explicit value first, then the ingress URL, then the release service URL. Set it only for a custom domain or tunnel. When `MCP_CONNECT_SECRET` is set, OAuth metadata uses this URL as its public origin. |
 | `ENABLE_DEPLOY_CHECK` | No | `True` | Daily deployment-check cron. |
-| `ENABLE_SCHEDULED_EVALS` | No | `False` | Daily run-evals cron. Uses model calls. |
 | `EVALS_TAG` | No | `smoke` | Eval tag the run-evals workflow runs. |
 | `EVALS_CASE_TIMEOUT_SECONDS` | No | `90` | Per-case timeout for run-evals runs. |
 | `EVALS_SUITE_TIMEOUT_SECONDS` | No | `900` | Whole-suite timeout for run-evals runs. |
@@ -196,7 +206,7 @@ Install [kubectl](https://kubernetes.io/docs/tasks/tools/) and [Helm](https://he
 `up.sh` deploys into your current kubectl context and verifies it can reach the cluster first. Point kubectl at the target cluster and confirm `kubectl get namespace` works, then rerun.
   </Accordion>
   <Accordion title="up.sh pauses asking for a JWT key">
-Expected. Mint the key at [os.agno.com](https://os.agno.com): connect your OS (**Connect OS** → **Live**, enter your AgentOS URL), then turn on **Token-Based Authorization (JWT)** under **Settings** → **OS & Security** and paste the full PEM. To add a PEM later, set `JWT_VERIFICATION_KEY` and run `./scripts/k8s/env-sync.sh`. To use JWKS, first provide the file through a custom image or chart volume, then set `JWT_JWKS_FILE` to its pod path and sync.
+Expected. At [os.agno.com](https://os.agno.com), choose **Connect OS** → **Live**, enter your AgentOS URL, name it **Live AgentOS**, turn on **Token-Based Authorization (JWT)** on the connection panel, and connect. The UI generates the public key. If the OS is already connected, enable the setting under **Settings** → **OS & Security**. Paste the full PEM into the script prompt. To add a PEM later, set `JWT_VERIFICATION_KEY` and run `./scripts/k8s/env-sync.sh`. To use JWKS, first provide the file through a custom image or chart volume, then set `JWT_JWKS_FILE` to its pod path and sync.
   </Accordion>
   <Accordion title="App fails to start in production">
 JWT auth is on whenever `RUNTIME_ENV` is not `dev`. Set `JWT_VERIFICATION_KEY` and sync. `JWT_JWKS_FILE` works only when a custom image or chart mount already provides a readable file at that pod path. To opt out inside a private VPC behind another auth layer, set `authorization=False` in `app/main.py` and roll out your own image build.

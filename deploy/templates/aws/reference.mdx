@@ -12,7 +12,7 @@ The template names the Express service `agent-os`, the ECR repo `agentos`, and t
 |------|---------|
 | Deploy code changes | `./scripts/aws/redeploy.sh` |
 | Sync env variables | `./scripts/aws/env-sync.sh` (defaults to `.env.production`; pass `.env` to sync that instead) |
-| Tail logs | `aws logs tail /ecs/agent-os --follow` |
+| Tail logs | `aws logs tail /ecs/agent-os --follow --region <region>` |
 | Watch a rollout | `aws ecs monitor-express-gateway-service --region <region> --service-arn <arn>` |
 | Tear down | `./scripts/aws/down.sh` (add `--yes` to skip the confirmation) |
 
@@ -36,7 +36,7 @@ To opt out (not recommended), set `authorization=False` in `app/main.py` and red
 
 <AccordionGroup>
   <Accordion title="Add an agent">
-Ask your coding agent to run `/create-new-agent`, or do it by hand. Create `agents/my_agent.py`:
+Ask your coding agent to run `/create-agent`, or do it by hand. Create `agents/my_agent.py`:
 
 ```python
 from agno.agent import Agent
@@ -70,6 +70,17 @@ agent_os = AgentOS(
     ...
     agents=[agent_builder, platform_manager, web_search, my_agent],
 )
+```
+
+Add its UI metadata beneath the existing `manifest:` key in `app/config.yaml`:
+
+```yaml
+  my-agent:
+    description: "What the agent does."
+    quick_prompts:
+      - "First example prompt"
+      - "Second example prompt"
+      - "Third example prompt"
 ```
 
 Local containers hot-reload on save. For production, run `./scripts/aws/redeploy.sh`.
@@ -131,7 +142,7 @@ Sync with `./scripts/aws/env-sync.sh`; both land in Secrets Manager. The interfa
   </Accordion>
 
   <Accordion title="Toggle scheduled workflows">
-The deployment check runs daily by default (`ENABLE_DEPLOY_CHECK=True`); it is deterministic and free. Scheduled evals are off by default (`ENABLE_SCHEDULED_EVALS=False`) because they use model calls. Both workflows stay runnable on demand regardless.
+The deployment check runs daily by default (`ENABLE_DEPLOY_CHECK=True`); it is deterministic and free. The `run-evals` schedule is always registered but starts disabled because it uses model calls. Enable it from the AgentOS UI. Both workflows remain runnable on demand.
   </Accordion>
 
   <Accordion title="Switch Fargate to ARM">
@@ -168,8 +179,8 @@ source .venv/bin/activate
 | `AGENTOS_MCP_SIGNING_KEY` | No | generated | Optional high-entropy signing-key material (32+ chars) for OAuth tokens. Unset, a strong key is generated and persisted in the database. Rotating it invalidates outstanding tokens. |
 | `AGENTOS_URL` | No | `http://127.0.0.1:8000` | Scheduler base URL. `up.sh` sets it to your Express service URL. Scheduled jobs never fire if it stays at the default in production. When `MCP_CONNECT_SECRET` is set, OAuth metadata also derives its public origin from this URL. |
 | `SERVICE_ARN` | No | written by `up.sh` | Deploy metadata the scripts use to find the Express service. `env-sync.sh` never sends it to the container. |
+| `AWS_REGION` | No | `us-east-1` | AWS region used for provisioning and lifecycle commands. |
 | `ENABLE_DEPLOY_CHECK` | No | `True` | Daily deployment-check cron. |
-| `ENABLE_SCHEDULED_EVALS` | No | `False` | Daily run-evals cron. Uses model calls. |
 | `EVALS_TAG` | No | `smoke` | Eval tag the run-evals workflow runs. |
 | `EVALS_CASE_TIMEOUT_SECONDS` | No | `90` | Per-case timeout for run-evals runs. |
 | `EVALS_SUITE_TIMEOUT_SECONDS` | No | `900` | Whole-suite timeout for run-evals runs. |
@@ -192,7 +203,7 @@ Upgrade the AWS CLI (for example `brew upgrade awscli`) until `aws ecs create-ex
 The RDS instance deploys into the region's default VPC. Create one with `aws ec2 create-default-vpc`, or adapt `scripts/aws/up.sh` to your own VPC.
   </Accordion>
   <Accordion title="up.sh pauses asking for a JWT key">
-Expected. Mint the key at [os.agno.com](https://os.agno.com): connect your OS (**Connect OS** → **Live**, enter your service URL), then turn on **Token-Based Authorization (JWT)** under **Settings** → **OS & Security** and paste the full PEM. To add a PEM later, set `JWT_VERIFICATION_KEY` and run `./scripts/aws/env-sync.sh`. To use JWKS, add the file to the image build context and rebuild, or configure a mount. Set `JWT_JWKS_FILE` to its container path, then redeploy or roll the service. Env sync alone only updates the path.
+Expected. At [os.agno.com](https://os.agno.com), choose **Connect OS** → **Live**, enter your service URL, name it **Live AgentOS**, turn on **Token-Based Authorization (JWT)** on the connection panel, and connect. The UI generates the public key. If the OS is already connected, enable the setting under **Settings** → **OS & Security**. Paste the full PEM into the script prompt. To add a PEM later, set `JWT_VERIFICATION_KEY` and run `./scripts/aws/env-sync.sh`. To use JWKS, add the file to the image build context and rebuild, or configure a mount. Set `JWT_JWKS_FILE` to its container path, then redeploy or roll the service. Env sync alone only updates the path.
   </Accordion>
   <Accordion title="App fails to start in production">
 JWT auth is on whenever `RUNTIME_ENV` is not `dev`. Set `JWT_VERIFICATION_KEY` and sync. For JWKS, verify the file exists inside the container at `JWT_JWKS_FILE`; changing the variable alone does not deliver it. To opt out inside a private VPC behind another auth layer, set `authorization=False` in `app/main.py`.
@@ -201,7 +212,7 @@ JWT auth is on whenever `RUNTIME_ENV` is not `dev`. Set `JWT_VERIFICATION_KEY` a
 First-time provisioning of the ALB, certificate, and DNS takes 10-25 minutes; `up.sh` waits through it. Past that window, the known first-run cause is freshly created IAM roles: Express's async infrastructure calls get denied before the role policies propagate, and ECS never retries. `up.sh` detects this and recreates the service once; the second attempt provisions reliably. If it still stalls, inspect with `aws ecs monitor-express-gateway-service --region <region> --service-arn <arn>`, look for an AccessDenied `CreateLoadBalancer` event in CloudTrail, then delete the service and re-run `./scripts/aws/up.sh`.
   </Accordion>
   <Accordion title="5xx right after deploy">
-The gateway is up; the app is still starting. First boot pulls the image and waits for the database. Wait a few minutes and check `aws logs tail /ecs/agent-os --follow`.
+The gateway is up; the app is still starting. First boot pulls the image and waits for the database. Wait a few minutes and check `aws logs tail /ecs/agent-os --follow --region <region>`.
   </Accordion>
   <Accordion title="Scheduled jobs never fire">
 `AGENTOS_URL` is still the localhost default. `up.sh` sets it to your service URL automatically; for a custom domain or tunnel, set it by hand and run `./scripts/aws/env-sync.sh`.

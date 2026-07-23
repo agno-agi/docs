@@ -42,7 +42,7 @@ To opt out (not recommended), set `authorization=False` in `app/main.py` and red
 
 <AccordionGroup>
   <Accordion title="Add an agent">
-Ask your coding agent to run `/create-new-agent`, or do it by hand. Create `agents/my_agent.py`:
+Ask your coding agent to run `/create-agent`, or do it by hand. Create `agents/my_agent.py`:
 
 ```python
 from agno.agent import Agent
@@ -76,6 +76,17 @@ agent_os = AgentOS(
     ...
     agents=[agent_builder, platform_manager, web_search, my_agent],
 )
+```
+
+Add its UI metadata beneath the existing `manifest:` key in `app/config.yaml`:
+
+```yaml
+  my-agent:
+    description: "What the agent does."
+    quick_prompts:
+      - "First example prompt"
+      - "Second example prompt"
+      - "Third example prompt"
 ```
 
 Local containers hot-reload on save. For production, run `./scripts/modal/redeploy.sh`.
@@ -137,7 +148,7 @@ Sync with `./scripts/modal/env-sync.sh`. The interface activates automatically a
   </Accordion>
 
   <Accordion title="Toggle scheduled workflows">
-The deployment check runs daily by default (`ENABLE_DEPLOY_CHECK=True`); it is deterministic and free. Scheduled evals are off by default (`ENABLE_SCHEDULED_EVALS=False`) because they use model calls. Both workflows stay runnable on demand regardless.
+The deployment check runs daily by default (`ENABLE_DEPLOY_CHECK=True`); it is deterministic and free. The `run-evals` schedule is always registered but starts disabled because it uses model calls. Enable it from the AgentOS UI. Both workflows remain runnable on demand.
   </Accordion>
 </AccordionGroup>
 
@@ -170,7 +181,6 @@ source .venv/bin/activate
 | `AGENTOS_MCP_SIGNING_KEY` | No | generated | Optional high-entropy signing-key material (32+ chars) for OAuth tokens. Unset, a strong key is generated and persisted in the database. Rotating it invalidates outstanding tokens. |
 | `AGENTOS_URL` | No | `http://127.0.0.1:8000` | Scheduler base URL. `up.sh` sets it to your modal.run URL. Scheduled jobs never fire if it stays at the default in production. When `MCP_CONNECT_SECRET` is set, OAuth metadata also derives its public origin from this URL. |
 | `ENABLE_DEPLOY_CHECK` | No | `True` | Daily deployment-check cron. |
-| `ENABLE_SCHEDULED_EVALS` | No | `False` | Daily run-evals cron. Uses model calls. |
 | `EVALS_TAG` | No | `smoke` | Eval tag the run-evals workflow runs. |
 | `EVALS_CASE_TIMEOUT_SECONDS` | No | `90` | Per-case timeout for run-evals runs. |
 | `EVALS_SUITE_TIMEOUT_SECONDS` | No | `900` | Whole-suite timeout for run-evals runs. |
@@ -198,7 +208,7 @@ Install it with `brew install neonctl` or `npm i -g neonctl`, then run `neonctl 
 Neon projects are org-scoped, so `neonctl projects create` asks which organization to use and hangs non-interactive runs. Set `NEON_ORG_ID` in `.env.production` (find yours with `neonctl orgs list`) and re-run `./scripts/modal/up.sh`; the script passes it as `--org-id` so the deploy runs unattended.
   </Accordion>
   <Accordion title="up.sh pauses asking for a JWT key">
-Expected. Mint the key at [os.agno.com](https://os.agno.com): connect your OS (**Connect OS** → **Live**, enter your modal.run URL), then turn on **Token-Based Authorization (JWT)** under **Settings** → **OS & Security** and paste the full PEM. To add a PEM later, set `JWT_VERIFICATION_KEY` and run `./scripts/modal/env-sync.sh`. To use JWKS, add the file to the Docker build context or configure a Modal mount, set `JWT_JWKS_FILE` to its container path, then deploy.
+Expected. At [os.agno.com](https://os.agno.com), choose **Connect OS** → **Live**, enter your modal.run URL, name it **Live AgentOS**, turn on **Token-Based Authorization (JWT)** on the connection panel, and connect. The UI generates the public key. If the OS is already connected, enable the setting under **Settings** → **OS & Security**. Paste the full PEM into the script prompt. To add a PEM later, set `JWT_VERIFICATION_KEY` and run `./scripts/modal/env-sync.sh`. To use JWKS, add the file to the Docker build context or configure a Modal mount, set `JWT_JWKS_FILE` to its container path, then deploy.
   </Accordion>
   <Accordion title="App fails to start in production">
 JWT auth is on whenever `RUNTIME_ENV` is not `dev`. Set `JWT_VERIFICATION_KEY` and sync. For `JWT_JWKS_FILE`, first make the file available inside the Modal image or through a mount, then set its container path and sync. To opt out inside a private VPC behind another auth layer, set `authorization=False` in `app/main.py`.
