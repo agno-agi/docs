@@ -3,7 +3,11 @@ title: TwelveLabs
 description: "Analyze videos with the TwelveLabs Pegasus model and generate multimodal text embeddings with Marengo."
 ---
 
-**TwelveLabsTools** enable an Agent to understand and search video using [TwelveLabs](https://twelvelabs.io). The toolkit exposes two capabilities: `analyze_video`, which answers a natural-language question about a video using the Pegasus video understanding model, and `embed_text`, which generates a multimodal embedding with the Marengo model that lives in the same latent space as TwelveLabs video, audio and image embeddings (useful for searching a video corpus by text).
+**TwelveLabsTools** enable an Agent to understand and search video using [TwelveLabs](https://twelvelabs.io). The toolkit exposes three capabilities:
+
+- `analyze_video`: answers a natural-language question about a video using the Pegasus video understanding model.
+- `embed_text`: generates a multimodal embedding with the Marengo model that lives in the same latent space as TwelveLabs video, audio and image embeddings (useful for searching a video corpus by text).
+- `embed_video`: embeds a whole video into the same Marengo latent space (one vector per 2–10s segment). Video embedding is asynchronous, so the tool creates an embedding task, polls until it finishes (bounded by `embed_timeout`), and returns a compact summary of the segmentation (segment count, embedding dimensionality, and each segment's time offsets and scope) rather than the raw float vectors. Because it is long-running, `embed_video` is opt-in and disabled by default.
 
 ## Prerequisites
 
@@ -53,6 +57,24 @@ embedding_agent = Agent(
 embedding_agent.print_response(
     "Embed the text 'a cat playing piano' and tell me how many dimensions it has."
 )
+
+# Example 3: Embed a whole video with Marengo (one vector per segment). This is
+# asynchronous under the hood — the tool waits for the embedding task to finish.
+video_embedding_agent = Agent(
+    tools=[
+        TwelveLabsTools(
+            enable_analyze_video=False,
+            enable_embed_text=False,
+            enable_embed_video=True,
+        )
+    ],
+    markdown=True,
+)
+
+video_embedding_agent.print_response(
+    "Embed this video and tell me how many segments and dimensions it has: "
+    "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"
+)
 ```
 
 ## Toolkit Params
@@ -61,10 +83,13 @@ embedding_agent.print_response(
 | ---------------------- | --------------- | -------------- | ----------------------------------------------------------------------------------------------- |
 | `api_key`              | `Optional[str]` | `None`         | The TwelveLabs API key. Read from the `TWELVELABS_API_KEY` environment variable if not provided. |
 | `analyze_model`        | `str`           | `pegasus1.5`   | The Pegasus model used for `analyze_video`.                                                     |
-| `embed_model`          | `str`           | `marengo3.0`   | The Marengo model used for `embed_text`.                                                        |
+| `embed_model`          | `str`           | `marengo3.0`   | The Marengo model used for `embed_text` and `embed_video`.                                      |
 | `max_tokens`           | `int`           | `2048`         | Maximum number of tokens for `analyze_video` responses.                                         |
+| `embed_poll_interval`  | `float`         | `5.0`          | Seconds to wait between status checks while an `embed_video` task is processing.                |
+| `embed_timeout`        | `float`         | `300.0`        | Maximum seconds to wait for an `embed_video` task to finish before giving up.                   |
 | `enable_analyze_video` | `bool`          | `True`         | Enable the `analyze_video` functionality.                                                       |
 | `enable_embed_text`    | `bool`          | `True`         | Enable the `embed_text` functionality.                                                          |
+| `enable_embed_video`   | `bool`          | `False`        | Enable the `embed_video` functionality. Opt-in because video embedding is long-running.         |
 | `all`                  | `bool`          | `False`        | Enable all functionality.                                                                       |
 
 ## Toolkit Functions
@@ -73,6 +98,7 @@ embedding_agent.print_response(
 | --------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `analyze_video` | Analyze a video and answer a natural-language question about it using the Pegasus model.                                           |
 | `embed_text`    | Generate a multimodal (Marengo) embedding for a piece of text, which can be used to search a video corpus by text.                 |
+| `embed_video`   | Embed a whole video into the Marengo latent space (one vector per 2–10s segment) and return a summary of the segmentation.         |
 
 ## Developer Resources
 
