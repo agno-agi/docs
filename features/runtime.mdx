@@ -1,32 +1,41 @@
 ---
 title: "Agent Runtime"
-description: "Run agents, teams, and workflows through FastAPI with persistence, streaming, authorization, and observability."
+description: "Run agents, teams, and workflows using FastAPI."
 ---
 
-Platform teams use AgentOS to turn agents into services that handle concurrent requests, preserve state across replicas, and expose production controls from one runtime. AgentOS runs agents, teams, and workflows through FastAPI with streaming, background execution, persistence, auth, tracing, scheduling, and chat or protocol interfaces.
+AgentOS is the FastAPI for agents. It serves agents as an API, an MCP server, and through chat interfaces like Slack, Telegram, and WhatsApp. Here's the simplest possible example:
 
-AgentOS serves native Agno components and adapters for the Claude Agent SDK, LangGraph, DSPy, and Antigravity.
-
-This minimal persistent deployment uses PostgreSQL for agent and runtime state:
-
-```python my_app.py
+```python lines workbench.py
 from agno.agent import Agent
-from agno.db.postgres import PostgresDb
-from agno.models.openai import OpenAIResponses
+from agno.db.sqlite import SqliteDb
 from agno.os import AgentOS
+from agno.tools.workspace import Workspace
 
-db = PostgresDb(db_url="postgresql+psycopg://user:pass@host:5432/agno")
+workbench = Agent(
+    name="Workbench",
+    model="openai:gpt-5.5",
+    db=SqliteDb(db_file="workbench.db"),  # session storage
+    tools=[Workspace(".")],               # read/write in this directory
+    add_history_to_context=True,          # add past 3 runs to context
+)
 
-agent = Agent(model=OpenAIResponses(id="gpt-5.5"), db=db)
-
-agent_os = AgentOS(agents=[agent], db=db)
+# Serve via AgentOS, get streaming, session isolation, API endpoints
+agent_os = AgentOS(
+    agents=[workbench],
+    tracing=True,
+    scheduler=True,
+    mcp_server=True,
+    db=SqliteDb(db_file="workbench.db"),
+)
 app = agent_os.get_app()
 
 if __name__ == "__main__":
-    agent_os.serve(app="my_app:app", reload=False)
+    agent_os.serve(app="workbench:app", reload=True)
 ```
 
-This script starts a FastAPI application that can scale horizontally. The database persists sessions. Streaming is available by default; JWT authorization, tracing, and scheduling are optional AgentOS settings.
+AgentOS covers the valley of death between an agent definition and a live service. It gives agents a durable runtime, multi-user RBAC, background execution, checkpointing, session management, tracing, evals, guardrails, and more.
+
+Build agents, teams, and workflows with the Agno SDK. Run them with AgentOS. Manage and monitor them using the Control Plane.
 
 ## What the runtime gives you
 
@@ -42,8 +51,6 @@ The runtime covers the ground between your agent code and a production service:
 | Observability | Set `tracing=True` to write OpenTelemetry traces to the AgentOS database |
 | Interfaces | Slack, Telegram, WhatsApp, A2A, AG-UI |
 | Human in the loop | Pause runs for user confirmation, admin approval, or external execution |
-
-See [Multi-framework support](/agent-os/multi-framework/overview) for adapter setup.
 
 ## Explore
 
