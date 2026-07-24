@@ -1,43 +1,49 @@
 ---
 title: "What is AgentOS?"
 sidebarTitle: "Introduction"
-description: "Serve agents, teams, and workflows through a FastAPI runtime with REST, MCP, persistent state, authorization, and observability."
+description: "Run agents, teams, and workflows through a FastAPI application."
 ---
 
-**AgentOS is the FastAPI runtime for agents, teams, and workflows.**
+AgentOS runs agents, teams, and workflows as a FastAPI application. It exposes them through REST, MCP, and interfaces such as Slack, Telegram, and WhatsApp.
 
-```python agno_os.py
+```python workbench.py lines
 from agno.agent import Agent
 from agno.db.sqlite import SqliteDb
-from agno.models.anthropic import Claude
 from agno.os import AgentOS
+from agno.tools.workspace import Workspace
 
-agent = Agent(id="agno-assist", model=Claude(id="claude-sonnet-4-5"))
-
-agent_os = AgentOS(
-    agents=[agent],
-    db=SqliteDb(db_file="agno.db"),
-    tracing=True,
-    mcp_server=True,
-    scheduler=True,
+workbench = Agent(
+    name="Workbench",
+    model="openai:gpt-5.5",
+    db=SqliteDb(db_file="workbench.db"),  # session storage
+    tools=[Workspace(".")],  # read/write in this directory
+    add_history_to_context=True,  # add past 3 runs to context
 )
 
+# Serve via AgentOS, get streaming, session isolation, API endpoints
+agent_os = AgentOS(
+    agents=[workbench],
+    tracing=True,
+    scheduler=True,
+    mcp_server=True,
+    db=SqliteDb(db_file="workbench.db"),
+)
 app = agent_os.get_app()
 
 if __name__ == "__main__":
-    agent_os.serve(app="agno_os:app")
+    agent_os.serve(app="workbench:app", reload=True)
 ```
 
-Complete the environment and API key setup in [Run Your First AgentOS](/agent-os/run-your-os#run-it-locally), then install MCP support and run this file:
+Install AgentOS with MCP support, export `OPENAI_API_KEY`, and run the file:
 
 ```bash
-uv pip install -U "agno[os,mcp]" anthropic
-python agno_os.py
+uv pip install -U "agno[os,mcp]" openai
+python workbench.py
 ```
 
-The service starts at `http://localhost:7777`. Open `/docs` for the API documentation or `/config` for the registered components and runtime capabilities.
+AgentOS provides session management, background execution, checkpointing, tracing, evaluations, schedules, and optional authorization with RBAC.
 
-Build agents, teams, and workflows with the Agno SDK. Run them with AgentOS. Manage and monitor the runtime with the Control Plane.
+Build agents, teams, and workflows with the Agno SDK. Run them with AgentOS. Manage and monitor them using the Control Plane.
 
 ## What AgentOS gives you
 
