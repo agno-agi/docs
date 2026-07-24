@@ -1,42 +1,53 @@
 ---
 title: "What is AgentOS?"
 sidebarTitle: "Introduction"
-description: "Run agents, teams, and workflows using a FastAPI application with persistence, authorization, and observability."
+description: "Serve agents, teams, and workflows through a FastAPI runtime with REST, MCP, persistent state, authorization, and observability."
 ---
 
-**AgentOS is the runtime for your agent platform.**
+**AgentOS is the FastAPI runtime for agents, teams, and workflows.**
 
-Product and platform teams use AgentOS to serve agents, teams, and workflows through REST, MCP, and interfaces such as Slack, WhatsApp, and Telegram. The same API covers runs, sessions, memory, knowledge, evaluations, approvals, and schedules.
-
-Build your system with the Agno SDK. Run it with AgentOS. Manage and monitor it with the Control Plane.
-
-```python agno_assist.py
+```python agno_os.py
 from agno.agent import Agent
 from agno.db.sqlite import SqliteDb
 from agno.models.anthropic import Claude
 from agno.os import AgentOS
 
-db = SqliteDb(db_file="agno.db")
+agent = Agent(id="agno-assist", model=Claude(id="claude-sonnet-4-5"))
 
-agent = Agent(
-    name="Agno Assist",
-    model=Claude(id="claude-sonnet-4-5"),
-    db=db,
+agent_os = AgentOS(
+    agents=[agent],
+    db=SqliteDb(db_file="agno.db"),
+    tracing=True,
+    mcp_server=True,
+    scheduler=True,
 )
 
-agent_os = AgentOS(agents=[agent], db=db)
 app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="agno_os:app")
 ```
+
+Complete the environment and API key setup in [Run Your First AgentOS](/agent-os/run-your-os#run-it-locally), then install MCP support and run this file:
+
+```bash
+uv pip install -U "agno[os,mcp]" anthropic
+python agno_os.py
+```
+
+The service starts at `http://localhost:7777`. Open `/docs` for the API documentation or `/config` for the registered components and runtime capabilities.
+
+Build agents, teams, and workflows with the Agno SDK. Run them with AgentOS. Manage and monitor the runtime with the Control Plane.
 
 ## What AgentOS gives you
 
 | Need | AgentOS capability |
 |------|--------------------|
-| Product API | 80+ REST endpoints for running agents and managing sessions, memory, knowledge, traces, evaluations, schedules, and approvals |
+| Product API | REST endpoints for running agents and managing sessions, memory, knowledge, traces, evaluations, schedules, and approvals |
+| Interfaces | Built-in REST, SSE, and workflow WebSocket endpoints, plus configurable MCP, A2A, AG-UI, Slack, Telegram, and WhatsApp interfaces |
 | Persistent state | Sessions, memory, knowledge, and runtime data stored in databases you configure |
-| Long-running work | Streaming, background execution, run cancellation, and persisted run history |
+| Long-running work | [Background execution](/background-execution/overview), buffered stream reconnection after client disconnects, human-in-the-loop, run cancellation, and persisted run history |
 | Operations | Metrics, evaluations, opt-in tracing, approvals, schedules, and component versions |
-| Interfaces | REST, SSE, MCP, A2A, AG-UI, Slack, Telegram, and WhatsApp |
 | Access control | JWT authorization with RBAC, a shared security key, and scoped service accounts |
 | Framework support | Native Agno components plus adapters for the Claude Agent SDK, LangGraph, DSPy, and Antigravity |
 
@@ -74,11 +85,17 @@ Model providers, tools, telemetry, and other external services follow the config
   <Card title="Run your first AgentOS" icon="plus" href="/agent-os/run-your-os">
     Serve an agent through FastAPI and inspect its local API.
   </Card>
+  <Card title="Deploy to your cloud" icon="rocket" href="/deploy/introduction">
+    Start from a template with deployment, Postgres, and evals already wired in.
+  </Card>
   <Card title="Connect the Control Plane" icon="link" href="/agent-os/connect-your-os">
     Manage and monitor a local or deployed runtime.
   </Card>
   <Card title="Use the API" icon="server" href="/agent-os/using-the-api">
     Run components and manage runtime data over REST.
+  </Card>
+  <Card title="Run agents from a client" icon="play" href="/agent-os/usage/client/run-agents">
+    Use streaming, background execution, and buffered reconnection.
   </Card>
   <Card title="Secure your runtime" icon="shield-halved" href="/agent-os/security/overview">
     Configure authentication, permissions, and user isolation.
