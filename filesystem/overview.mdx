@@ -1,0 +1,192 @@
+---
+title: FileSystem
+sidebarTitle: Overview
+description: "Give agents text files for durable decisions, records, and checkpoints."
+keywords: [filesystem, agent filesystem, durable state, working state, checkpoints, agent notes]
+---
+
+`FileSystem` gives an agent a text store for working notes it writes and maintains. Use a persistent backend to retain those notes across runs.
+
+```python filesystem_agent.py
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.fs import FileSystem
+from agno.models.openai import OpenAIResponses
+
+fs = FileSystem(SqliteDb(db_file="tmp/filesystem.db"))
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.5"),
+    tools=[fs.tools()],
+    instructions=[
+        "You are a note-keeping assistant.",
+        fs.instructions(),
+    ],
+)
+
+if __name__ == "__main__":
+    if fs.read("notes/decisions.md") is None:
+        agent.print_response(
+            "Record this decision in notes/decisions.md: "
+            "Use SQLite for local development and Postgres in production."
+        )
+        print("Run this file again to recall the decision in a new process.")
+    else:
+        agent.print_response(
+            "Which database did we choose for local development? "
+            "Check your files before answering."
+        )
+```
+
+Install the dependencies, set `OPENAI_API_KEY`, and run the file twice:
+
+```bash
+uv pip install -U "agno[openai,sqlite]"
+python filesystem_agent.py
+python filesystem_agent.py
+```
+
+The first process writes `notes/decisions.md`. The second process connects to the same SQLite database and reads the decision from the same namespace.
+
+## How FileSystem Works
+
+1. `FileSystem` connects a storage backend to one namespace.
+2. `fs.tools()` gives the agent file tools.
+3. `fs.instructions()` provides conventions for maintaining durable notes.
+4. Files remain available to later `FileSystem` instances that reopen the same persistent storage and normalized namespace.
+
+Compose `fs.instructions()` with your application instructions as shown above. `fs.tools()` leaves instruction placement under your control. Set `add_instructions=True` on the toolkit when automatic placement fits your application.
+
+The agent retrieves files on demand with `search_content` and `read_file`. File content enters model context only through tool results.
+
+## Choose the State Type
+
+| State | Stores | Scope | Use it for |
+|-------|--------|-------|------------|
+| [Memory](/memory/overview) | Curated facts about a user | `user_id` across sessions | Preferences, responsibilities, recurring goals |
+| [Session state](/state/overview) | Application data managed by code or tools | `session_id` | Carts, task progress, counters |
+| [Knowledge](/knowledge/overview) | Reference material retrieved at runtime | Application-defined | Documents, policies, domain information |
+| FileSystem | Text the agent writes for future runs | Namespace within one backend | Decisions, maintained notes, checkpoints, processed records |
+
+## Choose a Backend
+
+| Backend | Configuration | Use it for |
+|---------|---------------|------------|
+| SQLite | `FileSystem(SqliteDb(db_file="tmp/filesystem.db"))` | Local development |
+| Postgres | `FileSystem(PostgresDb(db_url=...))` | Deployed applications and multiple workers |
+| Local disk | `FileSystem(LocalFileSystem(root="tmp/agent-files"))` | Files you want to inspect with an editor or shell |
+
+Import `PostgresDb` from `agno.db.postgres` and `LocalFileSystem` from `agno.fs.local`.
+
+SQLite and Postgres store one row per namespace and path. Postgres uses the `fs` schema and `agno_fs` table by default.
+
+Database-backed FileSystem accepts synchronous SQLite and Postgres database handles. SQLite 3.35.0 or newer is required. Async FileSystem methods run the synchronous backend operations in worker threads.
+
+## Isolate or Share Files
+
+The default namespace is `"default"`. FileSystem instances that use the same backend and omit `namespace` share that store.
+
+Use a templated namespace for user-facing agents:
+
+```python
+fs = FileSystem(
+    SqliteDb(db_file="tmp/filesystem.db"),
+    namespace="assistant/{user_id}",
+)
+```
+
+`{user_id}` resolves from `run_context.user_id`. `{agent_id}` and `{team_id}` resolve from the injected agent and team IDs. A missing value blocks the file operation. Model-supplied tool arguments cannot select another namespace.
+
+Namespaces are lowercased and encoded as URL-safe identifiers. Map each identity to a stable ID that does not differ only by case, such as an internal UUID.
+
+Use the same static namespace to share files deliberately:
+
+```python
+producer_fs = FileSystem(db, namespace="research/decisions")
+consumer_fs = FileSystem(db, namespace="research/decisions")
+
+consumer_tools = consumer_fs.tools(read_only=True)
+consumer_instructions = consumer_fs.instructions(read_only=True)
+```
+
+`read_only=True` limits the tools available to the model. Direct Python methods on the `FileSystem` object remain available to application code.
+
+<Warning>
+Namespaces scope files inside a backend. Enforce user authorization and backend access in your application.
+</Warning>
+
+## Choose the Tool Surface
+
+| Configuration | Tools |
+|---------------|-------|
+| `fs.tools()` | `read_file`, `write_file`, `append_file`, `replace_lines`, `list_files`, `search_content`, `move_file` |
+| `fs.tools(read_only=True)` | `read_file`, `list_files`, `search_content` |
+| `fs.tools(allow_delete=True)` | Default tools plus `delete_file` |
+| `fs.tools(include_tools=[...])` | Explicit selection from the full surface, including `check_lines` |
+
+Add `check_lines` to the default tool surface for exact processed-record sets:
+
+```python
+record_tools = fs.tools(
+    include_tools=[
+        "read_file",
+        "write_file",
+        "append_file",
+        "replace_lines",
+        "list_files",
+        "search_content",
+        "move_file",
+        "check_lines",
+    ],
+)
+```
+
+## Operational Defaults
+
+| Constraint | Default |
+|------------|---------|
+| Content | UTF-8 text |
+| Paths | Relative paths such as `notes/decisions.md` |
+| File size | 1,000,000 bytes |
+| Namespace size | 20,000,000 bytes across all files |
+| Whole-file `read_file` | 100,000 characters |
+| `list_files` result | 200 files and 200 directories |
+| `check_lines` input | 200 records per call |
+| Replacement writes | Last writer wins unless application code passes `expected_version` |
+| Deletion | Excluded from the default agent tool surface |
+
+Set `max_file_bytes` and `max_namespace_bytes` on `FileSystem` to change the storage limits. Coordinate concurrent read-modify-write edits to the same file. `append(unique=True)` filters duplicate lines within one check-and-append flow. The check and append are not atomic against concurrent writers, including writers in the same process. Namespace usage checks and writes are also separate operations, so strict quota enforcement requires application-level coordination between concurrent writers.
+
+Keep secrets, passwords, and API keys out of FileSystem content.
+
+## Use One File Toolkit
+
+FileSystem shares tool names such as `read_file`, `write_file`, and `list_files` with other file-oriented toolkits. Agno keeps the first registration for each tool name and logs a warning for later duplicates.
+
+Attach one file-like toolkit to an agent. Wrap one toolkit in a sub-agent when an application needs both FileSystem and a local workspace.
+
+| Feature | Purpose |
+|---------|---------|
+| `agno.fs.FileSystem` | Durable text the agent writes and maintains for future runs |
+| [`FilesystemContextProvider`](/context-providers/providers/filesystem) | Read-only queries over an existing local directory |
+| [`LocalFileSystemTools`](/tools/toolkits/local/local-file-system) | Direct reads and writes in a host directory |
+| [`Workspace`](/tools/toolkits/local/workspace) | Root-scoped local file operations and shell execution |
+
+## Developer Resources
+
+<CardGroup cols={2}>
+  <Card title="Getting Started" icon="play" href="https://github.com/agno-agi/agno/tree/main/cookbook/13_filesystem/01_getting_started">
+    Attach FileSystem, use it from Python, and switch storage backends.
+  </Card>
+  <Card title="Durable Records" icon="list-check" href="https://github.com/agno-agi/agno/tree/main/cookbook/13_filesystem/02_durable_records">
+    Deduplicate recurring work with exact processed-record sets.
+  </Card>
+  <Card title="Working State" icon="rotate" href="https://github.com/agno-agi/agno/tree/main/cookbook/13_filesystem/03_working_state">
+    Resume long-running work from durable checkpoints.
+  </Card>
+  <Card title="Namespaces" icon="folders" href="https://github.com/agno-agi/agno/tree/main/cookbook/13_filesystem/04_namespaces">
+    Isolate users and share one store between agents.
+  </Card>
+</CardGroup>
+
+- [FileSystem source](https://github.com/agno-agi/agno/tree/main/libs/agno/agno/fs)
