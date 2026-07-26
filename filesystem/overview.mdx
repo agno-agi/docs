@@ -1,11 +1,11 @@
 ---
 title: FileSystem
 sidebarTitle: Overview
-description: "Give agents text files for durable decisions, records, and checkpoints."
+description: "Give agents a durable file system for notes, decisions, records, and checkpoints."
 keywords: [filesystem, agent filesystem, durable state, working state, checkpoints, agent notes]
 ---
 
-`FileSystem` gives an agent a text store for working notes it writes and maintains. Use a persistent backend to retain those notes across runs.
+`FileSystem` gives an agent a durable text store for working notes it writes and maintains.
 
 ```python filesystem_agent.py
 from agno.agent import Agent
@@ -59,15 +59,6 @@ Compose `fs.instructions()` with your application instructions as shown above. `
 
 The agent retrieves files on demand with `search_content` and `read_file`. File content enters model context only through tool results.
 
-## Choose the State Type
-
-| State | Stores | Scope | Use it for |
-|-------|--------|-------|------------|
-| [Memory](/memory/overview) | Curated facts about a user | `user_id` across sessions | Preferences, responsibilities, recurring goals |
-| [Session state](/state/overview) | Application data managed by code or tools | `session_id` | Carts, task progress, counters |
-| [Knowledge](/knowledge/overview) | Reference material retrieved at runtime | Application-defined | Documents, policies, domain information |
-| FileSystem | Text the agent writes for future runs | Namespace within one backend | Decisions, maintained notes, checkpoints, processed records |
-
 ## Choose a Backend
 
 | Backend | Configuration | Use it for |
@@ -76,15 +67,11 @@ The agent retrieves files on demand with `search_content` and `read_file`. File 
 | Postgres | `FileSystem(PostgresDb(db_url=...))` | Deployed applications and multiple workers |
 | Local disk | `FileSystem(LocalFileSystem(root="tmp/agent-files"))` | Files you want to inspect with an editor or shell |
 
-Import `PostgresDb` from `agno.db.postgres` and `LocalFileSystem` from `agno.fs.local`.
-
 SQLite and Postgres store one row per namespace and path. Postgres uses the `fs` schema and `agno_fs` table by default.
-
-Database-backed FileSystem accepts synchronous SQLite and Postgres database handles. SQLite 3.35.0 or newer is required. Async FileSystem methods run the synchronous backend operations in worker threads.
 
 ## Isolate or Share Files
 
-The default namespace is `"default"`. FileSystem instances that use the same backend and omit `namespace` share that store.
+FileSystem instances can isolate and group files by namespaces. The default namespace is `"default"`.
 
 Use a templated namespace for user-facing agents:
 
@@ -115,32 +102,6 @@ consumer_instructions = consumer_fs.instructions(read_only=True)
 Namespaces scope files inside a backend. Enforce user authorization and backend access in your application.
 </Warning>
 
-## Choose the Tool Surface
-
-| Configuration | Tools |
-|---------------|-------|
-| `fs.tools()` | `read_file`, `write_file`, `append_file`, `replace_lines`, `list_files`, `search_content`, `move_file` |
-| `fs.tools(read_only=True)` | `read_file`, `list_files`, `search_content` |
-| `fs.tools(allow_delete=True)` | Default tools plus `delete_file` |
-| `fs.tools(include_tools=[...])` | Explicit selection from the full surface, including `check_lines` |
-
-Add `check_lines` to the default tool surface for exact processed-record sets:
-
-```python
-record_tools = fs.tools(
-    include_tools=[
-        "read_file",
-        "write_file",
-        "append_file",
-        "replace_lines",
-        "list_files",
-        "search_content",
-        "move_file",
-        "check_lines",
-    ],
-)
-```
-
 ## Operational Defaults
 
 | Constraint | Default |
@@ -163,7 +124,7 @@ Keep secrets, passwords, and API keys out of FileSystem content.
 
 FileSystem shares tool names such as `read_file`, `write_file`, and `list_files` with other file-oriented toolkits. Agno keeps the first registration for each tool name and logs a warning for later duplicates.
 
-Attach one file-like toolkit to an agent. Wrap one toolkit in a sub-agent when an application needs both FileSystem and a local workspace.
+Remember to only attach one file-like toolkit to an agent. Wrap one toolkit in a sub-agent when an application needs both FileSystem and a local workspace.
 
 | Feature | Purpose |
 |---------|---------|
