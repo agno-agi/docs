@@ -1,0 +1,117 @@
+---
+title: Smallest AI
+description: "Generate natural speech using Smallest AI's Lightning text-to-speech models."
+---
+
+**SmallestTools** enable an Agent to generate natural speech and list available voices using [Smallest AI](https://smallest.ai) Lightning text-to-speech.
+
+## Prerequisites
+
+You need an API key which can be obtained from the [Smallest AI dashboard](https://app.smallest.ai/dashboard) (Developer -> API Keys). No extra package is required beyond `agno` — the toolkit uses Agno's built-in HTTP client.
+
+```bash
+uv pip install agno
+```
+
+Set the `SMALLEST_API_KEY` environment variable.
+
+```bash
+export SMALLEST_API_KEY=****
+```
+
+## Example
+
+The following agent will use Smallest AI to generate audio based on a user prompt.
+
+```python cookbook/91_tools/smallest_tools.py
+import base64
+
+from agno.agent import Agent
+from agno.tools.smallest import SmallestTools
+from agno.utils.media import save_base64_data
+
+audio_agent = Agent(
+    tools=[
+        SmallestTools(
+            voice_id="magnus",
+            model="lightning_v3.1",
+        )
+    ],
+    description="You are an AI agent that can generate audio using the Smallest AI API.",
+    instructions=[
+        "Use the `text_to_speech` tool to convert text into natural voice audio.",
+        "Use the `get_voices` tool to list the available voices.",
+    ],
+    markdown=True,
+)
+
+response = audio_agent.run(
+    "Generate a short audio welcoming listeners to a podcast about the history of aviation."
+)
+
+if response.audio:
+    print("Agent response:", response.content)
+    base64_audio = base64.b64encode(response.audio[0].content).decode("utf-8")
+    save_base64_data(base64_audio, "tmp/podcast_welcome.wav")
+```
+
+## Advanced Example: Premium Voices with Lightning v3.1 Pro
+
+For broadcast-quality voices across American, British, and Indian accents, switch to the Pro voice pool:
+
+```python
+from agno.agent import Agent
+from agno.tools.smallest import SmallestTools
+
+pro_audio_agent = Agent(
+    tools=[
+        SmallestTools(
+            voice_id="meher",
+            model="lightning_v3.1_pro",
+        )
+    ],
+    description="You are an AI agent that can generate premium audio using the Smallest AI API.",
+    markdown=True,
+)
+
+response = pro_audio_agent.run("Generate a short audio narrating a movie trailer.")
+```
+
+Pair voices with the right model: Pro voices (e.g. `meher`) require `model="lightning_v3.1_pro"`; standard voices (e.g. `magnus`) use the default `lightning_v3.1`. Cloned voices are only available on `lightning_v3.1`.
+
+## Toolkit Params
+
+| Parameter               | Type            | Default          | Description                                                                                                    |
+| ------------------------ | --------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `voice_id`               | `str`           | `magnus`         | Default voice to use for synthesis.                                                                              |
+| `api_key`                | `Optional[str]` | `None`           | The Smallest AI API key for authentication. If not provided, uses the `SMALLEST_API_KEY` env variable.          |
+| `model`                  | `str`           | `lightning_v3.1` | TTS model. One of `lightning_v3.1`, `lightning_v3.1_pro`. An invalid value raises a `ValueError` up front.       |
+| `language`               | `str`           | `en`             | ISO 639-1 language code for synthesis.                                                                            |
+| `sample_rate`            | `int`           | `24000`          | Output sample rate in Hz.                                                                                        |
+| `speed`                  | `float`         | `1.0`            | Speech speed multiplier.                                                                                          |
+| `output_format`          | `str`           | `wav`            | Audio output format. One of `wav`, `mp3`, `pcm`, `ulaw`, `alaw`.                                                 |
+| `target_directory`       | `Optional[str]` | `None`           | If set, generated audio is also saved to this directory.                                                         |
+| `base_url`               | `str`           | Smallest AI TTS endpoint | Override the TTS endpoint — useful for self-hosted or region-pinned deployments.                          |
+| `enable_get_voices`      | `bool`          | `True`           | Enable the get_voices functionality.                                                                              |
+| `enable_text_to_speech`  | `bool`          | `True`           | Enable the text_to_speech functionality.                                                                          |
+| `all`                    | `bool`          | `False`          | Enable all functionality.                                                                                         |
+| `timeout`                | `float`         | `30`             | HTTP request timeout in seconds.                                                                                  |
+
+## Toolkit Functions
+
+| Function          | Description                                                                                                                                                       |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `text_to_speech`  | Convert text to speech. Detects non-audio responses (e.g. a JSON error body on an HTTP 200) and surfaces them as a tool error instead of saving corrupt audio.  |
+| `get_voices`      | Get the list of voices available for the configured model. Normalizes the response to `{id, name, gender, accent, languages}` regardless of the API's raw shape. |
+
+### Models
+
+| Model                | Languages                                                                       | Notes                                    |
+| --------------------- | -------------------------------------------------------------------------------- | ----------------------------------------- |
+| `lightning_v3.1`     | [model card](https://docs.smallest.ai/models/model-cards/text-to-speech/lightning-v-3-1)        | Default. Supports cloned voices.          |
+| `lightning_v3.1_pro` | [model card](https://docs.smallest.ai/models/model-cards/text-to-speech/lightning-v-3-1-pro)    | Premium voice pool. No voice cloning.     |
+
+## Developer Resources
+
+- [Tools](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/tools/smallest.py)
+- [Smallest AI Docs](https://docs.smallest.ai)
