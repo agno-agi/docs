@@ -1,0 +1,161 @@
+---
+title: Channels
+description: Run an AG-UI agent as a bot in Slack and other messaging platforms with the CopilotKit Channels SDK.
+---
+
+The same agent that powers your AG-UI frontend can also run as a bot in messaging platforms. [CopilotKit Channels](https://docs.copilotkit.ai/slack/agno) connects an Agno agent to Slack and other messaging platforms, with threads, tool calls, and rich interactive messages handled natively in the channel.
+
+<Info>
+Full platform setup lives in the [CopilotKit Channels documentation](https://docs.copilotkit.ai/slack/agno). This page shows how Channels fit together with an Agno agent.
+</Info>
+
+## How it fits together
+
+Your AgentOS server stays where it is, exposed over [AG-UI](/agent-os/interfaces/ag-ui/introduction). A channel is a separate long-running Node service built with `@copilotkit/channels`: you point it at your agent and attach one or more platform adapters. `createChannel` takes an array of adapters, so a single process can serve several platforms at once.
+
+```
+Slack / Teams / Discord  ──►  channel process (Node)  ──►  AgentOS (POST /agui)
+```
+
+The channel drives your agent through `AgnoAgent` from [`@ag-ui/agno`](https://www.npmjs.com/package/@ag-ui/agno), the AG-UI client for Agno. The agent receives ordinary AG-UI input and emits ordinary AG-UI events. The platform mechanics stay behind the adapter, so the same Agno agent runs unchanged across every channel and keeps serving your web frontend from the same endpoint. Rich messages are written as JSX and rendered to each platform's native format (Block Kit on Slack, for example), so an interactive card degrades gracefully where a platform has no equivalent.
+
+CopilotKit Intelligence runs the channel (free tier available). The SDK and its adapters are MIT-licensed. To run without Intelligence, build your own channel runner on the SDK's lower-level primitives. Your team then owns lifecycle, state, persistence, concurrency, and retries.
+
+## Slack
+
+Slack runs over Socket Mode, which opens an outbound WebSocket to Slack, so no public URL or tunnel is required during development.
+
+<Steps>
+  <Step title="Serve an agent over AG-UI">
+
+```python basic.py
+from agno.agent.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.os import AgentOS
+from agno.os.interfaces.agui import AGUI
+
+chat_agent = Agent(model=OpenAIResponses(id="gpt-5.4"))
+
+agent_os = AgentOS(agents=[chat_agent], interfaces=[AGUI(agent=chat_agent)])
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="basic:app", reload=True)
+```
+
+The AG-UI endpoint is served at `http://localhost:7777/agui`.
+
+  </Step>
+  <Step title="Install the channel packages">
+
+In a separate Node project, install the Channels SDK (batteries-included, every adapter), the runtime that runs the channel, and the AG-UI client for Agno:
+
+```bash
+npm init -y
+npm pkg set type=module
+npm install @copilotkit/channels @copilotkit/runtime @ag-ui/agno
+npm install -D tsx
+```
+
+  </Step>
+  <Step title="Create a Slack app and set credentials">
+
+Create an app in the [Slack API dashboard](https://api.slack.com/apps), enable Socket Mode, and grant it the scopes to read and post messages. The full walkthrough is in the [CopilotKit Slack guide](https://docs.copilotkit.ai/slack/agno).
+
+```bash
+export SLACK_BOT_TOKEN="xoxb-..."
+export SLACK_APP_TOKEN="xapp-..."
+export COPILOTKIT_INTELLIGENCE_API_KEY="..."
+```
+
+| Variable | Description |
+|----------|-------------|
+| `SLACK_BOT_TOKEN` | Bot User OAuth token (`xoxb-...`) |
+| `SLACK_APP_TOKEN` | App-level token with the `connections:write` scope (`xapp-...`), used for Socket Mode |
+| `COPILOTKIT_INTELLIGENCE_API_KEY` | Authenticates the runtime that runs the channel. Free tier available. |
+
+  </Step>
+  <Step title="Point the channel at your agent">
+
+Build the agent as a per-thread factory so each conversation gets its own session:
+
+```ts agent.ts
+import { AgnoAgent } from "@ag-ui/agno";
+
+export function makeAgent(threadId: string) {
+  const agent = new AgnoAgent({
+    url: process.env.AGNO_AGUI_URL ?? "http://localhost:7777/agui",
+  });
+  agent.threadId = threadId;
+  return agent;
+}
+```
+
+Then point a channel at it:
+
+```ts channel.ts
+import { createChannel } from "@copilotkit/channels";
+import { slack } from "@copilotkit/channels/slack";
+import { CopilotRuntime, CopilotKitIntelligence } from "@copilotkit/runtime/v2";
+import { createCopilotNodeListener } from "@copilotkit/runtime/v2/node";
+
+import { makeAgent } from "./agent"; // your Agno AG-UI agent
+
+const channel = createChannel({
+  name: "agno-slack-bot", // project-unique Intelligence Channel name
+  identifyUser: "platform",
+  agent: makeAgent, // an AbstractAgent, or a per-thread factory
+  adapters: [
+    slack({
+      botToken: process.env.SLACK_BOT_TOKEN!, // xoxb-...
+      appToken: process.env.SLACK_APP_TOKEN!, // xapp-... (Socket Mode)
+    }),
+  ],
+});
+
+// Mentions and DMs both start a turn; runAgent streams the reply into the thread.
+channel.onMessage(async ({ thread }) => {
+  await thread.runAgent();
+});
+
+// The runtime owns the channel lifecycle. Creating the listener connects it.
+const runtime = new CopilotRuntime({
+  agents: {}, // the channel supplies its own agent; no web-facing agents needed
+  intelligence: new CopilotKitIntelligence({
+    apiKey: process.env.COPILOTKIT_INTELLIGENCE_API_KEY!,
+  }),
+  channels: [channel],
+});
+
+const listener = createCopilotNodeListener({ runtime });
+await listener.channels.ready();
+```
+
+  </Step>
+  <Step title="Run both processes">
+
+```bash
+python basic.py    # terminal 1: AgentOS with the AG-UI interface
+npx tsx channel.ts # terminal 2: the Slack channel
+```
+
+Mention or DM the bot in Slack. The channel runs your agent and streams the reply into the thread.
+
+  </Step>
+</Steps>
+
+## Other platforms
+
+Microsoft Teams, Discord, Telegram, and WhatsApp run through the same `@copilotkit/channels` API: add the matching adapter (`@copilotkit/channels/teams`, `/discord`, `/telegram`, `/whatsapp`) to the `adapters` array and the rest of your agent code stays the same. A single process can serve several platforms at once. See the [CopilotKit Channels documentation](https://docs.copilotkit.ai/slack/agno) for the current platform list and per-platform setup.
+
+<Note>
+By default, interactive actions and per-thread state live in memory and reset on restart. Configure a durable state store for production so buttons and per-thread state survive restarts.
+</Note>
+
+## Next steps
+
+| Task | Guide |
+|------|-------|
+| Serve agents and teams over AG-UI | [AG-UI](/agent-os/interfaces/ag-ui/introduction) |
+| Run the full Slack example | [Slack Channel example](/examples/agent-os/interfaces/agui/slack-channel) |
+| Rich messages, approvals, and adapter options | [CopilotKit Channels](https://docs.copilotkit.ai/slack/agno) |

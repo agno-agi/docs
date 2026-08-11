@@ -1,0 +1,138 @@
+---
+title: "Slack Channel"
+description: "Run an AG-UI agent as a Slack bot with the CopilotKit Channels SDK."
+---
+
+Serve an Agno agent over AG-UI and drive it from Slack with a [CopilotKit Channels](https://docs.copilotkit.ai/slack/agno) process. The AgentOS server is unchanged. The channel is a separate Node process that connects Slack over Socket Mode and runs the agent through `AgnoAgent` from [`@ag-ui/agno`](https://www.npmjs.com/package/@ag-ui/agno).
+
+```python basic.py
+from agno.agent.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.os import AgentOS
+from agno.os.interfaces.agui import AGUI
+
+chat_agent = Agent(
+    name="Assistant",
+    model=OpenAIResponses(id="gpt-5.4"),
+    instructions="You are a helpful AI assistant.",
+    add_datetime_to_context=True,
+    markdown=True,
+)
+
+agent_os = AgentOS(
+    agents=[chat_agent],
+    interfaces=[AGUI(agent=chat_agent)],
+)
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="basic:app", reload=True)
+```
+
+```ts agent.ts
+import { AgnoAgent } from "@ag-ui/agno";
+
+export function makeAgent(threadId: string) {
+  const agent = new AgnoAgent({
+    url: process.env.AGNO_AGUI_URL ?? "http://localhost:7777/agui",
+  });
+  agent.threadId = threadId;
+  return agent;
+}
+```
+
+```ts channel.ts
+import { createChannel } from "@copilotkit/channels";
+import { slack } from "@copilotkit/channels/slack";
+import { CopilotRuntime, CopilotKitIntelligence } from "@copilotkit/runtime/v2";
+import { createCopilotNodeListener } from "@copilotkit/runtime/v2/node";
+
+import { makeAgent } from "./agent";
+
+const channel = createChannel({
+  name: "agno-slack-bot",
+  identifyUser: "platform",
+  agent: makeAgent,
+  adapters: [
+    slack({
+      botToken: process.env.SLACK_BOT_TOKEN!,
+      appToken: process.env.SLACK_APP_TOKEN!,
+    }),
+  ],
+});
+
+channel.onMessage(async ({ thread }) => {
+  await thread.runAgent();
+});
+
+const runtime = new CopilotRuntime({
+  agents: {},
+  intelligence: new CopilotKitIntelligence({
+    apiKey: process.env.COPILOTKIT_INTELLIGENCE_API_KEY!,
+  }),
+  channels: [channel],
+});
+
+const listener = createCopilotNodeListener({ runtime });
+await listener.channels.ready();
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U "agno[agui,os]" openai
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the AgentOS server">
+    Save the Python code above as `basic.py`, then run:
+    ```bash
+    python basic.py
+    ```
+  </Step>
+
+  <Step title="Set up the channel project">
+    In a separate directory, save `agent.ts` and `channel.ts` from above and install:
+    ```bash
+    npm init -y
+    npm pkg set type=module
+    npm install @copilotkit/channels @copilotkit/runtime @ag-ui/agno
+    npm install -D tsx
+    ```
+  </Step>
+
+  <Step title="Export the Slack and CopilotKit credentials">
+    Create a Slack app with Socket Mode enabled, then:
+    ```bash
+    export SLACK_BOT_TOKEN="xoxb-..."
+    export SLACK_APP_TOKEN="xapp-..."
+    export COPILOTKIT_INTELLIGENCE_API_KEY="..."
+    ```
+    Slack app setup and adapter options are covered in the [CopilotKit Slack guide](https://docs.copilotkit.ai/slack/agno).
+  </Step>
+
+  <Step title="Run the channel">
+    ```bash
+    npx tsx channel.ts
+    ```
+    Mention or DM the bot in Slack. The channel runs the agent over AG-UI and streams the reply into the thread.
+  </Step>
+</Steps>
+
+See [Channels](/agent-os/interfaces/ag-ui/channels) for how Channels fit together with AG-UI, other platforms, and production notes.
