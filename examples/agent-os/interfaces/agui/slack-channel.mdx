@@ -3,7 +3,7 @@ title: "Slack Channel"
 description: "Run an AG-UI agent as a Slack bot with the CopilotKit Channels SDK."
 ---
 
-Serve an Agno agent over AG-UI and drive it from Slack with a [CopilotKit Channels](https://docs.copilotkit.ai/slack/agno) process. The AgentOS server is unchanged. The channel is a separate Node process that connects Slack over Socket Mode and runs the agent through `AgnoAgent` from [`@ag-ui/agno`](https://www.npmjs.com/package/@ag-ui/agno).
+Serve an Agno agent over AG-UI and drive it from Slack with a [CopilotKit Channels](https://docs.copilotkit.ai/slack/agno) process. The AgentOS server is unchanged. The channel is a separate Node process, connected to Slack through CopilotKit Intelligence, that runs the agent through `AgnoAgent` from [`@ag-ui/agno`](https://www.npmjs.com/package/@ag-ui/agno).
 
 ```python basic.py
 from agno.agent.agent import Agent
@@ -43,38 +43,41 @@ export function makeAgent(threadId: string) {
 
 ```ts channel.ts
 import { createChannel } from "@copilotkit/channels";
-import { slack } from "@copilotkit/channels/slack";
 import { CopilotRuntime, CopilotKitIntelligence } from "@copilotkit/runtime/v2";
 import { createCopilotNodeListener } from "@copilotkit/runtime/v2/node";
 
 import { makeAgent } from "./agent";
 
+const required = (name: string) => {
+  const value = process.env[name];
+  if (!value) throw new Error(`Missing ${name}`);
+  return value;
+};
+
 const channel = createChannel({
-  name: "agno-slack-bot",
+  name: required("INTELLIGENCE_CHANNEL_ID"),
   identifyUser: "platform",
   agent: makeAgent,
-  adapters: [
-    slack({
-      botToken: process.env.SLACK_BOT_TOKEN!,
-      appToken: process.env.SLACK_APP_TOKEN!,
-    }),
-  ],
 });
 
-channel.onMessage(async ({ thread }) => {
+channel.onMention(async ({ thread }) => {
+  await thread.subscribe();
   await thread.runAgent();
+});
+channel.onMessage(async ({ thread }) => {
+  if (await thread.isSubscribed()) await thread.runAgent();
 });
 
 const runtime = new CopilotRuntime({
   agents: {},
   intelligence: new CopilotKitIntelligence({
-    apiKey: process.env.COPILOTKIT_INTELLIGENCE_API_KEY!,
+    apiKey: required("INTELLIGENCE_API_KEY"),
   }),
   channels: [channel],
 });
 
 const listener = createCopilotNodeListener({ runtime });
-await listener.channels.ready();
+await listener.channels?.ready({ timeoutMs: 15_000 });
 ```
 
 ## Run the Example
@@ -117,21 +120,20 @@ await listener.channels.ready();
     ```
   </Step>
 
-  <Step title="Export the Slack and CopilotKit credentials">
-    Create a Slack app with Socket Mode enabled, then:
+  <Step title="Export the CopilotKit Intelligence credentials">
+    Create a Channel in the CopilotKit Intelligence dashboard and connect Slack there, then:
     ```bash
-    export SLACK_BOT_TOKEN="xoxb-..."
-    export SLACK_APP_TOKEN="xapp-..."
-    export COPILOTKIT_INTELLIGENCE_API_KEY="..."
+    export INTELLIGENCE_API_KEY="..."
+    export INTELLIGENCE_CHANNEL_ID="..."
     ```
-    Slack app setup and adapter options are covered in the [CopilotKit Slack guide](https://docs.copilotkit.ai/slack/agno).
+    Slack setup is covered in the [CopilotKit Slack guide](https://docs.copilotkit.ai/slack/agno).
   </Step>
 
   <Step title="Run the channel">
     ```bash
     npx tsx channel.ts
     ```
-    Mention or DM the bot in Slack. The channel runs the agent over AG-UI and streams the reply into the thread.
+    Mention the bot in Slack. The channel runs the agent over AG-UI and streams the reply into the thread. The thread stays subscribed, so follow-up messages run without another mention.
   </Step>
 </Steps>
 
