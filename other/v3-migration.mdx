@@ -150,9 +150,11 @@ Field mapping: every flat kwarg keeps its name inside `HumanReview`, except
 `hitl_max_retries` → `max_retries` and `hitl_timeout` → `timeout`. This applies
 to `Step`, `Steps`, `Loop`, `Condition` and `Router`.
 
-### 3. Removed `Agent` and `Team` parameters
+### 3. Removed and renamed parameters
 
 These deprecated parameters have been removed. Update them to their v3 names:
+
+**`Agent` and `Team` constructors:**
 
 | v2 (removed) | v3 |
 |---|---|
@@ -168,6 +170,28 @@ agent = Agent(
     num_past_sessions_to_search=3,
 )
 ```
+
+**`continue_run` / `acontinue_run`:** the `updated_tools` parameter is removed.
+Pass `requirements` (a list of `RunRequirement`, available on the paused run
+output) instead of a modified `ToolExecution` list:
+
+```python v3_continue_run.py
+run = agent.run("...")  # pauses for confirmation
+for requirement in run.requirements:
+    requirement.confirm()
+agent.continue_run(run_id=run.run_id, requirements=run.requirements)
+```
+
+**JWT middleware and `authorization_config`:** `secret_key` is removed. Use
+`verification_keys`, which takes a list:
+
+```python v3_jwt.py
+JWTMiddleware(verification_keys=["your-key"])  # was: secret_key="your-key"
+```
+
+**`MCPToolbox`:** `auth_tokens` and `auth_headers` are removed. Use
+`auth_token_getters` (same shape: a mapping of auth source names to token
+callables).
 
 ### 4. Reasoning requires an explicit model
 
@@ -248,6 +272,9 @@ use [Knowledge](/knowledge/overview) instead.
 
 ### 9. Smaller changes
 
+- **Async tools run in sync runs**: v2's `agent.run()` raised when the agent
+  had async tools, forcing `arun()`. v3 executes them automatically; the guard
+  and its error are gone.
 - **Toolkit parameters**: `enable_*` prefixes are dropped
   (e.g. `SlackTools(enable_send_message=True)` → `SlackTools(send_message=True)`).
   v2 names still work with a deprecation warning.
@@ -267,13 +294,25 @@ You are migrating a codebase from Agno v2 to Agno v3. Apply the following
 changes carefully. Make the mechanical edits directly; for anything marked
 JUDGMENT, report it to me instead of guessing.
 
-## 1. Renamed Agent/Team parameters (mechanical)
+## 1. Renamed parameters (mechanical)
 
 Rename these constructor parameters wherever Agent(...) or Team(...) is called:
 - enable_user_memories        -> update_memory_on_run
 - search_session_history      -> search_past_sessions
-- num_history_sessions        -> num_past_sessions_to_search
+- num_history_sessions       -> num_past_sessions_to_search
 - num_past_session_runs       -> num_past_session_runs_in_search
+
+Rename these too, wherever they appear:
+- JWTMiddleware / authorization_config: secret_key="k" -> verification_keys=["k"]
+  (note the list wrapping)
+- MCPToolbox: auth_tokens= or auth_headers= -> auth_token_getters= (same value)
+
+## 1b. continue_run updated_tools (JUDGMENT)
+
+Agent/Team continue_run and acontinue_run no longer accept updated_tools
+(List[ToolExecution]). The v3 path is requirements=<list of RunRequirement from
+the paused run output>. This is a structural change to HITL continue code, not
+a rename: find every call site passing updated_tools and report it.
 
 ## 2. Workflow HITL config (mechanical)
 
