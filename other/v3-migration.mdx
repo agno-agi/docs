@@ -1,0 +1,336 @@
+---
+title: Migrating to Agno v3.0
+sidebarTitle: Agno v3 Migration
+description: Guide to migrate your Agno applications from v2 to v3.
+---
+
+If you have questions during your migration, we can help! See [Get Help](/get-help) for more information.
+
+<Tip>
+  Want to migrate automatically? Jump to [Migrate with AI](#migrate-with-ai) for
+  a prompt you can paste into Claude, Cursor or any coding agent.
+</Tip>
+
+## Installing Agno v3
+
+If you are already using Agno, you can upgrade to v3 by running:
+
+```bash
+pip install -U agno
+```
+
+## Migrating your Agno DB
+
+v3.0 changes how session runs are stored. In v2, every session row held its full
+run history as a single JSON blob in the `runs` column. In v3, each run is its
+own row in a dedicated runs table (`agno_runs` by default), which removes the
+write amplification and unbounded row growth of the blob design.
+
+The migration is built into Agno. No external script is needed:
+
+```python migrate_to_v3.py
+import asyncio
+
+from agno.db.postgres import PostgresDb  # or SqliteDb, MongoDb, RedisDb, ...
+from agno.db.migrations.manager import MigrationManager
+
+db = PostgresDb(db_url="postgresql+psycopg://...")
+
+# Step 1: copy every run from the legacy blob into the runs table
+asyncio.run(MigrationManager(db).up())
+
+# Step 2: VERIFY the runs actually landed before any cleanup
+runs = db.get_runs(limit=5)
+assert len(runs) > 0, "Migration copied nothing - do NOT run cleanup"
+
+# Step 3 (optional, after verifying): reclaim the legacy blob storage
+db.cleanup_legacy_runs_column()   # SQL adapters
+# db.cleanup_legacy_runs_field()  # Mongo / Redis / Valkey / Firestore / Dynamo / JSON adapters
+```
+
+Notes:
+
+- The migration is **non-destructive and idempotent**: the legacy `runs` column
+  is preserved as a backup, and re-running the migration never duplicates runs.
+- Reads keep working before, during and after the migration. Sessions merge the
+  runs table with any legacy blob, so an un-migrated session still shows its
+  history.
+- `cleanup_legacy_runs_column()` refuses to run while legacy data is present
+  unless you pass `force=True`. **Only pass `force=True` after Step 2 passes.**
+  Cleanup permanently deletes the blob, which is the only copy of your history
+  if the migration did not actually copy it.
+- Supported everywhere sessions are stored: Postgres, MySQL, SQLite,
+  SingleStore (+ async variants), MongoDB, Redis, Valkey, Firestore, DynamoDB,
+  SurrealDB, JSON, and GCS JSON.
+
+For the full storage design and per-adapter details, see the
+[v3 storage migration guide](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/db/migrations/V3_MIGRATION_GUIDE.md)
+in the repository.
+
+## Migrating your Agno code
+
+Each section covers one breaking change, with before and after examples.
+
+### 1. Sessions and runs (denormalization)
+
+Reading sessions is unchanged. `session.runs` is still populated, now from the
+runs table:
+
+```python v3_sessions.py
+session = agent.get_session(session_id="s1")
+session.runs  # still works, loaded from the runs table
+
+# New: fetch runs directly, without loading the whole session
+runs = db.get_runs(session_id="s1")
+run = db.get_run(run_id="...")
+```
+
+If you queried the `runs` column of the sessions table directly (SQL, dashboards,
+exports), point those queries at the runs table instead. After cleanup the
+column no longer exists:
+
+```sql
+SELECT run_id, run_data FROM agno_runs WHERE session_id = 's1' ORDER BY run_index;
+```
+
+### 2. Workflow HITL: flat kwargs → `HumanReview`
+
+Workflow primitives no longer accept flat HITL kwargs. All human-in-the-loop
+configuration lives in one `HumanReview` object.
+
+This is how it looked in v2:
+
+```python v2_hitl.py
+from agno.workflow.step import Step
+
+step = Step(
+    name="deploy",
+    executor=deploy,
+    requires_confirmation=True,
+    confirmation_message="Deploy to production?",
+)
+```
+
+This is how it looks in v3:
+
+```python v3_hitl.py
+from agno.workflow.step import Step
+from agno.workflow.types import HumanReview
+
+step = Step(
+    name="deploy",
+    executor=deploy,
+    human_review=HumanReview(
+        requires_confirmation=True,
+        confirmation_message="Deploy to production?",
+    ),
+)
+```
+
+Field mapping: every flat kwarg keeps its name inside `HumanReview`, except
+`hitl_max_retries` → `max_retries` and `hitl_timeout` → `timeout`. This applies
+to `Step`, `Steps`, `Loop`, `Condition` and `Router`.
+
+### 3. Removed `Agent` and `Team` parameters
+
+These deprecated parameters have been removed. Update them to their v3 names:
+
+| v2 (removed) | v3 |
+|---|---|
+| `enable_user_memories` | `update_memory_on_run` |
+| `search_session_history` | `search_past_sessions` |
+| `num_history_sessions` | `num_past_sessions_to_search` |
+| `num_past_session_runs` | `num_past_session_runs_in_search` |
+
+```python v3_agent_params.py
+agent = Agent(
+    update_memory_on_run=True,
+    search_past_sessions=True,
+    num_past_sessions_to_search=3,
+)
+```
+
+### 4. Reasoning requires an explicit model
+
+The `reasoning=True` shortcut has been removed. Pass a native reasoning model
+explicitly:
+
+```python v2_reasoning.py
+agent = Agent(model=OpenAIResponses(id="gpt-5.5"), reasoning=True)
+```
+
+```python v3_reasoning.py
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.5"),
+    reasoning_model=OpenAIResponses(id="gpt-5.5"),
+)
+```
+
+### 5. `Team` and `Workflow` constructors are keyword-only
+
+Positional arguments are no longer accepted:
+
+```python v2_team.py
+team = Team([agent_1, agent_2])
+workflow = Workflow("my-workflow", steps=[...])
+```
+
+```python v3_team.py
+team = Team(members=[agent_1, agent_2])
+workflow = Workflow(name="my-workflow", steps=[...])
+```
+
+### 6. User isolation: `user_id` across the platform
+
+With `user_isolation` enabled on AgentOS, data is now scoped per user across
+**memories, knowledge, evals, metrics, schedules and vector databases**, in
+addition to sessions. What this means for your code and data:
+
+- `user_id` columns were added to the schedules, schedule-runs and evals tables;
+  the built-in migration handles this.
+- Metrics aggregate **per user**: the unique key changed from
+  `(date, aggregation_period)` to `(user_id, date, aggregation_period)`.
+  Deployments without isolation see the same single-row-per-date shape as
+  before; sessions without a `user_id` aggregate into a shared bucket.
+- Vector database collections created before v3 have no per-user scoping. When
+  isolation is on, searching them with a `user_id` raises a `ValueError` telling
+  you to run the vector database migration. This is deliberate: an un-migrated
+  table fails loudly instead of silently returning empty results.
+
+### 7. Background execution and durable queues
+
+`background=True` on AgentOS is rebuilt around a durable job queue. In v2 it
+spawned an unbounded `asyncio.create_task`, and a process death silently lost
+every waiting and in-flight run. In v3:
+
+- Accepted requests are **committed rows** that survive crashes, restarts and
+  deploys; any replica's worker can execute them.
+- Runs are **bounded** by a concurrency cap; excess submissions wait in the
+  queue in `pending` status instead of overloading the process.
+- Every run can be watched (`stream=true` tails), resumed after a disconnect
+  (`/resume`) and cancelled from any replica.
+- `Idempotency-Key` headers deduplicate resubmissions.
+- Redis is optional **coordination** (live event streams, cross-replica
+  cancellation), never truth. A Redis fault degrades the live view; it cannot
+  lose or corrupt a run.
+
+Breaking implications: background execution requires a `db` on the agent
+(enforced with a 400), run status now transitions `pending → running →
+completed` (poll `GET /agents/{id}/runs/{run_id}` for the terminal state), and
+external framework agents (LangGraph, Claude, etc.) stream inline, so their
+runs are not resumable.
+
+### 8. Culture feature removed
+
+The experimental culture feature (`enable_agentic_culture`,
+`add_culture_to_context`, `CulturalKnowledge`, the `agno_culture` table) has
+been removed. Remove any references; if you need shared knowledge across users,
+use [Knowledge](/knowledge/overview) instead.
+
+### 9. Smaller changes
+
+- **Toolkit parameters**: `enable_*` prefixes are dropped
+  (e.g. `SlackTools(enable_send_message=True)` → `SlackTools(send_message=True)`).
+  v2 names still work with a deprecation warning.
+- **AgentOS metadata routes**: `GET /models` was removed (its data moved into
+  `GET /config` under `available_models`), and `GET /` is now a minimal landing
+  response. `GET /info` is the single unauthenticated metadata endpoint.
+- **Toolkits have an `id`**, used by AgentOS to reference tools stably.
+
+## Migrate with AI
+
+Paste the prompt below into Claude, Cursor, or any coding agent with access to
+your repository. It applies the mechanical changes and flags everything that
+needs your judgment.
+
+````markdown Copy this prompt expandable
+You are migrating a codebase from Agno v2 to Agno v3. Apply the following
+changes carefully. Make the mechanical edits directly; for anything marked
+JUDGMENT, report it to me instead of guessing.
+
+## 1. Renamed Agent/Team parameters (mechanical)
+
+Rename these constructor parameters wherever Agent(...) or Team(...) is called:
+- enable_user_memories        -> update_memory_on_run
+- search_session_history      -> search_past_sessions
+- num_history_sessions        -> num_past_sessions_to_search
+- num_past_session_runs       -> num_past_session_runs_in_search
+
+## 2. Workflow HITL config (mechanical)
+
+Step, Steps, Loop, Condition and Router no longer accept flat HITL kwargs.
+Collect any of these kwargs from their constructors:
+  requires_confirmation, confirmation_message, on_reject, requires_user_input,
+  user_input_message, user_input_schema, requires_output_review,
+  output_review_message, requires_iteration_review, iteration_review_message,
+  on_error, hitl_max_retries, hitl_timeout, on_timeout
+and move them into a single human_review=HumanReview(...) argument
+(import: from agno.workflow.types import HumanReview).
+Rename while moving: hitl_max_retries -> max_retries, hitl_timeout -> timeout.
+All other names are unchanged inside HumanReview.
+
+## 3. Reasoning (JUDGMENT)
+
+Agent(reasoning=True) no longer exists. Find every use and report it: the fix
+is to set reasoning_model=<a native reasoning model instance>, and I need to
+choose which model.
+
+## 4. Keyword-only constructors (mechanical)
+
+Team and Workflow constructors are keyword-only. Convert positional arguments:
+  Team([a, b])          -> Team(members=[a, b])
+  Workflow("name", ...) -> Workflow(name="name", ...)
+
+## 5. Culture feature (JUDGMENT)
+
+The culture feature was removed. Find and report any use of:
+enable_agentic_culture, add_culture_to_context, CulturalKnowledge,
+update_cultural_knowledge, or imports from agno.culture.
+
+## 6. Toolkit parameters (mechanical, optional)
+
+Toolkit constructor params dropped their enable_ prefix (old names still work
+but warn). Where obvious, rename e.g. enable_send_message -> send_message.
+
+## 7. Direct SQL against sessions (JUDGMENT)
+
+Search for SQL, dashboard queries or exports reading the `runs` column of the
+agno_sessions table. In v3 runs live in the agno_runs table
+(run_id, session_id, run_type, run_index, run_data, ...). Report every hit.
+
+## 8. AgentOS API consumers (JUDGMENT)
+
+If this codebase calls the AgentOS HTTP API: GET /models was removed (use
+GET /config -> available_models), and GET / returns a minimal landing payload.
+Report any client code using those routes.
+
+## 9. Database migration (do NOT automate the destructive step)
+
+Write (but do not execute) a migration script for me with exactly this shape:
+
+    import asyncio
+    from agno.db.migrations.manager import MigrationManager
+    # build db exactly as the app does
+    asyncio.run(MigrationManager(db).up())
+    runs = db.get_runs(limit=5)
+    assert len(runs) > 0, "Migration copied nothing - do NOT run cleanup"
+    print("Migration verified. Run db.cleanup_legacy_runs_column() manually "
+          "once you have confirmed history is intact in the UI.")
+
+Never call cleanup_legacy_runs_column / cleanup_legacy_runs_field yourself,
+and never pass force=True on my behalf: cleanup permanently deletes the legacy
+run history, and must only happen after the verification assert passes AND I
+have confirmed the migrated history looks right.
+
+## Output
+
+When done: list every file you changed with a one-line summary, then a
+JUDGMENT section listing every finding from steps 3, 5, 7 and 8 that needs my
+decision. If the repo pins agno in requirements/pyproject, update it to >=3.0.
+````
+
+<Tip>
+  The prompt deliberately refuses to run the destructive cleanup step. Keep it
+  that way: verify your migrated history in the AgentOS UI before reclaiming
+  the legacy storage.
+</Tip>
