@@ -7,6 +7,11 @@ description: Guide to migrate your Agno applications from v2 to v3.
 If you have questions during your migration, we can help! See [Get Help](/get-help) for more information.
 
 <Tip>
+  Reference the [v3.0 Changelog](/other/v3-changelog) for the full list of
+  changes.
+</Tip>
+
+<Tip>
   Want to migrate automatically? Jump to [Migrate with AI](#migrate-with-ai) for
   a prompt you can paste into Claude, Cursor or any coding agent.
 </Tip>
@@ -21,12 +26,18 @@ pip install -U agno
 
 ## Migrating your Agno DB
 
-v3.0 changes how session runs are stored. In v2, every session row held its full
-run history as a single JSON blob in the `runs` column. In v3, each run is its
-own row in a dedicated runs table (`agno_runs` by default), which removes the
-write amplification and unbounded row growth of the blob design.
+The built-in migration makes two schema changes:
 
-The migration is built into Agno. No external script is needed:
+1. **Session runs move to their own table.** In v2, every session row held its
+   full run history as a single JSON blob in the `runs` column. In v3, each run
+   is its own row in a dedicated runs table (`agno_runs` by default), which
+   removes the write amplification and unbounded row growth of the blob design.
+2. **A `user_id` column (with index) is added** to the evals, components,
+   knowledge, schedules, schedule-runs and metrics tables, for
+   [user isolation](#6-user-isolation-user-id-across-the-platform). The metrics
+   unique key changes from `(date, aggregation_period)` to include `user_id`.
+
+One command applies both:
 
 ```python migrate_to_v3.py
 import asyncio
@@ -36,7 +47,7 @@ from agno.db.migrations.manager import MigrationManager
 
 db = PostgresDb(db_url="postgresql+psycopg://...")
 
-# Step 1: copy every run from the legacy blob into the runs table
+# Step 1: run all v3 migrations (runs table + user_id columns)
 asyncio.run(MigrationManager(db).up())
 
 # Step 2: VERIFY the runs actually landed before any cleanup
@@ -47,6 +58,14 @@ assert len(runs) > 0, "Migration copied nothing - do NOT run cleanup"
 db.cleanup_legacy_runs_column()   # SQL adapters
 # db.cleanup_legacy_runs_field()  # Mongo / Redis / Valkey / Firestore / Dynamo / JSON adapters
 ```
+
+Vector databases are migrated separately. If you use per-user knowledge with a
+vector table created before v3, run the matching script from
+[`libs/agno/migrations/v2_to_v3`](https://github.com/agno-agi/agno/tree/main/libs/agno/migrations/v2_to_v3)
+(`migrate_sql_vectordbs.py`, `migrate_field_vectordbs.py` or
+`migrate_sentinel_vectordbs.py`, depending on your vector store) to add
+`user_id` scoping to existing collections. Un-migrated tables raise a
+`ValueError` on user-scoped searches instead of returning empty results.
 
 Notes:
 

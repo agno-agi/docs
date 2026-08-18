@@ -1,0 +1,138 @@
+---
+title: Agno v3.0 Changelog
+sidebarTitle: Agno v3.0 Changelog
+description: "Full list of storage, parameter, and behavior changes introduced in Agno v3.0."
+---
+
+This release rebuilds the storage layer around a normalized runs table, extends
+per-user isolation across the platform, and makes AgentOS background execution
+durable.
+
+The major changes are:
+
+- Session runs are stored one row per run in a dedicated runs table.
+- `user_id` scoping extends to metrics, schedules, evals, knowledge and vector databases.
+- `background=True` on AgentOS is backed by a durable job queue that survives crashes and deploys.
+- Database migrations run through the built-in `MigrationManager`, with schema versions tracked on every adapter.
+
+## Storage
+
+<Accordion title="Denormalized session storage">
+  - Runs are no longer stored as a JSON blob in the sessions table. Each run is
+    a row in the runs table (`agno_runs` by default) with `run_id`,
+    `session_id`, `run_type`, `run_index`, `user_id`, `status` and `run_data`.
+  - Saving a run writes one row instead of rewriting the whole session history.
+    This removes the quadratic write amplification and unbounded row growth of
+    the blob design.
+  - `session.runs` is still populated on read: sessions merge the runs table
+    with any legacy blob, so un-migrated sessions keep working.
+  - New direct accessors: `db.get_run(run_id)` and
+    `db.get_runs(session_id=..., user_id=..., status=..., limit=...)`.
+  - The v2 -> v3 migration preserves the legacy `runs` column as a backup.
+    Reclaim it with `db.cleanup_legacy_runs_column()` (SQL) or
+    `db.cleanup_legacy_runs_field()` (document/KV adapters) after verifying the
+    migration.
+</Accordion>
+
+<Accordion title="Built-in migrations and schema versioning">
+  - `MigrationManager(db).up()` walks all registered migrations for every table
+    and stamps the resulting schema version.
+  - Schema versions are tracked on every adapter, including the document and
+    key-value stores (MongoDB, Redis, Valkey, Firestore, DynamoDB, SurrealDB,
+    JSON, GCS JSON, in-memory). An unstamped database is treated as pre-v3 and
+    migrated.
+  - Migrations are idempotent and non-destructive. Failures raise and abort
+    before any version stamp is written.
+</Accordion>
+
+## User Isolation
+
+<Accordion title="Per-user scoping across the platform">
+  - `user_id` columns added to the schedules, schedule-runs and evals tables.
+    All user-facing read and write methods accept `user_id`.
+  - Metrics aggregate per user. The unique key changed from
+    `(date, aggregation_period)` to `(user_id, date, aggregation_period)`.
+    Sessions without a `user_id` aggregate into a shared bucket that
+    `get_metrics` maps back to `None`.
+  - Knowledge and vector database contents are scoped per user when isolation
+    is enabled. Searching a pre-v3 vector table with a `user_id` raises a
+    `ValueError` directing you to the vector database migration, instead of
+    silently returning empty results.
+  - Schedule polling (`claim_due_schedule` / `release_schedule`) stays
+    unscoped so background execution fires across all users; each schedule run
+    records the owner denormalized from its parent schedule.
+</Accordion>
+
+## AgentOS
+
+<Accordion title="Durable background execution">
+  - Accepted `background=True` requests are committed job rows that survive
+    crashes, restarts and deploys. Any replica's worker can claim and execute
+    them.
+  - Concurrency is bounded. Excess submissions wait in `pending` status instead
+    of overloading the process.
+  - Runs can be tailed (`stream=true`), resumed after a disconnect (`/resume`)
+    and cancelled from any replica.
+  - `Idempotency-Key` headers deduplicate resubmissions.
+  - Redis is optional coordination (live event streams, cross-replica
+    cancellation), never truth. A Redis fault degrades the live view; it cannot
+    lose or corrupt a run.
+  - Background execution requires a `db` on the component and returns a 400
+    without one.
+  - External framework agents (LangGraph, Claude, DSPy, etc.) stream inline
+    when `background=true` is requested; their runs are not resumable.
+</Accordion>
+
+<Accordion title="Metadata route consolidation">
+  - `GET /models` removed. Model data moved into `GET /config` under
+    `available_models`.
+  - `GET /` returns a minimal landing response linking to `/docs`, `/info` and
+    `/health`.
+  - `GET /info` is the single unauthenticated metadata endpoint.
+</Accordion>
+
+## Agents
+
+<Accordion title="Removed parameters">
+  - `enable_user_memories` -> `update_memory_on_run`
+  - `search_session_history` -> `search_past_sessions`
+  - `num_history_sessions` -> `num_past_sessions_to_search`
+  - `num_past_session_runs` -> `num_past_session_runs_in_search`
+  - `reasoning=True` removed. Set `reasoning_model=<native reasoning model>`
+    explicitly.
+</Accordion>
+
+<Accordion title="Culture feature removed">
+  - The experimental culture feature is removed: `enable_agentic_culture`,
+    `add_culture_to_context`, `CulturalKnowledge`, the culture tools and the
+    `agno_culture` table.
+  - Use [Knowledge](/knowledge/overview) for shared cross-user information.
+</Accordion>
+
+## Teams & Workflows
+
+<Accordion title="Keyword-only constructors">
+  - `Team` and `Workflow` constructors no longer accept positional arguments:
+    `Team(members=[...])`, `Workflow(name=..., steps=[...])`.
+</Accordion>
+
+<Accordion title="HITL configuration unified into HumanReview">
+  - Flat HITL kwargs on `Step`, `Steps`, `Loop`, `Condition` and `Router` are
+    removed: `requires_confirmation`, `confirmation_message`, `on_reject`,
+    `requires_user_input`, `user_input_message`, `user_input_schema`,
+    `requires_output_review`, `output_review_message`,
+    `requires_iteration_review`, `iteration_review_message`, `on_error`,
+    `hitl_max_retries`, `hitl_timeout`, `on_timeout`.
+  - Pass `human_review=HumanReview(...)` instead
+    (import from `agno.workflow.types`). Field names are unchanged except
+    `hitl_max_retries` -> `max_retries` and `hitl_timeout` -> `timeout`.
+</Accordion>
+
+## Tools
+
+<Accordion title="Toolkit updates">
+  - Toolkit constructor parameters drop the `enable_` prefix
+    (e.g. `SlackTools(send_message=True)`). The old names still work and log a
+    deprecation warning.
+  - Toolkits have an `id`, used by AgentOS to reference tools stably.
+</Accordion>
