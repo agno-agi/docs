@@ -270,18 +270,100 @@ The experimental culture feature (`enable_agentic_culture`,
 been removed. Remove any references; if you need shared knowledge across users,
 use [Knowledge](/knowledge/overview) instead.
 
-### 9. Smaller changes
+### 9. Entity memory is isolated per user
+
+If you use `EntityMemoryStore` with `namespace="user"`, your existing rows are
+shared across users and must be re-keyed.
+
+In v2 the row key carried no user component, so two users who recorded an
+entity with the same name and type wrote to the same physical row: one user's
+facts overwrote the other's and then appeared in their prompt context. In v3
+the key embeds a digest of the `user_id`. Global and custom namespaces are
+unchanged.
+
+Pre-v3 rows are re-keyed **by the migration, not at runtime** — until you run
+it, reads still match the old shared rows. The re-key is part of the v3.0.0
+migration, so `MigrationManager(db).up()` (or `POST /databases/all/migrate`)
+covers it along with everything else:
+
+```python v3_rekey_entities.py
+from agno.learn.migrations import rekey_user_entity_learnings
+
+# Only needed if you are not running the full v3.0.0 migration.
+# dry_run=True is the default: it reports what would change without writing.
+print(rekey_user_entity_learnings(db))
+
+# Apply it once the dry run looks right
+result = rekey_user_entity_learnings(db, dry_run=False)
+print(result["rekeyed"], result["merged"], result["failed"])
+```
+
+<Warning>
+  This migration cannot be reversed. `down()` refuses the re-key, because the
+  pre-v3 key is shared across users and restoring it would collide the rows
+  again. Back up the learnings table before running it.
+</Warning>
+
+Reading the report: `rekeyed` moved to the owner's key, and `keyed` was already
+correct. `merged` is expected rather than an error — if the upgraded application
+wrote to the user-scoped key before the migration ran, the entity exists in two
+rows and they are folded together, with the newer row winning. `conflicts` and
+`failed` need an operator: resolve them, then re-run the helper.
+
+Rows whose stored content records a different user than their owner column held
+two users' data before the fix and cannot be separated. The migration moves
+these to the `quarantined_user` namespace instead of deleting them: the content
+is preserved and entity memory stops reading it. They remain listed and mutable
+through the `/learnings` API for whichever user the owner column names. To
+delete them instead — along with every row that has no owner — and let entity
+memory re-capture from conversation, pass `purge_unrecoverable=True`.
+
+Two API changes come with it:
+
+- `delete` / `adelete` take a keyword-only `user_id` and refuse
+  `namespace="user"` deletes without it. Previously any caller could delete
+  another user's entity by name.
+- `get` / `aget` require a `user_id` in that namespace instead of returning an
+  arbitrary user's row.
+
+### 10. Smaller changes
 
 - **Async tools run in sync runs**: v2's `agent.run()` raised when the agent
   had async tools, forcing `arun()`. v3 executes them automatically; the guard
   and its error are gone.
-- **Toolkit parameters**: `enable_*` prefixes are dropped
-  (e.g. `SlackTools(enable_send_message=True)` → `SlackTools(send_message=True)`).
-  v2 names still work with a deprecation warning.
 - **AgentOS metadata routes**: `GET /models` was removed (its data moved into
   `GET /config` under `available_models`), and `GET /` is now a minimal landing
   response. `GET /info` is the single unauthenticated metadata endpoint.
 - **Toolkits have an `id`**, used by AgentOS to reference tools stably.
+- **Schedule provenance columns**: the schedules table gains eight nullable
+  columns (`managed_by`, `target_type`, `target_id`, `created_by_run_id`,
+  `created_by_session_id`, `updated_by_run_id`, `updated_by_session_id`,
+  `disabled_reason`), added by the v3.0.0 migration on SQLite and PostgreSQL.
+  Existing rows keep `NULL` provenance and no data is rewritten, so this needs
+  no action beyond running the migration. If you query the schedules table
+  directly with `SELECT *`, expect the extra columns.
+- **`update_schedule` is restricted to a column allow-list**: it now writes only
+  `name`, `description`, `method`, `endpoint`, `payload`, `cron_expr`,
+  `timezone`, `timeout_seconds`, `max_retries`, `retry_delay_seconds`,
+  `enabled`, `next_run_at` and `disabled_reason`. Passing anything else — such
+  as `user_id` or a provenance column — raises a `ValueError` instead of
+  silently repointing the row's owner or target.
+- **Removed toolkit methods**: `DuckDuckGoTools.duckduckgo_search` ->
+  `web_search` and `duckduckgo_news` -> `search_news`;
+  `FileTools.check_escape` -> `Toolkit._check_path`;
+  `PgVector.enable_prefix_matching` removed (dead helper);
+  `BrightData.get_screenshot` no longer takes `output_path`.
+- **Removed learn aliases**: `MemoriesConfig` -> `UserMemoryConfig`,
+  `MemoriesStore` -> `UserMemoryStore`, `Decision` -> `DecisionLog`.
+- **Mistral requires `mistralai>=2.0.0`**: the v1 compatibility layer is gone.
+  Upgrade with `pip install -U "agno[mistral]"`.
+- **Cerebras default model**: `Cerebras` and `CerebrasOpenAI` now default to
+  `gpt-oss-120b` instead of `llama-4-scout-17b-16e-instruct`. Pin the old id
+  explicitly if you depend on it.
+- **`agno[postgres]` installs a working driver**: the extra previously
+  installed `psycopg-binary` only, so `PostgresDb` failed with
+  `ModuleNotFoundError: No module named 'sqlalchemy'`. It now pulls `psycopg`
+  and `sqlalchemy`; you can drop any manual pins you added to work around it.
 
 ## Migrate with a Coding Agent
 
@@ -306,6 +388,17 @@ Rename these too, wherever they appear:
 - JWTMiddleware / authorization_config: secret_key="k" -> verification_keys=["k"]
   (note the list wrapping)
 - MCPToolbox: auth_tokens= or auth_headers= -> auth_token_getters= (same value)
+
+Rename these methods and imports wherever they appear:
+- DuckDuckGoTools: .duckduckgo_search(  -> .web_search(
+- DuckDuckGoTools: .duckduckgo_news(    -> .search_news(
+- FileTools: .check_escape(             -> ._check_path(
+  (do NOT rename LocalFileSystemTools.check_escape - that one still exists)
+- BrightData.get_screenshot(...): drop any output_path= argument
+- PgVector: remove any enable_prefix_matching= argument (the helper is gone)
+- from agno.learn import MemoriesConfig  -> UserMemoryConfig
+- from agno.learn import MemoriesStore   -> UserMemoryStore
+- from agno.learn import Decision        -> DecisionLog
 
 ## 1b. continue_run updated_tools (JUDGMENT)
 
@@ -340,6 +433,14 @@ Team and Workflow constructors are keyword-only. Convert positional arguments:
   Team([a, b])          -> Team(members=[a, b])
   Workflow("name", ...) -> Workflow(name="name", ...)
 
+## 4b. Entity memory user isolation (JUDGMENT)
+
+If the code constructs EntityMemoryStore(...) with namespace="user", report it.
+The row key changed in v3 and existing rows must be re-keyed by the v3.0.0
+migration; the change is not reversible, so I need to confirm it. Also report
+any call to that store's delete/adelete or get/aget: they now require a
+keyword-only user_id in the "user" namespace.
+
 ## 5. Culture feature (JUDGMENT)
 
 The culture feature was removed. Find any use of: enable_agentic_culture,
@@ -348,24 +449,19 @@ imports from agno.culture. Comment constructor arguments out with a
 `# TODO(agno-v3):` marker so files stay importable; leave other usages in
 place. Report every occurrence.
 
-## 6. Toolkit parameters (mechanical, optional)
-
-Toolkit constructor params dropped their enable_ prefix (old names still work
-but warn). Where obvious, rename e.g. enable_send_message -> send_message.
-
-## 7. Direct SQL against sessions (JUDGMENT)
+## 6. Direct SQL against sessions (JUDGMENT)
 
 Search for SQL, dashboard queries or exports reading the `runs` column of the
 agno_sessions table. In v3 runs live in the agno_runs table
 (run_id, session_id, run_type, run_index, run_data, ...). Report every hit.
 
-## 8. AgentOS API consumers (JUDGMENT)
+## 7. AgentOS API consumers (JUDGMENT)
 
 If this codebase calls the AgentOS HTTP API: GET /models was removed (use
 GET /config -> available_models), and GET / returns a minimal landing payload.
 Report any client code using those routes.
 
-## 9. Database migration (do NOT automate the destructive step)
+## 8. Database migration (do NOT automate the destructive step)
 
 Write (but do not execute) a migration script for me with exactly this shape:
 
@@ -386,7 +482,7 @@ have confirmed the migrated history looks right.
 ## Output
 
 When done: list every file you changed with a one-line summary, then a
-JUDGMENT section listing every finding from steps 3, 5, 7 and 8 that needs my
+JUDGMENT section listing every finding from steps 1b, 3, 5, 6 and 7 that needs my
 decision. If the repo pins agno in requirements/pyproject, update it to >=3.0.
 ````
 

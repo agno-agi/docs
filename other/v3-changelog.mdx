@@ -143,10 +143,93 @@ The major changes are:
 ## Tools
 
 <Accordion title="Toolkit updates">
-  - Toolkit constructor parameters drop the `enable_` prefix
-    (e.g. `SlackTools(send_message=True)`). The old names still work and log a
-    deprecation warning.
   - `MCPToolbox`: `auth_tokens` and `auth_headers` removed. Use
     `auth_token_getters`.
   - Toolkits have an `id`, used by AgentOS to reference tools stably.
+</Accordion>
+
+<Accordion title="Removed toolkit methods">
+  - `DuckDuckGoTools.duckduckgo_search` -> `web_search`, and
+    `DuckDuckGoTools.duckduckgo_news` -> `search_news`. The toolkit now builds
+    on `WebSearchTools`, which supplies both methods.
+  - `FileTools.check_escape` -> `Toolkit._check_path`. `LocalFileSystemTools`
+    keeps its own `check_escape`, which is unaffected.
+  - `BrightData.get_screenshot`: the unused `output_path` parameter is removed.
+  - `PgVector.enable_prefix_matching` is removed. It was a dead helper with no
+    effect on search.
+</Accordion>
+
+## Scheduler
+
+<Accordion title="Schedule provenance columns">
+  - The schedules table gains eight nullable columns recording where a schedule
+    came from and who last touched it: `managed_by`, `target_type`, `target_id`,
+    `created_by_run_id`, `created_by_session_id`, `updated_by_run_id`,
+    `updated_by_session_id` and `disabled_reason`. `managed_by` and `target_id`
+    are indexed.
+  - The v3.0.0 migration adds the columns and indexes on SQLite and PostgreSQL
+    (sync and async). Existing rows are left as-is with `NULL` provenance; no
+    data is rewritten. MongoDB needs no schema change.
+</Accordion>
+
+<Accordion title="update_schedule column allow-list">
+  - `update_schedule` can only write `name`, `description`, `method`,
+    `endpoint`, `payload`, `cron_expr`, `timezone`, `timeout_seconds`,
+    `max_retries`, `retry_delay_seconds`, `enabled`, `next_run_at` and
+    `disabled_reason`. Any other key raises a `ValueError` naming the rejected
+    columns.
+  - Ownership, provenance and lock state are no longer writable through the
+    generic update path, so a name-keyed upsert cannot repoint who a schedule
+    belongs to or what it targets.
+</Accordion>
+
+## Models
+
+<Accordion title="Mistral requires mistralai v2">
+  - The `mistralai` v1 compatibility layer is removed. `agno[mistral]` now
+    requires `mistralai>=2.0.0`.
+  - `agno[mistral]` is included in the `models` extra again.
+</Accordion>
+
+<Accordion title="Default model updates">
+  - `Cerebras` and `CerebrasOpenAI` default to `gpt-oss-120b`, replacing
+    `llama-4-scout-17b-16e-instruct`.
+  - OpenAI `reasoning_effort`, `reasoning_summary`, `service_tier` and
+    `verbosity` accept the full set of API values (including `none`, `xhigh`,
+    `max`, `scale`, `fast`, `ultrafast`) and any future string. This widens the
+    accepted types; no existing call breaks.
+</Accordion>
+
+## Learning
+
+<Accordion title="Entity memory is isolated per user">
+  - `EntityMemoryStore` with `namespace="user"` did not isolate users: the row
+    key carried no user component, so two users recording the same entity name
+    and type shared one row. One user's facts overwrote the other's and leaked
+    into their prompt context.
+  - Row keys under `namespace="user"` now embed a digest of the `user_id`.
+    Global and custom namespaces are unchanged and do not re-key.
+  - Pre-v3 rows are re-keyed by the v3.0.0 migration, not at runtime. Run it
+    with the rest of your migrations, or call
+    `agno.learn.migrations.rekey_user_entity_learnings` directly. The
+    migration's `down()` refuses to reverse the re-key, since the old key
+    collides users by design.
+  - `EntityMemoryStore.delete` / `adelete` take a keyword-only `user_id` and
+    refuse `namespace="user"` deletes without it. `get` / `aget` now require a
+    `user_id` in that namespace instead of returning an arbitrary user's row.
+</Accordion>
+
+<Accordion title="Removed learn aliases">
+  - `MemoriesConfig` -> `UserMemoryConfig`
+  - `MemoriesStore` -> `UserMemoryStore`
+  - `Decision` -> `DecisionLog`
+</Accordion>
+
+## Errors
+
+<Accordion title="Clearer schema mismatch errors">
+  - SQL adapters raised `Table <name> has an invalid schema` with no next step.
+    The error now names the likely cause (a database created by an older Agno
+    version) and points at both fixes: `asyncio.run(MigrationManager(db).up())`
+    or `POST /databases/all/migrate` on AgentOS.
 </Accordion>
