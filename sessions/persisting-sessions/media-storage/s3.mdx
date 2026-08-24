@@ -1,0 +1,78 @@
+---
+title: S3 Media Storage
+sidebarTitle: S3
+description: Store agent media in an S3 bucket with S3MediaStorage.
+keywords: [media storage, S3, AWS, MinIO, S3MediaStorage, presigned URL, media_storage]
+---
+
+`S3MediaStorage` uploads media to an S3 bucket and keeps only a `MediaReference` in the database. It also supports MinIO and other S3-compatible services through `endpoint_url`.
+
+## Usage
+
+Install the required packages:
+
+```shell
+uv pip install "agno[s3]" openai sqlalchemy
+```
+
+Set `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, or pass the credentials directly. Pass `region` explicitly: left unset, boto3 falls back to `AWS_DEFAULT_REGION` or `~/.aws/config`, and it does not read `AWS_REGION`.
+
+```python media_storage_s3.py
+import os
+
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.media.storage import S3MediaStorage
+from agno.models.openai import OpenAIResponses
+
+storage = S3MediaStorage(
+    bucket=os.getenv("MEDIA_S3_BUCKET"),
+    region=os.getenv("AWS_REGION"),
+    prefix="agno/media/",
+    presigned_url_expiry=3600,
+)
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.5"),
+    db=SqliteDb(db_file="tmp/data.db"),
+    media_storage=storage,
+)
+```
+
+## Async
+
+`AsyncS3MediaStorage` takes the same parameters and uses `aioboto3`.
+
+```python
+from agno.media.storage import AsyncS3MediaStorage
+
+storage = AsyncS3MediaStorage(bucket=os.getenv("MEDIA_S3_BUCKET"))
+```
+
+## URLs
+
+`get_url` returns a presigned URL that expires after `presigned_url_expiry` seconds. A presigned URL is never written to the database, since it would expire and it carries credentials, so a fresh one is signed on each read. Above the SigV4 maximum of seven days, no URL is signed and readers stream the bytes instead.
+
+Set `acl="public-read"` to return the unsigned object URL instead. That URL does not expire, so it is stored on the reference. A bucket with ACLs disabled, the default for new buckets, rejects the argument with a `ValueError`.
+
+## S3-compatible Services
+
+Point `endpoint_url` at the service and set `region` to match its own site region.
+
+```python
+storage = S3MediaStorage(
+    bucket="media",
+    endpoint_url="http://localhost:9000",
+    region="us-east-1",
+)
+```
+
+<Note>
+A presigned URL carries the region in its signature. A service whose region differs from the one configured here rejects the URL.
+</Note>
+
+## Params
+
+<Snippet file="media-storage-s3-params.mdx" />
+
+See the full example [here](/examples/storage/media-storage/s3).

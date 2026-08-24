@@ -1,0 +1,125 @@
+---
+title: Media Storage
+sidebarTitle: Overview
+description: Offload agent media to object storage and keep only a reference in the database.
+keywords: [media storage, object storage, media_storage, MediaReference, S3, GCS, store_media]
+---
+
+Media on a run is stored in the database as base64 by default, both what you send in and what the run produces. Set `media_storage` and the bytes go to object storage instead, leaving a `MediaReference` in the row.
+
+```python
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.media.storage import S3MediaStorage
+from agno.models.openai import OpenAIResponses
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.5"),
+    db=SqliteDb(db_file="tmp/agent.db"),
+    media_storage=S3MediaStorage(bucket="my-bucket"),
+)
+```
+
+The model still receives the media, tools still process it, and history still replays it on later runs. Only the storage location changes. `media_storage` works the same way on `Agent`, `Team`, and `Workflow`.
+
+## Backends
+
+| Backend | Class | Install |
+|---------|-------|---------|
+| [Local](/sessions/persisting-sessions/media-storage/local) | `LocalMediaStorage` | Built in |
+| [S3](/sessions/persisting-sessions/media-storage/s3) | `S3MediaStorage` | `uv pip install "agno[s3]"` |
+| [GCS](/sessions/persisting-sessions/media-storage/gcs) | `GCSMediaStorage` | `uv pip install "agno[gcs]"` |
+
+Each backend has an async twin: `AsyncLocalMediaStorage`, `AsyncS3MediaStorage`, `AsyncGCSMediaStorage`. A sync backend also works inside `arun()`, where the upload runs in a worker thread to keep the event loop free.
+
+## What Gets Offloaded
+
+Every media object on a run, whichever direction it came from:
+
+| Source | Example |
+|--------|---------|
+| Attached to the run | An image or PDF you pass to `run()`, or an AgentOS multipart upload |
+| Produced by the run | An image the model generates, or a file from `FileGenerationTools` |
+| Spoken by the model | Generated audio, on both `response_audio` and the message that carried it |
+| Read from disk | `Image(filepath=...)`, or a code-execution artifact |
+| Carried on messages | Media replayed from history, and on `additional_input` or reasoning messages |
+| From a team member or workflow step | A member's generated chart, including nested teams and container steps |
+
+## How It Works
+
+1. Media is uploaded to the backend before the run is written to the database, including any background status row or mid-run checkpoint written before the final one.
+2. The row stores a `MediaReference` (key, bucket, mime type, size, SHA-256) instead of the bytes.
+3. On a later run, the media is read back from the backend so the model sees it as before.
+
+Offload runs on a deep copy, so the `RunOutput` you are handed keeps its bytes. Only the persisted copy carries the pointer.
+
+<Note>
+`media_storage` requires `store_media=True`, which is the default. With `store_media=False` no new media is persisted, and an Agent or Team still reads back and deletes media stored earlier. A Workflow resuming a paused run needs `store_media=True` to refresh its executor's media.
+</Note>
+
+<Warning>
+A bucket you do not own makes every upload fail. Offload falls back to inline base64 and the run still succeeds, so the failure is easy to miss. Check that media reaches the bucket the first time you configure it.
+</Warning>
+
+## Teams and Workflows
+
+Set `media_storage` on the team or workflow, not on its members. The parent owns the write, so its backend uploads the whole run including member and step rows. A member pointed at a different bucket cannot resolve the parent's references and its media is skipped on the next turn.
+
+A member with `store_media=False` has its media dropped before the parent uploads anything. A restriction travels down the tree; `store_media=True` on the parent does not override a member that turned it off.
+
+## URL-only Media
+
+Media that arrives as a bare URL is skipped during offload. Agno stores the URL and never downloads the file. Set `persist_remote_urls=True` on the backend to fetch the URL from your process and store the bytes as well. Enable it only for URLs you trust, since the fetch runs with your network reach.
+
+```python
+storage = S3MediaStorage(bucket="my-bucket", persist_remote_urls=True)
+```
+
+## Deleting Media
+
+Offloaded media outlives the session by default. The reference in the row is the only record of which object belongs to which session, so deleting rows first leaves orphaned objects.
+
+Pass `delete_media=True` to read the keys off the rows before deleting them, then sweep the objects.
+
+```python
+agent.delete_session(session_id="abc123", delete_media=True)
+```
+
+The flag exists on `Agent`, `Team`, and `Workflow`, in both sync and async variants. It is opt-in: a plain `delete_session()` leaves every object in the backend.
+
+Forking a session re-uploads the media under the fork's own keys, so either session can be deleted without affecting the other.
+
+<Note>
+A `MediaReference` records the backend and bucket that minted it. Media stored elsewhere is not read back, not deleted, and not served, so changing bucket leaves earlier objects reachable only by the old configuration.
+</Note>
+
+## AgentOS
+
+AgentOS serves stored media at `/sessions/{session_id}/media/{storage_key}`, scoped to the caller's session ownership. The backend is discovered from your agents, teams, and workflows.
+
+```python
+from agno.os import AgentOS
+
+agent_os = AgentOS(agents=[agent])
+```
+
+Set `media_storage` on `AgentOS` when your entities use different backends, otherwise the first one found serves every request.
+
+The route streams the bytes by default, which keeps the bucket private and leaves one CORS surface. Pass `redirect=true` to get a 307 to a freshly-signed URL instead, which is the cheaper path for embedding media in a page. Backends that sign nothing still stream: local storage always, and GCS with no service-account key.
+
+The same `delete_media` flag works over HTTP, on one session or a batch:
+
+```
+GET    /sessions/{session_id}/media/{storage_key}?redirect=true
+DELETE /sessions/{session_id}?delete_media=true
+DELETE /sessions?delete_media=true
+```
+
+## Developer Resources
+
+- [LocalMediaStorage reference](/reference/media-storage/local)
+- [S3MediaStorage reference](/reference/media-storage/s3)
+- [GCSMediaStorage reference](/reference/media-storage/gcs)
+- [MediaReference reference](/reference/media-storage/media-reference)
+- [Media storage examples](/examples/storage/media-storage/overview)
+- [Storage Control](/sessions/persisting-sessions/storage-control)
