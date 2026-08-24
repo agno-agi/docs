@@ -12,7 +12,7 @@ If you have questions during your migration, we can help! See [Get Help](/get-he
 </Tip>
 
 <Tip>
-  Want to migrate automatically? Jump to [Migrate with AI](#migrate-with-ai) for
+  Want to migrate automatically? Jump to [Migrate with AI](#migrate-with-a-coding-agent) for
   a prompt you can paste into Claude, Cursor or any coding agent.
 </Tip>
 
@@ -32,10 +32,12 @@ The built-in migration makes two schema changes:
    full run history as a single JSON blob in the `runs` column. In v3, each run
    is its own row in a dedicated runs table (`agno_runs` by default), which
    removes the write amplification and unbounded row growth of the blob design.
-2. **A `user_id` column (with index) is added** to the evals, components,
-   knowledge, schedules, schedule-runs and metrics tables, for
-   [user isolation](#6-user-isolation-user-id-across-the-platform). The metrics
+2. **On the SQL adapters, a `user_id` column (with index) is added** to the
+   evals, components, knowledge, schedules, schedule-runs and metrics tables, for
+   [user isolation](#6-user-isolation-user_id-across-the-platform). The metrics
    unique key changes from `(date, aggregation_period)` to include `user_id`.
+   Document and KV backends need no schema change here: per-user scoping on those
+   comes from the v3 write path, so on them the migration only moves the runs.
 
 One command applies both:
 
@@ -59,16 +61,27 @@ assert len(runs) > 0, "Migration copied nothing - do NOT run cleanup"
 # rows still hold it and the unforced call refuses. Pass force=True once you
 # have verified step 2 -- that is what makes this destructive step explicit.
 db.cleanup_legacy_runs_column(force=True)   # SQL adapters
-# db.cleanup_legacy_runs_field(force=True)  # Mongo / Redis / Valkey / Firestore / Dynamo / JSON adapters
+# db.cleanup_legacy_runs_field(force=True)  # Mongo / Redis / Valkey / Firestore / Dynamo / SurrealDB / JSON adapters
 ```
+
+<Note>
+  On the async adapters (`AsyncPostgresDb`, `AsyncMySQLDb`, `AsyncSqliteDb`,
+  `AsyncMongoDb`) `get_runs` and the cleanup method are coroutines — await them:
+  `runs = asyncio.run(db.get_runs(limit=5))` and
+  `asyncio.run(db.cleanup_legacy_runs_field(force=True))`.
+</Note>
 
 Vector databases are migrated separately. If you use per-user knowledge with a
 vector table created before v3, run the matching script from
 [`libs/agno/migrations/v2_to_v3`](https://github.com/agno-agi/agno/tree/main/libs/agno/migrations/v2_to_v3)
 (`migrate_sql_vectordbs.py`, `migrate_field_vectordbs.py` or
 `migrate_sentinel_vectordbs.py`, depending on your vector store) to add
-`user_id` scoping to existing collections. Un-migrated tables raise a
-`ValueError` on user-scoped searches instead of returning empty results.
+`user_id` scoping to existing collections. On the schema-based stores (PgVector,
+SingleStore, LanceDB, Milvus, ClickHouse, Redis, Cassandra, Couchbase) an
+un-migrated table raises a `ValueError` on user-scoped searches instead of
+returning empty results. Schemaless stores (Qdrant, Pinecone, Upstash, Chroma,
+MongoDB, OpenSearch, SurrealDB) need no migration: pre-v3 documents stay
+visible to every user as shared.
 
 Notes:
 
@@ -208,7 +221,7 @@ agent = Agent(model=OpenAIResponses(id="gpt-5.5"), reasoning=True)
 ```python v3_reasoning.py
 agent = Agent(
     model=OpenAIResponses(id="gpt-5.5"),
-    reasoning_model=OpenAIResponses(id="gpt-5.5"),
+    reasoning_model=OpenAIResponses(id="o4-mini"),
 )
 ```
 
@@ -239,10 +252,12 @@ addition to sessions. What this means for your code and data:
   `(date, aggregation_period)` to `(user_id, date, aggregation_period)`.
   Deployments without isolation see the same single-row-per-date shape as
   before; sessions without a `user_id` aggregate into a shared bucket.
-- Vector database collections created before v3 have no per-user scoping. When
-  isolation is on, searching them with a `user_id` raises a `ValueError` telling
-  you to run the vector database migration. This is deliberate: an un-migrated
-  table fails loudly instead of silently returning empty results.
+- Vector database collections created before v3 have no per-user scoping. On
+  schema-based stores, searching them with a `user_id` raises a `ValueError`
+  telling you to run the vector database migration — an un-migrated table fails
+  loudly instead of silently returning empty results. On schemaless stores
+  (Qdrant, Pinecone, Upstash, Chroma, MongoDB, OpenSearch, SurrealDB) pre-v3
+  documents are simply treated as shared.
 
 ### 7. Background execution and durable queues
 
@@ -332,9 +347,6 @@ Two API changes come with it:
 
 ### 10. Smaller changes
 
-- **Async tools run in sync runs**: v2's `agent.run()` raised when the agent
-  had async tools, forcing `arun()`. v3 executes them automatically; the guard
-  and its error are gone.
 - **AgentOS metadata routes**: `GET /models` was removed (its data moved into
   `GET /config` under `available_models`), and `GET /` is now a minimal landing
   response. `GET /info` is the single unauthenticated metadata endpoint.
@@ -349,9 +361,10 @@ Two API changes come with it:
 - **`update_schedule` is restricted to a column allow-list**: it now writes only
   `name`, `description`, `method`, `endpoint`, `payload`, `cron_expr`,
   `timezone`, `timeout_seconds`, `max_retries`, `retry_delay_seconds`,
-  `enabled`, `next_run_at` and `disabled_reason`. Passing anything else — such
-  as `user_id` or a provenance column — raises a `ValueError` instead of
-  silently repointing the row's owner or target.
+  `enabled`, `next_run_at` and `disabled_reason`. Passing a provenance column
+  raises a `ValueError` instead of silently repointing the row's owner or
+  target. `user_id` is not an update field either: it scopes the update to that
+  owner, so an update passing the wrong `user_id` matches nothing.
 - **Removed toolkit methods**: `DuckDuckGoTools.duckduckgo_search` ->
   `web_search` and `duckduckgo_news` -> `search_news`;
   `FileTools.check_escape` -> `Toolkit._check_path`;
@@ -454,8 +467,9 @@ Rename these imports and modules wherever they appear:
 Rename these methods and imports wherever they appear:
 - DuckDuckGoTools: .duckduckgo_search(  -> .web_search(
 - DuckDuckGoTools: .duckduckgo_news(    -> .search_news(
-- FileTools: .check_escape(             -> ._check_path(
-  (do NOT rename LocalFileSystemTools.check_escape - that one still exists)
+- FileTools: .check_escape(<path>)      -> ._check_path(<path>, self.base_dir)
+  (the v3 helper takes the base dir explicitly; a bare token rename breaks the call.
+  Do NOT rename LocalFileSystemTools.check_escape - that one still exists)
 - BrightData.get_screenshot(...): drop any output_path= argument
 - PgVector: remove any enable_prefix_matching= argument (the helper is gone)
 - from agno.learn import MemoriesConfig  -> UserMemoryConfig
@@ -474,9 +488,9 @@ a rename: find every call site passing updated_tools and report it.
 Step, Steps, Loop, Condition and Router no longer accept flat HITL kwargs.
 Collect any of these kwargs from their constructors:
   requires_confirmation, confirmation_message, on_reject, requires_user_input,
-  user_input_message, user_input_schema, requires_output_review,
-  output_review_message, requires_iteration_review, iteration_review_message,
-  on_error, hitl_max_retries, hitl_timeout, on_timeout
+  user_input_message, user_input_schema, allow_multiple_selections,
+  requires_output_review, output_review_message, requires_iteration_review,
+  iteration_review_message, on_error, hitl_max_retries, hitl_timeout, on_timeout
 and move them into a single human_review=HumanReview(...) argument
 (import: from agno.workflow.types import HumanReview).
 Rename while moving: hitl_max_retries -> max_retries, hitl_timeout -> timeout.
@@ -492,7 +506,10 @@ instance>, and I need to choose which model.
 ## 4. Keyword-only Workflow constructor (mechanical)
 
 The Workflow constructor is keyword-only. Convert positional arguments:
-  Workflow("name", ...) -> Workflow(name="name", ...)
+  Workflow("wf-id", ...) -> Workflow(id="wf-id", ...)
+  (v2's first positional argument was `id`, NOT `name` - converting it to name=
+  would silently re-identify the workflow: new auto-generated id, different
+  AgentOS routing and database rows)
 Team is NOT keyword-only: leave Team([a, b]) alone.
 
 ## 4b. Entity memory user isolation (JUDGMENT)
@@ -544,7 +561,7 @@ have confirmed the migrated history looks right.
 ## Output
 
 When done: list every file you changed with a one-line summary, then a
-JUDGMENT section listing every finding from steps 1b, 3, 5, 6 and 7 that needs my
+JUDGMENT section listing every finding from steps 1b, 3, 4b, 5, 6 and 7 that needs my
 decision. If the repo pins agno in requirements/pyproject, update it to >=3.0.
 ````
 
