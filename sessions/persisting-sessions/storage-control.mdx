@@ -46,7 +46,7 @@ Your metrics will still show the actual tokens used, including the removed tool 
 
 ## Disable Media Storage
 
-Large media uploads (images, PDFs, audio) can dominate your session tables. Turn them off with `store_media=False` and store the original files elsewhere (S3, GCS, etc.).
+Large media uploads (images, PDFs, audio) can dominate your session tables. `store_media=False` drops them entirely. To keep the media but move it out of the database, set `media_storage` instead.
 
 <CodeGroup>
 ```python Agent
@@ -76,11 +76,43 @@ team = Team(
 
 During a run the model still receives the media (and tools can still process it); the flag only affects what is written to the database afterward.
 
-### Recommended Workflow
+### Keep the Media, Move It Off the Database
 
-1. Upload the file to your preferred storage service and keep the URL/ID
-2. Pass that URL to the agent/team so it can fetch/process the file
-3. Skip persisting the raw media via `store_media=False`
+`store_media=False` drops the media entirely. To keep it and move it out of the database, set `media_storage` instead. Agno uploads the bytes to S3, GCS, or the local filesystem and stores a reference in the row.
+
+<CodeGroup>
+```python Agent
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.media.storage import S3MediaStorage
+from agno.models.openai import OpenAIResponses
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.5"),
+    db=SqliteDb(db_file="tmp/agent.db"),
+    media_storage=S3MediaStorage(bucket="my-bucket"),
+)
+```
+
+```python Team
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.media.storage import S3MediaStorage
+from agno.models.openai import OpenAIResponses
+from agno.team import Team
+
+researcher = Agent(name="Researcher", model=OpenAIResponses(id="gpt-5.5"))
+
+team = Team(
+    members=[researcher],
+    model=OpenAIResponses(id="gpt-5.5"),
+    db=SqliteDb(db_file="tmp/team.db"),
+    media_storage=S3MediaStorage(bucket="my-bucket"),
+)
+```
+</CodeGroup>
+
+See [Media Storage](/sessions/persisting-sessions/media-storage/overview) for backends, credentials, and deletion.
 
 ## Disable Tool Storage
 
@@ -198,10 +230,11 @@ team = Team(
 ```
 </CodeGroup>
 
-Turn a flag **off** when you want to reduce storage footprint (e.g., large tool payloads you can always re-run, media living in S3, old history you don't need). Leave it **on** when you need full transcripts for audit/compliance, analytics, or agent coaching.
+Turn a flag **off** when you want to reduce storage footprint (e.g., large tool payloads you can always re-run, media you have offloaded with `media_storage`, old history you don't need). Leave it **on** when you need full transcripts for audit/compliance, analytics, or agent coaching.
 
 ## Learn More
 
+- [Media Storage](/sessions/persisting-sessions/media-storage/overview)
 - [Sessions Overview](/sessions/overview)
 - [Session Storage](/database/overview)
 

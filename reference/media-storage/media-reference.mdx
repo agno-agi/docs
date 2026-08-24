@@ -1,0 +1,21 @@
+---
+title: MediaReference
+sidebarTitle: MediaReference
+description: "MediaReference is the pointer stored in the database in place of media bytes."
+---
+
+`MediaReference` is the pointer stored on a run in place of the media bytes. It records which backend holds the object and enough metadata to serve it without a further lookup.
+
+<Snippet file="media-reference-fields.mdx" />
+
+## Metadata
+
+`Image`, `Audio`, `Video` and `File` take a `metadata` dict. It is written onto the stored object and kept in full on the reference.
+
+```python
+Image(content=data, metadata={"source": "invoice-scan", "page": "3"})
+```
+
+Backends trim what they put on the object itself: S3 takes ASCII only within about 1800 bytes, GCS within 8000, and the local backend writes it to a `.meta.json` file beside the object. The reference keeps the whole dict either way.
+
+Over HTTP, send it to the agent or team run route as `files_metadata`, a JSON array matched to `files[]` by position. The array must stay under 8000 bytes or the request is rejected with 422.
