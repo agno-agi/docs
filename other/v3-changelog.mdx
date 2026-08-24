@@ -34,6 +34,14 @@ The major changes are:
     migration.
 </Accordion>
 
+<Accordion title="SQLite runs in WAL journal mode">
+  - `SqliteDb` and `AsyncSqliteDb` issue `PRAGMA journal_mode=WAL` on connect,
+    replacing SQLite's default DELETE journal (a journal create, double fsync and
+    delete on every commit).
+  - WAL is persistent on the database file and produces `-wal` and `-shm`
+    sidecar files next to it. Copy or back up all three together.
+</Accordion>
+
 <Accordion title="Built-in migrations and schema versioning">
   - `MigrationManager(db).up()` walks all registered migrations for every table
     and stamps the resulting schema version.
@@ -43,6 +51,21 @@ The major changes are:
     migrated.
   - Migrations are idempotent and non-destructive. Failures raise and abort
     before any version stamp is written.
+</Accordion>
+
+## Knowledge
+
+<Accordion title="Insert API replaces add_content">
+  - `Knowledge.add_content` -> `insert()`
+  - `Knowledge.add_content_async` -> `ainsert()`
+  - `Knowledge.add_contents_async` -> `ainsert_many()`
+</Accordion>
+
+<Accordion title="Vector database changes">
+  - `LanceDb`: `use_tantivy` is removed and ignored.
+  - Searching a pre-v3 vector table with a `user_id` raises a `ValueError`
+    directing you to the vector database migration, instead of silently
+    returning empty results.
 </Accordion>
 
 ## User Isolation
@@ -64,6 +87,18 @@ The major changes are:
 </Accordion>
 
 ## AgentOS
+
+<Accordion title="MCP server configuration">
+  - `AgentOS(enable_mcp_server=..., mcp_config=...)` is replaced by a single
+    `mcp_server=` parameter, which takes a bool or an `MCPServerConfig`.
+  - Passing `websocket=` no longer implies `enable_websocket=True`; set it
+    explicitly.
+</Accordion>
+
+<Accordion title="Pagination is validated">
+  - Passing `page` without `limit`, or a `page` below 1, now raises a
+    `ValueError` instead of being silently ignored. Pages are 1-indexed.
+</Accordion>
 
 <Accordion title="Durable background execution">
   - Accepted `background=True` requests are committed job rows that survive
@@ -123,9 +158,11 @@ The major changes are:
 
 ## Teams & Workflows
 
-<Accordion title="Keyword-only constructors">
-  - `Team` and `Workflow` constructors no longer accept positional arguments:
-    `Team(members=[...])`, `Workflow(name=..., steps=[...])`.
+<Accordion title="Keyword-only Workflow constructor">
+  - The `Workflow` constructor no longer accepts positional arguments:
+    `Workflow(name=..., steps=[...])`.
+  - `Team` still accepts `Team([agent_1, agent_2])`; the keyword form
+    `Team(members=[...])` is preferred but not required.
 </Accordion>
 
 <Accordion title="HITL configuration unified into HumanReview">
@@ -146,6 +183,44 @@ The major changes are:
   - `MCPToolbox`: `auth_tokens` and `auth_headers` removed. Use
     `auth_token_getters`.
   - Toolkits have an `id`, used by AgentOS to reference tools stably.
+</Accordion>
+
+<Accordion title="Workspace refuses credential files by default">
+  - `Workspace` now excludes env files (`.env*`, `*.env`) and conventional
+    credential files — private keys and keystores (`*.pem`, `*.key`, `id_rsa*`),
+    credential directories (`.ssh`, `.aws`, `.kube`), registry and host tokens
+    (`.npmrc`, `.netrc`, `.git-credentials`), credential data files
+    (`credentials.json`, `secrets.yaml`, `service_account*.json`) and Terraform
+    inputs (`*.tfvars`).
+  - An agent that reads one of these today starts getting a refusal. Re-allow a
+    specific path explicitly:
+
+    ```python
+    Workspace(".", allow_paths=["config/credentials.json"])
+    ```
+
+  - Committed templates go the other way and become readable
+    (`.env.example`, `.env.sample`, `.env.template`, `.env.dist`).
+  - `credentials.*` and `secrets.*` are deliberately absent from the list: they
+    would also refuse ordinary source such as `credentials.py`.
+  - Known limit: a hard link to an excluded file bypasses the boundary. Symlinks
+    are caught.
+</Accordion>
+
+<Accordion title="Removed and renamed toolkits">
+  - `MultiMCPTools` is removed, along with its `allow_partial_failure` parameter.
+    Use one `MCPTools` per server.
+  - The flat Google tool modules are removed: `agno.tools.gmail`,
+    `agno.tools.googlesheets`, `agno.tools.googlecalendar`,
+    `agno.tools.google_maps`, `agno.tools.google_drive` and
+    `agno.tools.google_bigquery`. Import from `agno.tools.google.*` instead.
+  - Google toolkits: `creds_path` -> `credentials_path`, `auth_port` ->
+    `oauth_port`.
+  - `SeltzTools`: `max_documents` -> `max_results`. The legacy SDK path is gone;
+    `seltz>=1.2.0` is required.
+  - `BrandfetchTools`: the `async_tools` parameter is removed.
+  - `StudioTool` -> `StudioTools`.
+  - `GDriveContextProvider` -> `GoogleDriveContextProvider`.
 </Accordion>
 
 <Accordion title="Removed toolkit methods">
@@ -172,6 +247,12 @@ The major changes are:
     data is rewritten. MongoDB needs no schema change.
 </Accordion>
 
+<Accordion title="Schedule names are unique per user">
+  - The schedules unique key becomes `(user_id, name)`.
+  - If duplicate schedule names already exist, the v3.0.0 migration **aborts**
+    rather than stamping itself as done. Resolve the duplicates and re-run.
+</Accordion>
+
 <Accordion title="update_schedule column allow-list">
   - `update_schedule` can only write `name`, `description`, `method`,
     `endpoint`, `payload`, `cron_expr`, `timezone`, `timeout_seconds`,
@@ -183,7 +264,26 @@ The major changes are:
     belongs to or what it targets.
 </Accordion>
 
+## Evals
+
+<Accordion title="Result file placeholder renamed">
+  - `store_result_in_file`: the `eval_id` parameter is renamed to `run_id`.
+  - `{eval_id}` is no longer accepted in `file_path_to_save_results` templates.
+    Use `{run_id}`.
+  - `POST /eval-runs` now returns the id the row was actually stored under
+    (`run_id`), instead of the eval object's `eval_id`. Every eval run gets its
+    own `run_id`.
+  - The eval classes no longer carry `eval_id`; results carry a per-run `run_id`,
+    so re-runs no longer overwrite each other's stored results.
+</Accordion>
+
 ## Models
+
+<Accordion title="Removed model APIs">
+  - The `agno.models.metrics` module and its `Metrics` alias are removed. Use
+    `agno.metrics` and `RunMetrics`.
+  - `Model.classify_error` -> `ModelProviderError.classify(error)`.
+</Accordion>
 
 <Accordion title="Mistral requires mistralai v2">
   - The `mistralai` v1 compatibility layer is removed. `agno[mistral]` now
@@ -219,10 +319,36 @@ The major changes are:
     `user_id` in that namespace instead of returning an arbitrary user's row.
 </Accordion>
 
+<Accordion title="Studio authors learning, not legacy memory">
+  - `enable_agentic_memory` and `memory_manager_id` are removed from every Studio
+    create/edit form (sync and async). Studio components declare memory through
+    `LearningMachine` instead: `learning_name` binds a registry-declared machine,
+    or `enable_learning=True` builds the default one.
+  - The `Agent` and `Team` constructor parameters are unchanged, as are
+    `Registry.memory_managers` and `resolve_memory_manager_reference`, so configs
+    stored with the legacy fields keep rehydrating. Only the Studio authoring
+    surface dropped them.
+  - Setting `learning_name` or `enable_learning` on a component clears
+    `enable_agentic_memory` and `memory_manager`: both register a tool named
+    `update_user_memory`, and the legacy one silently shadowed the store's.
+</Accordion>
+
 <Accordion title="Removed learn aliases">
   - `MemoriesConfig` -> `UserMemoryConfig`
   - `MemoriesStore` -> `UserMemoryStore`
   - `Decision` -> `DecisionLog`
+</Accordion>
+
+## Packaging
+
+<Accordion title="Postgres extra installs a working driver">
+  - `agno[postgres]` installed `psycopg-binary` only, which ships the C
+    accelerator but no importable `psycopg` and no engine layer, so
+    `PostgresDb` raised `ModuleNotFoundError: No module named 'sqlalchemy'` on
+    a clean install. The extra now installs `psycopg`, `psycopg-binary` and
+    `sqlalchemy`.
+  - If you worked around this by installing `psycopg` or `sqlalchemy`
+    yourself, you can drop those pins.
 </Accordion>
 
 ## Errors

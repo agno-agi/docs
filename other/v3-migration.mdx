@@ -54,9 +54,12 @@ asyncio.run(MigrationManager(db).up())
 runs = db.get_runs(limit=5)
 assert len(runs) > 0, "Migration copied nothing - do NOT run cleanup"
 
-# Step 3 (optional, after verifying): reclaim the legacy blob storage
-db.cleanup_legacy_runs_column()   # SQL adapters
-# db.cleanup_legacy_runs_field()  # Mongo / Redis / Valkey / Firestore / Dynamo / JSON adapters
+# Step 3 (optional, after verifying): reclaim the legacy blob storage.
+# The migration deliberately PRESERVES the legacy column as a backup, so the
+# rows still hold it and the unforced call refuses. Pass force=True once you
+# have verified step 2 -- that is what makes this destructive step explicit.
+db.cleanup_legacy_runs_column(force=True)   # SQL adapters
+# db.cleanup_legacy_runs_field(force=True)  # Mongo / Redis / Valkey / Firestore / Dynamo / JSON adapters
 ```
 
 Vector databases are migrated separately. If you use per-user knowledge with a
@@ -209,19 +212,20 @@ agent = Agent(
 )
 ```
 
-### 5. `Team` and `Workflow` constructors are keyword-only
+### 5. The `Workflow` constructor is keyword-only
 
-Positional arguments are no longer accepted:
+`Workflow` no longer accepts positional arguments:
 
-```python v2_team.py
-team = Team([agent_1, agent_2])
+```python v2_workflow.py
 workflow = Workflow("my-workflow", steps=[...])
 ```
 
-```python v3_team.py
-team = Team(members=[agent_1, agent_2])
+```python v3_workflow.py
 workflow = Workflow(name="my-workflow", steps=[...])
 ```
+
+`Team` is unchanged: `Team([agent_1, agent_2])` still works. The keyword form
+`Team(members=[...])` is preferred for clarity but is not required.
 
 ### 6. User isolation: `user_id` across the platform
 
@@ -355,6 +359,48 @@ Two API changes come with it:
   `BrightData.get_screenshot` no longer takes `output_path`.
 - **Removed learn aliases**: `MemoriesConfig` -> `UserMemoryConfig`,
   `MemoriesStore` -> `UserMemoryStore`, `Decision` -> `DecisionLog`.
+- **Eval result files**: `store_result_in_file`'s `eval_id` parameter is now
+  `run_id`, and `{eval_id}` is no longer accepted in `file_path_to_save_results`
+  templates -- use `{run_id}`. `POST /eval-runs` returns the id the row was
+  stored under.
+- **`Workspace` refuses credential files by default**: env files and
+  conventional credential paths (`*.pem`, `.ssh`, `.aws`, `credentials.json`,
+  `*.tfvars`, ...) are excluded, so an agent that reads one starts getting a
+  refusal. Re-allow specific paths with
+  `Workspace(".", allow_paths=["config/credentials.json"])`. Committed templates
+  such as `.env.example` become readable.
+- **Studio memory forms**: `enable_agentic_memory` and `memory_manager_id` are
+  gone from the Studio create/edit forms. Use `learning_name` (a registry
+  machine) or `enable_learning=True`. The `Agent`/`Team` constructor parameters
+  are unchanged, so stored configs keep rehydrating.
+- **SQLite uses WAL**: `SqliteDb`/`AsyncSqliteDb` connect in WAL journal mode,
+  which creates `-wal` and `-shm` sidecar files next to the database. Copy or
+  back up all three together.
+- **`MultiMCPTools` removed**: use one `MCPTools` per server. The
+  `allow_partial_failure` parameter is gone with it.
+- **Knowledge insert API**: `add_content` -> `insert()`, `add_content_async` ->
+  `ainsert()`, `add_contents_async` -> `ainsert_many()`.
+- **Flat Google tool modules removed**: import from `agno.tools.google.*`
+  instead of `agno.tools.gmail`, `agno.tools.googlesheets`,
+  `agno.tools.googlecalendar`, `agno.tools.google_maps`,
+  `agno.tools.google_drive`, `agno.tools.google_bigquery`. Their parameters
+  changed too: `creds_path` -> `credentials_path`, `auth_port` -> `oauth_port`.
+- **Other toolkit renames**: `SeltzTools.max_documents` -> `max_results` (and
+  `seltz>=1.2.0` is now required); `BrandfetchTools` drops `async_tools`;
+  `StudioTool` -> `StudioTools`; `GDriveContextProvider` ->
+  `GoogleDriveContextProvider`.
+- **AgentOS MCP config**: `AgentOS(enable_mcp_server=..., mcp_config=...)` ->
+  `mcp_server=` (a bool or `MCPServerConfig`). Passing `websocket=` no longer
+  implies `enable_websocket=True`.
+- **Removed model APIs**: the `agno.models.metrics` module and its `Metrics`
+  alias are gone -- use `agno.metrics` / `RunMetrics`. `Model.classify_error`
+  -> `ModelProviderError.classify(error)`.
+- **`LanceDb.use_tantivy`** is removed and ignored.
+- **Pagination is validated**: `page` without `limit`, or `page < 1`, now raises
+  a `ValueError` instead of being ignored.
+- **Schedule names are unique per user**: the unique key becomes
+  `(user_id, name)`. If duplicate names already exist, the v3.0.0 migration
+  aborts rather than stamping itself done -- resolve the duplicates and re-run.
 - **Mistral requires `mistralai>=2.0.0`**: the v1 compatibility layer is gone.
   Upgrade with `pip install -U "agno[mistral]"`.
 - **Cerebras default model**: `Cerebras` and `CerebrasOpenAI` now default to
@@ -388,6 +434,22 @@ Rename these too, wherever they appear:
 - JWTMiddleware / authorization_config: secret_key="k" -> verification_keys=["k"]
   (note the list wrapping)
 - MCPToolbox: auth_tokens= or auth_headers= -> auth_token_getters= (same value)
+
+Rename these imports and modules wherever they appear:
+- from agno.tools.gmail / googlesheets / googlecalendar / google_maps /
+  google_drive / google_bigquery  -> from agno.tools.google.<module>
+- Google toolkit kwargs: creds_path= -> credentials_path=, auth_port= -> oauth_port=
+- MultiMCPTools(...)            -> one MCPTools per server (JUDGMENT: report it)
+- Knowledge.add_content(        -> .insert(
+- Knowledge.add_content_async(  -> .ainsert(
+- Knowledge.add_contents_async( -> .ainsert_many(
+- StudioTool                    -> StudioTools
+- GDriveContextProvider         -> GoogleDriveContextProvider
+- from agno.models.metrics import Metrics -> from agno.metrics import RunMetrics
+- SeltzTools kwarg max_documents= -> max_results=
+- BrandfetchTools: drop any async_tools= argument
+- LanceDb: drop any use_tantivy= argument
+- AgentOS(enable_mcp_server=X, mcp_config=Y) -> AgentOS(mcp_server=Y or X)
 
 Rename these methods and imports wherever they appear:
 - DuckDuckGoTools: .duckduckgo_search(  -> .web_search(
@@ -427,11 +489,11 @@ Agent(reasoning=True) no longer exists. Comment the argument out with a
 occurrence: the fix is to set reasoning_model=<a native reasoning model
 instance>, and I need to choose which model.
 
-## 4. Keyword-only constructors (mechanical)
+## 4. Keyword-only Workflow constructor (mechanical)
 
-Team and Workflow constructors are keyword-only. Convert positional arguments:
-  Team([a, b])          -> Team(members=[a, b])
+The Workflow constructor is keyword-only. Convert positional arguments:
   Workflow("name", ...) -> Workflow(name="name", ...)
+Team is NOT keyword-only: leave Team([a, b]) alone.
 
 ## 4b. Entity memory user isolation (JUDGMENT)
 
