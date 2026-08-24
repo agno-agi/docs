@@ -68,7 +68,8 @@ db.cleanup_legacy_runs_column(force=True)   # SQL adapters
   On the async adapters (`AsyncPostgresDb`, `AsyncMySQLDb`, `AsyncSqliteDb`,
   `AsyncMongoDb`) `get_runs` and the cleanup method are coroutines — await them:
   `runs = asyncio.run(db.get_runs(limit=5))` and
-  `asyncio.run(db.cleanup_legacy_runs_field(force=True))`.
+  `asyncio.run(db.cleanup_legacy_runs_column(force=True))` (on `AsyncMongoDb`
+  the method is `cleanup_legacy_runs_field`).
 </Note>
 
 Vector databases are migrated separately. If you use per-user knowledge with a
@@ -95,8 +96,8 @@ Notes:
   Cleanup permanently deletes the blob, which is the only copy of your history
   if the migration did not actually copy it.
 - Supported everywhere sessions are stored: Postgres, MySQL, SQLite,
-  SingleStore (+ async variants), MongoDB, Redis, Valkey, Firestore, DynamoDB,
-  SurrealDB, JSON, and GCS JSON.
+  SingleStore, MongoDB, Redis, Valkey, Firestore, DynamoDB, SurrealDB, JSON,
+  and GCS JSON, plus the async Postgres, MySQL, SQLite and MongoDB adapters.
 
 For the full storage design and per-adapter details, see the
 [v3 storage migration guide](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/db/migrations/V3_MIGRATION_GUIDE.md)
@@ -369,7 +370,7 @@ Two API changes come with it:
   `web_search` and `duckduckgo_news` -> `search_news`;
   `FileTools.check_escape` -> `Toolkit._check_path`;
   `PgVector.enable_prefix_matching` removed (dead helper);
-  `BrightData.get_screenshot` no longer takes `output_path`.
+  `BrightDataTools.get_screenshot` no longer takes `output_path`.
 - **Removed learn aliases**: `MemoriesConfig` -> `UserMemoryConfig`,
   `MemoriesStore` -> `UserMemoryStore`, `Decision` -> `DecisionLog`.
 - **Eval result files**: `store_result_in_file`'s `eval_id` parameter is now
@@ -398,17 +399,17 @@ Two API changes come with it:
   `agno.tools.googlecalendar`, `agno.tools.google_maps`,
   `agno.tools.google_drive`, `agno.tools.google_bigquery`. Their parameters
   changed too: `creds_path` -> `credentials_path`, `auth_port` -> `oauth_port`.
-- **Other toolkit renames**: `SeltzTools.max_documents` -> `max_results` (and
-  `seltz>=1.2.0` is now required); `BrandfetchTools` drops `async_tools`;
+- **Other toolkit renames**: `SeltzTools.max_documents` -> `max_results`
+  (older `seltz` SDKs still work through a fallback; `seltz>=1.2.0` is needed
+  for the `scope`, domain and date filters); `BrandfetchTools` drops `async_tools`;
   `StudioTool` -> `StudioTools`; `GDriveContextProvider` ->
   `GoogleDriveContextProvider`.
 - **AgentOS MCP config**: `AgentOS(enable_mcp_server=..., mcp_config=...)` ->
-  `mcp_server=` (a bool or `MCPServerConfig`). Passing `websocket=` no longer
-  implies `enable_websocket=True`.
+  `mcp_server=` (a bool or `MCPServerConfig`).
 - **Removed model APIs**: the `agno.models.metrics` module and its `Metrics`
   alias are gone -- use `agno.metrics` / `RunMetrics`. `Model.classify_error`
   -> `ModelProviderError.classify(error)`.
-- **`LanceDb.use_tantivy`** is removed and ignored.
+- **`LanceDb.use_tantivy`** is removed; passing it now raises a `TypeError`.
 - **Pagination is validated**: `page` without `limit`, or `page < 1`, now raises
   a `ValueError` instead of being ignored.
 - **Schedule names are unique per user**: the unique key becomes
@@ -470,8 +471,8 @@ Rename these methods and imports wherever they appear:
 - FileTools: .check_escape(<path>)      -> ._check_path(<path>, self.base_dir)
   (the v3 helper takes the base dir explicitly; a bare token rename breaks the call.
   Do NOT rename LocalFileSystemTools.check_escape - that one still exists)
-- BrightData.get_screenshot(...): drop any output_path= argument
-- PgVector: remove any enable_prefix_matching= argument (the helper is gone)
+- BrightDataTools.get_screenshot(...): drop any output_path= argument
+- PgVector: remove any .enable_prefix_matching(...) call (the helper method is gone)
 - from agno.learn import MemoriesConfig  -> UserMemoryConfig
 - from agno.learn import MemoriesStore   -> UserMemoryStore
 - from agno.learn import Decision        -> DecisionLog

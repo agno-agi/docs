@@ -63,10 +63,12 @@ The major changes are:
 </Accordion>
 
 <Accordion title="Vector database changes">
-  - `LanceDb`: `use_tantivy` is removed and ignored.
-  - Searching a pre-v3 vector table with a `user_id` raises a `ValueError`
-    directing you to the vector database migration, instead of silently
-    returning empty results.
+  - `LanceDb`: `use_tantivy` is removed; passing it now raises a `TypeError`.
+  - On schema-based stores, searching a pre-v3 vector table with a `user_id`
+    raises a `ValueError` directing you to the vector database migration,
+    instead of silently returning empty results. Schemaless stores (Qdrant,
+    Pinecone, Upstash, Chroma, MongoDB, OpenSearch, SurrealDB) treat pre-v3
+    documents as shared.
 </Accordion>
 
 ## User Isolation
@@ -79,9 +81,9 @@ The major changes are:
     Sessions without a `user_id` aggregate into a shared bucket that
     `get_metrics` maps back to `None`.
   - Knowledge and vector database contents are scoped per user when isolation
-    is enabled. Searching a pre-v3 vector table with a `user_id` raises a
-    `ValueError` directing you to the vector database migration, instead of
-    silently returning empty results.
+    is enabled. On schema-based stores, searching a pre-v3 vector table with a
+    `user_id` raises a `ValueError` directing you to the vector database
+    migration; schemaless stores treat pre-v3 documents as shared.
   - Schedule polling (`claim_due_schedule` / `release_schedule`) stays
     unscoped so background execution fires across all users; each schedule run
     records the owner denormalized from its parent schedule.
@@ -92,8 +94,6 @@ The major changes are:
 <Accordion title="MCP server configuration">
   - `AgentOS(enable_mcp_server=..., mcp_config=...)` is replaced by a single
     `mcp_server=` parameter, which takes a bool or an `MCPServerConfig`.
-  - Passing `websocket=` no longer implies `enable_websocket=True`; set it
-    explicitly.
 </Accordion>
 
 <Accordion title="Pagination is validated">
@@ -213,8 +213,9 @@ The major changes are:
     `agno.tools.google_bigquery`. Import from `agno.tools.google.*` instead.
   - Google toolkits: `creds_path` -> `credentials_path`, `auth_port` ->
     `oauth_port`.
-  - `SeltzTools`: `max_documents` -> `max_results`. The legacy SDK path is gone;
-    `seltz>=1.2.0` is required.
+  - `SeltzTools`: `max_documents` -> `max_results`. Older `seltz` SDKs still
+    work through a fallback; `seltz>=1.2.0` is needed for the `scope`, domain
+    and date filters.
   - `BrandfetchTools`: the `async_tools` parameter is removed.
   - `StudioTool` -> `StudioTools`.
   - `GDriveContextProvider` -> `GoogleDriveContextProvider`.
@@ -226,7 +227,7 @@ The major changes are:
     on `WebSearchTools`, which supplies both methods.
   - `FileTools.check_escape` -> `Toolkit._check_path`. `LocalFileSystemTools`
     keeps its own `check_escape`, which is unaffected.
-  - `BrightData.get_screenshot`: the unused `output_path` parameter is removed.
+  - `BrightDataTools.get_screenshot`: the unused `output_path` parameter is removed.
   - `PgVector.enable_prefix_matching` is removed. It was a dead helper with no
     effect on search.
 </Accordion>
@@ -325,9 +326,11 @@ The major changes are:
     `Registry.memory_managers` and `resolve_memory_manager_reference`, so configs
     stored with the legacy fields keep rehydrating. Only the Studio authoring
     surface dropped them.
-  - Setting `learning_name` or `enable_learning` on a component clears
-    `enable_agentic_memory` and `memory_manager`: both register a tool named
-    `update_user_memory`, and the legacy one silently shadowed the store's.
+  - Enabling learning on a component (a learning machine actually configured
+    via `learning_name` / `enable_learning`) clears `enable_agentic_memory` and
+    `memory_manager`: both register a tool named `update_user_memory`, and the
+    legacy one silently shadowed the store's. Setting them to `False`/`""`
+    leaves the legacy pair alone.
 </Accordion>
 
 <Accordion title="Removed learn aliases">
