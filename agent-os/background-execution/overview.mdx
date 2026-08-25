@@ -1,0 +1,170 @@
+---
+title: Background Execution
+sidebarTitle: Overview
+description: "Accept runs with background=true, poll or stream them, and make acceptance durable with a database-backed job queue."
+---
+
+Submit a run with `background=true` and AgentOS answers immediately with a `run_id`. The run executes on the server while your client polls, streams, or disconnects. Add `QueueConfig(durable=True)` and that acceptance becomes a committed database row that survives crashes and deploys.
+
+**Your database is where truth lives, `queue.redis` is how replicas talk to each other, and `durable=True` turns acceptance into a promise.** Every page in this section maps onto one of those three parts.
+
+| Part | Setting | What it holds |
+|------|---------|---------------|
+| Truth | `AgentOS(db=...)` | Sessions, run rows, and the `agno_jobs` queue table. Losing anything else never loses a run. |
+| Coordination | `QueueConfig(redis=...)` | Live event streams and cancel signals between replicas. Ephemeral. |
+| Promise | `QueueConfig(durable=True)` | A committed ticket per accepted run. Whichever replica claims it executes it. |
+
+## Quickstart
+
+```bash
+pip install "agno[os]" openai psycopg
+```
+
+Run Postgres:
+
+```bash
+docker run -d \
+  -e POSTGRES_DB=ai \
+  -e POSTGRES_USER=ai \
+  -e POSTGRES_PASSWORD=ai \
+  -p 5532:5432 \
+  --name pgvector \
+  agnohq/pgvector:18
+```
+
+```python durable_queue.py
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.job_queue.config import QueueConfig
+from agno.models.openai import OpenAIResponses
+from agno.os import AgentOS
+
+db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+agent = Agent(
+    name="Durable Agent",
+    id="durable-agent",
+    model=OpenAIResponses(id="gpt-5.5"),
+    db=db,
+)
+
+agent_os = AgentOS(
+    agents=[agent],
+    db=db,
+    queue=QueueConfig(durable=True),
+)
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="durable_queue:app", reload=True)
+```
+
+Submit a run:
+
+```bash
+curl -X POST localhost:7777/agents/durable-agent/runs \
+  -F "message=Write a haiku about queues" \
+  -F "background=true" \
+  -F "stream=false"
+```
+
+```json
+{"run_id": "20a47fb2-...", "session_id": "72b8bc0c-...", "status": "PENDING"}
+```
+
+The `202` is returned after the queue row commits. Poll for the result:
+
+```bash
+curl "localhost:7777/agents/durable-agent/runs/{run_id}?session_id={session_id}"
+```
+
+The response carries `status` (`PENDING`, `RUNNING`, `PAUSED`, `COMPLETED`, `CANCELLED`, or `ERROR`) and, once finished, `content`.
+
+## The 202 contract
+
+Every background submission, durable or not, returns the same shape:
+
+| Field | Meaning |
+|-------|---------|
+| `run_id` | Identifier for polling, resuming, cancelling, and continuing. Never changes for the life of the run. |
+| `session_id` | Session the run belongs to. Required on poll. |
+| `status` | `PENDING` on a fresh acceptance. |
+
+The `background` and `stream` form fields select the execution mode:
+
+| `background` | `stream` | Response |
+|:---:|:---:|---|
+| `true` | `false` | `202` with `run_id`. Poll `GET /agents/{agent_id}/runs/{run_id}`. |
+| `true` | `true` | SSE stream of the run's events. Disconnect and reconnect through `POST /agents/{agent_id}/runs/{run_id}/resume` with `last_event_index`. |
+| `false` | any | Inline execution. A client disconnect cancels the run. |
+
+Teams and workflows use the same fields under `/teams/{team_id}/runs` and `/workflows/{workflow_id}/runs`. See [Background Execution](/background-execution/overview) for the SDK-level `arun(background=True)` API and the SSE resume protocol.
+
+<Note>
+Background execution requires a `db` on the agent, team, or workflow. Submissions without one are refused with `400`.
+</Note>
+
+## Without durability
+
+`background=true` works with no `QueueConfig` at all. What you get:
+
+| Behavior | Detail |
+|----------|--------|
+| Bounded concurrency | At most `max_concurrency` background runs execute at once per replica (default 32, or `AGNO_BACKGROUND_MAX_CONCURRENCY`). |
+| Honest waiting | Runs beyond the cap are accepted as `PENDING`, wait in line, and can be cancelled without consuming a slot. |
+| Resumable streams | Events are buffered in-process. Reconnect through `/resume`. |
+
+What you lose: the run lives in the memory of the replica that accepted it. If that process dies, every waiting and in-flight run on it is gone, and nothing marks them as failed. In a multi-replica deployment, `/resume` and `/cancel` only work on the replica that holds the run.
+
+```python
+agent_os = AgentOS(
+    agents=[agent],
+    db=db,
+    queue=QueueConfig(max_concurrency=16),
+)
+```
+
+## With durability
+
+`QueueConfig(durable=True)` writes each accepted run as a row in the queue table before the `202` is sent. A worker on every replica claims rows and executes them. If a replica dies, its runs are either reclaimed by another replica or failed visibly, depending on `max_attempts`. Nothing is silently lost.
+
+See [Durable queue](/agent-os/background-execution/durable-queue) for the exact guarantee, retry policy, idempotency keys, and configuration.
+
+## With more than one replica
+
+Set `QueueConfig(redis=...)` as soon as you run two or more replicas behind a load balancer. It wires the live event stream and cancel signals through a shared Redis, so a run started on one replica can be watched, resumed, and cancelled from any other.
+
+See [Multi-replica deployments](/agent-os/background-execution/multi-replica) for what Redis does here, and why `queue.redis` is a different job from `db=RedisDb`.
+
+## Guides
+
+<CardGroup cols={2}>
+  <Card title="Durable queue" icon="database" href="/agent-os/background-execution/durable-queue">
+    Acceptance as a committed row. Crash semantics, retries, idempotency, session ordering.
+  </Card>
+  <Card title="Multi-replica deployments" icon="server" href="/agent-os/background-execution/multi-replica">
+    Wire events out and cancels in through Redis. Coordination versus ticket storage.
+  </Card>
+  <Card title="Human-in-the-loop continuations" icon="hand" href="/agent-os/background-execution/hitl-continuations">
+    Continue a paused durable run through the queue under the same run_id.
+  </Card>
+  <Card title="Operations and monitoring" icon="gauge" href="/agent-os/background-execution/operations">
+    Dead-letter listing, requeue, queue stats, retention, admin gating.
+  </Card>
+</CardGroup>
+
+## Limitations
+
+| Area | Limit |
+|------|-------|
+| Live stream view | Best-effort. The run row is authoritative. A disconnect is harmless and reconnecting replays events, but live-view continuity across retry attempts is not guaranteed. Event indices are strictly increasing, not gapless. Termination is signalled by run status, never by index arithmetic. |
+| Non-queueable submissions | Media uploads, kwargs that plain JSON cannot store (for example an `output_schema` class), factory-backed components, and version-pinned lookups cannot ride the queue. They fall back to the bounded in-process path with a logged warning. The client still gets a `202`. |
+| Queue stores | Postgres (sync and async) and `RedisDb`. Any other `db` fails at startup with a clear error rather than silently degrading the promise. `RedisCluster` clients are rejected for the queue store. |
+| Blocking work | Lease heartbeats run on a dedicated thread, so a sync model client or sync tool cannot starve its own lease. Blocking the event loop still delays cancellation checkpoints, timeout enforcement, and event publishing. Keep blocking work in threads. |
+| Development loop | Durable is durable in dev too. A job accepted before a restart executes after it. Runs in flight at the default `max_attempts=1` are failed with `interrupted by worker shutdown` once the drain window closes. |
+
+## Developer Resources
+
+- [QueueConfig source](https://github.com/agno-agi/agno/blob/feat/v3.0/libs/agno/agno/job_queue/config.py)
+- [Durable queue cookbook](https://github.com/agno-agi/agno/tree/feat/v3.0/cookbook/05_agent_os/background_tasks)
+- [Background Execution (SDK)](/background-execution/overview)
