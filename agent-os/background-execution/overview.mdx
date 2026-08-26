@@ -11,7 +11,7 @@ Submit a run with `background=true` and AgentOS answers immediately with a `run_
 | Part | Setting | What it holds |
 |------|---------|---------------|
 | Truth | `AgentOS(db=...)` | Sessions, run rows, and the `agno_jobs` queue table. Losing anything else never loses a run. |
-| Coordination | `QueueConfig(redis=...)` | Live event streams and cancel signals between replicas. Ephemeral. |
+| Coordination | `QueueConfig(redis=...)` | Sets both the event stream (`RedisEventStream`) and the cancellation manager (`RedisRunCancellationManager`) on every replica. Ephemeral. |
 | Promise | `QueueConfig(durable=True)` | A committed ticket per accepted run. Whichever replica claims it executes it. |
 
 ## Quickstart
@@ -131,7 +131,7 @@ See [Durable queue](/agent-os/background-execution/durable-queue) for the exact 
 
 ## With more than one replica
 
-Set `QueueConfig(redis=...)` as soon as you run two or more replicas behind a load balancer. It wires the live event stream and cancel signals through a shared Redis, so a run started on one replica can be watched, resumed, and cancelled from any other.
+Set `QueueConfig(redis=...)` as soon as you run two or more replicas behind a load balancer. One setting installs both the event stream and the cancellation manager on each replica, backed by a shared Redis, so a run started on one replica can be watched, resumed, and cancelled from any other. No `set_cancellation_manager()` or `set_event_stream()` call is needed.
 
 See [Multi-replica deployments](/agent-os/background-execution/multi-replica) for what Redis does here, and why `queue.redis` is a different job from `db=RedisDb`.
 

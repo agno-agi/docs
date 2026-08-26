@@ -35,42 +35,33 @@ pip install redis
 
 Set `redis` exactly when you run more than one replica. With one replica, in-process defaults do the same job.
 
-## Two directions, one setting
+## One setting, two managers
 
-A background run started on replica A may execute on replica B, while the client's next request lands on replica C. Two things have to cross replica boundaries:
+`queue.redis` sets **both** the event stream and the cancellation manager on every replica that constructs `AgentOS(...)`. There is nothing else to wire.
 
-| Direction | What | Endpoint it serves |
-|-----------|------|--------------------|
-| Events out | The executing worker publishes run events to a Redis stream. Any replica can tail or replay them. | `POST /agents/{agent_id}/runs/{run_id}/resume`, streaming submissions and continues |
-| Cancel in | A cancel received by any replica is recorded in Redis. The executing worker sees it at its next checkpoint. | `POST /agents/{agent_id}/runs/{run_id}/cancel` |
+| Manager | Direction | Default | Set by `queue.redis` to | Explicit setter |
+|---------|-----------|---------|--------------------------|-----------------|
+| Event stream (`BaseEventStream`) | Events **out**: the executing worker publishes run events; any replica can tail or replay them for `/resume`, streaming submissions, and continues. | `InMemoryEventStream` | `RedisEventStream` | `set_event_stream()` or `AgentOS(event_stream=...)` |
+| Cancellation manager (`BaseRunCancellationManager`) | Cancel **in**: a `/cancel` received by any replica is recorded in Redis; the executing worker sees it at its next checkpoint. | In-memory | `RedisRunCancellationManager` | `set_cancellation_manager()` |
 
-`redis` wires both from shared clients. Configuring only one is the classic half-working deployment: cancels reach every replica while resumed streams idle on the wrong one, or the reverse. If you configure a transport explicitly (`AgentOS(event_stream=...)` or `set_cancellation_manager()`), that configuration wins and `redis` fills in only the other one, with a warning that the two now ride different backends.
+A background run started on replica A may execute on replica B while the client's next request lands on replica C. Both directions have to cross replica boundaries. Configuring only one is the classic half-working deployment: cancels reach every replica while resumed streams idle on the wrong one, or the reverse. That is why one setting wires both.
 
-Start a streaming run against one replica, then call `/resume` on another. Events replay and tail from Redis regardless of which replica executes the run.
-
-## Both managers are set per replica
-
-`queue.redis` installs two process-wide managers on the replica that constructs `AgentOS(...)`:
-
-| Manager | Default | Redis backend | Explicit setter |
-|---------|---------|---------------|-----------------|
-| Cancellation manager (`BaseRunCancellationManager`) | In-memory | `RedisRunCancellationManager` | `set_cancellation_manager()` |
-| Event stream (`BaseEventStream`) | `InMemoryEventStream` | `RedisEventStream` | `set_event_stream()` or `AgentOS(event_stream=...)` |
-
-In v2, cross-replica cancellation meant constructing `RedisRunCancellationManager` yourself and calling `set_cancellation_manager()` in every process, and the event buffer had no shared backend at all. `queue.redis` wires both from one line of config, so every replica in the fleet is set up identically.
+In v2, cross-replica cancellation meant constructing `RedisRunCancellationManager` yourself and calling `set_cancellation_manager()` in every process, and the event buffer had no shared backend at all.
 
 ```python
-# v2
+# v2: cancellation only, wired by hand in every process
 from agno.run.cancel import set_cancellation_manager
 from agno.run.cancellation_management.redis_cancellation_manager import RedisRunCancellationManager
 
 set_cancellation_manager(RedisRunCancellationManager(redis_client=..., async_redis_client=...))
 
-# v3
+# v3: event stream and cancellation manager, from one setting
 agent_os = AgentOS(agents=[agent], db=db, queue=QueueConfig(redis="redis://localhost:6379"))
 ```
 
-An explicit setter still wins for either manager. `queue.redis` only replaces defaults, never a backend you installed yourself, so a [custom cancellation manager](/examples/agents/advanced/custom-cancellation-manager) or an `AgentOS(event_stream=...)` override keeps working. Keys are namespaced under `{key_prefix}:run:cancellation:` and `{key_prefix}:os:events:` when `key_prefix` is set.
+An explicit setter still wins for either manager. `queue.redis` only replaces defaults, never a backend you installed yourself, so a [custom cancellation manager](/examples/agents/advanced/custom-cancellation-manager) or an `AgentOS(event_stream=...)` override keeps working. If exactly one of the two is explicit, AgentOS logs a warning that cancellation and events may ride different Redis instances. Keys are namespaced under `{key_prefix}:run:cancellation:` and `{key_prefix}:os:events:` when `key_prefix` is set.
+
+Start a streaming run against one replica, then call `/resume` on another. Events replay and tail from Redis regardless of which replica executes the run.
 
 ## Two Redis roles
 
