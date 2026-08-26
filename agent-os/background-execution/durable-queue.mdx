@@ -46,6 +46,27 @@ Failures that retrying cannot cure (schema violations, guardrail refusals, a `Ty
 
 Each claim increments the ticket's `attempt` counter. That number is stamped onto every write the attempt makes: the ticket itself, the run row, and the event stream. A write carrying an older attempt than the one currently recorded is refused. This is what makes `max_attempts > 1` safe: a worker that was swept while still alive cannot corrupt the retry's output. You do not need to reason about this beyond choosing `max_attempts`.
 
+## Queue retries and model retries
+
+Two retry layers exist, and they compose:
+
+| Layer | Setting | What is retried | Default |
+|-------|---------|-----------------|---------|
+| Model | `Model(retries=..., delay_between_retries=..., exponential_backoff=...)` | One model call, inside the running attempt. Only retryable `ModelProviderError`s (not 400, 401, 403, 404, 413, 422). Run context and prior tool results are kept. | `retries=0` |
+| Queue | `QueueConfig(max_attempts=..., retry_delay_seconds=...)` | The whole run, from the start, as a new attempt under the same `run_id`. Applies to crashes, timeouts, and runs that ended in `ERROR`. | `max_attempts=1` |
+
+When model retries are exhausted, the run finishes with status `ERROR`. The worker then consults the queue budget: with attempts remaining it requeues the ticket after a jittered delay, otherwise the ticket is `failed`. At the defaults, a model outage fails the run on the first error with no re-execution at either layer.
+
+```python
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.5", retries=3, delay_between_retries=2, exponential_backoff=True),
+    db=db,
+)
+agent_os = AgentOS(agents=[agent], db=db, queue=QueueConfig(durable=True, max_attempts=2))
+```
+
+Use model retries for transient provider errors: they are cheap and keep the run's context. Use queue attempts for worker loss. A queue attempt repeats every tool call the previous attempt already made, so keep `max_attempts=1` for runs with side effects. Budgets multiply: at most `max_attempts * (retries + 1)` model calls per step.
+
 ## Queue stores
 
 The queue store defaults to the AgentOS `db`. A dedicated store isolates queue polling from your session data.
