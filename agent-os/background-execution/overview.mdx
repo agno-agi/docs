@@ -6,11 +6,11 @@ description: "Accept runs with background=true, poll or stream them, and make ac
 
 Submit a run with `background=true` and AgentOS answers immediately with a `run_id`. The run executes on the server while your client polls, streams, or disconnects. Add `QueueConfig(durable=True)` and that acceptance becomes a committed database row that survives crashes and deploys.
 
-**Your database is where truth lives, `queue.redis` is how replicas talk to each other, and `durable=True` turns acceptance into a promise.** Every page in this section maps onto one of those three parts.
+**Your database is where truth lives, `queue.redis` is how replicas talk to each other, and `durable=True` turns acceptance into a promise.**
 
 | Part | Setting | What it holds |
 |------|---------|---------------|
-| Truth | `AgentOS(db=...)` | Sessions, run rows, and the `agno_jobs` queue table. Losing anything else never loses a run. |
+| Truth | `AgentOS(db=...)` | Sessions, run rows, and the `agno_jobs` queue table. Losing any other component never loses a run. |
 | Coordination | `QueueConfig(redis=...)` | Sets both the event stream (`RedisEventStream`) and the cancellation manager (`RedisRunCancellationManager`) on every replica. Ephemeral. |
 | Promise | `QueueConfig(durable=True)` | A committed ticket per accepted run. Whichever replica claims it executes it. |
 
@@ -110,10 +110,10 @@ Background execution requires a `db` on the agent, team, or workflow. Submission
 | Behavior | Detail |
 |----------|--------|
 | Bounded concurrency | At most `max_concurrency` background runs execute at once per replica (default 32, or `AGNO_BACKGROUND_MAX_CONCURRENCY`). |
-| Honest waiting | Runs beyond the cap are accepted as `PENDING`, wait in line, and can be cancelled without consuming a slot. |
+| Waiting | Runs beyond the cap are accepted as `PENDING`, wait for a slot, and can be cancelled while waiting. |
 | Resumable streams | Events are buffered in-process. Reconnect through `/resume`. |
 
-What you lose: the run lives in the memory of the replica that accepted it. If that process dies, every waiting and in-flight run on it is gone, and nothing marks them as failed. In a multi-replica deployment, `/resume` and `/cancel` only work on the replica that holds the run.
+The run lives in the memory of the replica that accepted it. If that process dies, every waiting and in-flight run on it is lost, and nothing marks them as failed. In a multi-replica deployment, `/resume` and `/cancel` only work on the replica that holds the run.
 
 ```python
 agent_os = AgentOS(
@@ -125,7 +125,7 @@ agent_os = AgentOS(
 
 ## With durability
 
-`QueueConfig(durable=True)` writes each accepted run as a row in the queue table before the `202` is sent. A worker on every replica claims rows and executes them. If a replica dies, its runs are either reclaimed by another replica or failed visibly, depending on `max_attempts`. Nothing is silently lost.
+`QueueConfig(durable=True)` writes each accepted run as a row in the queue table before the `202` is sent. A worker on every replica claims rows and executes them. If a replica dies, its runs are either reclaimed by another replica or marked failed, depending on `max_attempts`.
 
 See [Durable queue](/agent-os/background-execution/durable-queue) for the exact guarantee, retry policy, idempotency keys, and configuration.
 
@@ -166,11 +166,11 @@ Raise or disable the cap with `QueueConfig(max_concurrency=...)` or `AGNO_BACKGR
 
 | Area | Limit |
 |------|-------|
-| Live stream view | Best-effort. The run row is authoritative. A disconnect is harmless and reconnecting replays events, but live-view continuity across retry attempts is not guaranteed. Event indices are strictly increasing, not gapless. Termination is signalled by run status, never by index arithmetic. |
+| Live stream view | Best-effort. The run row is authoritative. A disconnect is harmless and reconnecting replays events, but continuity across retry attempts is not guaranteed. Event indices are strictly increasing, not gapless. Termination is signalled by run status, not by index arithmetic. |
 | Non-queueable submissions | Media uploads, kwargs that plain JSON cannot store (for example an `output_schema` class), factory-backed components, and version-pinned lookups cannot ride the queue. They fall back to the bounded in-process path with a logged warning. The client still gets a `202`. |
-| Queue stores | Postgres (sync and async) and `RedisDb`. Any other `db` fails at startup with a clear error rather than silently degrading the promise. `RedisCluster` clients are rejected for the queue store. |
+| Queue stores | Postgres (sync and async) and `RedisDb`. Any other `db` raises at startup. `RedisCluster` clients are rejected for the queue store. |
 | Blocking work | Lease heartbeats run on a dedicated thread, so a sync model client or sync tool cannot starve its own lease. Blocking the event loop still delays cancellation checkpoints, timeout enforcement, and event publishing. Keep blocking work in threads. |
-| Development loop | Durable is durable in dev too. A job accepted before a restart executes after it. Runs in flight at the default `max_attempts=1` are failed with `interrupted by worker shutdown` once the drain window closes. |
+| Development loop | The queue behaves the same in development. A job accepted before a restart executes after it. Runs in flight at the default `max_attempts=1` are failed with `interrupted by worker shutdown` once the drain window closes. |
 
 ## Developer Resources
 

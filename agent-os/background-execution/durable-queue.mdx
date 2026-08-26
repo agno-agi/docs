@@ -22,16 +22,16 @@ With `durable=True`, a `background=true` submission is written to the `agno_jobs
 
 ## The guarantee
 
-Every accepted run reaches a terminal, visible outcome. Poll it and you will eventually see `COMPLETED`, `ERROR`, or `CANCELLED`. Never `RUNNING` forever, never a run that vanished.
+Every accepted run reaches a terminal, visible outcome. Poll it and you will eventually see `COMPLETED`, `ERROR`, or `CANCELLED`. A run never stays `RUNNING` indefinitely and never disappears.
 
-This is a different promise from "every run executes". What happens to a run whose worker dies mid-execution depends on `max_attempts`:
+This is not the same as a promise that every run executes. What happens to a run whose worker dies mid-execution depends on `max_attempts`:
 
 | `max_attempts` | Crash behavior | Use when |
 |----------------|----------------|----------|
 | `1` (default) | After `lock_grace_seconds` without a heartbeat, another replica's sweep marks the run `ERROR` with the reason on `content`, and the ticket `failed`. Nothing re-executes. | Tools have side effects (emails, payments, writes). A killed run may already have acted. |
 | `2` or more | Another live replica reclaims the stale ticket and re-executes the run, with jittered backoff. A worker that turns out to be alive after being presumed dead has its late writes discarded on the ticket, the run row, and the event stream. | Runs are safe to repeat, or at-least-once beats a manual requeue. |
 
-At the default, a crashed run is failed loudly and an operator grants one more attempt through [requeue](/agent-os/background-execution/operations#requeue). The failed run's `content` says exactly that:
+At the default, a crashed run is marked failed and an operator grants one more attempt through [requeue](/agent-os/background-execution/operations#requeue). The run's `content` carries the reason:
 
 ```
 Worker lost and attempt budget exhausted; run was not re-executed. Crashed runs
@@ -44,11 +44,11 @@ Failures that retrying cannot cure (schema violations, guardrail refusals, a `Ty
 
 ### How it stays correct
 
-Each claim increments the ticket's `attempt` counter. That number is stamped onto every write the attempt makes: the ticket itself, the run row, and the event stream. A write carrying an older attempt than the one currently recorded is refused. This is what makes `max_attempts > 1` safe: a worker that was swept while still alive cannot corrupt the retry's output. You do not need to reason about this beyond choosing `max_attempts`.
+Each claim increments the ticket's `attempt` counter. That number is stamped onto every write the attempt makes: the ticket itself, the run row, and the event stream. A write carrying an older attempt than the one currently recorded is refused. This is what makes `max_attempts > 1` safe: a worker that was swept while still alive cannot corrupt the retry's output.
 
 ## Queue retries and model retries
 
-Two retry layers exist, and they compose:
+Model retries and queue retries are independent layers:
 
 | Layer | Setting | What is retried | Default |
 |-------|---------|-----------------|---------|
@@ -65,7 +65,7 @@ agent = Agent(
 agent_os = AgentOS(agents=[agent], db=db, queue=QueueConfig(durable=True, max_attempts=2))
 ```
 
-Use model retries for transient provider errors: they are cheap and keep the run's context. Use queue attempts for worker loss. A queue attempt repeats every tool call the previous attempt already made, so keep `max_attempts=1` for runs with side effects. Budgets multiply: at most `max_attempts * (retries + 1)` model calls per step.
+Use model retries for transient provider errors. They are cheap and keep the run's context. Use queue attempts for worker loss. A queue attempt repeats every tool call the previous attempt already made, so keep `max_attempts=1` for runs with side effects. The two budgets multiply: at most `max_attempts * (retries + 1)` model calls per step.
 
 ## Queue stores
 
@@ -76,7 +76,7 @@ The queue store defaults to the AgentOS `db`. A dedicated store isolates queue p
 | `PostgresDb` / `AsyncPostgresDb` | Yes | Claims use `SELECT ... FOR UPDATE SKIP LOCKED`. Recommended for production. |
 | `RedisDb` | Yes | Ticket durability depends on Redis persistence. Configure AOF with `appendfsync everysec` or `always`. Default RDB snapshotting can lose recently accepted jobs on a Redis crash. A warning is logged at startup. |
 | `RedisCluster` client | Rejected | The store's transactions need `WATCH`/`MULTI`, which cluster pipelines do not support. Use a standalone Redis or Valkey instance. |
-| Any other `db` | Rejected at startup | `durable=True` over a store without the queue contract raises a `ValueError` during lifespan startup. Silently degrading to non-durable is not an option. |
+| Any other `db` | Rejected at startup | `durable=True` over a store without the queue contract raises a `ValueError` during lifespan startup. |
 
 ```python
 from agno.db.redis import RedisDb
@@ -114,7 +114,7 @@ curl -X POST localhost:7777/agents/durable-agent/runs \
 
 Keys are scoped per user: the same key from two different `user_id` values is two runs. Anonymous submissions share one namespace.
 
-Asking is idempotent. Executing is not. A run that reached a tool with side effects has acted, and a retry acts again. Agno does not keep a side-effect ledger. If a tool must not run twice, make the tool idempotent.
+Asking is idempotent. Executing is not. A run that reached a tool with side effects has already acted, and a retry acts again. Agno does not keep a side-effect ledger. If a tool must not run twice, make the tool itself idempotent.
 
 ## Session serialization
 

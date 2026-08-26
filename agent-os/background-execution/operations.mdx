@@ -3,7 +3,7 @@ title: Operations and Monitoring
 description: "The /queue endpoints: dead-letter listing, requeue, queue stats, retention, admin gating, and deployment affinity."
 ---
 
-The durable queue mounts an operator surface under `/queue`. With `max_attempts=1`, every crash is a dead end until someone looks, so these endpoints exist to see failed jobs, grant them another attempt, and watch queue depth.
+The durable queue mounts an operator surface under `/queue`. With the default `max_attempts=1`, a crashed run stays failed until an operator acts, so these endpoints list failed jobs, grant them another attempt, and report queue depth.
 
 ```bash
 curl localhost:7777/queue/stats
@@ -62,11 +62,11 @@ Requeue raises `max_attempts` to `attempt + 1` and moves the ticket back to `que
 | `clear_cancellation` | `false` | Requeueing a job that was cancelled. A recorded cancel is never cleared automatically. Without this flag the re-driven attempt is cancelled again at its first checkpoint, visibly. Set `true` as the explicit operator override. |
 | `force` | `false` | Requeueing a job that failed within the last `lock_grace_seconds`. Its worker may still be executing (a sweep proves heartbeats stopped, not that execution did). The request answers `409` until the grace elapses unless `force=true`. |
 
-Requeue never bypasses the fencing: if the presumed-dead worker finishes after all, the attempt that started later wins the ticket and the earlier one's late writes are discarded.
+Requeue does not bypass attempt fencing. If the presumed-dead worker finishes after all, the later attempt owns the ticket and the earlier one's writes are discarded.
 
 ## Stats and alerting
 
-`/queue/stats` returns two things worth alerting on:
+The signals to alert on:
 
 | Signal | Meaning |
 |--------|---------|
@@ -96,7 +96,7 @@ queue=QueueConfig(durable=True, deployment_id="gpu-pool")
 | `deployment_id=None` (default) | Unstamped jobs | Unstamped jobs only |
 | `deployment_id="gpu-pool"` | Jobs stamped `gpu-pool` | Unstamped jobs and jobs stamped `gpu-pool` |
 
-A mixed fleet is safe by construction. A continuation inherits the submitting job's stamp.
+A mixed fleet needs no extra configuration. A continuation inherits the submitting job's stamp.
 
 <Warning>
 Jobs stamped for a deployment with no live workers wait forever. They are queued, not stale, so no sweep touches them and no error is raised. The symptom is `oldest_queued_age_seconds` climbing in `/queue/stats`. Sweeping is not affinity-filtered: any replica can fail a stale job, because that only records a failure that already happened.

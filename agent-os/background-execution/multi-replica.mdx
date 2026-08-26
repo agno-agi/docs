@@ -1,6 +1,6 @@
 ---
 title: Multi-Replica Deployments
-description: "QueueConfig(redis=...) carries live events out and cancel signals in between AgentOS replicas."
+description: "QueueConfig(redis=...) sets the event stream and cancellation manager on every replica so runs can be resumed and cancelled from any of them."
 ---
 
 ```python
@@ -37,14 +37,14 @@ Set `redis` exactly when you run more than one replica. With one replica, in-pro
 
 ## One setting, two managers
 
-`queue.redis` sets **both** the event stream and the cancellation manager on every replica that constructs `AgentOS(...)`. There is nothing else to wire.
+`queue.redis` sets **both** the event stream and the cancellation manager on every replica that constructs `AgentOS(...)`. No other wiring is needed.
 
 | Manager | Direction | Default | Set by `queue.redis` to | Explicit setter |
 |---------|-----------|---------|--------------------------|-----------------|
 | Event stream (`BaseEventStream`) | Events **out**: the executing worker publishes run events; any replica can tail or replay them for `/resume`, streaming submissions, and continues. | `InMemoryEventStream` | `RedisEventStream` | `set_event_stream()` or `AgentOS(event_stream=...)` |
 | Cancellation manager (`BaseRunCancellationManager`) | Cancel **in**: a `/cancel` received by any replica is recorded in Redis; the executing worker sees it at its next checkpoint. | In-memory | `RedisRunCancellationManager` | `set_cancellation_manager()` |
 
-A background run started on replica A may execute on replica B while the client's next request lands on replica C. Both directions have to cross replica boundaries. Configuring only one is the classic half-working deployment: cancels reach every replica while resumed streams idle on the wrong one, or the reverse. That is why one setting wires both.
+A background run started on replica A may execute on replica B while the client's next request lands on replica C. Both directions have to cross replica boundaries. Configuring only one is a common misconfiguration: cancels reach every replica while resumed streams idle on the wrong one, or the reverse. One setting covers both so that cannot happen by accident.
 
 In v2, cross-replica cancellation meant constructing `RedisRunCancellationManager` yourself and calling `set_cancellation_manager()` in every process, and the event buffer had no shared backend at all.
 
@@ -65,7 +65,7 @@ Start a streaming run against one replica, then call `/resume` on another. Event
 
 ## Two Redis roles
 
-`queue.redis` and `db=RedisDb(...)` are different jobs. Users conflate them.
+`queue.redis` and `db=RedisDb(...)` are different settings with different requirements.
 
 | Setting | Role | Persistence | What a Redis fault costs |
 |---------|------|-------------|--------------------------|

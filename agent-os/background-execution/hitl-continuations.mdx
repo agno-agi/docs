@@ -87,7 +87,7 @@ Teams use `/teams/{team_id}/runs/{run_id}/continue` with `requirements`; workflo
 | Continuation claimed | `running` | Same |
 | Run finishes, or pauses again | `completed` / `paused` | Same |
 
-One row per run, ever. Poll, resume, cancel, and idempotency all key on the original `run_id` across any number of pause and continue cycles. A continuation gets exactly one execution regardless of `max_attempts`. A continuation leg that crashes is failed visibly and re-driven with [requeue](/agent-os/background-execution/operations#requeue), which replays the same confirmations.
+There is one row per run. Poll, resume, cancel, and idempotency all key on the original `run_id` across any number of pause and continue cycles. A continuation gets exactly one execution regardless of `max_attempts`. A continuation leg that crashes is failed visibly and re-driven with [requeue](/agent-os/background-execution/operations#requeue), which replays the same confirmations.
 
 ## Responses
 
@@ -102,13 +102,13 @@ One row per run, ever. Poll, resume, cancel, and idempotency all key on the orig
 
 ## Why inline continues are refused
 
-A ticket in `paused`, `queued`, or `running` owns its run's continuation. Every door that does not go through the queue (inline sync, inline SSE, MCP, AG-UI, Slack) refuses with `409`. Without that rule, an inline continue could validate against the run row while a durable continue validated against the ticket, and both could pass before either persisted. The result would be an approved tool executing twice. If the ticket cannot be looked up at all, the door fails closed with `503` rather than guessing.
+A ticket in `paused`, `queued`, or `running` owns its run's continuation. Every other continue path (inline sync, inline SSE, MCP, AG-UI, Slack) refuses with `409`. Without that rule, an inline continue could validate against the run row while a durable continue validated against the ticket, and both could pass before either persisted. An approved tool would then execute twice. If the ticket cannot be looked up at all, the request fails with `503` instead of proceeding unverified.
 
 Runs that never rode the queue, and `fork` or `regenerate` requests (which mint a new run), are unaffected.
 
 ## Cancel and retention
 
-Paused tickets are exempt from retention. A paused run waits for a human, and humans take arbitrary time, so the ticket is never cleaned up on age. An abandoned paused run therefore persists until something releases it:
+Paused tickets are exempt from retention. A paused run is waiting for a person, and there is no bound on how long that takes, so the ticket is never removed on age. An abandoned paused run persists until it is cancelled:
 
 ```bash
 curl -X POST "localhost:7777/agents/hitl-agent/runs/{run_id}/cancel?session_id={session_id}"
