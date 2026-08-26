@@ -48,9 +48,16 @@ A background run started on replica A may execute on replica B, while the client
 
 Start a streaming run against one replica, then call `/resume` on another. Events replay and tail from Redis regardless of which replica executes the run.
 
-## The cancellation manager is set per replica
+## Both managers are set per replica
 
-In v2, cross-replica cancellation meant constructing `RedisRunCancellationManager` yourself and calling `set_cancellation_manager()` in every process. `queue.redis` does that for you: `AgentOS(...)` installs the Redis cancellation manager and the Redis event stream on the replica that constructs it, so every replica in the fleet is wired identically from one line of config.
+`queue.redis` installs two process-wide managers on the replica that constructs `AgentOS(...)`:
+
+| Manager | Default | Redis backend | Explicit setter |
+|---------|---------|---------------|-----------------|
+| Cancellation manager (`BaseRunCancellationManager`) | In-memory | `RedisRunCancellationManager` | `set_cancellation_manager()` |
+| Event stream (`BaseEventStream`) | `InMemoryEventStream` | `RedisEventStream` | `set_event_stream()` or `AgentOS(event_stream=...)` |
+
+In v2, cross-replica cancellation meant constructing `RedisRunCancellationManager` yourself and calling `set_cancellation_manager()` in every process, and the event buffer had no shared backend at all. `queue.redis` wires both from one line of config, so every replica in the fleet is set up identically.
 
 ```python
 # v2
@@ -63,7 +70,7 @@ set_cancellation_manager(RedisRunCancellationManager(redis_client=..., async_red
 agent_os = AgentOS(agents=[agent], db=db, queue=QueueConfig(redis="redis://localhost:6379"))
 ```
 
-An explicit `set_cancellation_manager()` call still wins. `queue.redis` only replaces the in-memory default, never a manager you installed yourself, so a [custom cancellation manager](/examples/agents/advanced/custom-cancellation-manager) keeps working. Cancellation keys are namespaced under `{key_prefix}:run:cancellation:` when `key_prefix` is set.
+An explicit setter still wins for either manager. `queue.redis` only replaces defaults, never a backend you installed yourself, so a [custom cancellation manager](/examples/agents/advanced/custom-cancellation-manager) or an `AgentOS(event_stream=...)` override keeps working. Keys are namespaced under `{key_prefix}:run:cancellation:` and `{key_prefix}:os:events:` when `key_prefix` is set.
 
 ## Two Redis roles
 
