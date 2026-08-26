@@ -262,26 +262,29 @@ addition to sessions. What this means for your code and data:
 
 ### 7. Background execution and durable queues
 
-`background=True` on AgentOS is rebuilt around a durable job queue. In v2 it
-spawned an unbounded `asyncio.create_task`, and a process death silently lost
-every waiting and in-flight run. In v3:
+`background=True` on AgentOS keeps its v2 contract: the same `202` body
+(`run_id`, `session_id`, `status: "PENDING"`), the same `/resume` and
+`/cancel` endpoints, and the same `400` when the component has no `db`.
 
-- Accepted requests are **committed rows** that survive crashes, restarts and
-  deploys; any replica's worker can execute them.
-- Runs are **bounded** by a concurrency cap; excess submissions wait in the
-  queue in `pending` status instead of overloading the process.
-- Every run can be watched (`stream=true` tails), resumed after a disconnect
-  (`/resume`) and cancelled from any replica.
-- `Idempotency-Key` headers deduplicate resubmissions.
-- Redis is optional **coordination** (live event streams, cross-replica
-  cancellation), never truth. A Redis fault degrades the live view; it cannot
+One default changed. In v2 each submission spawned an unbounded
+`asyncio.create_task`. In v3 background runs are capped at 32 per replica;
+runs beyond the cap wait as `PENDING` instead of overloading the process.
+Raise or disable the cap with `AgentOS(queue=QueueConfig(max_concurrency=...))`
+or `AGNO_BACKGROUND_MAX_CONCURRENCY`.
+
+Everything else is opt-in through `QueueConfig`:
+
+- `durable=True`: accepted requests become **committed rows** that survive
+  crashes, restarts and deploys; any replica's worker can execute them. Enables
+  `Idempotency-Key` deduplication and the `/queue` operations endpoints.
+- `redis=...`: one setting wires both the live event stream and cross-replica
+  cancellation, so runs can be resumed and cancelled from any replica. Redis is
+  **coordination**, never truth. A Redis fault degrades the live view; it cannot
   lose or corrupt a run.
 
-Breaking implications: background execution requires a `db` on the agent
-(enforced with a 400), run status now transitions `pending → running →
-completed` (poll `GET /agents/{id}/runs/{run_id}` for the terminal state), and
-external framework agents (LangGraph, Claude, etc.) stream inline, so their
-runs are not resumable.
+External framework agents (LangGraph, Claude, etc.) stream inline when
+`background=true` is requested, so their runs are not resumable. See
+[AgentOS Background Execution](/agent-os/background-execution/overview).
 
 ### 8. Culture feature removed
 

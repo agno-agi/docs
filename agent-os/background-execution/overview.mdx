@@ -135,6 +135,16 @@ Set `QueueConfig(redis=...)` as soon as you run two or more replicas behind a lo
 
 See [Multi-replica deployments](/agent-os/background-execution/multi-replica) for what Redis does here, and why `queue.redis` is a different job from `db=RedisDb`.
 
+## Upgrading from v2
+
+The client contract is unchanged. `background=true` returned the same `202` body, `PENDING` status, `/resume` and `/cancel` endpoints, and `400` without a `db` in v2. Without a `QueueConfig`, one thing is different in v3:
+
+| Behavior | v2 | v3 (no `QueueConfig`) |
+|----------|----|------------------------|
+| Concurrency | Unbounded `asyncio.create_task` per submission | Capped at 32 background runs per replica. Runs beyond the cap wait as `PENDING`. |
+
+Raise or disable the cap with `QueueConfig(max_concurrency=...)` or `AGNO_BACKGROUND_MAX_CONCURRENCY`. Durability, one-setting Redis coordination, idempotency keys, session ordering, and the `/queue` endpoints are all opt-in through `QueueConfig`.
+
 ## Guides
 
 <CardGroup cols={2}>
