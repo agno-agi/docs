@@ -10329,6 +10329,269 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+  /queue/jobs:
+    get:
+      tags:
+      - Queue
+      summary: List Queue Jobs
+      description: 'List job queue jobs, optionally filtered by status. Repeat the status param to match any of several (e.g. status=failed&status=cancelled for the requeueable set; status=failed alone is the dead-letter list). Useful sort_by fields: created_at (default), updated_at, completed_at, status, attempt, component_type, component_id, user_id. Unknown sort fields are ignored.'
+      operationId: list_queue_jobs
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+          - type: 'null'
+          description: Status filter; repeatable to match any of several statuses
+          title: Status
+        description: Status filter; repeatable to match any of several statuses
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          description: Number of jobs to return per page
+          default: 20
+          title: Limit
+        description: Number of jobs to return per page
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number for pagination
+          default: 1
+          title: Page
+        description: Page number for pagination
+      - name: sort_by
+        in: query
+        required: false
+        schema:
+          type: string
+          description: Field to sort jobs by
+          default: created_at
+          title: Sort By
+        description: Field to sort jobs by
+      - name: sort_order
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/SortOrder'
+          description: Sort order (asc or desc)
+          default: desc
+        description: Sort order (asc or desc)
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse_QueueJobSchema_'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: Durable job queue not enabled on this replica
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /queue/jobs/{job_id}:
+    get:
+      tags:
+      - Queue
+      summary: Get Queue Job
+      operationId: get_queue_job
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueueJobSchema'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: Durable job queue not enabled on this replica
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /queue/jobs/{job_id}/requeue:
+    post:
+      tags:
+      - Queue
+      summary: Requeue Failed Queue Job
+      description: 'Requeue a terminally failed or cancelled job for one more execution (raises its attempt budget by one). The operator remedy for crashed runs under the no-silent-re-execution default. Requeueing a CANCELLED job whose cancellation intent is still live requires clear_cancellation=true - an explicit override of the recorded cancel; without it the re-driven attempt is re-cancelled at its first checkpoint. Requeueing a job that FAILED within the last lock_grace seconds requires force=true: its worker may still be executing (swept-but-alive), and a second producer would race unfenced writes.'
+      operationId: requeue_queue_job
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job Id
+      - name: clear_cancellation
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+          title: Clear Cancellation
+      - name: force
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+          title: Force
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueueJobSchema'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: Durable job queue not enabled on this replica
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /queue/stats:
+    get:
+      tags:
+      - Queue
+      summary: Queue Stats
+      description: Job counts by status and the oldest queued job's age - the queue-health signals to alert on.
+      operationId: get_queue_stats
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: Durable job queue not enabled on this replica
+      security:
+      - HTTPBearer: []
 components:
   schemas:
     ActivityMessage:
@@ -13808,6 +14071,22 @@ components:
         - data
         - meta
       title: PaginatedResponse[LearningUserStats]
+    PaginatedResponse_QueueJobSchema_:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/QueueJobSchema'
+          type: array
+          title: Data
+          description: List of items for the current page
+        meta:
+          $ref: '#/components/schemas/PaginationInfo'
+          description: Pagination metadata
+      type: object
+      required:
+      - data
+      - meta
+      title: PaginatedResponse[QueueJobSchema]
     PaginatedResponse_RegistryContentResponse_:
       properties:
         data:
@@ -14024,6 +14303,111 @@ components:
         - $ref: '#/components/schemas/FilePart'
         - $ref: '#/components/schemas/DataPart'
       title: Part
+    QueueJobSchema:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: Job ID (identical to the run's run_id)
+        component_type:
+          type: string
+          title: Component Type
+          description: 'Component kind: agent, team or workflow'
+        component_id:
+          type: string
+          title: Component Id
+          description: ID of the agent/team/workflow the run executes on
+        session_id:
+          type: string
+          title: Session Id
+          description: Session the run belongs to
+        job_type:
+          type: string
+          title: Job Type
+          description: Kind of work the ticket carries (runs only today)
+          default: run
+        user_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: User Id
+          description: User the run was submitted for
+        payload:
+          additionalProperties: true
+          type: object
+          title: Payload
+          description: Serialized run parameters
+        status:
+          type: string
+          title: Status
+          description: queued | running | completed | failed | cancelled | paused
+        attempt:
+          type: integer
+          title: Attempt
+          description: Executions started so far
+          default: 0
+        max_attempts:
+          type: integer
+          title: Max Attempts
+          description: Execution budget under any failure mode
+          default: 1
+        idempotency_key:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency Key
+          description: Client-provided dedupe key, if any
+        available_at:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Available At
+          description: Epoch seconds the job becomes claimable
+        locked_by:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Locked By
+          description: Worker currently holding the job's lock
+        locked_at:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Locked At
+          description: Epoch seconds the current lock was taken
+        error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error
+          description: Terminal error of the last attempt, if any
+        created_at:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Created At
+          description: Epoch seconds the job was accepted
+        updated_at:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Updated At
+          description: Epoch seconds of the last state change
+        completed_at:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Completed At
+          description: Epoch seconds the job reached a terminal state
+      type: object
+      required:
+      - id
+      - component_type
+      - component_id
+      - session_id
+      - status
+      title: QueueJobSchema
+      description: One durable queue job (a background run's queue ticket).
     ReaderSchema:
       properties:
         id:
