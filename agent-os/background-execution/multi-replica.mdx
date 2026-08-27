@@ -70,9 +70,9 @@ Start a streaming run against one replica, then call `/resume` on another. Event
 | Setting | Role | Persistence | What a Redis fault costs |
 |---------|------|-------------|--------------------------|
 | `QueueConfig(redis=...)` | Coordination: event streams, cancel signals | None needed. Keys carry TTLs and are rebuilt from the database. | The live view degrades. Runs still execute and complete. Nothing is corrupted or stranded. |
-| `QueueConfig(db=RedisDb(...))` | Ticket storage: the queue table itself | AOF with `appendfsync everysec` or `always`. | Recently accepted jobs can be lost on a Redis crash under default RDB snapshotting. |
+| `QueueConfig(db=RedisDb(...))` | Job storage: the queue table itself | AOF with `appendfsync everysec` or `always`. | Recently accepted jobs can be lost on a Redis crash under default RDB snapshotting. |
 
-A common production layout is Postgres for `db` (truth and tickets) and a plain Redis or Valkey for `redis` (coordination). Pointing both at one Redis works, as in the [Redis event stream cookbook](https://github.com/agno-agi/agno/blob/feat/v3.0/cookbook/05_agent_os/background_tasks/redis_event_stream.py), but the persistence requirement then applies to it.
+A common production layout is Postgres for `db` (truth and jobs) and a plain Redis or Valkey for `redis` (coordination). Pointing both at one Redis works, as in the [Redis event stream cookbook](https://github.com/agno-agi/agno/blob/feat/v3.0/cookbook/05_agent_os/background_tasks/redis_event_stream.py), but the persistence requirement then applies to it.
 
 ## Connection options
 
@@ -108,7 +108,7 @@ Per-run stream keys expire 30 minutes after the last activity, refreshed while t
 
 ## Without Redis on multiple replicas
 
-Durable execution still works: tickets live in the database and any replica can claim them. The live view does not. A streaming submission accepted on replica A whose ticket is claimed by replica B produces a tail that idles until the client times out, even though the run completes. AgentOS logs this at startup:
+Durable execution still works: jobs live in the database and any replica can claim them. The live view does not. A streaming submission accepted on replica A whose job is claimed by replica B produces a tail that idles until the client times out, even though the run completes. AgentOS logs this at startup:
 
 ```
 Durable queue with the in-memory event stream: streamed views of queued runs

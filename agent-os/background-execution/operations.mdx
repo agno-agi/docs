@@ -19,7 +19,7 @@ curl localhost:7777/queue/stats
 |--------|------|---------|
 | `GET` | `/queue/stats` | Job counts by status and the oldest queued job's age in seconds. |
 | `GET` | `/queue/jobs` | Paginated job listing. `status` is repeatable. `status=failed` alone is the dead-letter list. |
-| `GET` | `/queue/jobs/{job_id}` | One ticket. `job_id` equals the run's `run_id`. |
+| `GET` | `/queue/jobs/{job_id}` | One job. `job_id` equals the run's `run_id`. |
 | `POST` | `/queue/jobs/{job_id}/requeue` | Grant a `failed` or `cancelled` job one more execution. |
 
 All four answer `503` when the durable queue is not enabled on the replica that served the request.
@@ -55,14 +55,14 @@ All four answer `503` when the durable queue is not enabled on the replica that 
 curl -X POST localhost:7777/queue/jobs/{job_id}/requeue
 ```
 
-Requeue raises `max_attempts` to `attempt + 1` and moves the ticket back to `queued`. Only `failed` and `cancelled` jobs qualify; anything else answers `400`. The replica that served the request claims the job immediately if it has capacity.
+Requeue raises `max_attempts` to `attempt + 1` and moves the job back to `queued`. Only `failed` and `cancelled` jobs qualify; anything else answers `400`. The replica that served the request claims the job immediately if it has capacity.
 
 | Query parameter | Default | When to set it |
 |-----------------|---------|----------------|
 | `clear_cancellation` | `false` | Requeueing a job that was cancelled. A recorded cancel is never cleared automatically. Without this flag the re-driven attempt is cancelled again at its first checkpoint, visibly. Set `true` as the explicit operator override. |
 | `force` | `false` | Requeueing a job that failed within the last `lock_grace_seconds`. Its worker may still be executing (a sweep proves heartbeats stopped, not that execution did). The request answers `409` until the grace elapses unless `force=true`. |
 
-Requeue does not bypass attempt fencing. If the presumed-dead worker finishes after all, the later attempt owns the ticket and the earlier one's writes are discarded.
+Requeue does not bypass attempt fencing. If the presumed-dead worker finishes after all, the later attempt owns the job and the earlier one's writes are discarded.
 
 ## Stats and alerting
 
@@ -77,7 +77,7 @@ The signals to alert on:
 
 ## Retention
 
-Once an hour, the worker deletes terminal jobs (`completed`, `failed`, `cancelled`) older than `retention_seconds` (default 24 hours). Paused tickets are exempt: a paused run's ticket is what a later continue re-queues, and it must outlive human latency. Cancel a paused run to release its ticket. Run rows and sessions are not touched by queue retention.
+Once an hour, the worker deletes terminal jobs (`completed`, `failed`, `cancelled`) older than `retention_seconds` (default 24 hours). Paused jobs are exempt: a paused run's job is what a later continue re-queues, and it must outlive human latency. Cancel a paused run to release its job. Run rows and sessions are not touched by queue retention.
 
 ## Access control
 
@@ -93,18 +93,18 @@ queue=QueueConfig(durable=True, deployment_id="gpu-pool")
 
 | Replica setting | Enqueues | Claims |
 |-----------------|----------|--------|
-| `deployment_id=None` (default) | Unstamped jobs | Unstamped jobs only |
-| `deployment_id="gpu-pool"` | Jobs stamped `gpu-pool` | Unstamped jobs and jobs stamped `gpu-pool` |
+| `deployment_id=None` (default) | Jobs with no `deployment_id` | Jobs with no `deployment_id` |
+| `deployment_id="gpu-pool"` | Jobs with `deployment_id="gpu-pool"` | Jobs with no `deployment_id` and jobs with `deployment_id="gpu-pool"` |
 
-A mixed fleet needs no extra configuration. A continuation inherits the submitting job's stamp.
+A mixed fleet needs no extra configuration. A continuation inherits the submitting job's `deployment_id`.
 
 <Warning>
-Jobs stamped for a deployment with no live workers wait forever. They are queued, not stale, so no sweep touches them and no error is raised. The symptom is `oldest_queued_age_seconds` climbing in `/queue/stats`. Sweeping is not affinity-filtered: any replica can fail a stale job, because that only records a failure that already happened.
+Jobs with a `deployment_id` that no live worker matches wait forever. They are queued, not stale, so no sweep touches them and no error is raised. The symptom is `oldest_queued_age_seconds` climbing in `/queue/stats`. Sweeping is not affinity-filtered: any replica can fail a stale job, because that only records a failure that already happened.
 </Warning>
 
 ## Fleet-wide settings
 
-Every replica sharing one queue table must use the same values for `lock_grace_seconds`, `stop_timeout_seconds`, `retention_seconds`, `max_attempts`, and `timeout_seconds`. Each is applied by whichever replica performs the action: the claimer's grace sets its heartbeat cadence while the sweeper's grace judges staleness, `max_attempts` is stamped per ticket by the accepting replica, and the smallest `retention_seconds` in the fleet wins the hourly cleanup. Divergent values, including transiently during a rolling deploy, can falsely sweep a healthy peer's runs or delete tickets early.
+Every replica sharing one queue table must use the same values for `lock_grace_seconds`, `stop_timeout_seconds`, `retention_seconds`, `max_attempts`, and `timeout_seconds`. Each is applied by whichever replica performs the action. The replica that claims a job heartbeats on its own `lock_grace_seconds`, while the replica that sweeps judges staleness on its own value. `max_attempts` is written onto each job by the replica that accepted it. The smallest `retention_seconds` in the fleet wins the hourly cleanup. Divergent values, including transiently during a rolling deploy, can falsely sweep a healthy peer's runs or delete jobs early.
 
 When changing `lock_grace_seconds` on a live fleet, only ever raise it, and roll the sweeping replicas first. A replica sweeping with a smaller grace than its peers heartbeat with judges their live leases stale.
 

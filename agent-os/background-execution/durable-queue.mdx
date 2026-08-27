@@ -18,7 +18,7 @@ agent_os = AgentOS(
 )
 ```
 
-With `durable=True`, a `background=true` submission is written to the `agno_jobs` table before the `202` is returned. The row is the acceptance. A worker on every replica polls the table, claims rows, and executes them under a lease that it refreshes with heartbeats. The client contract is unchanged: `202` with `run_id`, then poll or stream.
+With `durable=True`, a `background=true` submission is written to the `agno_jobs` table before the `202` is returned. That job row is the acceptance. The run itself is stored in your sessions database as usual (the run row). A worker on every replica polls the jobs table, claims jobs, and executes them under a lease that it refreshes with heartbeats. The client contract is unchanged: `202` with `run_id`, then poll or stream.
 
 ## The guarantee
 
@@ -28,8 +28,8 @@ This is not the same as a promise that every run executes. What happens to a run
 
 | `max_attempts` | Crash behavior | Use when |
 |----------------|----------------|----------|
-| `1` (default) | After `lock_grace_seconds` without a heartbeat, another replica's sweep marks the run `ERROR` with the reason on `content`, and the ticket `failed`. Nothing re-executes. | Tools have side effects (emails, payments, writes). A killed run may already have acted. |
-| `2` or more | Another live replica reclaims the stale ticket and re-executes the run, with jittered backoff. A worker that turns out to be alive after being presumed dead has its late writes discarded on the ticket, the run row, and the event stream. | Runs are safe to repeat, or at-least-once beats a manual requeue. |
+| `1` (default) | After `lock_grace_seconds` without a heartbeat, another replica's sweep (the periodic check for abandoned jobs) marks the run `ERROR` with the reason on `content`, and the job `failed`. Nothing re-executes. | Tools have side effects (emails, payments, writes). A killed run may already have acted. |
+| `2` or more | Another live replica reclaims the stale job and re-executes the run, with jittered backoff. A worker that turns out to be alive after being presumed dead has its late writes discarded on the job, the run row, and the event stream. | Runs are safe to repeat, or at-least-once beats a manual requeue. |
 
 At the default, a crashed run is marked failed and an operator grants one more attempt through [requeue](/agent-os/background-execution/operations#requeue). The run's `content` carries the reason:
 
@@ -44,7 +44,7 @@ Failures that retrying cannot cure (schema violations, guardrail refusals, a `Ty
 
 ### How it stays correct
 
-Each claim increments the ticket's `attempt` counter. That number is stamped onto every write the attempt makes: the ticket itself, the run row, and the event stream. A write carrying an older attempt than the one currently recorded is refused. This is what makes `max_attempts > 1` safe: a worker that was swept while still alive cannot corrupt the retry's output.
+Each claim increments the job's `attempt` counter. That number is recorded on every write the attempt makes: the job row, the run row, and the event stream. A write carrying an older attempt than the one currently recorded is refused. This is what makes `max_attempts > 1` safe: a worker that was swept while still alive cannot corrupt the retry's output.
 
 ## Queue retries and model retries
 
@@ -55,7 +55,7 @@ Model retries and queue retries are independent layers:
 | Model | `Model(retries=..., delay_between_retries=..., exponential_backoff=...)` | One model call, inside the running attempt. Only retryable `ModelProviderError`s (not 400, 401, 403, 404, 413, 422). Run context and prior tool results are kept. | `retries=0` |
 | Queue | `QueueConfig(max_attempts=..., retry_delay_seconds=...)` | The whole run, from the start, as a new attempt under the same `run_id`. Applies to crashes, timeouts, and runs that ended in `ERROR`. | `max_attempts=1` |
 
-When model retries are exhausted, the run finishes with status `ERROR`. The worker then consults the queue budget: with attempts remaining it requeues the ticket after a jittered delay, otherwise the ticket is `failed`. At the defaults, a model outage fails the run on the first error with no re-execution at either layer.
+When model retries are exhausted, the run finishes with status `ERROR`. The worker then consults the queue budget: with attempts remaining it requeues the job after a jittered delay, otherwise the job is `failed`. At the defaults, a model outage fails the run on the first error with no re-execution at either layer.
 
 ```python
 agent = Agent(
@@ -74,7 +74,7 @@ The queue store defaults to the AgentOS `db`. A dedicated store isolates queue p
 | Store | Support | Notes |
 |-------|---------|-------|
 | `PostgresDb` / `AsyncPostgresDb` | Yes | Claims use `SELECT ... FOR UPDATE SKIP LOCKED`. Recommended for production. |
-| `RedisDb` | Yes | Ticket durability depends on Redis persistence. Configure AOF with `appendfsync everysec` or `always`. Default RDB snapshotting can lose recently accepted jobs on a Redis crash. A warning is logged at startup. |
+| `RedisDb` | Yes | Job durability depends on Redis persistence. Configure AOF with `appendfsync everysec` or `always`. Default RDB snapshotting can lose recently accepted jobs on a Redis crash. A warning is logged at startup. |
 | `RedisCluster` client | Rejected | The store's transactions need `WATCH`/`MULTI`, which cluster pipelines do not support. Use a standalone Redis or Valkey instance. |
 | Any other `db` | Rejected at startup | `durable=True` over a store without the queue contract raises a `ValueError` during lifespan startup. |
 
@@ -83,14 +83,14 @@ from agno.db.redis import RedisDb
 
 queue=QueueConfig(
     durable=True,
-    db=RedisDb(db_url="redis://localhost:6379"),  # queue tickets only
+    db=RedisDb(db_url="redis://localhost:6379"),  # queue jobs only
 )
 ```
 
 `db=` requires `durable=True`. Passing a queue store without durability raises at construction.
 
 <Warning>
-The queue store and the session store are separate concerns. Sessions and run rows on a non-Postgres store lose the attempt fencing described above and the worker's `RUNNING` stamp (queued runs poll `PENDING` while executing). Acceptance and terminal error persistence still work. A warning is logged at startup. Use Postgres for sessions in production.
+The queue store and the session store are separate concerns. Sessions and run rows on a non-Postgres store lose the attempt fencing described above, and the worker cannot update the run to `RUNNING` (queued runs poll `PENDING` while executing). Acceptance and terminal error persistence still work. A warning is logged at startup. Use Postgres for sessions in production.
 </Warning>
 
 ## Idempotency keys
@@ -154,7 +154,7 @@ All fields on `QueueConfig`:
 | `deployment_id` | `None` | Claim affinity for mixed fleets. See [Operations](/agent-os/background-execution/operations#deployment-affinity). |
 | `lock_grace_seconds` | `60` | Seconds without a heartbeat before a claimed job counts as abandoned. Minimum 3. Heartbeats fire every third of this. |
 | `poll_interval` | `1.0` | Seconds an idle worker waits between claim passes. |
-| `retention_seconds` | `86400` | Terminal jobs older than this are deleted hourly. Paused tickets are exempt. |
+| `retention_seconds` | `86400` | Terminal jobs older than this are deleted hourly. Paused jobs are exempt. |
 | `stop_timeout_seconds` | `None` | Graceful-shutdown drain window. `None` means 30 seconds, clamped below `lock_grace_seconds`. Must be strictly below `lock_grace_seconds` when set. |
 | `serialize_sessions` | `True` | One live run per session, FIFO. `False` restores concurrent claiming. |
 
