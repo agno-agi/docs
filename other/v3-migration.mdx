@@ -262,17 +262,13 @@ addition to sessions. What this means for your code and data:
 
 ### 7. Background execution and durable queues
 
-`background=True` on AgentOS keeps its v2 contract: the same `202` body
-(`run_id`, `session_id`, `status: "PENDING"`), the same `/resume` and
-`/cancel` endpoints, and the same `400` when the component has no `db`.
+Background runs are now capped at 32 per replica. In v2 each `background=True`
+submission spawned an unbounded `asyncio.create_task`; in v3 runs beyond the
+cap wait as `PENDING` instead of overloading the process. Raise or disable the
+cap with `AgentOS(queue=QueueConfig(max_concurrency=...))` or
+`AGNO_BACKGROUND_MAX_CONCURRENCY`.
 
-One default changed. In v2 each submission spawned an unbounded
-`asyncio.create_task`. In v3 background runs are capped at 32 per replica;
-runs beyond the cap wait as `PENDING` instead of overloading the process.
-Raise or disable the cap with `AgentOS(queue=QueueConfig(max_concurrency=...))`
-or `AGNO_BACKGROUND_MAX_CONCURRENCY`.
-
-Everything else is opt-in through `QueueConfig`:
+The rest of the queue is opt-in through `QueueConfig`:
 
 - `durable=True`: accepted requests become **committed rows** that survive
   crashes, restarts and deploys; any replica's worker can execute them. Enables
