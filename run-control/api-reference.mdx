@@ -1,0 +1,213 @@
+---
+title: API Reference
+description: HTTP endpoints for continuing, forking, branching, and inspecting runs.
+---
+
+All run-control verbs ship as both SDK methods and HTTP endpoints. The HTTP layer is what AgentOS exposes for the FE; the SDK is what you call from your own Python code.
+
+## Endpoint Summary
+
+| Endpoint | Method | What it does |
+|---|---|---|
+| `/agents/{agent_id}/runs/{run_id}/continue` | POST | Resume, regenerate, fork, or follow up on a run |
+| `/agents/{agent_id}/runs/{run_id}/checkpoints` | GET | List checkpoint boundaries for a run |
+| `/agents/{agent_id}/runs/{run_id}/checkpoints/{message_index}` | GET | Snapshot of the run truncated at a boundary |
+| `/agents/{agent_id}/sessions/{session_id}/branch` | POST | Deep-copy a session into a new one |
+
+Team variants exist at `/teams/{team_id}/...` with identical shapes.
+
+## POST `/continue`
+
+Form-encoded body. All fields optional.
+
+| Field | Type | Purpose |
+|---|---|---|
+| `session_id` | string | The session that owns the run (required when the run isn't already loaded server-side) |
+| `requirements` | JSON string | HITL tool results to apply before resuming |
+| `input` | string | New user message to append before the next turn |
+| `continue_from` | string | `"end"`, `"last_user"`, or a numeric message index |
+| `fork` | bool | Clone with a new `run_id` |
+| `regenerate` | bool | Drop the last response and redo (always forks) |
+| `replace_original` | bool | Hide the source from history when regenerating (default `true`) |
+| `additional_instructions` | string | Steering text appended as a user message when regenerating |
+| `stream` | bool | Stream events back as SSE (default `false`) |
+| `background` | bool | Run in a detached task, return immediately (default `false`) |
+
+### Example: HITL resolve
+
+```bash
+curl -X POST "$HOST/agents/{agent_id}/runs/{run_id}/continue" \
+  -F "session_id=sess-xyz" \
+  -F 'requirements=[{"tool_execution":{"tool_call_id":"tc1","result":"approved"}}]'
+```
+
+### Example: Regenerate
+
+```bash
+curl -X POST "$HOST/agents/{agent_id}/runs/{run_id}/continue" \
+  -F "session_id=sess-xyz" \
+  -F "regenerate=true" \
+  -F "additional_instructions=Be more concise"
+```
+
+### Example: Fork at boundary
+
+```bash
+curl -X POST "$HOST/agents/{agent_id}/runs/{run_id}/continue" \
+  -F "session_id=sess-xyz" \
+  -F "continue_from=4" \
+  -F "fork=true" \
+  -F "input=Try a different approach"
+```
+
+### Response
+
+The new `RunOutput` (or the resumed one if same `run_id`). Lineage fields populated when applicable:
+
+| Field | When it's set |
+|---|---|
+| `forked_from_run_id` | Set on any forked run (regenerate, fork, branched session runs) |
+| `forked_from_message_index` | The actual boundary used (may be lower than requested if snapped) |
+| `forked_from_session_id` | Set on runs that came from `branch_session` |
+| `regenerated_from` | Set when `regenerate=True` |
+| `last_checkpoint_at_message_index` | Latest mid-run checkpoint position on `checkpoint="tool-batch"` runs |
+
+## GET `/checkpoints`
+
+List the message boundaries the FE can offer as resume points.
+
+```bash
+curl "$HOST/agents/{agent_id}/runs/{run_id}/checkpoints?session_id=sess-xyz"
+```
+
+### Response
+
+```json
+{
+  "run_id": "run-abc",
+  "session_id": "sess-xyz",
+  "checkpoints": [
+    {
+      "checkpoint_id": "1",
+      "run_id": "run-abc",
+      "session_id": "sess-xyz",
+      "message_index": 5,
+      "continue_from": 5,
+      "status": "RUNNING",
+      "reason": "checkpoint",
+      "created_at": 1781700829,
+      "message_id": "msg-uuid-1",
+      "message_role": "tool",
+      "message_preview": "15.3M",
+      "is_latest": false
+    },
+    {
+      "checkpoint_id": "2",
+      "run_id": "run-abc",
+      "session_id": "sess-xyz",
+      "message_index": 6,
+      "continue_from": 6,
+      "status": "COMPLETED",
+      "reason": "end",
+      "created_at": 1781700835,
+      "message_id": "msg-uuid-2",
+      "message_role": "assistant",
+      "message_preview": "Lagos is largest, then Tokyo...",
+      "is_latest": true
+    }
+  ]
+}
+```
+
+### Fields
+
+| Field | Purpose |
+|---|---|
+| `checkpoint_id` | 1-based display ordinal (Checkpoint 1, 2, 3, ...). Use for UI labels. |
+| `message_index` | Pass back as `continue_from` to resume from this boundary. Pair-safe. |
+| `message_id` | Stable UUID of the message at the boundary. Use for client-side state. |
+| `message_role` | `"user"`, `"assistant"`, or `"tool"`. |
+| `message_preview` | First 120 chars of the boundary message's content. |
+| `reason` | `"checkpoint"` (mid-run barrier) or `"end"` (terminal). |
+| `status` | Run status at the time of the checkpoint. |
+| `is_latest` | `true` for the terminal end-of-transcript entry. |
+
+Every `message_index` returned is pair-safe. Passing it back as `continue_from` will never get snapped.
+
+## GET `/checkpoints/{message_index}`
+
+Return a truncated snapshot of the run at the chosen boundary. The stored run is never mutated.
+
+```bash
+curl "$HOST/agents/{agent_id}/runs/{run_id}/checkpoints/5?session_id=sess-xyz"
+```
+
+### Response
+
+```json
+{
+  "checkpoint": { ... same shape as a timeline entry ... },
+  "snapshot": {
+    "run_id": "run-abc",
+    "messages": [ ... truncated to messages[:5] ... ],
+    "tools": [ ... only tools referenced by surviving messages ... ],
+    "requirements": [ ... only requirements referencing surviving tool_call_ids ... ],
+    "last_checkpoint_at_message_index": 5,
+    ...
+  }
+}
+```
+
+Use to preview "this is what the run will look like if you continue from here" before firing the actual `/continue`.
+
+## POST `/sessions/{session_id}/branch`
+
+Deep-copy every run from the source session into a new session.
+
+```bash
+curl -X POST "$HOST/agents/{agent_id}/sessions/{session_id}/branch" \
+  -F "user_id=user-123"
+```
+
+### Response
+
+```json
+{
+  "session_id": "<new-uuid>",
+  "branched_from": "<source-session-id>"
+}
+```
+
+The caller's `user_id` scopes the source session read. Users cannot branch sessions they don't own.
+
+## Status Codes
+
+| Code | Meaning |
+|---|---|
+| 200 | Run/session successfully advanced/branched/inspected |
+| 400 | Invalid body (e.g. `continue_from` not parseable, `message_index` out of range) |
+| 404 | Run, session, or agent/team not found |
+| 409 | Run state incompatible with the requested action (e.g. continuing a `CANCELLED` run) |
+| 500 | Internal error |
+
+## Team Endpoints
+
+Identical surface at `/teams/{team_id}/...`:
+
+- `POST /teams/{team_id}/runs/{run_id}/continue`
+- `GET /teams/{team_id}/runs/{run_id}/checkpoints`
+- `GET /teams/{team_id}/runs/{run_id}/checkpoints/{message_index}`
+- `POST /teams/{team_id}/sessions/{session_id}/branch`
+
+Same request shape, same response shape. Team runs have `team_id` instead of `agent_id` and a `member_responses` array on the run.
+
+## SDK Equivalents
+
+| HTTP | SDK |
+|---|---|
+| `POST /runs/{run_id}/continue` | `agent.continue_run(run_id=..., ...)` |
+| `POST /sessions/{session_id}/branch` | `agent.branch_session(session_id=...)` |
+| `GET /runs/{run_id}/checkpoints` | Inspect `run_output.messages` directly, or use the HTTP endpoint |
+| `GET /runs/{run_id}/checkpoints/{i}` | (HTTP-only. Derive locally if needed.) |
+
+All async variants exist (`acontinue_run`, `abranch_session`).

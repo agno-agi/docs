@@ -1,0 +1,116 @@
+---
+title: Continue Run
+description: The unified /continue dispatch resumes any persisted run from its current state.
+---
+
+`/continue` advances a persisted run. It dispatches on the body: resolve a HITL pause, retry an error, follow up on a completed run, regenerate, fork, or time-travel. One endpoint, one mental model.
+
+## Basic Usage
+
+```python
+# Bare resume of a non-terminal run (RUNNING / ERROR / PAUSED with resolved approval)
+result = agent.continue_run(run_id="run-abc", session_id="sess-xyz")
+```
+
+```python
+# Resolve a HITL pause with tool results
+result = agent.continue_run(run_id="run-abc", session_id="sess-xyz", requirements=[...])
+```
+
+```python
+# Follow up on a completed run (auto-forks: new run_id, source preserved)
+result = agent.continue_run(
+    run_id="run-abc",
+    session_id="sess-xyz",
+    input="Now compare with Lagos",
+)
+```
+
+## Dispatch Table
+
+| Body | Source `status` | Behavior |
+|---|---|---|
+| `requirements=[...]` | `PAUSED` (HITL) | Apply tool results, resume |
+| empty | `RUNNING` / `ERROR` / `CANCELLED` | Resume in place (same `run_id`) |
+| empty + resolved admin approval in DB | `PAUSED` | Apply resolution, resume |
+| `input="..."` | `COMPLETED` | Append new user message, auto-fork (new `run_id`) |
+| `regenerate=True` | `COMPLETED` | Redo last response, always fork |
+| `continue_from=K` | any | Truncate to first K messages, fork |
+| `fork=True` | any | Clone the run with a new `run_id` |
+
+## The 1-run-1-loop Invariant
+
+If the source run's loop has already finished (`status=COMPLETED`), `/continue` produces a new `run_id`. Metrics, timestamps, and events on the source row remain a record of exactly one model loop. Only mid-flight resumes (`RUNNING` / `ERROR` / `PAUSED`) stay on the same `run_id`.
+
+## Parameter Reference
+
+| Parameter | Type | Purpose |
+|---|---|---|
+| `run_id` | `str` | The run to continue |
+| `session_id` | `str` | The session that owns the run |
+| `requirements` | `List[RunRequirement]` | HITL tool results to apply before resuming |
+| `input` | `Optional[str]` | New user message to append before the next turn |
+| `continue_from` | `int \| "end" \| "last_user"` | Truncate to a chosen message boundary |
+| `fork` | `bool` | Clone with a new `run_id` (default: `False`, but `True` is implied for completed runs and regenerate) |
+| `regenerate` | `bool` | Drop the last assistant response and redo (always forks) |
+| `replace_original` | `bool` | When regenerating, hide the source from history (default: `True`) |
+| `additional_instructions` | `str` | Steering text appended as a user message when regenerating |
+
+## `continue_from` Selector
+
+| Value | Effect |
+|---|---|
+| `"end"` (default) | Full transcript. Auto-forks completed runs. |
+| `"last_user"` | Drop everything past the last user message. |
+| `K: int` | Keep `messages[:K]`. Pair-safe: indices that split a tool batch are snapped down to the boundary before the batch. |
+
+The integer form pairs naturally with checkpoint timeline entries. Indices returned by `GET /runs/{run_id}/checkpoints` are guaranteed pair-safe.
+
+## HTTP Equivalent
+
+```bash
+curl -X POST "$HOST/agents/{agent_id}/runs/{run_id}/continue" \
+  -F "session_id=sess-xyz" \
+  -F "regenerate=true" \
+  -F "additional_instructions=Be more concise"
+```
+
+All SDK parameters map to form fields. See [API Reference](/run-control/api-reference) for the full schema.
+
+## Teams
+
+`Team.continue_run` accepts the same parameters with the same semantics:
+
+```python
+result = team.continue_run(
+    run_id="team-run-abc",
+    session_id="team-sess-xyz",
+    regenerate=True,
+)
+```
+
+## Examples
+
+### Agents
+
+| Example | What it shows |
+|---|---|
+| [Continue from a boundary](https://github.com/agno-agi/agno/blob/main/cookbook/02_agents/20_time_travel/01_continue_from.py) | All four `continue_from` forms (`"end"`, `"last_user"`, integer index, and `regenerate=True`) demonstrated end-to-end. The clearest single example of the dispatch surface. |
+| [Crash recovery (bare resume)](https://github.com/agno-agi/agno/blob/main/cookbook/02_agents/18_checkpointing/01_crash_recovery.py) | Empty-body `continue_run(run_id=..., session_id=...)` resuming a `RUNNING` run after a process crash. |
+| [HITL resolve](https://github.com/agno-agi/agno/blob/main/cookbook/02_agents/10_human_in_the_loop/confirmation_required.py) | `continue_run(requirements=[...])` to resolve a `PAUSED` HITL run with tool results. |
+
+### Teams
+
+| Example | What it shows |
+|---|---|
+| [Continue from a boundary](https://github.com/agno-agi/agno/blob/main/cookbook/03_teams/25_time_travel/01_continue_from.py) | Team variant of the four-form dispatch demo. |
+| [Crash recovery](https://github.com/agno-agi/agno/blob/main/cookbook/03_teams/23_checkpointing/01_crash_recovery.py) | Bare resume after a team-level crash. |
+
+## Next Steps
+
+| Task | Guide |
+|---|---|
+| Redo the last response | [Regenerate](/run-control/regenerate) |
+| Rewind to an earlier message | [Fork a Run](/run-control/fork-run) |
+| Start a new session from this one | [Branch a Session](/run-control/branch-session) |
+| Persist mid-run for crash recovery | [Checkpointing](/run-control/checkpointing) |

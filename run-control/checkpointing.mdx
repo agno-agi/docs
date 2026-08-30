@@ -1,0 +1,127 @@
+---
+title: Checkpointing
+description: Persist mid-run state after each tool batch so a crashed process can resume.
+---
+
+By default, a run only persists to the database at terminal states (`COMPLETED`, `PAUSED`, `ERROR`, `CANCELLED`). A worker that crashes mid-flight loses the work. `checkpoint="tool-batch"` writes a snapshot after each tool batch so the run is recoverable.
+
+## Basic Usage
+
+```python
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIResponses
+
+agent = Agent(
+    name="research-agent",
+    model=OpenAIResponses(id="gpt-5.4"),
+    db=SqliteDb(db_file="tmp/agent.db"),
+    checkpoint="tool-batch",
+    tools=[...],
+)
+```
+
+After every tool batch the model executes, a snapshot of the run is written to the session with `status=RUNNING`. A parallel batch (multiple tools called in one assistant turn) counts as one snapshot, written when all results have returned.
+
+If the process dies between batches, the latest snapshot survives. `agent.continue_run(run_id=run_id, session_id=session_id)` resumes from that snapshot: tools that already completed are not re-invoked, and the model picks up with the persisted transcript.
+
+Tools that were in-flight when the crash hit have no snapshot. On resume they're re-invoked with the same arguments.
+
+## Policies
+
+| Value | When the run persists | Use case |
+|---|---|---|
+| `"runs"` (default) | Only at terminal states (`COMPLETED`, `PAUSED`, `ERROR`, `CANCELLED`) | Chatty interactive agents. No write amplification. |
+| `"tool-batch"` | After each tool batch + terminal state | Long research runs, multi-step pipelines, anything you want to recover after a crash. |
+
+For a run with K tool batches and a final no-tool turn you get K + 1 DB writes (K mid-run + 1 terminal). Opt in deliberately.
+
+## Resuming After a Crash
+
+A run persisted with `checkpoint="tool-batch"` and killed mid-flight (SIGKILL, OOM, power loss) stays in the DB with `status=RUNNING`. To resume:
+
+```python
+# Same agent config, fresh process
+agent = Agent(name="research-agent", db=SqliteDb(db_file="tmp/agent.db"), checkpoint="tool-batch", tools=[...])
+
+result = agent.continue_run(
+    run_id="<the crashed run_id>",
+    session_id="<the session_id>",
+)
+```
+
+The model picks up from the last completed tool batch. Tools that already ran are not re-invoked; their results are in the persisted transcript.
+
+`/continue` with no body fields is the bare resume path. It works for any non-terminal status (`RUNNING`, `ERROR`, `PAUSED` with resolved approval).
+
+## Teams
+
+Teams support the same policy on the team-level loop:
+
+```python
+from agno.team import Team
+
+team = Team(
+    name="research-team",
+    members=[...],
+    db=SqliteDb(db_file="tmp/team.db"),
+    checkpoint="tool-batch",
+)
+```
+
+A team-level "tool batch" includes `delegate_task_to_member` calls. Each batch boundary writes a team checkpoint. Member agents have their own checkpoint policy on the member's `Agent(checkpoint=...)`.
+
+## Inspecting Checkpoints From a UI
+
+Every checkpoint boundary is queryable as a resume point. Use the timeline endpoint to list valid boundaries for a UI:
+
+```http
+GET /agents/{agent_id}/runs/{run_id}/checkpoints?session_id=...
+```
+
+Each entry includes:
+
+| Field | Purpose |
+|---|---|
+| `checkpoint_id` | Display ordinal (`"1"`, `"2"`, …) for FE labels |
+| `message_index` | Pass back as `continue_from=K` to resume from this boundary |
+| `message_id` | Stable handle for client-side state |
+| `message_preview` | First 120 chars of the boundary message |
+| `reason` | `"checkpoint"` (mid-run) or `"end"` (terminal) |
+
+See [API Reference](/run-control/api-reference) for the full schema.
+
+## Cost
+
+`checkpoint="tool-batch"` writes the run JSON to the `session.runs` column after every tool batch. For a 10-batch research run that's 10 extra DB writes. Consider:
+
+- The `session.runs` column is a JSON blob holding all runs in the session. Writes grow with the number of runs, not just checkpoints.
+- For Postgres this is one row update per batch.
+- For an interactive chat agent with a 1-batch turn structure, the overhead is one extra write per turn. Usually fine.
+- For agents that run a hundred parallel tools, it's K+1 writes per run. Measure before opting in.
+
+## Examples
+
+### Agents
+
+| Example | What it shows |
+|---|---|
+| [Crash recovery](https://github.com/agno-agi/agno/blob/main/cookbook/02_agents/18_checkpointing/01_crash_recovery.py) | A worker subprocess is `SIGKILL`'d mid-run. The parent process resumes the run and finishes the work. The clearest end-to-end demonstration of the feature. |
+| [Tool error persistence](https://github.com/agno-agi/agno/blob/main/cookbook/02_agents/18_checkpointing/02_tool_error_persistence.py) | Two scenarios: (a) a tool raises a Python exception (caught by the loop, run continues), (b) the model call itself fails before any batch (the in-flight conversation is flushed onto the ERROR row so it's not lost). |
+| [Checkpoint endpoints](https://github.com/agno-agi/agno/blob/main/cookbook/02_agents/18_checkpointing/03_checkpoint_endpoints.py) | Calls `GET /checkpoints` and `GET /checkpoints/{message_index}` via an in-process `TestClient`, prints the timeline + a derived snapshot, then resumes from the chosen boundary. |
+
+### Teams
+
+| Example | What it shows |
+|---|---|
+| [Crash recovery](https://github.com/agno-agi/agno/blob/main/cookbook/03_teams/23_checkpointing/01_crash_recovery.py) | Same crash-and-resume flow at the team level. |
+| [Tool error persistence](https://github.com/agno-agi/agno/blob/main/cookbook/03_teams/23_checkpointing/02_tool_error_persistence.py) | Team variant of the in-flight-message flush. |
+| [Checkpoint endpoints](https://github.com/agno-agi/agno/blob/main/cookbook/03_teams/23_checkpointing/03_checkpoint_endpoints.py) | Timeline + snapshot endpoints for team runs. |
+
+## Next Steps
+
+| Task | Guide |
+|---|---|
+| Resume a paused run with the unified `/continue` dispatch | [Continue Run](/run-control/continue-run) |
+| Inspect and time-travel via checkpoints | [Fork a Run](/run-control/fork-run) |
+| API endpoints | [API Reference](/run-control/api-reference) |
