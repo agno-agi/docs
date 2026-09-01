@@ -1,0 +1,87 @@
+---
+title: AtomicMail
+description: "AtomicMailTools give an Agno agent its own email inbox through AtomicMail's proof-of-work signup, with no human step."
+---
+
+<Badge icon="code-branch" color="orange">
+    <Tooltip tip="Introduced in v3.0.2" cta="View release notes" href="https://github.com/agno-agi/agno/releases/tag/v3.0.2">v3.0.2</Tooltip>
+</Badge>
+
+**AtomicMailTools** give an agent its own email inbox: register an address on [AtomicMail](https://atomicmail.ai), send plain-text email from it, and read what it receives over JMAP. Registration runs through AtomicMail's autonomous proof-of-work signup — no signup form, no domain setup, and no human verification step.
+
+## Prerequisites
+
+No extra package is required beyond `agno` — the toolkit uses `httpx`, an Agno core dependency. The example also uses the `openai` library:
+
+```shell
+uv pip install -U agno openai
+```
+
+```shell
+export OPENAI_API_KEY=***
+```
+
+No AtomicMail API key is needed up front: `register_inbox` creates the account and stores the key it receives in `credentials.json` under `~/.atomicmail` (override the directory with `credentials_dir` or the `ATOMIC_MAIL_CREDENTIALS_DIR` environment variable), so the same inbox is reused across agent runs. A credentials file that exists but cannot be read raises a `ValueError` instead of being overwritten with a fresh registration.
+
+## Example
+
+The following agent registers an inbox and reads it. The first run solves the proof-of-work and takes tens of seconds; later runs reuse the stored credentials:
+
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.tools.atomic_mail import AtomicMailTools
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.5"),
+    tools=[AtomicMailTools()],
+    markdown=True,
+)
+
+agent.print_response(
+    "Register the inbox research-agent, then show me the five most recent emails."
+)
+```
+
+## Proof-of-Work Sign-Up
+
+AtomicMail issues inboxes to agents without a human step. Instead of a signup form, `register_inbox` requests a challenge and solves it locally — an `scrypt` computation whose difficulty AtomicMail sets server-side — then exchanges the solution for a session. AtomicMail uses this in place of CAPTCHAs and manual approval; see the [AtomicMail docs](https://atomic-mail.github.io/atomic-mail-agentic/) for the protocol.
+
+Three things follow from that design:
+
+- **The first call is slow.** Expect `register_inbox` to take tens of seconds — AtomicMail quotes roughly 30 seconds. `pow_timeout` (default 300 seconds) caps the solve; a solve that exceeds it returns an `error` result instead of hanging.
+- **The solve is parallel.** `pow_workers` threads search the nonce space concurrently, defaulting to `min(4, cpu_count())`. Set `pow_workers=1` to search sequentially.
+- **Repeat calls are fast.** Since Agno v3.0.4 the resolved session is cached on the toolkit instance until its token nears expiry, so warm `send_email` and `list_inbox` calls typically take roughly 0.4 to 3 seconds. A cold call — a new process, or an expired token — re-runs the handshake.
+
+The inbox address is `<username>@atomicmail.ai`. Sending from your own domain requires verifying it in AtomicMail's dashboard, outside the toolkit. AtomicMail publishes its storage quota and rate-limit policy in its [documentation](https://atomic-mail.github.io/atomic-mail-agentic/).
+
+## Toolkit Params
+
+| Parameter | Type | Default | Description |
+| --------- | ---- | ------- | ----------- |
+| `credentials_dir` | `Optional[str]` | `None` | Directory holding `credentials.json`. Defaults to `ATOMIC_MAIL_CREDENTIALS_DIR` or `~/.atomicmail`. |
+| `auth_url` | `str` | `"https://auth.atomicmail.ai"` | AtomicMail auth service base URL. |
+| `api_url` | `str` | `"https://api.atomicmail.ai"` | AtomicMail JMAP API base URL. |
+| `enable_register_inbox` | `bool` | `True` | Enable the register_inbox function. |
+| `enable_send_email` | `bool` | `True` | Enable the send_email function. |
+| `enable_list_inbox` | `bool` | `True` | Enable the list_inbox function. |
+| `all` | `bool` | `False` | Enable all functions. |
+| `timeout` | `int` | `30` | Per-request timeout in seconds. |
+| `pow_timeout` | `Optional[float]` | `300.0` | Wall-clock cap in seconds for the proof-of-work solve, which is otherwise unbounded and driven by the server-set difficulty. A solve that exceeds it returns an `error` result. `None` waits indefinitely. |
+| `pow_workers` | `Optional[int]` | `None` | Threads searching the proof-of-work nonce space in parallel. Defaults to `min(4, cpu_count())`; `1` searches sequentially. |
+
+## Toolkit Functions
+
+| Function | Description |
+| -------- | ----------- |
+| `register_inbox` | Register a new inbox via the proof-of-work signup. Parameters: `username` (str), the inbox local-part, 5-21 characters; `forced` (bool, default False). Idempotent for the same username; refuses to overwrite a different registered inbox unless `forced=True`. Returns the inbox address and account id. |
+| `send_email` | Send a plain-text email from the registered inbox. Parameters: `to` (str), `subject` (str), `body` (str). Returns the email and submission ids. |
+| `list_inbox` | List the most recent received emails. Parameters: `limit` (int, default 20, capped at 100). The agent's own sent mail is filtered out. Returns id, from, to, subject, received time, and a preview per email. |
+
+Every function has an async variant registered under the same name, used automatically with `arun` and `aprint_response`. Failures come back as `{"error": ...}` results instead of raising to the model.
+
+## Developer Resources
+
+- [Tools](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/tools/atomic_mail.py)
+- [Cookbook](https://github.com/agno-agi/agno/blob/main/cookbook/91_tools/atomic_mail_tools.py)
+- [AtomicMail Docs](https://atomic-mail.github.io/atomic-mail-agentic/)

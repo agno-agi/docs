@@ -1,0 +1,114 @@
+---
+title: Knowledge Management
+description: "KnowledgeManagementTools enable an operator agent to ingest, inspect, and remove knowledge base content."
+---
+
+<Badge icon="code-branch" color="orange">
+    <Tooltip tip="Introduced in v3.0.4" cta="View release notes" href="https://github.com/agno-agi/agno/releases/tag/v3.0.4">v3.0.4</Tooltip>
+</Badge>
+
+**KnowledgeManagementTools** enable a builder or operator agent to load content into a knowledge base, inspect what is loaded, and remove it. This is the write side of knowledge: end-user-facing agents get search — give them [Knowledge Tools](/tools/toolkits/others/knowledge) — while this toolkit goes to the agent that curates the base.
+
+The knowledge base must have a `contents_db`: every tool here reads or writes content rows, and construction raises a `ValueError` without one.
+
+## Prerequisites
+
+The following example requires the `agno`, `openai`, and `qdrant-client` libraries, and `sqlalchemy` for the SQLite contents database (`agno[sqlite]`). It connects to Qdrant on `localhost:6333`.
+
+```shell
+uv pip install -U "agno[sqlite]" openai qdrant-client
+docker run -d --name qdrant -p 6333:6333 qdrant/qdrant:latest
+```
+
+Set your OpenAI API key:
+
+```shell
+export OPENAI_API_KEY=***
+```
+
+## Example
+
+The following operator agent loads a website into the knowledge base and reports what is loaded:
+
+```python cookbook/91_tools/knowledge_management_tools.py
+import asyncio
+
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.knowledge.embedder.openai import OpenAIEmbedder
+from agno.knowledge.knowledge import Knowledge
+from agno.models.openai import OpenAIResponses
+from agno.tools.knowledge import KnowledgeManagementTools
+from agno.vectordb.qdrant import Qdrant
+
+knowledge = Knowledge(
+    name="Product Docs",
+    contents_db=SqliteDb(db_file="tmp/knowledge_contents.db"),
+    vector_db=Qdrant(
+        collection="product-docs",
+        url="http://localhost:6333",
+        embedder=OpenAIEmbedder(id="text-embedding-3-small"),
+    ),
+)
+
+operator = Agent(
+    name="Knowledge Operator",
+    model=OpenAIResponses(id="gpt-5.6-luna"),
+    tools=[KnowledgeManagementTools(knowledge=knowledge, max_pages=25)],
+    markdown=True,
+)
+
+
+async def main() -> None:
+    await operator.aprint_response("Load https://docs.agno.com into the knowledge base.")
+    await operator.aprint_response("What do we have loaded now?")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## Content Ownership
+
+`scope` decides who can read what the operator loads. With `scope="shared"` (the default), ingested rows are readable by every agent on the knowledge base. With `scope="user"`, rows belong to the run's `user_id` — and a run without a `user_id` gets an error back instead of silently writing to the shared bucket, where the content would be readable and deletable by everyone.
+
+## Toolkit Params
+
+| Parameter | Type | Default | Description |
+| --------- | ---- | ------- | ----------- |
+| `knowledge` | `Knowledge` | - | Knowledge base to manage (required). Must have a `contents_db`; construction raises a `ValueError` without one. |
+| `scope` | `Literal["shared", "user"]` | `"shared"` | Ownership of ingested rows. See [Content Ownership](#content-ownership). |
+| `max_pages` | `int` | `50` | Default page cap per site ingest. Clamped between 1 and 500. |
+| `page_fetcher` | `Optional[Any]` | `None` | Custom page fetcher. The default resolves the Parallel fetcher when available, and the built-in fetcher otherwise. |
+| `ingest_url` | `bool` | `True` | Register the `ingest_url` tool. |
+| `ingest_path` | `bool` | `False` | Register the `ingest_path` tool. Off by default — see the warning below. |
+| `ingest_text` | `bool` | `True` | Register the `ingest_text` tool. |
+| `remove_content` | `bool` | `True` | Register the `remove_content` tool, gated behind confirmation by default. |
+| `instructions` | `Optional[str]` | `None` | Custom instructions for the operator agent. When unset, the toolkit's built-in operator instructions are used. |
+| `add_instructions` | `bool` | `True` | Whether to add the instructions to the agent's context. |
+
+`list_content` and `ingest_status` are always registered — they only read.
+
+<Warning>
+`ingest_path` is off by default, and registering it is an explicit choice: it reads any path the server process can read, and under `scope="shared"` everything it loads becomes readable by every agent on that knowledge base. Enable it only where the operator agent is trusted with the machine's filesystem.
+</Warning>
+
+## Toolkit Functions
+
+| Function | Description |
+| -------- | ----------- |
+| `ingest_url` | Ingest a website from its sitemap, one row per page, up to `max_pages` (an optional per-call `max_pages` overrides the default). Re-running refreshes changed pages, retries failed ones, and prunes pages that left the sitemap. |
+| `ingest_path` | Ingest a file or folder from the server's filesystem. A folder lands one row per file, refreshed by content digest. Registered only when `ingest_path=True`. |
+| `ingest_text` | Ingest a named block of text, with optional metadata. |
+| `list_content` | List everything on the knowledge base, grouped by site, with an optional `host` filter. |
+| `ingest_status` | Report a site's ingestion status, including failed pages. |
+| `remove_content` | Remove a content row by id; removing a site row also removes every page under it. Requires user confirmation by default, and a caller-supplied `requires_confirmation_tools` list is merged with it rather than replacing it. |
+
+Every tool returns JSON with an `ok` field; failures come back as `{"ok": false, "error": ...}` instead of raising to the model. Each tool also has an async variant registered under the same name, so the async versions are used automatically with `arun` and `aprint_response`.
+
+## Developer Resources
+
+- [Tools](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/tools/knowledge/management.py)
+- [Cookbook](https://github.com/agno-agi/agno/blob/main/cookbook/91_tools/knowledge_management_tools.py)
+- [Knowledge Tools](/tools/toolkits/others/knowledge)
+- [Knowledge overview](/knowledge/overview)

@@ -1,0 +1,101 @@
+---
+title: Finance
+description: "FinanceTools give an agent one set of finance tools with swappable market-data providers."
+---
+
+<Badge icon="code-branch" color="orange">
+    <Tooltip tip="Introduced in v3.0.0" cta="View release notes" href="https://github.com/agno-agi/agno/releases/tag/v3.0.0">v3.0.0</Tooltip>
+</Badge>
+
+**FinanceTools** provide one finance toolkit with swappable data providers: the same eleven tool names, parameters, and JSON response shape, whatever supplies the data. The default provider is Yahoo Finance (via the `yfinance` package); financialdatasets.ai is built in, and custom providers can be registered. Agent code does not change when the data source does.
+
+Agno ships three finance toolkits, coexisting by design. `FinanceTools` fixes the tool names while the provider is swappable; [YFinanceTools](/tools/toolkits/others/yfinance) and [FinancialDatasetsTools](/tools/toolkits/others/financial-datasets) each expose one data source directly, with their own tool names. The older two are not deprecated.
+
+## Prerequisites
+
+The default provider needs the `yfinance` package; the example also uses `openai`:
+
+```shell
+uv pip install -U yfinance openai
+```
+
+The financialdatasets.ai provider needs no extra package — it uses `httpx`, an Agno core dependency — but requires an API key:
+
+```shell
+export FINANCIAL_DATASETS_API_KEY=***
+```
+
+## Example
+
+```python cookbook/91_tools/finance/01_market_brief.py
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.tools.finance import FinanceTools
+
+agent = Agent(
+    name="Finance Agent",
+    model=OpenAIResponses(id="gpt-5.6"),
+    tools=[FinanceTools()],
+    instructions="Lead with the answer, then show the evidence.",
+    markdown=True,
+)
+
+agent.print_response("Give me a market brief on NVIDIA", stream=True)
+```
+
+## Provider Selection
+
+`provider` accepts a `FinanceProvider` instance, a registered provider id (`"yfinance"`, `"financial_datasets"`, or one you added with `register_provider`), or `None`. With `None` (the default), FinanceTools uses Yahoo Finance if the `yfinance` package is importable, otherwise financialdatasets.ai if `FINANCIAL_DATASETS_API_KEY` is set, and otherwise raises an `ImportError` at construction telling you to install `yfinance` or set the key. An unknown id raises a `ValueError` listing the registered providers.
+
+Each provider declares the tools it serves, and FinanceTools registers only those:
+
+- **Yahoo Finance** (`"yfinance"`) serves all eleven tools. No API key is needed.
+- **Financial Datasets** (`"financial_datasets"`) serves nine — it has no `search_symbols` or `get_analyst_recommendations`, and the agent never sees them. Requests carry the `FINANCIAL_DATASETS_API_KEY` as an `X-API-KEY` header; see [financialdatasets.ai](https://www.financialdatasets.ai) for plans and rate limits.
+
+To add a provider, subclass `FinanceProvider`, declare its `capabilities`, and call `register_provider` — the [custom provider cookbook](https://github.com/agno-agi/agno/blob/main/cookbook/91_tools/finance/06_custom_provider.py) shows the shape.
+
+At call time, provider failures are returned to the agent as JSON `{"error": ...}` envelopes, never raised.
+
+## Toolkit Params
+
+| Parameter | Type | Default | Description |
+| --------- | ---- | ------- | ----------- |
+| `provider` | `Union[FinanceProvider, str, None]` | `None` | Data provider: an instance, a registered id, or `None` for automatic selection. See [Provider Selection](#provider-selection). |
+| `search_symbols` | `bool` | `True` | Register the search_symbols tool. |
+| `quote` | `bool` | `True` | Register the get_quote tool. |
+| `price_history` | `bool` | `True` | Register the get_price_history tool. |
+| `company_profile` | `bool` | `True` | Register the get_company_profile tool. |
+| `key_metrics` | `bool` | `True` | Register the get_key_metrics tool. |
+| `news` | `bool` | `True` | Register the get_news tool. |
+| `analyst_recommendations` | `bool` | `True` | Register the get_analyst_recommendations tool. |
+| `financials` | `bool` | `False` | Register the get_financials tool. |
+| `insider_trades` | `bool` | `False` | Register the get_insider_trades tool. |
+| `earnings` | `bool` | `False` | Register the get_earnings tool. |
+| `sec_filings` | `bool` | `False` | Register the get_sec_filings tool. |
+| `all` | `bool` | `False` | Register all tools the provider supports. |
+| `instructions` | `Optional[str]` | `None` | Custom instructions. When unset, instructions are generated from the tools that actually registered. |
+| `add_instructions` | `bool` | `True` | Whether to add the instructions to the agent's context. |
+| `timeout` | `Optional[float]` | `None` | Per-request timeout in seconds, applied only when FinanceTools builds the provider itself (from an id or `None`); it is ignored, with a warning, when you pass a provider instance. `None` means no timeout for Yahoo Finance but 30 seconds for Financial Datasets. |
+
+## Toolkit Functions
+
+| Function | Description |
+| -------- | ----------- |
+| `search_symbols` | Search for ticker symbols. Parameters: `query` (str), `limit` (int, default=5, capped at 25). |
+| `get_quote` | Get the current quote for a symbol. Parameters: `symbol` (str). |
+| `get_price_history` | Get price history. Parameters: `symbol` (str), `period` (str, default="1mo", one of 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, ytd, max), `interval` (str, default="1d", one of 1d, 1wk, 1mo). |
+| `get_company_profile` | Get the company profile for a symbol. Parameters: `symbol` (str). |
+| `get_key_metrics` | Get key financial metrics for a symbol. Parameters: `symbol` (str). |
+| `get_financials` | Get financial statements. Parameters: `symbol` (str), `statement` (str, default="income", one of income, balance_sheet, cash_flow), `period` (str, default="annual", one of annual, quarterly, ttm), `limit` (int, default=4, capped at 20). |
+| `get_news` | Get recent news for a symbol. Parameters: `symbol` (str), `limit` (int, default=10, capped at 50). |
+| `get_analyst_recommendations` | Get analyst recommendations for a symbol. Parameters: `symbol` (str). |
+| `get_insider_trades` | Get insider trades. Parameters: `symbol` (str), `limit` (int, default=20, capped at 100). |
+| `get_earnings` | Get earnings history. Parameters: `symbol` (str), `limit` (int, default=8, capped at 40). |
+| `get_sec_filings` | Get SEC filings. Parameters: `symbol` (str), `form_type` (Optional[str]), `limit` (int, default=10, capped at 100). |
+
+Every tool returns JSON carrying a `provider` field, and each has an async variant registered under the same name, used automatically with `arun` and `aprint_response`. Invalid arguments are returned as JSON errors before any provider call.
+
+## Developer Resources
+
+- [Tools](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/tools/finance/toolkit.py)
+- [Cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/91_tools/finance)

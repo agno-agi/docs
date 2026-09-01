@@ -1,0 +1,78 @@
+---
+title: Serply
+description: "SerplyTools give an agent Google web, news, and scholar search results through the Serply API."
+---
+
+<Badge icon="code-branch" color="orange">
+    <Tooltip tip="Introduced in v3.0.2" cta="View release notes" href="https://github.com/agno-agi/agno/releases/tag/v3.0.2">v3.0.2</Tooltip>
+</Badge>
+
+**SerplyTools** enable an Agent to search Google web results, Google News, and Google Scholar through the [Serply](https://serply.io) API, returning results as JSON.
+
+## Prerequisites
+
+The following example requires the `requests` and `openai` libraries:
+
+```shell
+uv pip install -U requests openai
+```
+
+Set the `SERPLY_API_KEY` environment variable. Get your key at [serply.io](https://serply.io); the toolkit sends it as the `X-Api-Key` header.
+
+```shell
+export SERPLY_API_KEY=***
+```
+
+Without the key, construction logs a warning and every call returns a JSON error asking for it.
+
+## Example
+
+```python cookbook/91_tools/serply_tools.py
+from agno.agent import Agent
+from agno.tools.serply import SerplyTools
+
+agent = Agent(
+    tools=[SerplyTools()],
+    description="You are a web search agent that finds accurate, up-to-date information.",
+    instructions=[
+        "Use Serply to find the most relevant results for the user's query.",
+        "Summarize the top results clearly and cite the links.",
+    ],
+)
+
+agent.print_response(
+    "What are the latest developments in AI agents?",
+    markdown=True,
+    stream=True,
+)
+```
+
+## Toolkit Params
+
+| Parameter | Type | Default | Description |
+| --------- | ---- | ------- | ----------- |
+| `api_key` | `Optional[str]` | `None` | Serply API key. If not provided, uses the `SERPLY_API_KEY` env variable. |
+| `num_results` | `int` | `10` | Default number of results per search. A per-call `num_results` overrides it. |
+| `timeout` | `int` | `30` | Request timeout in seconds. |
+| `search_web` | `bool` | `True` | Enable the search_web function. |
+| `search_news` | `bool` | `False` | Enable the search_news function. |
+| `search_scholar` | `bool` | `False` | Enable the search_scholar function. |
+| `all` | `bool` | `False` | Enable all functions. |
+
+## Toolkit Functions
+
+| Function | Description |
+| -------- | ----------- |
+| `search_web` | Search Google web results. Parameters: `query` (str), `num_results` (Optional[int]). Returns JSON with `results` (position, title, link, description) and `related_searches`. |
+| `search_news` | Search Google News. Parameters: `query` (str), `num_results` (Optional[int]). Returns JSON with `news_results` (title, link, source, published). Serply returns the full news feed regardless of the count, so the toolkit trims it to `num_results`. |
+| `search_scholar` | Search Google Scholar for academic papers. Parameters: `query` (str), `num_results` (Optional[int]). Returns JSON with `scholar_results` (title, link, description, authors, citation count, and a PDF link when available). |
+
+Every failure — a missing key, an HTTP error, or an invalid response — is returned as a JSON error string, never raised.
+
+Serply serves about ten organic results per page for web search and does not stitch pages, so `num_results` above 10 still returns roughly 10 there; Scholar accepts up to 200. Each page costs one Serply credit, and rate limits depend on your Serply plan — see [Serply's docs](https://serply.io/docs).
+
+## Developer Resources
+
+- [Tools](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/tools/serply.py)
+- [Cookbook](https://github.com/agno-agi/agno/blob/main/cookbook/91_tools/serply_tools.py)
+- [Serply Docs](https://serply.io/docs)
