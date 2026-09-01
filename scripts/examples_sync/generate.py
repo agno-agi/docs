@@ -791,6 +791,9 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "02_agents/01_quickstart/agent_with_tools.py": {
         "suppress_intro": True,
     },
+    "02_agents/17_fallback_models/02_error_specific_fallbacks.py": {
+        "pre_code_warning": "The source says `on_error` handles any error. In v3.0.4, fallback routing catches `ModelProviderError` and uses `on_error` only for retryable provider failures. Ordinary client errors such as 400, 401, and 403 responses, plus non-provider exceptions, propagate without using this fallback.",
+    },
     "05_agent_os/12_scheduler/04_scheduler_tools_agent.py": {
         "intro_override": "Serve an AgentOS scheduler agent, then use a separate demo process to create and verify a recurring schedule.",
         "repo_layout": True,
@@ -1544,11 +1547,17 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "91_tools/mcp/pipedream_linkedin.py": {
         "intro_override": "The pinned source uses a retired Pipedream per-app SSE URL and cannot connect to the current service without code and authentication changes. See [Pipedream MCP](https://pipedream.com/docs/connect/mcp) for the current connection flows.",
     },
+    "91_tools/mcp/pipedream_google_calendar.py": {
+        "intro_override": "The source-fidelity example uses Pipedream's retired per-app SSE URL and cannot connect to the current service without code and authentication changes.",
+        "replacement_only": True,
+        "replacement_heading": "Current Status",
+        "run_replacement": "<Warning>\n  This pinned example cannot connect to the current Pipedream MCP service as written. End users should use Pipedream's OAuth-authenticated v2 setup. Application developers should use the authenticated v3 endpoint. See [Pipedream MCP for end users](https://pipedream.com/docs/connect/mcp/users) and [Develop with Pipedream MCP](https://pipedream.com/docs/connect/mcp/developers).\n</Warning>",
+    },
     "91_tools/mcp/pipedream_slack.py": {
         "intro_override": "The source-fidelity example uses Pipedream's retired per-app SSE URL and cannot connect to the current service without code and authentication changes.",
         "replacement_only": True,
         "replacement_heading": "Current Status",
-        "run_replacement": "<Warning>\n  This v2.7.2 example cannot connect to the current Pipedream MCP service as written. End users should use Pipedream's OAuth-authenticated v2 setup. Application developers should use the authenticated v3 endpoint. See [Pipedream MCP for end users](https://pipedream.com/docs/connect/mcp/users) and [Develop with Pipedream MCP](https://pipedream.com/docs/connect/mcp/developers).\n</Warning>",
+        "run_replacement": "<Warning>\n  This pinned example cannot connect to the current Pipedream MCP service as written. End users should use Pipedream's OAuth-authenticated v2 setup. Application developers should use the authenticated v3 endpoint. See [Pipedream MCP for end users](https://pipedream.com/docs/connect/mcp/users) and [Develop with Pipedream MCP](https://pipedream.com/docs/connect/mcp/developers).\n</Warning>",
     },
     "91_tools/async_generator_tool_with_pydantic_args.py": {
         "pre_code_warning": "The pinned source omits `stream_events=True`, so Agno discards the yielded custom progress events and both final assertions fail. Add the option before running.",
@@ -1979,7 +1988,8 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "pre_run_steps": [MCP_TOOLBOX_STEP],
     },
     "91_tools/mcp/airbnb.py": {
-        "intro_override": "Connect an OpenAI `gpt-4o` agent to the Airbnb MCP server over stdio and search property listings.",
+        "intro_override": "Connect an OpenAI `gpt-5.6-luna` agent to the Airbnb MCP server over stdio and search property listings.",
+        "pre_code_warning": "The pinned source docstring names Gemini 2.5 Pro and google-genai, but the executable code uses `OpenAIChat(id=\"gpt-5.6-luna\")`. Follow the generated OpenAI setup below.",
     },
     "91_tools/google/gmail/daily_digest.py": {
         "intro_override": "Group recent emails by category and record a priority for each message in a structured daily digest.",
@@ -3190,7 +3200,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "post_run_steps": [
             (
                 "Run Dojo",
-                "Follow the [AG-UI frontend setup](/agent-os/interfaces/ag-ui/introduction) to clone, build, and start Dojo. Configure its Agno endpoint for port `9001`, then use Dojo to execute the `generate_haiku` frontend tool.",
+                "Follow the [AG-UI frontend setup](/agent-os/interfaces/ag-ui/introduction) to clone, build, and start Dojo. Configure the Agno endpoint as `http://localhost:7777/tools/agui`, provide a request-scoped `change_background` frontend tool, then ask the agent to change the background.",
                 None,
             )
         ],

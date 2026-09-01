@@ -523,9 +523,12 @@ INVALID_MODEL_RETRY_SLUGS = {
 # to be caught by the fail-closed malformed-row detector.
 EXPLICIT_ROW_REFRESH = {
     "examples/tools/mcp/overview": {
+        "examples/tools/mcp/airbnb",
         "examples/tools/mcp/multiple-servers",
         "examples/tools/mcp/multiple-servers-allow-partial-failure",
+        "examples/tools/mcp/pipedream-google-calendar",
         "examples/tools/mcp/pipedream-linkedin",
+        "examples/tools/mcp/pipedream-slack",
         "examples/tools/mcp/sse-transport/overview",
         "examples/tools/mcp/streamable-http-transport/overview",
     },
@@ -536,6 +539,9 @@ EXPLICIT_ROW_REFRESH = {
         "examples/agent-os/advanced-demo/demo",
         "examples/agent-os/advanced-demo/reasoning-demo",
         "examples/agent-os/advanced-demo/reasoning-model",
+    },
+    "examples/agent-os/client/overview": {
+        "examples/agent-os/client/knowledge-search",
     },
     "examples/agent-os/client-a2a/servers/overview": {
         "examples/agent-os/client-a2a/servers/agno-server",
@@ -563,6 +569,9 @@ EXPLICIT_ROW_REFRESH = {
         "examples/agent-os/background-tasks/background-hooks-team",
         "examples/agent-os/background-tasks/background-hooks-workflow",
         "examples/agent-os/background-tasks/evals-demo",
+    },
+    "examples/agent-os/interfaces/agui/overview": {
+        "examples/agent-os/interfaces/agui/tool-based-generative-ui",
     },
     "examples/agent-os/interfaces/slack/overview": {
         "examples/agent-os/interfaces/slack/basic",
@@ -809,6 +818,7 @@ EXPLICIT_ROW_REFRESH = {
         "examples/models/ollama/responses/structured-output",
     },
     "examples/models/openai/responses/overview": {
+        "examples/models/openai/responses/basic",
         "examples/models/openai/responses/db",
         "examples/models/openai/responses/image-generation-agent",
         "examples/models/openai/responses/tool-use",
