@@ -1,17 +1,13 @@
 ---
 title: Multiple MCP Servers
-description: Connect an Agent to multiple MCP servers with separate MCPTools instances or MultiMCPTools.
+description: Connect an Agent to multiple MCP servers with one MCPTools instance per server.
 ---
 
-Agno's MCP integration supports connecting an Agent to multiple MCP servers at once.
+Agno's MCP integration supports connecting an Agent to multiple MCP servers at once: create one `MCPTools` instance per server and pass them all to the Agent.
 
-There are two approaches to this:
-1. Using multiple `MCPTools` instances
-2. Using a single `MultiMCPTools` instance
-
-<Note>
-`MultiMCPTools` is deprecated and will be removed in a future version. Use multiple `MCPTools` instances instead.
-</Note>
+<Warning>
+`MultiMCPTools` was removed in Agno v3.0. Importing it raises an `ImportError`; use one `MCPTools` instance per server, as below. Note that `env=` is per-instance — pass it to the server that needs it.
+</Warning>
 
 ## Prerequisites
 
@@ -30,11 +26,10 @@ Export the keys used by the examples you run:
 ```bash
 export OPENAI_API_KEY="your_openai_api_key_here"
 export GOOGLE_MAPS_API_KEY="your_google_maps_api_key_here"
-export BRAVE_API_KEY="your_brave_api_key_here"
 ```
 
 <Warning>
-The `@modelcontextprotocol/server-google-maps` and `@modelcontextprotocol/server-brave-search` npm packages are deprecated and no longer supported. The snippets below document these legacy servers. Use maintained MCP servers for new projects.
+The `@modelcontextprotocol/server-google-maps` npm package is deprecated and no longer supported. The snippets below document this legacy server. Use maintained MCP servers for new projects.
 </Warning>
 
 ## Using multiple `MCPTools` instances
@@ -87,115 +82,17 @@ if __name__ == "__main__":
     )
 ```
 
-## Using a single `MultiMCPTools` instance
+## Handling Connection Failures
 
-```python multiple_mcp_servers.py
-import asyncio
-import os
-from datetime import date, timedelta
-
-from agno.agent import Agent
-from agno.tools.mcp import MultiMCPTools
-
-
-async def run_agent(message: str) -> None:
-    """Run the Airbnb and Google Maps agent with the given message."""
-
-    env = {
-        **os.environ,
-        "GOOGLE_MAPS_API_KEY": os.getenv("GOOGLE_MAPS_API_KEY"),
-    }
-
-    # Initialize and connect to multiple MCP servers
-    mcp_tools = MultiMCPTools(
-        commands=[
-            "npx -y @openbnb/mcp-server-airbnb --ignore-robots-txt",
-            "npx -y @modelcontextprotocol/server-google-maps",
-        ],
-        env=env,
-    )
-    await mcp_tools.connect()
-
-    try:
-        agent = Agent(
-            tools=[mcp_tools],
-            markdown=True,
-        )
-
-        await agent.aprint_response(message, stream=True)
-    finally:
-        # Always close the connection when done
-        await mcp_tools.close()
-
-
-# Example usage
-if __name__ == "__main__":
-    check_in = date.today() + timedelta(days=30)
-    check_out = check_in + timedelta(days=3)
-    # Pull request example
-    asyncio.run(
-        run_agent(
-            f"What listings are available in Cape Town for 2 people "
-            f"from {check_in.isoformat()} to {check_out.isoformat()}?"
-        )
-    )
-```
-
-### Allowing partial failures with `MultiMCPTools`
-
-If you are connecting to multiple MCP servers using the `MultiMCPTools` class, an error will be raised by default if connection to any MCP server fails.
-
-If you want to avoid raising in that case, you can set the `allow_partial_failure` parameter to `True`.
-
-This is useful if you are connecting to MCP servers that are not always available, and don't want to exit your program if one of the servers is not available.
+`connect()` does not raise when a server is unreachable: it logs the error and leaves the instance uninitialized, so the Agent can still run with the servers that did connect. To fail fast when a server is required, check `initialized` after connecting:
 
 ```python
-import asyncio
-from datetime import date
-from os import getenv
-
-from agno.agent import Agent
-from agno.tools.mcp import MultiMCPTools
-
-
-async def run_agent(message: str) -> None:
-    # Initialize the MCP tools
-    mcp_tools = MultiMCPTools(
-        [
-            "npx -y @openbnb/mcp-server-airbnb --ignore-robots-txt",
-            "npx -y @modelcontextprotocol/server-brave-search",
-        ],
-        env={
-            "BRAVE_API_KEY": getenv("BRAVE_API_KEY"),
-        },
-        timeout_seconds=30,
-        # Set the allow_partial_failure to True to allow for partial failure connecting to the MCP servers
-        allow_partial_failure=True,
-    )
-
-    # Connect to the MCP servers
-    await mcp_tools.connect()
-
-    # Use the MCP tools with an Agent
-    agent = Agent(
-        tools=[mcp_tools],
-        markdown=True,
-    )
-    await agent.aprint_response(message)
-
-    # Close the MCP connection
-    await mcp_tools.close()
-
-
-# Example usage
-if __name__ == "__main__":
-    asyncio.run(
-        run_agent(
-            f"What listings are available in Barcelona on {date.today().isoformat()}?"
-        )
-    )
-    asyncio.run(run_agent("What's the fastest way to get to Barcelona from London?"))
+await airbnb_tools.connect()
+if not airbnb_tools.initialized:
+    raise RuntimeError("Airbnb MCP server is unavailable")
 ```
+
+Using `async with MCPTools(...)` as a context manager instead raises on connection failure.
 
 ## Avoiding tool name collisions
 

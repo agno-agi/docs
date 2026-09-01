@@ -64,6 +64,10 @@ The major changes are:
 
 <Accordion title="Vector database changes">
   - `LanceDb`: `use_tantivy` is removed; passing it now raises a `TypeError`.
+  - The Redis vector store is renamed `RedisDB` -> `RedisDb`; the old spelling
+    keeps working as a deprecated alias, with no warning emitted.
+    `RedisVectorDb` is also exported, to disambiguate from the
+    `agno.db.redis.RedisDb` storage adapter.
   - On schema-based stores, searching a pre-v3 vector table with a `user_id`
     raises a `ValueError` directing you to the vector database migration,
     instead of silently returning empty results. Schemaless stores (Qdrant,
@@ -179,7 +183,11 @@ The major changes are:
 <Accordion title="Toolkit updates">
   - `MCPToolbox`: `auth_tokens` and `auth_headers` removed. Use
     `auth_token_getters`.
-  - Toolkits have an `id`, used by AgentOS to reference tools stably.
+  - Toolkits have a stable `id`, derived from `name` when not passed
+    (lower-cased, spaces and underscores replaced by hyphens). It is reserved
+    for future use: in v3.0 nothing reads it except `repr()`. Because `id` is
+    the second positional argument, positional `tools` no longer works — pass
+    `tools=` by keyword.
 </Accordion>
 
 <Accordion title="Workspace refuses credential files by default">
@@ -292,6 +300,16 @@ The major changes are:
 <Accordion title="Default model updates">
   - `Cerebras` and `CerebrasOpenAI` default to `gpt-oss-120b`, replacing
     `llama-4-scout-17b-16e-instruct`.
+  - `Groq` defaults to `openai/gpt-oss-120b`, replacing
+    `llama-3.3-70b-versatile`, which Groq shut down on 2026-08-16 for free and
+    developer-tier keys. The old id now returns a 404 from Groq.
+  - `Gemini` defaults to `gemini-3.7-flash` (was `gemini-3.5-flash`), and
+    `GeminiInteractions` defaults to `gemini-3.7-flash` (was
+    `gemini-3-flash-preview`). Pin the old id explicitly if you depend on it.
+  - Claude models work with `anthropic` 1.0.0: structured output is sent
+    through `output_config`, and `temperature`/`top_p`/`top_k` travel in
+    `extra_body`. `agno[anthropic]` now requires `anthropic>=0.77.0`, the
+    first SDK release with `output_config`; raise your own pin if you set one.
   - OpenAI `reasoning_effort`, `reasoning_summary`, `service_tier` and
     `verbosity` accept the full set of API values (including `none`, `xhigh`,
     `max`, `scale`, `fast`, `ultrafast`) and any future string. This widens the
