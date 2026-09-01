@@ -271,6 +271,80 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         "Non-admin callers must provide `session_id`."
     )
 
+    list_agent_checkpoints = spec["paths"]["/agents/{agent_id}/runs/{run_id}/checkpoints"]["get"]
+    assert list_agent_checkpoints["operationId"] == "list_agent_run_checkpoints"
+    checkpoint_success = list_agent_checkpoints["responses"]["200"]
+    assert checkpoint_success["description"] == "Run checkpoints retrieved successfully"
+    assert checkpoint_success["content"]["application/json"]["schema"] == {}
+    checkpoint_success["content"]["application/json"]["schema"] = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["run_id", "session_id", "checkpoints"],
+        "properties": {
+            "run_id": {"type": "string"},
+            "session_id": {"type": "string"},
+            "checkpoints": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": [
+                        "checkpoint_id",
+                        "run_id",
+                        "session_id",
+                        "message_index",
+                        "continue_from",
+                        "status",
+                        "reason",
+                        "created_at",
+                        "message_id",
+                        "message_role",
+                        "message_preview",
+                        "is_latest",
+                    ],
+                    "properties": {
+                        "checkpoint_id": {"type": "string"},
+                        "run_id": {"type": ["string", "null"]},
+                        "session_id": {"type": ["string", "null"]},
+                        "message_index": {"type": "integer", "minimum": 0},
+                        "continue_from": {"type": "integer", "minimum": 0},
+                        "status": {"type": ["string", "null"]},
+                        "reason": {"type": "string", "enum": ["checkpoint", "end"]},
+                        "created_at": {"type": ["integer", "null"]},
+                        "message_id": {"type": ["string", "null"]},
+                        "message_role": {"type": ["string", "null"]},
+                        "message_preview": {"type": ["string", "null"], "maxLength": 120},
+                        "is_latest": {"type": "boolean"},
+                    },
+                },
+            },
+        },
+    }
+
+    continue_team_run = spec["paths"]["/teams/{team_id}/runs/{run_id}/continue"]["post"]
+    assert continue_team_run["operationId"] == "continue_team_run"
+    assert "202" not in continue_team_run["responses"]
+    continue_team_run["responses"]["202"] = {
+        "description": "Durable background continuation accepted",
+        "content": {
+            "application/json": {
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["run_id", "session_id", "status"],
+                    "properties": {
+                        "run_id": {"type": "string"},
+                        "session_id": {"type": "string"},
+                        "status": {"type": "string", "enum": ["PENDING"]},
+                    },
+                }
+            }
+        },
+    }
+    NOTES.append(
+        "runtime response schemas: Agent checkpoint envelope and durable Team continuation acceptance"
+    )
+
     component_config = spec["paths"]["/components/{component_id}/configs/{version}"]["get"]
     assert component_config["operationId"] == "get_config"
     component_config["operationId"] = "get_component_config"
