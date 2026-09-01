@@ -1849,7 +1849,27 @@ paths:
           description: Run output retrieved successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/TeamRunSchema'
+                  - type: object
+                    additionalProperties: false
+                    required:
+                      - run_id
+                      - session_id
+                      - status
+                    properties:
+                      run_id:
+                        type: string
+                      session_id:
+                        type: string
+                      status:
+                        type: string
+                        enum: *id001
+                      content:
+                        type:
+                          - string
+                          - 'null'
         '400':
           description: Bad Request
           content:
@@ -1881,7 +1901,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
         '403':
-          description: 'Insufficient permissions. Required scope(s): teams:read'
+          description: Insufficient permissions. Requires teams:read and run access to the requested team
   /teams/{team_id}/runs/{run_id}/checkpoints:
     get:
       tags:
@@ -2197,11 +2217,12 @@ paths:
           description: Workflow executed successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/WorkflowRunSchema'
             text/event-stream:
               example: |+
-                event: RunStarted
-                data: {"content": "Hello!", "run_id": "123..."}
+                event: WorkflowStarted
+                data: {"event": "WorkflowStarted", "workflow_id": "workflow-123", "session_id": "session-123", "run_id": "run-123", "nested_depth": 0, "created_at": 1770000000}
 
         '400':
           description: Invalid input data or workflow configuration
@@ -2233,6 +2254,29 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '202':
+          description: Workflow accepted for background execution
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - run_id
+                  - session_id
+                  - status
+                properties:
+                  run_id:
+                    type: string
+                  session_id:
+                    type: string
+                  status:
+                    type: string
+                    enum: *id001
+        '409':
+          description: The idempotency key conflicts with an incompatible or unrecoverable run
+        '429':
+          description: The durable workflow queue is full
         '403':
           description: 'Insufficient permissions. Required scope(s): workflows:run'
     get:
@@ -2619,13 +2663,7 @@ paths:
                         type: string
                       status:
                         type: string
-                        enum:
-                          - PENDING
-                          - RUNNING
-                          - PAUSED
-                          - COMPLETED
-                          - ERROR
-                          - CANCELLED
+                        enum: *id001
                       content:
                         type:
                           - string
@@ -3296,15 +3334,53 @@ paths:
           description: Successful Response
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/SendMessageSuccessResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '400':
+          description: Missing task ID, unsupported RemoteAgent, or missing context ID
+        '404':
+          description: Agent or task not found
+        '501':
+          description: Task retrieval is not supported for this agent type
         '403':
           description: 'Insufficient permissions. Required scope(s): agents:read'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              required:
+                - params
+              properties:
+                id:
+                  type:
+                    - string
+                    - integer
+                    - 'null'
+                params:
+                  type: object
+                  additionalProperties: true
+                  required:
+                    - id
+                    - contextId
+                  properties:
+                    id:
+                      type: string
+                    contextId:
+                      type: string
+            example:
+              id: request-1
+              params:
+                id: task-1
+                contextId: context-1
       security:
         - {}
         - HTTPBearer: []
@@ -6449,6 +6525,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '501':
+          description: Learning deletion is not supported by the selected remote or configured database
         '403':
           description: 'Insufficient permissions. Required scope(s): learnings:delete'
   /learnings/{learning_id}:
@@ -6683,6 +6761,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '501':
+          description: Learning deletion is not supported by the selected remote or configured database
         '403':
           description: 'Insufficient permissions. Required scope(s): learnings:delete'
   /eval-runs:
@@ -8214,7 +8294,7 @@ paths:
       tags:
         - Knowledge
       summary: Refresh Content
-      description: Re-ingest a URL-sourced content row from its source. For a site row this refreshes changed pages, retries failed ones, and removes pages that left the site.
+      description: Re-ingest a URL- or path-sourced content row from its source. For a site row this refreshes changed pages, retries failed ones, and removes pages that left the site.
       operationId: refresh_content
       security:
         - {}
@@ -8256,7 +8336,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ContentResponseSchema'
         '400':
-          description: Content has no source URL
+          description: Content has no recorded URL or path, its row ID cannot be matched to that source, or no URL reader can be determined
           content:
             application/json:
               schema:
@@ -8909,6 +8989,8 @@ paths:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
         '503':
           description: No knowledge base is configured on this AgentOS
+        '501':
+          description: Source listing is not supported for remote knowledge
         '403':
           description: 'Insufficient permissions. Required scope(s): knowledge:read'
   /knowledge/{knowledge_id}/sources/{source_id}/files:

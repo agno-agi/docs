@@ -2732,7 +2732,48 @@
             "description": "Run output retrieved successfully",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TeamRunSchema"
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "run_id",
+                        "session_id",
+                        "status"
+                      ],
+                      "properties": {
+                        "run_id": {
+                          "type": "string"
+                        },
+                        "session_id": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "PENDING",
+                            "RUNNING",
+                            "COMPLETED",
+                            "PAUSED",
+                            "CANCELLED",
+                            "ERROR",
+                            "REGENERATED"
+                          ]
+                        },
+                        "content": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
               }
             }
           },
@@ -2787,7 +2828,7 @@
             }
           },
           "403": {
-            "description": "Insufficient permissions. Required scope(s): teams:read"
+            "description": "Insufficient permissions. Requires teams:read and run access to the requested team"
           }
         }
       }
@@ -3270,10 +3311,12 @@
             "description": "Workflow executed successfully",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRunSchema"
+                }
               },
               "text/event-stream": {
-                "example": "event: RunStarted\ndata: {\"content\": \"Hello!\", \"run_id\": \"123...\"}\n\n"
+                "example": "event: WorkflowStarted\ndata: {\"event\": \"WorkflowStarted\", \"workflow_id\": \"workflow-123\", \"session_id\": \"session-123\", \"run_id\": \"run-123\", \"nested_depth\": 0, \"created_at\": 1770000000}\n\n"
               }
             }
           },
@@ -3326,6 +3369,48 @@
                 }
               }
             }
+          },
+          "202": {
+            "description": "Workflow accepted for background execution",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "run_id",
+                    "session_id",
+                    "status"
+                  ],
+                  "properties": {
+                    "run_id": {
+                      "type": "string"
+                    },
+                    "session_id": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "PENDING",
+                        "RUNNING",
+                        "COMPLETED",
+                        "PAUSED",
+                        "CANCELLED",
+                        "ERROR",
+                        "REGENERATED"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The idempotency key conflicts with an incompatible or unrecoverable run"
+          },
+          "429": {
+            "description": "The durable workflow queue is full"
           },
           "403": {
             "description": "Insufficient permissions. Required scope(s): workflows:run"
@@ -3912,10 +3997,11 @@
                           "enum": [
                             "PENDING",
                             "RUNNING",
-                            "PAUSED",
                             "COMPLETED",
+                            "PAUSED",
+                            "CANCELLED",
                             "ERROR",
-                            "CANCELLED"
+                            "REGENERATED"
                           ]
                         },
                         "content": {
@@ -4956,7 +5042,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SendMessageSuccessResponse"
+                }
               }
             }
           },
@@ -4970,8 +5058,63 @@
               }
             }
           },
+          "400": {
+            "description": "Missing task ID, unsupported RemoteAgent, or missing context ID"
+          },
+          "404": {
+            "description": "Agent or task not found"
+          },
+          "501": {
+            "description": "Task retrieval is not supported for this agent type"
+          },
           "403": {
             "description": "Insufficient permissions. Required scope(s): agents:read"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "required": [
+                  "params"
+                ],
+                "properties": {
+                  "id": {
+                    "type": [
+                      "string",
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "params": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "required": [
+                      "id",
+                      "contextId"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "contextId": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              },
+              "example": {
+                "id": "request-1",
+                "params": {
+                  "id": "task-1",
+                  "contextId": "context-1"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -10067,6 +10210,9 @@
               }
             }
           },
+          "501": {
+            "description": "Learning deletion is not supported by the selected remote or configured database"
+          },
           "403": {
             "description": "Insufficient permissions. Required scope(s): learnings:delete"
           }
@@ -10455,6 +10601,9 @@
                 }
               }
             }
+          },
+          "501": {
+            "description": "Learning deletion is not supported by the selected remote or configured database"
           },
           "403": {
             "description": "Insufficient permissions. Required scope(s): learnings:delete"
@@ -12979,7 +13128,7 @@
           "Knowledge"
         ],
         "summary": "Refresh Content",
-        "description": "Re-ingest a URL-sourced content row from its source. For a site row this refreshes changed pages, retries failed ones, and removes pages that left the site.",
+        "description": "Re-ingest a URL- or path-sourced content row from its source. For a site row this refreshes changed pages, retries failed ones, and removes pages that left the site.",
         "operationId": "refresh_content",
         "security": [
           {},
@@ -13048,7 +13197,7 @@
             }
           },
           "400": {
-            "description": "Content has no source URL",
+            "description": "Content has no recorded URL or path, its row ID cannot be matched to that source, or no URL reader can be determined",
             "content": {
               "application/json": {
                 "schema": {
@@ -14019,6 +14168,9 @@
           },
           "503": {
             "description": "No knowledge base is configured on this AgentOS"
+          },
+          "501": {
+            "description": "Source listing is not supported for remote knowledge"
           },
           "403": {
             "description": "Insufficient permissions. Required scope(s): knowledge:read"

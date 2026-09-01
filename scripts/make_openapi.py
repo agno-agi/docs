@@ -597,14 +597,7 @@ def apply_runtime_description_enrichments(spec: dict, interfaces: list) -> dict:
                     "session_id": {"type": "string"},
                     "status": {
                         "type": "string",
-                        "enum": [
-                            "PENDING",
-                            "RUNNING",
-                            "PAUSED",
-                            "COMPLETED",
-                            "ERROR",
-                            "CANCELLED",
-                        ],
+                        "enum": status_values,
                     },
                     "content": {"type": ["string", "null"]},
                 },
@@ -613,6 +606,88 @@ def apply_runtime_description_enrichments(spec: dict, interfaces: list) -> dict:
     }
     NOTES.append(
         "runtime Workflow run polling schema: persisted WorkflowRunSchema or durable queue ticket"
+    )
+
+    create_workflow_run = spec["paths"]["/workflows/{workflow_id}/runs"]["post"]
+    assert create_workflow_run["operationId"] == "create_workflow_run"
+    create_workflow_success = create_workflow_run["responses"]["200"]
+    assert create_workflow_success["description"] == "Workflow executed successfully"
+    assert create_workflow_success["content"]["application/json"]["schema"] == {}
+    create_workflow_success["content"]["application/json"]["schema"] = {
+        "$ref": "#/components/schemas/WorkflowRunSchema"
+    }
+    workflow_stream = create_workflow_success["content"]["text/event-stream"]
+    assert workflow_stream["example"] == (
+        'event: RunStarted\ndata: {"content": "Hello!", "run_id": "123..."}\n\n'
+    )
+    workflow_stream["example"] = (
+        'event: WorkflowStarted\ndata: {"event": "WorkflowStarted", '
+        '"workflow_id": "workflow-123", "session_id": "session-123", '
+        '"run_id": "run-123", "nested_depth": 0, "created_at": 1770000000}\n\n'
+    )
+    assert "202" not in create_workflow_run["responses"]
+    create_workflow_run["responses"]["202"] = {
+        "description": "Workflow accepted for background execution",
+        "content": {
+            "application/json": {
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["run_id", "session_id", "status"],
+                    "properties": {
+                        "run_id": {"type": "string"},
+                        "session_id": {"type": "string"},
+                        "status": {
+                            "type": "string",
+                            "enum": status_values,
+                        },
+                    },
+                }
+            }
+        },
+    }
+    for status, description in {
+        "409": "The idempotency key conflicts with an incompatible or unrecoverable run",
+        "429": "The durable workflow queue is full",
+    }.items():
+        assert status not in create_workflow_run["responses"]
+        create_workflow_run["responses"][status] = {"description": description}
+    NOTES.append(
+        "runtime Workflow execution responses: typed output, background ticket, and WorkflowStarted SSE event"
+    )
+
+    get_team_run = spec["paths"]["/teams/{team_id}/runs/{run_id}"]["get"]
+    assert get_team_run["operationId"] == "get_team_run"
+    get_team_run_success = get_team_run["responses"]["200"]
+    assert get_team_run_success["description"] == "Run output retrieved successfully"
+    assert get_team_run_success["content"]["application/json"]["schema"] == {}
+    get_team_run_success["content"]["application/json"]["schema"] = {
+        "anyOf": [
+            {"$ref": "#/components/schemas/TeamRunSchema"},
+            {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["run_id", "session_id", "status"],
+                "properties": {
+                    "run_id": {"type": "string"},
+                    "session_id": {"type": "string"},
+                    "status": {
+                        "type": "string",
+                        "enum": status_values,
+                    },
+                    "content": {"type": ["string", "null"]},
+                },
+            },
+        ]
+    }
+    assert "403" not in get_team_run["responses"]
+    get_team_run["responses"]["403"] = {
+        "description": (
+            "Insufficient permissions. Requires teams:read and run access to the requested team"
+        )
+    }
+    NOTES.append(
+        "runtime Team run polling: typed persisted output or queue ticket and resource-access requirement"
     )
 
     get_teams = spec["paths"]["/teams"]["get"]
@@ -749,6 +824,57 @@ def apply_runtime_description_enrichments(spec: dict, interfaces: list) -> dict:
                 "$ref": "#/components/schemas/AgentCard"
             }
             operation["responses"]["404"] = {"description": f"{kind} not found"}
+
+        get_agent_task = spec["paths"]["/a2a/agents/{id}/v1/tasks:get"]["post"]
+        assert get_agent_task["operationId"] == "get_agent_task"
+        assert "requestBody" not in get_agent_task
+        get_agent_task_success = get_agent_task["responses"]["200"]
+        assert get_agent_task_success["content"]["application/json"]["schema"] == {}
+        for status in ("400", "404", "501"):
+            assert status not in get_agent_task["responses"]
+        get_agent_task["requestBody"] = {
+            "required": True,
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "additionalProperties": True,
+                        "required": ["params"],
+                        "properties": {
+                            "id": {"type": ["string", "integer", "null"]},
+                            "params": {
+                                "type": "object",
+                                "additionalProperties": True,
+                                "required": ["id", "contextId"],
+                                "properties": {
+                                    "id": {"type": "string"},
+                                    "contextId": {"type": "string"},
+                                },
+                            },
+                        },
+                    },
+                    "example": {
+                        "id": "request-1",
+                        "params": {"id": "task-1", "contextId": "context-1"},
+                    },
+                }
+            },
+        }
+        get_agent_task_success["content"]["application/json"]["schema"] = {
+            "$ref": "#/components/schemas/SendMessageSuccessResponse"
+        }
+        get_agent_task["responses"]["400"] = {
+            "description": "Missing task ID, unsupported RemoteAgent, or missing context ID"
+        }
+        get_agent_task["responses"]["404"] = {
+            "description": "Agent or task not found"
+        }
+        get_agent_task["responses"]["501"] = {
+            "description": "Task retrieval is not supported for this agent type"
+        }
+        NOTES.append(
+            "A2A agent task retrieval: JSON-RPC request, typed success response, and runtime errors"
+        )
 
         stream_operations = [
             spec["paths"]["/a2a/agents/{id}/v1/message:stream"]["post"],
@@ -1010,6 +1136,21 @@ def apply_runtime_description_enrichments(spec: dict, interfaces: list) -> dict:
         )
     }
 
+    delete_learning_user = spec["paths"]["/learnings/users/{user_id}"]["delete"]
+    assert delete_learning_user["operationId"] == "delete_learning_user"
+    assert "501" not in delete_learning_user["responses"]
+    delete_learning_user["responses"]["501"] = {
+        "description": "Learning deletion is not supported by the selected remote or configured database"
+    }
+
+    delete_learning = spec["paths"]["/learnings/{learning_id}"]["delete"]
+    assert delete_learning["operationId"] == "delete_learning"
+    assert "501" not in delete_learning["responses"]
+    delete_learning["responses"]["501"] = {
+        "description": "Learning deletion is not supported by the selected remote or configured database"
+    }
+    NOTES.append("learning deletion: document unsupported remote and database responses")
+
     user_memory_stats = spec["paths"]["/user_memory_stats"]["get"]
     assert user_memory_stats["operationId"] == "get_user_memory_stats"
     user_memory_stats_media = user_memory_stats["responses"]["200"]["content"]["application/json"]
@@ -1132,6 +1273,24 @@ def apply_runtime_description_enrichments(spec: dict, interfaces: list) -> dict:
     NOTES.append("knowledge upload: document the runtime knowledge-selector 400 response")
 
     refresh_content = spec["paths"]["/knowledge/content/{content_id}/refresh"]["post"]
+    assert refresh_content["operationId"] == "refresh_content"
+    assert refresh_content["description"] == (
+        "Re-ingest a URL-sourced content row from its source. For a site row this refreshes "
+        "changed pages, retries failed ones, and removes pages that left the site."
+    )
+    refresh_content["description"] = (
+        "Re-ingest a URL- or path-sourced content row from its source. For a site row this "
+        "refreshes changed pages, retries failed ones, and removes pages that left the site."
+    )
+    refresh_bad_request = refresh_content["responses"]["400"]
+    assert refresh_bad_request["description"] == "Content has no source URL"
+    assert refresh_bad_request["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/BadRequestResponse"
+    }
+    refresh_bad_request["description"] = (
+        "Content has no recorded URL or path, its row ID cannot be matched to that source, "
+        "or no URL reader can be determined"
+    )
     assert "403" not in refresh_content["responses"]
     assert "501" not in refresh_content["responses"]
     refresh_content["responses"]["403"] = {
@@ -1140,6 +1299,16 @@ def apply_runtime_description_enrichments(spec: dict, interfaces: list) -> dict:
     refresh_content["responses"]["501"] = {
         "description": "Refresh is not supported for remote knowledge"
     }
+
+    list_content_sources = spec["paths"]["/knowledge/{knowledge_id}/sources"]["get"]
+    assert list_content_sources["operationId"] == "list_content_sources"
+    assert "501" not in list_content_sources["responses"]
+    list_content_sources["responses"]["501"] = {
+        "description": "Source listing is not supported for remote knowledge"
+    }
+    NOTES.append(
+        "knowledge refresh and source listing: path-source validation and remote unsupported responses"
+    )
 
     queue_operations = [
         spec["paths"]["/queue/jobs"]["get"],

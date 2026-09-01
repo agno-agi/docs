@@ -99,6 +99,7 @@ DESCRIPTION_OVERRIDES = {
     "examples/agent-os/rbac/symmetric/overview": "HS256 AgentOS RBAC examples for scopes, custom mappings, and user isolation.",
     "examples/agent-os/remote/overview": "Connect AgentOS to remote agents, teams, workflows, A2A endpoints, and gateway instances.",
     "examples/agent-os/skills/overview": "Load local skills into an AgentOS agent, including sample system-information scripts.",
+    "examples/agent-os/tracing/overview": "OpenTelemetry tracing for AgentOS agents, teams, and workflows, including filtering, metrics, trace trees, and ClickHouse storage.",
     "examples/agent-os/tracing/dbs/overview": "Route AgentOS traces to a dedicated ClickHouse database.",
     "examples/tools/mcp/overview": "MCPTools examples for local, hosted, authenticated, and multi-server MCP connections.",
     "examples/tools/mcp/sse-transport/overview": "Connect agents to SSE MCP servers with MCPTools.",
@@ -275,7 +276,13 @@ EXPLICIT_MISSING_ROWS = {
         "examples/agent-os/remote/servers/agentos-server",
     ],
     "examples/agent-os/scheduler/overview": ["examples/agent-os/scheduler/scheduler-tools-agent"],
-    "examples/agent-os/tracing/overview": ["examples/agent-os/tracing/advanced-trace-filtering"],
+    "examples/agent-os/tracing/overview": [
+        "examples/agent-os/observability/basic",
+        "examples/agent-os/observability/filtering",
+        "examples/agent-os/observability/metrics",
+        "examples/agent-os/observability/read-traces",
+        "examples/agent-os/observability/traces-to-clickhouse",
+    ],
     "examples/agent-os/tracing/dbs/overview": [
         "examples/agent-os/observability/traces-to-clickhouse"
     ],
@@ -719,6 +726,7 @@ EXPLICIT_ROW_REFRESH = {
         "examples/agent-os/basic",
         "examples/agent-os/demo",
         "examples/agent-os/rbac/overview",
+        "examples/agent-os/tracing/overview",
     },
     "examples/agent-os/background-tasks/overview": {
         "examples/agent-os/background-tasks/background-hooks-decorator",
@@ -1091,6 +1099,10 @@ EXPLICIT_ROW_REFRESH = {
     },
 }
 
+EXPLICIT_ROW_REMOVALS.setdefault("examples/agent-os/tracing/overview", set()).add(
+    "examples/agent-os/tracing/dbs/overview"
+)
+
 for _retry_slug in INVALID_MODEL_RETRY_SLUGS:
     _retry_overview = f"{_retry_slug.rsplit('/', 1)[0]}/overview"
     EXPLICIT_ROW_REFRESH.setdefault(_retry_overview, set()).add(_retry_slug)
@@ -1208,6 +1220,13 @@ EXPLICIT_TABLE_ORDER = {
         "examples/teams/tools/message-history-in-tool-hooks",
         "examples/teams/tools/tool-call-limit",
         "examples/teams/tools/tool-choice",
+    ],
+    "examples/agent-os/tracing/overview": [
+        "examples/agent-os/observability/basic",
+        "examples/agent-os/observability/filtering",
+        "examples/agent-os/observability/metrics",
+        "examples/agent-os/observability/read-traces",
+        "examples/agent-os/observability/traces-to-clickhouse",
     ],
 }
 
