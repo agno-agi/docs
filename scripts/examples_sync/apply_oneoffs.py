@@ -281,6 +281,9 @@ EXPLICIT_MISSING_ROWS = {
         "examples/agents/advanced/interchange-model/openai-claude",
         "examples/agents/advanced/interchange-model/openai-gemini",
         "examples/agents/advanced/metrics",
+        "examples/agents/advanced/background-execution-concurrency",
+        "examples/agents/advanced/background-streaming-resume",
+        "examples/agents/advanced/redis-event-stream-resume",
     ],
     "examples/agents/guardrails/overview": ["examples/agents/guardrails/mixed-hooks"],
     "examples/agents/hooks/overview": [
@@ -1081,10 +1084,14 @@ EXPLICIT_LABEL_REFRESH = {
     "examples/tools/slack-tools",
 }
 
-# These two tables were explicitly reviewed as ordered subsets rather than
+# These tables were explicitly reviewed as ordered subsets rather than
 # append-only indexes. Rebuild only their row order, using current target
 # frontmatter for the rows that the audit marked stale or missing.
 EXPLICIT_TABLE_ORDER = {
+    "examples/tools/mcp/streamable-http-transport/overview": [
+        "examples/tools/mcp/streamable-http-transport/server",
+        "examples/tools/mcp/streamable-http-transport/client",
+    ],
     "examples/teams/modes/tasks/overview": [
         "examples/teams/modes/tasks/basic",
         "examples/teams/modes/tasks/dependencies",

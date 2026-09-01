@@ -843,6 +843,85 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         "description": "The configured database does not support approval operations"
     }
 
+    delete_approval = spec["paths"]["/approvals/{approval_id}"]["delete"]
+    assert (
+        delete_approval["operationId"]
+        == "delete_approval_approvals__approval_id__delete"
+    )
+    assert delete_approval.get("description") is None
+    delete_approval["description"] = (
+        "Delete an approval audit record. Scoped non-admin callers receive 404 so approval "
+        "existence is not disclosed."
+    )
+    for status in ("401", "403", "404", "500", "503"):
+        assert status not in delete_approval["responses"]
+    delete_approval["responses"]["401"] = {
+        "description": "Authentication is required by the configured AgentOS security policy"
+    }
+    delete_approval["responses"]["403"] = {
+        "description": "The caller lacks the approvals:delete scope or a required isolated user ID"
+    }
+    delete_approval["responses"]["404"] = {
+        "description": (
+            "Approval deletion is unavailable to a scoped non-admin caller"
+        )
+    }
+    delete_approval["responses"]["500"] = {
+        "description": "The configured database reported that the approval was not deleted"
+    }
+    delete_approval["responses"]["503"] = {
+        "description": "The configured database does not support approval operations"
+    }
+
+    list_service_accounts = spec["paths"]["/service-accounts"]["get"]
+    assert list_service_accounts["operationId"] == "list_service_accounts_service_accounts_get"
+    assert "503" not in list_service_accounts["responses"]
+    list_service_accounts["responses"]["503"] = {
+        "description": "The configured database does not support service account operations"
+    }
+
+    list_learnings = spec["paths"]["/learnings"]["get"]
+    assert list_learnings["operationId"] == "list_learnings"
+    for status in ("403", "501"):
+        assert status not in list_learnings["responses"]
+    list_learnings["responses"]["403"] = {
+        "description": "A scoped caller cannot list learnings for another user"
+    }
+    list_learnings["responses"]["501"] = {
+        "description": "Learnings are not supported by the selected remote or configured database"
+    }
+
+    agui_status = spec["paths"]["/status"]["get"]
+    assert agui_status["operationId"] == "get_status_status_get"
+    agui_status_success = agui_status["responses"]["200"]
+    assert agui_status_success["content"]["application/json"]["schema"] == {}
+    agui_status_success["content"]["application/json"]["schema"] = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["status"],
+        "properties": {
+            "status": {"type": "string", "enum": ["available"]},
+        },
+    }
+
+    delete_memory = spec["paths"]["/memories/{memory_id}"]["delete"]
+    assert delete_memory["operationId"] == "delete_memory"
+    assert delete_memory["description"] == (
+        "Permanently delete a specific user memory. This action cannot be undone."
+    )
+    delete_memory["description"] = (
+        "Delete a specific user memory. A valid local database request returns 204 even when "
+        "no memory matches the ID."
+    )
+    memory_not_found = delete_memory["responses"]["404"]
+    assert memory_not_found["description"] == "Memory not found"
+    memory_not_found["description"] = "The selected database or table was not found"
+
+    NOTES.append(
+        "runtime sampled contracts: service account and learning capability errors, AG-UI status "
+        "schema, approval deletion outcomes, and idempotent local memory deletion"
+    )
+
     enable_schedule = spec["paths"]["/schedules/{schedule_id}/enable"]["post"]
     assert enable_schedule.get("description") is None
     enable_schedule["description"] = (
