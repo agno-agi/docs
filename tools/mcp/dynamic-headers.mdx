@@ -19,14 +19,14 @@ from agno.tools.mcp import MCPTools
 
 # Our header_provider function, which will generate the headers per run.
 def header_provider(
-    run_context: RunContext, # The current run's context
+    run_context: Optional[RunContext] = None, # The current run's context
     agent: Optional["Agent"] = None, # The contextual Agent instance
     team: Optional["Team"] = None, # The contextual Team instance
 ) -> dict:
     headers = {
-        "X-User-ID": run_context.user_id or "unknown",
-        "X-Session-ID": run_context.session_id or "unknown",
-        "X-Run-ID": run_context.run_id,
+        "X-User-ID": (run_context.user_id if run_context else None) or "unknown",
+        "X-Session-ID": (run_context.session_id if run_context else None) or "unknown",
+        "X-Run-ID": (run_context.run_id if run_context else None) or "unknown",
         "X-Agent-Name": agent.name if agent else "unknown",
         "X-Team-Name": team.name if team else "unknown",
     }
@@ -97,6 +97,7 @@ if __name__ == "__main__":
 
 ```python
 import asyncio
+from typing import Optional
 
 from agno.agent import Agent
 from agno.models.openai import OpenAIResponses
@@ -104,12 +105,12 @@ from agno.run import RunContext
 from agno.tools.mcp import MCPTools
 
 
-def header_provider(run_context: RunContext) -> dict:
+def header_provider(run_context: Optional[RunContext] = None) -> dict:
     """Generate headers from the current run context."""
     return {
-        "X-User-ID": run_context.user_id or "anonymous",
-        "X-Session-ID": run_context.session_id or "no-session",
-        "X-Run-ID": run_context.run_id,
+        "X-User-ID": (run_context.user_id if run_context else None) or "anonymous",
+        "X-Session-ID": (run_context.session_id if run_context else None) or "no-session",
+        "X-Run-ID": (run_context.run_id if run_context else None) or "unknown",
     }
 
 
@@ -143,19 +144,22 @@ if __name__ == "__main__":
 
 3. You can check the logs of your MCP server to see the headers that were sent.
 
-## Usage with MultiMCPTools
+## Multiple servers
 
-Dynamic headers work the same way with `MultiMCPTools`:
+Pass the same provider to each `MCPTools` instance:
 
 ```python
-from agno.tools.mcp import MultiMCPTools
+from agno.agent import Agent
+from agno.tools.mcp import MCPTools
 
-mcp_tools = MultiMCPTools(
-    urls=[
-        "http://server1.example.com/mcp",
-        "http://server2.example.com/mcp",
-    ],
-    urls_transports=["streamable-http", "streamable-http"],
-    header_provider=header_provider,  # Applied to all servers
+server_one_tools = MCPTools(
+    url="http://server1.example.com/mcp",
+    header_provider=header_provider,
 )
+server_two_tools = MCPTools(
+    url="http://server2.example.com/mcp",
+    header_provider=header_provider,
+)
+
+agent = Agent(tools=[server_one_tools, server_two_tools])
 ```
