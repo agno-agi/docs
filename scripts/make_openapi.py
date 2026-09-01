@@ -469,6 +469,18 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
     del delete_memories["responses"]["400"]
     NOTES.append("runtime memory validation: empty memory_ids is a request-model 422 response")
 
+    trigger_schedule = spec["paths"]["/schedules/{schedule_id}/trigger"]["post"]
+    assert trigger_schedule["operationId"] == "trigger_schedule_schedules__schedule_id__trigger_post"
+    assert set(trigger_schedule["responses"]) == {"200", "422"}
+    trigger_schedule["responses"].update(
+        {
+            "404": {"description": "Schedule not found"},
+            "409": {"description": "Schedule is disabled"},
+            "503": {"description": "Scheduler is not running"},
+        }
+    )
+    NOTES.append("runtime schedule trigger: explicit not-found, disabled, and unavailable responses")
+
     component_config = spec["paths"]["/components/{component_id}/configs/{version}"]["get"]
     assert component_config["operationId"] == "get_config"
     component_config["operationId"] = "get_component_config"
