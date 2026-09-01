@@ -50,6 +50,10 @@ DESCRIPTION_OVERRIDES = {
     "examples/agent-os/remote/overview": "Connect AgentOS to remote agents, teams, workflows, A2A endpoints, and gateway instances.",
     "examples/agent-os/skills/overview": "Load local skills into an AgentOS agent, including sample system-information scripts.",
     "examples/agent-os/tracing/dbs/overview": "Persist AgentOS traces to ClickHouse, MongoDB, PostgreSQL, and SQLite.",
+    "examples/tools/mcp/overview": "MCPTools examples for local, hosted, authenticated, and multi-server MCP connections.",
+    "examples/tools/mcp/sse-transport/overview": "Connect agents to SSE MCP servers with MCPTools.",
+    "examples/tools/mcp/streamable-http-transport/overview": "Connect agents to Streamable HTTP MCP servers with MCPTools.",
+    "examples/tools/mcp/multiple-servers-allow-partial-failure": "Migrate the removed multi-server partial-failure example to supported MCPTools instances.",
     "examples/evals/overview": "Evaluate agents and teams for accuracy, model-judged quality, performance, reliability, and reusable suites.",
     "examples/models/aws/bedrock/overview": "Amazon Bedrock examples for basic runs, image and PDF input, structured output, and tool use.",
     "examples/models/aws/claude/overview": "Claude on AWS Bedrock examples for runs, storage, images, knowledge, structured output, tools, and adaptive thinking.",
@@ -500,6 +504,13 @@ INVALID_MODEL_RETRY_SLUGS = {
 # These pages have a reviewed, factual mismatch that is grammatical enough not
 # to be caught by the fail-closed malformed-row detector.
 EXPLICIT_ROW_REFRESH = {
+    "examples/tools/mcp/overview": {
+        "examples/tools/mcp/multiple-servers",
+        "examples/tools/mcp/multiple-servers-allow-partial-failure",
+        "examples/tools/mcp/pipedream-linkedin",
+        "examples/tools/mcp/sse-transport/overview",
+        "examples/tools/mcp/streamable-http-transport/overview",
+    },
     "examples/reasoning/tools/overview": {
         "examples/reasoning/tools/cerebras-llama-reasoning-tools",
     },
@@ -586,9 +597,6 @@ EXPLICIT_ROW_REFRESH = {
         "examples/agent-os/tracing/dbs/basic-agent-with-mongodb",
         "examples/agent-os/tracing/dbs/basic-agent-with-postgresdb",
         "examples/agent-os/tracing/dbs/basic-agent-with-sqlite",
-    },
-    "examples/tools/mcp/overview": {
-        "examples/tools/mcp/pipedream-linkedin",
     },
     "examples/integrations/rag/overview": {
         "examples/knowledge/integrations/rag/agentic-rag-infinity-reranker",
@@ -2265,82 +2273,11 @@ from agno.workflow.step import Step""",
         """tools=[WebSearchTools()],
     role="Search the web for the latest news and trends",""",
     )
-    sub(
-        "storage/valkey/valkey-for-team.mdx",
-        "Run `uv pip install ddgs valkey-glide-sync` to install dependencies.",
-        "Run `uv pip install ddgs openai valkey-glide-sync` to install dependencies.",
-    )
-    valkey_descriptions = {
-        "agent": "Use Valkey as the storage backend for an agent.",
-        "team": "Use Valkey as the storage backend for a team.",
-        "workflow": "Use ValkeyDb as the session storage backend for a workflow.",
-    }
-    for example_type, description in valkey_descriptions.items():
-        sub(
-            f"storage/valkey/valkey-for-{example_type}.mdx",
-            f'description: "{description}"\n---',
-            f'description: "{description}"\nsource: cookbook/06_storage/valkey/valkey_for_{example_type}.py\n---',
-        )
-    for example_type in ("agent", "team", "workflow"):
-        filename = f"valkey_for_{example_type}.py"
-        root_sub(
-            f"examples/storage/valkey/valkey-for-{example_type}.mdx",
-            f"""## Run the Example
-```bash
-# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/06_storage/valkey
-
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
-
-python {filename}
-```""",
-            f"""## Run the Example
-
-<Steps>
-  <Step title="Clone Agno">
-    Clone the repository and run the remaining commands from its root:
-    ```bash
-    git clone https://github.com/agno-agi/agno.git
-    cd agno
-    ```
-  </Step>
-
-  <Step title="Set up the demo environment">
-    ```bash
-    ./scripts/demo_setup.sh
-    source .venvs/demo/bin/activate
-    uv pip install -U ddgs openai valkey-glide-sync
-    ```
-  </Step>
-
-  <Step title="Export your OpenAI API key">
-    <CodeGroup>
-    ```bash Mac/Linux
-    export OPENAI_API_KEY="your_openai_api_key_here"
-    ```
-
-    ```bash Windows
-    $Env:OPENAI_API_KEY="your_openai_api_key_here"
-    ```
-    </CodeGroup>
-  </Step>
-
-  <Step title="Run Valkey">
-    ```bash
-    docker run -d --name my-valkey -p 6379:6379 valkey/valkey-bundle
-    ```
-  </Step>
-
-  <Step title="Run the example">
-    ```bash
-    python cookbook/06_storage/valkey/{filename}
-    ```
-  </Step>
-</Steps>""",
-        )
+    # Keep the generated v3 source docstring byte-for-byte. The rendered setup
+    # derives the OpenAI dependency from imports, so no page-local patch is
+    # needed here. The incomplete cookbook docstring remains an upstream issue.
+    # Generated v3 Valkey pages now derive their source field, dependencies,
+    # OpenAI key, and local service step from the cookbook imports.
     sub(
         "agent-os/dbs/valkey-db.mdx",
         "```python\n",
@@ -2620,83 +2557,6 @@ $Env:OPENAI_API_KEY="your_openai_api_key_here"
         "Without an API key, the toolkit runs a local Mem0 `Memory` instance. Configure it with the `config` parameter.",
         "Without a Mem0 API key, the toolkit runs a local Mem0 `Memory` instance. Configure it with the `config` parameter.",
     )
-    sub_all(
-        "storage/mongo/mongodb-for-team.mdx",
-        'model=OpenAIChat("gpt-5.4-mini"),',
-        'model=OpenAIChat("gpt-4o"),',
-        expected=3,
-    )
-    sub(
-        "storage/mongo/mongodb-for-team.mdx",
-        """~~~
-
-## Run the Example""",
-        """~~~
-
-<Warning>
-  The v2.7.2 cookbook uses the deprecated `gpt-4o` model. The source-fidelity fence above preserves those three model IDs. Replace all three with `gpt-5.4-mini` before running. See [GPT-4o](https://developers.openai.com/api/docs/models/gpt-4o) and [GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini).
-</Warning>
-
-## Run the Example""",
-    )
-    sub(
-        "storage/mongo/mongodb-for-team.mdx",
-        """## Run the Example
-```bash
-# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/06_storage/mongo
-
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
-
-python mongodb_for_team.py
-```""",
-        """## Run the Example
-
-<Steps>
-  <Step title="Clone Agno">
-    Clone the repository and run the remaining commands from its root:
-    ```bash
-    git clone https://github.com/agno-agi/agno.git
-    cd agno
-    ```
-  </Step>
-
-  <Step title="Set up the demo environment">
-    ```bash
-    ./scripts/demo_setup.sh
-    source .venvs/demo/bin/activate
-    uv pip install -U "pymongo[srv]"
-    ```
-  </Step>
-
-  <Step title="Export your OpenAI API key">
-    <CodeGroup>
-    ```bash Mac/Linux
-    export OPENAI_API_KEY="your_openai_api_key_here"
-    ```
-
-    ```bash Windows
-    $Env:OPENAI_API_KEY="your_openai_api_key_here"
-    ```
-    </CodeGroup>
-  </Step>
-
-  <Step title="Start MongoDB">
-    ```bash
-    ./cookbook/scripts/run_mongodb.sh
-    ```
-  </Step>
-
-  <Step title="Run the example">
-    ```bash
-    python cookbook/06_storage/mongo/mongodb_for_team.py
-    ```
-  </Step>
-</Steps>""",
-    )
     root_sub(
         "deploy/templates/scout/overview.mdx",
         "| **Slack** | `SLACK_BOT_TOKEN` | `query_slack`. Read-only access to messages, channel history, threads, and users. |",
@@ -2889,98 +2749,6 @@ python cookbook/91_tools/seltz_tools.py""",
     )
 
     sub(
-        "agents/approvals/approval-team.mdx",
-        """| Both | Team and member | Two pauses, two separate admin approvals. |
-
-<Tabs>""",
-        """| Both | Team and member | Two pauses, two separate admin approvals. |
-
-After starting an example, [connect the AgentOS UI](/agent-os/connect-your-os) to `http://localhost:7777` and start a team run. When the run pauses, open **Approvals**, complete any requested fields, approve the request, return to the run, and select **Continue Run**. Case 3 repeats the approval and continuation flow twice.
-
-<Tabs>""",
-    )
-    sub(
-        "agents/approvals/approval-team.mdx",
-        """# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/02_agents/11_approvals
-
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
-
-python team_level_approval.py""",
-        """# Clone and set up the repo
-git clone https://github.com/agno-agi/agno.git
-cd agno
-
-# Create and activate the demo virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
-
-export OPENAI_API_KEY="your_openai_api_key_here"
-
-python cookbook/05_agent_os/approvals/team/team_level_approval.py""",
-    )
-    sub(
-        "agents/approvals/approval-team.mdx",
-        """# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/02_agents/11_approvals
-
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
-
-python member_agent_level_approval.py""",
-        """# Clone and set up the repo
-git clone https://github.com/agno-agi/agno.git
-cd agno
-
-# Create and activate the demo virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
-
-export OPENAI_API_KEY="your_openai_api_key_here"
-
-python cookbook/05_agent_os/approvals/team/member_agent_level_approval.py""",
-    )
-    sub(
-        "agents/approvals/approval-team.mdx",
-        """# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/02_agents/11_approvals
-
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
-
-python team_and_member_agent_both_level_approval.py""",
-        """# Clone and set up the repo
-git clone https://github.com/agno-agi/agno.git
-cd agno
-
-# Create and activate the demo virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
-
-export OPENAI_API_KEY="your_openai_api_key_here"
-
-python cookbook/05_agent_os/approvals/team/team_and_member_agent_both_level_approval.py""",
-    )
-    sub(
-        "agents/approvals/approval-team.mdx",
-        "</Tabs>",
-        """</Tabs>
-
-## Developer Resources
-
-- [Team-level approval source](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/approvals/team/team_level_approval.py)
-- [Member-level approval source](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/approvals/team/member_agent_level_approval.py)
-- [Team and member approval source](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/approvals/team/team_and_member_agent_both_level_approval.py)""",
-    )
-
-    sub(
         "models/huggingface/overview.mdx",
         "[Hugging Face Llama Essay Writer](/examples/models/huggingface/llama-essay-writer)",
         "[Hugging Face GPT-OSS Essay Writer](/examples/models/huggingface/llama-essay-writer)",
@@ -3124,17 +2892,8 @@ $Env:OPENAI_API_KEY="your_openai_api_key_here"
     ```""",
     )
 
-    root_sub(
-        "use-cases/document-processing/forms-and-intake.mdx",
-        """Forms and intake documents bring a different shape: a person's identity at the top, then several parallel lists (employment, education, skills, references). The agent fills out the nested structure in one pass.
-
-```python""",
-        """Forms and intake documents bring a different shape: a person's identity at the top, then several parallel lists (employment, education, skills, references). The agent fills out the nested structure in one pass.
-
-Place the resume to extract at `resume.pdf` in the directory where you run this code.
-
-```python""",
-    )
+    # The page now carries the local resume setup directly in its curated
+    # introduction, so the earlier opener-specific insertion is retired.
     root_sub(
         "use-cases/document-processing/forms-and-intake.mdx",
         'files=[File(url="https://example.com/resume-sjohnson.pdf")]',
@@ -3280,17 +3039,8 @@ description: Write a 300-word essay on a user-provided topic with GPT-OSS 120B t
         """| Telegram | `tg:<entity_id>:<chat_id>[:<topic_id>][:<reset_id>]` | Telegram user ID |
 | WhatsApp | `wa:<entity_id>:<user_id>[:<reset_id>]` | Phone number or encrypted user ID |""",
     )
-    root_sub(
-        "use-cases/product-agents/interfaces.mdx",
-        """Stored memory can follow a user across surfaces when the interfaces resolve to the same `user_id` and use the same agent database and memory configuration. Session history remains scoped to each interface-generated `session_id`. Interfaces can add surface metadata and dependencies to a run.
-
-## One agent, every surface""",
-        """For Telegram and WhatsApp, `/new` preserves earlier sessions and creates a session whose ID has a new eight-character suffix. This command requires a database.
-
-Stored memory can follow a user across surfaces when the interfaces resolve to the same `user_id` and use the same agent database and memory configuration. Session history remains scoped to each interface-generated `session_id`. Interfaces can add surface metadata and dependencies to a run.
-
-## One agent, every surface""",
-    )
+    # The `/new` session behavior now lives in the curated page directly; the
+    # earlier heading-coupled insertion is retired.
     root_sub(
         "use-cases/product-agents/interfaces.mdx",
         """from agno.os.interfaces.agui import AGUI

@@ -107,7 +107,6 @@ NAV_SEEDS = {
     "observability": ["More", "Integrations", "Observability"],
 }
 
-SIM_ACCEPT = 0.55   # basename match: accept relocation at/above this ratio
 KNOWLEDGE_REDIRECT_SIM = 0.5
 
 # Reserve explicit redirect overrides for retired routes without tracked page
@@ -118,6 +117,7 @@ REDIRECT_SOURCE_SLUGS = {source for source, _ in CANONICAL_REDIRECT_OVERRIDES}
 # These shipped routes own tracked content outside the current navigation.
 # Preserve them as pages instead of classifying them as deletion candidates.
 PRESERVED_TRACKED_PAGE_SLUGS = {
+    "examples/agent-os/workflow/customer-research-workflow-parallel",
     "examples/agent-os/factories/agent/hitl-factory",
     "examples/agent-os/factories/agent/jwt-role-factory",
     "examples/integrations/rag/overview",
@@ -127,34 +127,47 @@ PRESERVED_TRACKED_PAGE_SLUGS = {
     "examples/reasoning/models/xai/overview",
 }
 
-# These examples landed on docs main after the pinned v2.7.2 source tag. Keep
-# their shipped pages while this sync remains pinned to that tag. The strict
+# These examples landed on docs main after the selected source tag. Keep their
+# shipped pages until the selected source contains them. The strict
 # source-field and navigation assertions make a renamed or replaced page fail
 # closed instead of silently bypassing source validation.
 POST_TAG_CURATED_SOURCE_OVERRIDES = {
     "examples/agent-os/dbs/valkey-db": "05_agent_os/dbs/valkey_db.py",
-    "examples/integrations/observability/the-context-company": "observability/the_context_company.py",
-    "examples/storage/valkey/valkey-for-agent": "06_storage/valkey/valkey_for_agent.py",
-    "examples/storage/valkey/valkey-for-team": "06_storage/valkey/valkey_for_team.py",
-    "examples/storage/valkey/valkey-for-workflow": "06_storage/valkey/valkey_for_workflow.py",
-    "examples/tools/tavily-tools-advanced": "91_tools/tavily_tools_advanced.py",
 }
 
-# These generated examples were updated on docs main after the pinned source
-# tag while their cookbook paths continued to exist. Preserve the shipped
-# pages until the sync target advances past v2.7.2, otherwise regeneration
-# would restore the older callback API from the pinned source.
+# These generated examples were updated on docs main after the selected source
+# tag while their cookbook paths continued to exist. Keep only exceptions that
+# remain newer than the selected source. Remove an entry when the target tag
+# contains the shipped implementation so normal source-fidelity checks resume.
 POST_TAG_EXISTING_SOURCE_OVERRIDES = {
-    "examples/agent-os/workflow/customer-research-workflow-parallel":
-        "05_agent_os/workflow/customer_research_workflow_parallel.py",
-    "examples/workflows/advanced-concepts/session-state/state-in-condition":
-        "04_workflows/06_advanced_concepts/session_state/state_in_condition.py",
-    "examples/workflows/advanced-concepts/session-state/state-in-function":
-        "04_workflows/06_advanced_concepts/session_state/state_in_function.py",
-    "examples/workflows/advanced-concepts/session-state/state-in-router":
-        "04_workflows/06_advanced_concepts/session_state/state_in_router.py",
-    "examples/workflows/cel-expressions/condition/cel-session-state":
-        "04_workflows/07_cel_expressions/condition/cel_session_state.py",
+}
+
+# Reviewed source relocations. Fuzzy basename similarity is recorded for
+# diagnostics but never authorizes a remap because unrelated provider examples
+# often share the same filename and structure.
+SOURCE_REMAP_OVERRIDES = {
+    "05_agent_os/human_in_the_loop/workflow/step_user_input.py":
+        "04_workflows/08_human_in_the_loop/user_input/02_step_user_input.py",
+    "05_agent_os/interfaces/whatsapp/reasoning_agent.py":
+        "05_agent_os/19_whatsapp/reasoning_agent.py",
+    "05_agent_os/mcp_demo/dynamic_headers/server.py":
+        "91_tools/mcp/dynamic_headers/server.py",
+    "05_agent_os/interfaces/discord/basic.py":
+        "integrations/discord/basic.py",
+    "05_agent_os/learnings/learnings_with_agentos.py":
+        "05_agent_os/11_learnings/learnings_with_agentos.py",
+    "05_agent_os/learnings/rest_api_learnings.py":
+        "05_agent_os/11_learnings/rest_api_learnings.py",
+    "05_agent_os/os_config/yaml_config.py":
+        "05_agent_os/08_os_config/yaml_config.py",
+    "05_agent_os/remote/01_remote_agent.py":
+        "05_agent_os/20_remote/01_remote_agent.py",
+    "05_agent_os/scheduler/scheduler_tools_agent.py":
+        "05_agent_os/12_scheduler/04_scheduler_tools_agent.py",
+    "05_agent_os/skills/sample_skills/system-info/scripts/get_system_info.py":
+        "05_agent_os/23_skills/sample_skills/system-info/scripts/get_system_info.py",
+    "05_agent_os/skills/sample_skills/system-info/scripts/list_directory.py":
+        "05_agent_os/23_skills/sample_skills/system-info/scripts/list_directory.py",
 }
 
 # ---------------------------------------------------------------------------
@@ -472,17 +485,25 @@ def main() -> None:
         code = norm_code(info["code"]) if info["code"] else ""
         if not code:
             return None, 0.0
+        explicit = SOURCE_REMAP_OVERRIDES.get(info.get("ref"))
+        if explicit:
+            assert explicit in cb_files, (
+                f"reviewed remap target is absent from the selected source: {explicit}"
+            )
+            return explicit, similarity(code, cb_files[explicit])
         h = content_hash(code)
         if h in cb_hash:
-            return sorted(cb_hash[h])[0], 1.0
+            exact = sorted(cb_hash[h])
+            if len(exact) == 1:
+                return exact[0], 1.0
         stem = strip_num(Path(info["ref"]).stem) if info["ref"] else None
         cands = list(cb_by_stem.get(stem, [])) if stem else []
-        best, best_r = None, 0.0
+        best_r = 0.0
         for cand in sorted(cands):
             r = similarity(code, cb_files[cand])
             if r > best_r:
-                best, best_r = cand, r
-        return (best, best_r) if best_r >= SIM_ACCEPT else (None, best_r)
+                best_r = r
+        return None, best_r
 
     knowledge_old: list[dict] = []
     for slug in all_slugs:

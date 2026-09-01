@@ -35,6 +35,16 @@ COOKBOOK = AGNO_ROOT / "cookbook"
 OUT_DIR = HERE / "out"
 PLAN_PATH = OUT_DIR / "sync-plan.json"
 
+source_tag_result = subprocess.run(
+    ["git", "-C", str(AGNO_ROOT), "describe", "--tags", "--exact-match", "HEAD"],
+    capture_output=True,
+    text=True,
+    check=False,
+)
+if source_tag_result.returncode != 0:
+    raise SystemExit(f"error: Agno source HEAD is not an exact tag: {AGNO_ROOT}")
+EXPECTED_SOURCE_REF = source_tag_result.stdout.strip()
+
 if not PLAN_PATH.is_file():
     raise SystemExit(f"error: {PLAN_PATH} not found; run plan.py first")
 plan = json.loads(PLAN_PATH.read_text())
@@ -129,26 +139,69 @@ ref_res = [
     re.compile(r"^source: (cookbook/\S+)$", re.M),
     re.compile(r"^curated_source: (cookbook/\S+)$", re.M),
     re.compile(r"cd agno/(cookbook/[^\s`\"']+)"),
-    re.compile(r"github\.com/agno-agi/agno/(?:blob|tree)/[^/\s]+/(cookbook/[^)\s\"'`]+)"),
 ]
+source_url_re = re.compile(
+    r"github\.com/agno-agi/agno/(?:blob|tree)/([^/\s]+)/(cookbook/[^)\s\"'`]+)"
+)
 gen_slugs = {t[0] for t in gen_tasks}
-b_bad_gen, b_bad_other = [], []
+intentional_absent_refs = {
+    (entry["slug"], entry["cookbook_path"])
+    for entry in plan["pages"]
+    if entry.get("subtype") == "post-tag-source"
+}
+planned_delete_slugs = {
+    entry["slug"] for entry in plan["pages"] if entry["class"] == "DELETE"
+}
+b_bad_gen, b_bad_other, b_pending_delete = [], [], []
+
+
+def record_dead_ref(slug: str, ref: str) -> None:
+    problem = (slug, f"dead ref {ref}")
+    if slug in planned_delete_slugs:
+        b_pending_delete.append(problem)
+    elif slug in gen_slugs:
+        b_bad_gen.append(problem)
+    else:
+        b_bad_other.append(problem)
+
+
 all_mdx = sorted((DOCS_ROOT / "examples").rglob("*.mdx"))
 for p in all_mdx:
     slug = str(p.relative_to(DOCS_ROOT)).removesuffix(".mdx")
     text = p.read_text(encoding="utf-8")
+    has_curated_source = re.search(r"^curated_source:\s+", text, re.M) is not None
     for rx in ref_res:
         for ref in rx.findall(text):
             ref = ref.rstrip(".,)")
             tail = ref.removeprefix("cookbook/")
             target = COOKBOOK / tail
-            if not (target.is_file() or target.is_dir()):
-                (b_bad_gen if slug in gen_slugs else b_bad_other).append((slug, ref))
+            if (
+                not (target.is_file() or target.is_dir())
+                and (slug, tail) not in intentional_absent_refs
+            ):
+                record_dead_ref(slug, ref)
+    for source_ref, ref in source_url_re.findall(text):
+        ref = ref.rstrip(".,)")
+        tail = ref.removeprefix("cookbook/")
+        target = COOKBOOK / tail
+        if (
+            not (target.is_file() or target.is_dir())
+            and (slug, tail) not in intentional_absent_refs
+        ):
+            record_dead_ref(slug, ref)
+        if (slug in gen_slugs or has_curated_source) and source_ref != EXPECTED_SOURCE_REF:
+            (b_bad_gen if slug in gen_slugs else b_bad_other).append(
+                (slug, f"source link ref {source_ref!r} != {EXPECTED_SOURCE_REF!r}")
+            )
 print(f"(b) cookbook refs: {len(all_mdx)} files scanned; "
-      f"{len(b_bad_gen)} dead refs in generated pages, {len(b_bad_other)} in preserved pages")
-for s, r in (b_bad_gen + b_bad_other)[:25]:
-    print("   DEAD:", s, "->", r)
-problems += [f"(b) generated {s}: dead ref {r}" for s, r in b_bad_gen]
+      f"{len(b_bad_gen)} problems in generated pages, "
+      f"{len(b_bad_other)} in preserved pages; "
+      f"{len(b_pending_delete)} refs isolated to {len({slug for slug, _ in b_pending_delete})} "
+      "planned DELETE routes")
+for slug, problem in (b_bad_gen + b_bad_other)[:25]:
+    print("   BAD:", slug, "--", problem)
+problems += [f"(b) generated {slug}: {problem}" for slug, problem in b_bad_gen]
+problems += [f"(b) preserved {slug}: {problem}" for slug, problem in b_bad_other]
 
 # ---------------------------------------------------------------------------
 # (c) every generated page carries the complete cookbook source
