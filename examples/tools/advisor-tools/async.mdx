@@ -1,0 +1,95 @@
+---
+title: "Async Advisors"
+description: "All advisor tools have async variants."
+source: cookbook/91_tools/advisor_tools/05_async.py
+---
+
+All advisor tools have async variants. When the agent runs async and calls `ask_all_advisors`, the advisors are queried in parallel with asyncio.gather, so the slowest advisor determines the total wait, not the sum of all of them.
+
+```python async.py
+"""
+Async Advisors
+==============
+All advisor tools have async variants. When the agent runs async and calls
+`ask_all_advisors`, the advisors are queried in parallel with asyncio.gather,
+so the slowest advisor determines the total wait, not the sum of all of them.
+"""
+
+import asyncio
+
+from agno.agent import Agent
+from agno.models.anthropic import Claude
+from agno.models.google import Gemini
+from agno.models.openai import OpenAIResponses
+from agno.tools.advisor import AdvisorTools
+
+# ---------------------------------------------------------------------------
+# Create Agent with multiple advisors
+# ---------------------------------------------------------------------------
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.5"),
+    tools=[
+        AdvisorTools(
+            advisors=[
+                Claude(id="claude-sonnet-4-6"),
+                Gemini(id="gemini-3.5-flash"),
+            ],
+        )
+    ],
+    instructions=[
+        "After drafting a response, use ask_all_advisors for feedback from all advisors.",
+        "Incorporate the suggestions you agree with into your final answer.",
+    ],
+    markdown=True,
+)
+
+# ---------------------------------------------------------------------------
+# Run
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    asyncio.run(
+        agent.aprint_response(
+            "Explain the CAP theorem and how it applies to distributed databases",
+            stream=True,
+        )
+    )
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno anthropic google-genai openai
+    ```
+  </Step>
+
+  <Step title="Export your API keys">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export ANTHROPIC_API_KEY="your_anthropic_api_key_here"
+    export GOOGLE_API_KEY="your_google_api_key_here"
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:ANTHROPIC_API_KEY="your_anthropic_api_key_here"
+    $Env:GOOGLE_API_KEY="your_google_api_key_here"
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `async.py`, then run:
+    ```bash
+    python async.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/91_tools/advisor_tools/05_async.py](https://github.com/agno-agi/agno/blob/v3.0.4/cookbook/91_tools/advisor_tools/05_async.py)

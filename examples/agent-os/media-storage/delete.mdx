@@ -1,10 +1,14 @@
 ---
 title: "Reading and Deleting Session Media"
-description: "Read stored media back through the AgentOS session routes, then delete the session and its objects together."
+description: "Read session media through AgentOS, then delete the session and request a best-effort object sweep."
 source: cookbook/05_agent_os/02_databases/media_storage_delete.py
 ---
 
-Demonstrates the AgentOS media routes: attach a file to a run, read it back through the session, then delete the session and its stored objects together.
+Attach and read session media through AgentOS, then request object cleanup when deleting the session.
+
+<Warning>
+  Session deletion and object cleanup are not atomic. AgentOS records the storage keys, deletes the session rows, then attempts a best-effort object sweep. A storage failure still returns a successful deletion and can leave orphaned objects.
+</Warning>
 
 ```python media_storage_delete.py
 """
@@ -101,29 +105,28 @@ if __name__ == "__main__":
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U "agno[os]" "agno[s3]" openai python-dotenv
+    uv pip install -U "agno[os,s3]" botocore openai python-dotenv
     ```
   </Step>
 
-  <Step title="Export your OpenAI API key">
+  <Step title="Export environment variables">
     <CodeGroup>
     ```bash Mac/Linux
+    export AGNO_FILE_OUTPUT_S3_BUCKET="your_agno_file_output_s3_bucket_here"
+    export AWS_REGION="your_aws_region_here"
     export OPENAI_API_KEY="your_openai_api_key_here"
     ```
 
     ```bash Windows
+    $Env:AGNO_FILE_OUTPUT_S3_BUCKET="your_agno_file_output_s3_bucket_here"
+    $Env:AWS_REGION="your_aws_region_here"
     $Env:OPENAI_API_KEY="your_openai_api_key_here"
     ```
     </CodeGroup>
   </Step>
 
-  <Step title="Export your AWS credentials and bucket">
-    ```bash
-    export AWS_ACCESS_KEY_ID="your_key_id"
-    export AWS_SECRET_ACCESS_KEY="your_secret"
-    export AWS_REGION="us-east-1"
-    export AGNO_FILE_OUTPUT_S3_BUCKET="your_bucket"
-    ```
+<Step title="Configure AWS credentials">
+    Configure the AWS SDK default credential chain with environment variables, a shared credentials file, or an IAM role.
   </Step>
 
   <Step title="Run the example">
@@ -132,6 +135,28 @@ if __name__ == "__main__":
     python media_storage_delete.py
     ```
   </Step>
+
+  <Step title="Attach and read a file">
+    In another terminal with `curl` and `jq`, attach a repository file, resolve its storage key from the session, and read it through AgentOS:
+    ```bash
+    curl -sS -X POST http://127.0.0.1:7777/agents/media-delete-agent/runs \
+      -F 'message=Summarize the attached file.' \
+      -F 'session_id=media-delete-demo' \
+      -F 'stream=false' \
+      -F 'files=@README.md' > /tmp/agentos-media-run.json
+    curl -sS http://127.0.0.1:7777/sessions/media-delete-demo > /tmp/agentos-media-session.json
+    STORAGE_KEY="$(jq -r '.. | objects | .storage_key? // empty' /tmp/agentos-media-session.json | head -n 1)"
+    test -n "$STORAGE_KEY"
+    curl -sS -o /tmp/agentos-media-download "http://127.0.0.1:7777/sessions/media-delete-demo/media/${STORAGE_KEY}"
+    ```
+  </Step>
+
+  <Step title="Delete the session and request cleanup">
+    Delete the rows and request the best-effort storage sweep. Verify the object separately in S3 when cleanup assurance matters:
+    ```bash
+    curl -i -X DELETE 'http://127.0.0.1:7777/sessions/media-delete-demo?delete_media=true'
+    ```
+  </Step>
 </Steps>
 
-Full source: [cookbook/05_agent_os/02_databases/media_storage_delete.py](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/02_databases/media_storage_delete.py)
+Full source: [cookbook/05_agent_os/02_databases/media_storage_delete.py](https://github.com/agno-agi/agno/blob/v3.0.4/cookbook/05_agent_os/02_databases/media_storage_delete.py)

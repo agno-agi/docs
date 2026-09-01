@@ -1,81 +1,78 @@
 ---
-title: "Remote Agent"
+title: "Call and stream an Agent on another AgentOS"
 description: "Call an agent hosted on another AgentOS with RemoteAgent, in both single-shot and streaming mode."
-source: cookbook/05_agent_os/remote/01_remote_agent.py
+source: cookbook/05_agent_os/20_remote/01_remote_agent.py
 ---
+
+RemoteAgent presents a remote AgentOS Agent through the same asynchronous run shape used by local Agno components.
 
 ```python remote_agent.py
 """
-Examples demonstrating AgentOSRunner for remote execution.
+Call and stream an Agent on another AgentOS
+===========================================
 
-Run `agent_os_setup.py` to start the remote AgentOS instance.
+RemoteAgent presents a remote AgentOS Agent through the same asynchronous run
+shape used by local Agno components.
+
+Prerequisites: start `servers/agentos_server.py` and set OPENAI_API_KEY
+Run: .venvs/demo/bin/python cookbook/05_agent_os/20_remote/01_remote_agent.py
+Try: change either arithmetic prompt and observe the remote calculator call
 """
 
 import asyncio
 
 from agno.agent import RemoteAgent
+from agno.run.agent import (
+    RunCompletedEvent,
+    RunContentEvent,
+    RunErrorEvent,
+    RunStartedEvent,
+)
+
+BASE_URL = "http://127.0.0.1:7780"
 
 # ---------------------------------------------------------------------------
-# Create Example
+# Create Remote Agent
+# ---------------------------------------------------------------------------
+
+remote_assistant = RemoteAgent(
+    base_url=BASE_URL,
+    agent_id="assistant-agent",
+)
+
+# ---------------------------------------------------------------------------
+# Run Remote Agent
 # ---------------------------------------------------------------------------
 
 
-async def remote_agent_example():
-    """Call a remote agent hosted on another AgentOS instance."""
-    # Create a runner that points to a remote agent
-    agent = RemoteAgent(
-        base_url="http://localhost:7778",
-        agent_id="assistant-agent",
+async def run_remote_agent() -> None:
+    """Run one complete response and one typed remote stream."""
+    response = await remote_assistant.arun(
+        "Use the calculator to multiply 17 by 23.",
+        session_id="remote-agent-session",
     )
-
-    response = await agent.arun(
-        "What is the capital of France?",
-        user_id="user-123",
-        session_id="session-456",
-    )
+    print(f"Non-streaming run: {response.run_id}")
     print(response.content)
 
-
-async def remote_streaming_example():
-    """Stream responses from a remote agent."""
-    runner = RemoteAgent(
-        base_url="http://localhost:7778",
-        agent_id="researcher-agent",
-    )
-
-    async for chunk in runner.arun(
-        "Tell me a 2 sentence horror story",
-        session_id="session-456",
-        user_id="user-123",
+    print("\nStreaming response:")
+    async for event in remote_assistant.arun(
+        "Use the calculator to add 41 and 1, then explain the result.",
+        session_id="remote-agent-session",
         stream=True,
         stream_events=True,
     ):
-        if hasattr(chunk, "content") and chunk.content:
-            print(chunk.content, end="", flush=True)
+        if isinstance(event, RunStartedEvent):
+            print(f"Run started: {event.run_id}")
+        elif isinstance(event, RunContentEvent) and event.content is not None:
+            print(event.content, end="", flush=True)
+        elif isinstance(event, RunCompletedEvent):
+            print(f"\nRun completed: {event.run_id}")
+        elif isinstance(event, RunErrorEvent):
+            raise RuntimeError(event.content or "Remote Agent run failed")
 
-
-async def main():
-    """Run all examples in a single event loop."""
-    print("=" * 60)
-    print("RemoteAgent Examples")
-    print("=" * 60)
-
-    # Run examples
-    # Note: Remote examples require a running AgentOS instance
-
-    print("\n1. Remote Agent Example:")
-    await remote_agent_example()
-
-    print("\n2. Remote Streaming Example:")
-    await remote_streaming_example()
-
-
-# ---------------------------------------------------------------------------
-# Run Example
-# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(run_remote_agent())
 ```
 
 ## Run the Example
@@ -85,16 +82,54 @@ if __name__ == "__main__":
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U agno
+    uv pip install -U "agno[os]" openai
     ```
   </Step>
 
-  <Step title="Run the example">
-    Save the code above as `remote_agent.py`, then run:
+  <Step title="Export your API keys">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Clone Agno">
+    Clone the repository and run the remaining commands from its root:
     ```bash
-    python remote_agent.py
+    git clone https://github.com/agno-agi/agno.git
+    cd agno
+    ```
+  </Step>
+
+  <Step title="Start the remote AgentOS">
+    Open another terminal in the parent directory where `.venv` and the cloned `agno` directory are siblings, then start the upstream on port 7780:
+    <CodeGroup>
+    ```bash Mac/Linux
+    source .venv/bin/activate
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    cd agno
+    python cookbook/05_agent_os/20_remote/servers/agentos_server.py
+    ```
+    ```powershell Windows
+    .venv\Scripts\activate
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    Set-Location agno
+    python cookbook/05_agent_os/20_remote/servers/agentos_server.py
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Run the example from the repository root:
+    ```bash
+    python cookbook/05_agent_os/20_remote/01_remote_agent.py
     ```
   </Step>
 </Steps>
 
-Full source: [cookbook/05_agent_os/20_remote/01_remote_agent.py](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/20_remote/01_remote_agent.py)
+Full source: [cookbook/05_agent_os/20_remote/01_remote_agent.py](https://github.com/agno-agi/agno/blob/v3.0.4/cookbook/05_agent_os/20_remote/01_remote_agent.py)

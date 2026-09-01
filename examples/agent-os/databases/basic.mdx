@@ -1,0 +1,98 @@
+---
+title: "AgentOS Default Database"
+description: "Pass a database to AgentOS once and every listed agent, team, or workflow that does not define its own database inherits it."
+source: cookbook/05_agent_os/02_databases/basic.py
+---
+
+Pass a database to AgentOS once and every listed agent, team, or workflow that does not define its own database inherits it. AgentOS provisions the database tables during server startup when auto_provision_dbs is enabled.
+
+```python basic.py
+"""
+AgentOS Default Database
+========================
+
+Pass a database to AgentOS once and every listed agent, team, or workflow that
+does not define its own database inherits it. AgentOS provisions the database
+tables during server startup when auto_provision_dbs is enabled.
+
+Prerequisites: OPENAI_API_KEY is needed only for agent runs
+Run: .venvs/demo/bin/python cookbook/05_agent_os/02_databases/basic.py
+Try: Open http://localhost:7777/config and compare the OS and agent db IDs
+"""
+
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIResponses
+from agno.os import AgentOS
+
+# ---------------------------------------------------------------------------
+# Create Database and Agent
+# ---------------------------------------------------------------------------
+
+db = SqliteDb(
+    id="agent-os-default-db",
+    db_file="tmp/databases.db",
+)
+
+# This agent intentionally omits db; AgentOS injects the default database.
+database_agent = Agent(
+    id="database-agent",
+    name="Database Agent",
+    model=OpenAIResponses(id="gpt-5.5"),
+    instructions="Answer questions concisely.",
+    markdown=True,
+)
+
+# ---------------------------------------------------------------------------
+# Create AgentOS
+# ---------------------------------------------------------------------------
+
+agent_os = AgentOS(
+    id="database-basics-os",
+    description="AgentOS default-database inheritance with SQLite.",
+    db=db,
+    agents=[database_agent],
+    auto_provision_dbs=True,
+)
+app = agent_os.get_app()
+
+# ---------------------------------------------------------------------------
+# Run AgentOS
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    agent_os.serve(app="basic:app", reload=True)
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U "agno[os]" openai
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `basic.py`, then run:
+    ```bash
+    python basic.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/05_agent_os/02_databases/basic.py](https://github.com/agno-agi/agno/blob/v3.0.4/cookbook/05_agent_os/02_databases/basic.py)

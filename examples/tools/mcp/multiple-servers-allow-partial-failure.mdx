@@ -1,110 +1,19 @@
 ---
-title: "Multiple Servers Allow Partial Failure"
-description: "Use multiple MCP servers in a single agent, allowing for partial failure."
-source: cookbook/91_tools/mcp/multiple_servers_allow_partial_failure.py
+title: "Multiple Servers with Partial Failure"
+description: "Migrate the removed multi-server partial-failure example to supported MCPTools instances."
 ---
 
-```python multiple_servers_allow_partial_failure.py
-"""
-This example demonstrates how to use multiple MCP servers in a single agent, allowing for partial failure.
+The v2 example used `MultiMCPTools(allow_partial_failure=True)`. Both the class and its partial-failure option were removed in Agno v3.
 
-This is useful if you are connecting to MCP servers that are not always available or prone to failure,
-but don't want to stop the execution if some of the servers fail to connect.
+Use one `MCPTools` instance per server. Connect required servers normally. Handle optional server connection failures in application code, then pass only connected instances to the agent.
 
-Prerequisites:
-- Set the environment variable "ACCUWEATHER_API_KEY" for the weather MCP tools.
-- You can get the API key from the AccuWeather website: https://developer.accuweather.com/
-"""
+<Warning>
+  Decide which servers are optional before suppressing a connection error. Log every skipped server so a degraded run remains visible.
+</Warning>
 
-import asyncio
-from os import getenv
+See [Multiple MCP Servers](/tools/mcp/multiple-servers) for the supported v3 pattern.
 
-from agno.agent import Agent
-from agno.tools.mcp import MultiMCPTools
+## Developer Resources
 
-# ---------------------------------------------------------------------------
-# Create Agent
-# ---------------------------------------------------------------------------
-
-
-async def run_agent(message: str) -> None:
-    # Initialize the MCP tools
-    mcp_tools = MultiMCPTools(
-        [
-            "npx -y @openbnb/mcp-server-airbnb --ignore-robots-txt",
-            "npx -y @modelcontextprotocol/server-brave-search",
-        ],
-        env={
-            "BRAVE_API_KEY": getenv("BRAVE_API_KEY"),
-        },
-        timeout_seconds=30,
-        # Set the allow_partial_failure to True to allow for partial failure connecting to the MCP servers
-        allow_partial_failure=True,
-    )
-
-    # Connect to the MCP servers
-    await mcp_tools.connect()
-
-    # Use the MCP tools with an Agent
-    agent = Agent(
-        tools=[mcp_tools],
-        markdown=True,
-    )
-    await agent.aprint_response(message)
-
-    # Close the MCP connection
-    await mcp_tools.close()
-
-
-# Example usage
-# ---------------------------------------------------------------------------
-# Run Agent
-# ---------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    asyncio.run(run_agent("What listings are available in Barcelona tonight?"))
-    asyncio.run(run_agent("What's the fastest way to get to Barcelona from London?"))
-```
-
-## Run the Example
-
-<Steps>
-  <Snippet file="create-venv-step.mdx" />
-
-  <Step title="Install dependencies">
-    ```bash
-    uv pip install -U "agno[mcp]" openai
-    ```
-  </Step>
-
-  <Step title="Prepare Node.js">
-    The MCP server runs with `npx`. Install Node.js, then verify the commands:
-    ```bash
-    node --version
-    npx --version
-    ```
-  </Step>
-
-  <Step title="Export your API keys">
-    <CodeGroup>
-    ```bash Mac/Linux
-    export BRAVE_API_KEY="your_brave_api_key_here"
-    export OPENAI_API_KEY="your_openai_api_key_here"
-    ```
-
-    ```bash Windows
-    $Env:BRAVE_API_KEY="your_brave_api_key_here"
-    $Env:OPENAI_API_KEY="your_openai_api_key_here"
-    ```
-    </CodeGroup>
-  </Step>
-
-  <Step title="Run the example">
-    Save the code above as `multiple_servers_allow_partial_failure.py`, then run:
-    ```bash
-    python multiple_servers_allow_partial_failure.py
-    ```
-  </Step>
-</Steps>
-
-Full source: [cookbook/91_tools/mcp/multiple_servers_allow_partial_failure.py](https://github.com/agno-agi/agno/blob/main/cookbook/91_tools/mcp/multiple_servers_allow_partial_failure.py)
+- [Agno v3 migration guide](/other/v3-migration)
+- [MCPTools overview](/tools/mcp/overview)

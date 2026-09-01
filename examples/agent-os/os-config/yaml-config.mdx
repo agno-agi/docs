@@ -1,98 +1,126 @@
 ---
-title: "YAML Config"
-description: "Load AgentOS configuration from a YAML file and attach Slack and WhatsApp interfaces."
-source: cookbook/05_agent_os/os_config/yaml_config.py
+title: "Configure AgentOS with YAML"
+description: "Load AgentOS UI metadata and database domains from YAML, then verify the rendered configuration."
+source: cookbook/05_agent_os/08_os_config/yaml_config.py
 ---
+
+Load the same UI metadata and database-domain concepts as config_basics.py from config.yaml, then verify the rendered result through GET /config.
 
 ```python yaml_config.py
 """
-Yaml Config
-===========
+Configure AgentOS with YAML
+===========================
 
-Demonstrates yaml config.
+Load the same UI metadata and database-domain concepts as config_basics.py
+from config.yaml, then verify the rendered result through GET /config.
+
+Prerequisites: OPENAI_API_KEY is needed only for agent runs
+Run: .venvs/demo/bin/python cookbook/05_agent_os/08_os_config/yaml_config.py
+Try: Run this file with --demo in another terminal
 """
 
+import argparse
+import os
 from pathlib import Path
 
+import httpx
 from agno.agent import Agent
-from agno.db.postgres import PostgresDb
-from agno.models.openai import OpenAIChat
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIResponses
 from agno.os import AgentOS
-from agno.os.interfaces.slack import Slack
-from agno.os.interfaces.whatsapp import Whatsapp
-from agno.team import Team
-from agno.workflow.step import Step
-from agno.workflow.workflow import Workflow
 
 # ---------------------------------------------------------------------------
-# Create Example
+# Create YAML-Configured AgentOS
 # ---------------------------------------------------------------------------
 
-cwd = Path(__file__).parent
-os_config_path = str(cwd.joinpath("config.yaml"))
+BASE_URL = os.getenv("AGENT_OS_BASE_URL", "http://localhost:7777")
+AGENT_ID = "yaml-operations-agent"
+DB_ID = "yaml-os-config-db"
+CONFIG_PATH = Path(__file__).with_name("config.yaml")
 
-# Setup the database
-db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai", id="db-0001")
+db = SqliteDb(
+    id=DB_ID,
+    db_file="tmp/yaml_os_config.db",
+)
 
-# Setup basic agents, teams and workflows
-basic_agent = Agent(
-    id="basic-agent",
-    name="Basic Agent",
+operations_agent = Agent(
+    id=AGENT_ID,
+    name="YAML Operations Agent",
+    model=OpenAIResponses(id="gpt-5.5"),
     db=db,
-    enable_session_summaries=True,
-    update_memory_on_run=True,
+    instructions="Answer operations questions clearly and concisely.",
     add_history_to_context=True,
     num_history_runs=3,
-    add_datetime_to_context=True,
+    update_memory_on_run=True,
     markdown=True,
 )
-basic_team = Team(
-    id="basic-team",
-    name="Basic Team",
-    model=OpenAIChat(id="gpt-4o"),
-    db=db,
-    members=[basic_agent],
-    update_memory_on_run=True,
-)
-basic_workflow = Workflow(
-    id="basic-workflow",
-    name="Basic Workflow",
-    description="Just a simple workflow",
-    db=db,
-    steps=[
-        Step(
-            name="step1",
-            description="Just a simple step",
-            agent=basic_agent,
-        )
-    ],
-)
 
-# Setup our AgentOS app
 agent_os = AgentOS(
-    description="Example AgentOS",
-    id="basic-os",
-    agents=[basic_agent],
-    teams=[basic_team],
-    workflows=[basic_workflow],
-    interfaces=[Whatsapp(agent=basic_agent), Slack(agent=basic_agent)],
-    # Configuration for the AgentOS
-    config=os_config_path,
+    id="yaml-config-os",
+    description="AgentOS configured from YAML.",
+    db=db,
+    agents=[operations_agent],
+    config=str(CONFIG_PATH),
 )
 app = agent_os.get_app()
 
 
+def show_rendered_config() -> None:
+    """Fetch and verify the YAML configuration rendered by AgentOS."""
+    with httpx.Client(base_url=BASE_URL, timeout=30.0) as client:
+        health_response = client.get("/health")
+        health_response.raise_for_status()
+
+        config_response = client.get("/config")
+        config_response.raise_for_status()
+        rendered = config_response.json()
+
+    manifest = rendered["manifest"][AGENT_ID]
+    session_domain = rendered["session"]["dbs"][0]
+    memory_domain = rendered["memory"]["dbs"][0]
+
+    if rendered["available_models"] != ["gpt-5.5"]:
+        raise RuntimeError("GET /config did not preserve YAML available_models")
+    if AGENT_ID not in {agent["id"] for agent in rendered["agents"]}:
+        raise RuntimeError("The YAML manifest ID does not match a registered agent")
+    if session_domain["db_id"] != DB_ID or memory_domain["db_id"] != DB_ID:
+        raise RuntimeError("YAML db_ids do not match the registered database")
+    if rendered["interfaces"]:
+        raise RuntimeError("The YAML example unexpectedly registered an interface")
+
+    print(f"Health: {health_response.json()['status']}")
+    print(f"AgentOS: {rendered['os_id']}")
+    print(f"Available models: {rendered['available_models']}")
+    print(f"Manifest labels: {manifest['labels']}")
+    print(f"Quick prompts: {manifest['quick_prompts']}")
+    print(
+        "Session domain: "
+        f"{session_domain['domain_config']['display_name']} ({session_domain['db_id']})"
+    )
+    print(
+        "Memory domain: "
+        f"{memory_domain['domain_config']['display_name']} ({memory_domain['db_id']})"
+    )
+    print(f"Interfaces: {rendered['interfaces']}")
+
+
 # ---------------------------------------------------------------------------
-# Run Example
+# Run YAML Config Demo
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    """Run your AgentOS.
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--demo",
+        action="store_true",
+        help="Fetch GET /config from a server already running on port 7777.",
+    )
+    args = parser.parse_args()
 
-    You can see the configuration and available endpoints at:
-    http://localhost:7777/config
-    """
-    agent_os.serve(app="yaml_config:app", reload=True)
+    if args.demo:
+        show_rendered_config()
+    else:
+        agent_os.serve(app=app)
 ```
 
 ## Run the Example
@@ -102,35 +130,21 @@ if __name__ == "__main__":
 
   <Step title="Install dependencies">
     ```bash
-    uv pip install -U "agno[os,slack]" "psycopg[binary]" openai
+    uv pip install -U "agno[os]" openai pyyaml
     ```
   </Step>
 
-  <Step title="Export environment variables">
+  <Step title="Export your OpenAI API key">
     <CodeGroup>
     ```bash Mac/Linux
     export OPENAI_API_KEY="your_openai_api_key_here"
-    export SLACK_SIGNING_SECRET="your_slack_signing_secret_here"
-    export SLACK_TOKEN="your_slack_token_here"
-    export WHATSAPP_ACCESS_TOKEN="your_whatsapp_access_token_here"
-    export WHATSAPP_APP_SECRET="your_whatsapp_app_secret_here"
-    export WHATSAPP_PHONE_NUMBER_ID="your_whatsapp_phone_number_id_here"
-    export WHATSAPP_VERIFY_TOKEN="your_whatsapp_verify_token_here"
     ```
 
     ```bash Windows
     $Env:OPENAI_API_KEY="your_openai_api_key_here"
-    $Env:SLACK_SIGNING_SECRET="your_slack_signing_secret_here"
-    $Env:SLACK_TOKEN="your_slack_token_here"
-    $Env:WHATSAPP_ACCESS_TOKEN="your_whatsapp_access_token_here"
-    $Env:WHATSAPP_APP_SECRET="your_whatsapp_app_secret_here"
-    $Env:WHATSAPP_PHONE_NUMBER_ID="your_whatsapp_phone_number_id_here"
-    $Env:WHATSAPP_VERIFY_TOKEN="your_whatsapp_verify_token_here"
     ```
     </CodeGroup>
   </Step>
-
-  <Snippet file="run-pgvector-step.mdx" />
 
   <Step title="Clone Agno">
     Clone the repository and run the remaining commands from its root:
@@ -140,12 +154,30 @@ if __name__ == "__main__":
     ```
   </Step>
 
-  <Step title="Run the example">
+  <Step title="Start the YAML-configured server">
+    Open another terminal in the parent directory where `.venv` and the cloned `agno` directory are siblings, then start AgentOS on port 7777:
+    <CodeGroup>
+    ```bash Mac/Linux
+    source .venv/bin/activate
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    cd agno
+    python cookbook/05_agent_os/08_os_config/yaml_config.py
+    ```
+    ```powershell Windows
+    .venv\Scripts\activate
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    Set-Location agno
+    python cookbook/05_agent_os/08_os_config/yaml_config.py
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Verify the rendered configuration">
     Run the example from the repository root:
     ```bash
-    python cookbook/05_agent_os/os_config/yaml_config.py
+    python cookbook/05_agent_os/08_os_config/yaml_config.py --demo
     ```
   </Step>
 </Steps>
 
-Full source: [cookbook/05_agent_os/08_os_config/yaml_config.py](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/08_os_config/yaml_config.py)
+Full source: [cookbook/05_agent_os/08_os_config/yaml_config.py](https://github.com/agno-agi/agno/blob/v3.0.4/cookbook/05_agent_os/08_os_config/yaml_config.py)
