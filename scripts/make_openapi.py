@@ -127,6 +127,7 @@ from agno.db.sqlite import SqliteDb  # noqa: E402
 from agno.knowledge.knowledge import Knowledge  # noqa: E402
 from agno.models.openai import OpenAIChat  # noqa: E402
 from agno.os import AgentOS, QueueConfig  # noqa: E402
+from agno.os.scopes import get_default_scope_mappings, get_required_scopes_for_route  # noqa: E402
 from agno.registry import Registry  # noqa: E402
 from agno.run.base import RunStatus  # noqa: E402
 from agno.team import Team  # noqa: E402
@@ -227,9 +228,11 @@ def verify_source_provenance() -> dict[str, str]:
 # slack-sdk, ...) that may be absent from the venv. Missing ones are excluded
 # from the generated spec and reported, instead of failing the whole run.
 try:
+    from a2a.types import AgentCard as A2AAgentCard  # noqa: E402
     from agno.os.interfaces.a2a import A2A  # noqa: E402
 except ImportError as _e:
     A2A = None
+    A2AAgentCard = None
     NOTES.append(f"interface A2A: EXCLUDED, import failed: {_e}")
 try:
     from agno.os.interfaces.agui import AGUI  # noqa: E402
@@ -363,10 +366,10 @@ def build_app():
         mcp_server=True,  # mounts /mcp sub-app; sub-app routes don't appear in app.openapi()
         telemetry=False,  # telemetry POSTs home at init; this is an offline dry run
     )
-    return agent_os.get_app()
+    return agent_os.get_app(), interfaces
 
 
-def apply_runtime_description_enrichments(spec: dict) -> dict:
+def apply_runtime_description_enrichments(spec: dict, interfaces: list) -> dict:
     """Document runtime branches that the pinned route metadata omits."""
     delete_component = spec["paths"]["/components/{component_id}"]["delete"]
     assert delete_component["description"] == "Delete a component by ID."
@@ -700,6 +703,53 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         for method in path_item
         if method in {"get", "post", "put", "patch", "delete", "options", "head"}
     }
+    a2a_route_keys = OPTIONAL_PARENT_AUTH_FAMILIES["A2A"]
+    present_a2a_routes, _ = present_optional_families(
+        available_operation_keys,
+        {"A2A": a2a_route_keys},
+    )
+    if present_a2a_routes:
+        assert A2AAgentCard is not None
+        agent_card_schema = A2AAgentCard.model_json_schema(
+            ref_template="#/components/schemas/{model}"
+        )
+        assert agent_card_schema["title"] == "AgentCard"
+        assert agent_card_schema["type"] == "object"
+        agent_card_definitions = agent_card_schema.pop("$defs")
+        new_agent_card_schemas = {
+            **agent_card_definitions,
+            "AgentCard": agent_card_schema,
+        }
+        component_schemas = spec["components"]["schemas"]
+        collisions = set(new_agent_card_schemas) & set(component_schemas)
+        assert not collisions, f"A2A schema name collisions: {sorted(collisions)}"
+        component_schemas.update(new_agent_card_schemas)
+
+        card_operations = {
+            "Agent": (
+                "/a2a/agents/{id}/.well-known/agent-card.json",
+                "get_agent_card_a2a_agents__id___well_known_agent_card_json_get",
+            ),
+            "Team": (
+                "/a2a/teams/{id}/.well-known/agent-card.json",
+                "get_team_card_a2a_teams__id___well_known_agent_card_json_get",
+            ),
+            "Workflow": (
+                "/a2a/workflows/{id}/.well-known/agent-card.json",
+                "get_workflow_card_a2a_workflows__id___well_known_agent_card_json_get",
+            ),
+        }
+        for kind, (path, operation_id) in card_operations.items():
+            operation = spec["paths"][path]["get"]
+            assert operation["operationId"] == operation_id
+            success_schema = operation["responses"]["200"]["content"]["application/json"]["schema"]
+            assert success_schema == {}
+            assert "404" not in operation["responses"]
+            operation["responses"]["200"]["content"]["application/json"]["schema"] = {
+                "$ref": "#/components/schemas/AgentCard"
+            }
+            operation["responses"]["404"] = {"description": f"{kind} not found"}
+
     present_slack_routes, _ = present_optional_families(
         available_operation_keys,
         {"Slack": slack_route_keys},
@@ -891,6 +941,39 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         "description": "Learnings are not supported by the selected remote or configured database"
     }
 
+    learning_users = spec["paths"]["/learnings/users"]["get"]
+    assert learning_users["operationId"] == "list_learning_users"
+    assert "501" not in learning_users["responses"]
+    learning_users["responses"]["501"] = {
+        "description": (
+            "Learning-user statistics are not supported by the selected remote "
+            "or configured database"
+        )
+    }
+
+    user_memory_stats = spec["paths"]["/user_memory_stats"]["get"]
+    assert user_memory_stats["operationId"] == "get_user_memory_stats"
+    user_memory_stats_media = user_memory_stats["responses"]["200"]["content"]["application/json"]
+    assert user_memory_stats_media["schema"] == {
+        "$ref": "#/components/schemas/PaginatedResponse_UserStatsSchema_"
+    }
+    assert set(user_memory_stats_media["example"]) == {"data"}
+    user_memory_stats_media["example"]["meta"] = {
+        "page": 1,
+        "limit": 20,
+        "total_pages": 1,
+        "total_count": 1,
+        "search_time_ms": 0,
+    }
+
+    content_status = spec["paths"]["/knowledge/content/{content_id}/status"]["get"]
+    assert content_status["operationId"] == "get_content_status"
+    content_status_not_found = content_status["responses"]["404"]
+    assert content_status_not_found["description"] == "Content not found"
+    content_status_not_found["description"] = (
+        "The selected knowledge base or database was not found"
+    )
+
     agui_status = spec["paths"]["/status"]["get"]
     assert agui_status["operationId"] == "get_status_status_get"
     agui_status_success = agui_status["responses"]["200"]
@@ -1025,6 +1108,58 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
     assert pagination_page["default"] == 0
     assert pagination_page["minimum"] == 0
     pagination_page["description"] = "Current page number"
+
+    runtime_scope_mappings = get_default_scope_mappings()
+    for interface in interfaces:
+        if getattr(interface, "authenticates_own_requests", False):
+            continue
+        runtime_scope_mappings.update(interface.get_scope_mappings())
+    scoped_operation_keys: set[tuple[str, str]] = set()
+    added_scope_responses = 0
+    preserved_scope_responses = 0
+    operation_methods = {"get", "post", "put", "patch", "delete", "options", "head"}
+    for path, path_item in spec["paths"].items():
+        for method, operation in path_item.items():
+            if method not in operation_methods:
+                continue
+            required_scopes = get_required_scopes_for_route(
+                runtime_scope_mappings,
+                method.upper(),
+                path,
+            )
+            if not required_scopes:
+                continue
+
+            key = (path, method)
+            scoped_operation_keys.add(key)
+            responses = operation.get("responses")
+            assert isinstance(responses, dict)
+            if "403" in responses:
+                forbidden = responses["403"]
+                assert isinstance(forbidden.get("description"), str)
+                assert forbidden["description"].strip()
+                preserved_scope_responses += 1
+                continue
+
+            responses["403"] = {
+                "description": (
+                    "Insufficient permissions. Required scope(s): "
+                    + ", ".join(required_scopes)
+                )
+            }
+            added_scope_responses += 1
+
+    documented_scope_keys = {
+        key
+        for key in scoped_operation_keys
+        if "403" in spec["paths"][key[0]][key[1]]["responses"]
+    }
+    assert documented_scope_keys == scoped_operation_keys
+    assert added_scope_responses + preserved_scope_responses == len(scoped_operation_keys)
+    NOTES.append(
+        f"scope responses: {len(scoped_operation_keys)} runtime-mapped operations document 403; "
+        f"added {added_scope_responses} and preserved {preserved_scope_responses}"
+    )
 
     # The generated reference covers both open AgentOS instances and protected
     # deployments. FastAPI emits an unconditional bearer requirement for its
@@ -1384,8 +1519,8 @@ def main(argv: list[str] | None = None) -> int:
         f"source: {provenance['source_tag']} at {provenance['source_sha']}; "
         f"imported module: {provenance['imported_module']}"
     )
-    app = build_app()
-    spec = apply_runtime_description_enrichments(app.openapi())
+    app, interfaces = build_app()
+    spec = apply_runtime_description_enrichments(app.openapi(), interfaces)
     validate_operation_ids(spec)
     validate_endpoint_page_coverage(spec)
 

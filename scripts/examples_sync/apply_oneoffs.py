@@ -86,6 +86,7 @@ MIGRATION_PAGE_INTROS = {
 # the changes without writing the pages first.
 DESCRIPTION_OVERRIDES = {
     "examples/agent-os/client-a2a/overview": "A2AClient examples for messaging, streaming, errors, multi-turn runs, and Agno or Google ADK servers.",
+    "examples/agent-os/client-a2a/servers/overview": "Serve Agno and Google ADK agents over A2A.",
     "examples/agent-os/interfaces/a2a/overview": "A2A interface examples for AgentOS: basic agents, teams, research, structured output, and multi-agent servers.",
     "examples/agent-os/dbs/overview": "Database backends for AgentOS agents, teams, workflows, and session storage.",
     "examples/agent-os/dbs/surreal-db/overview": "Current AgentOS SurrealDB database example.",
@@ -221,9 +222,17 @@ EXPLICIT_MISSING_ROWS = {
     ],
     "examples/agent-os/knowledge/overview": ["examples/agent-os/knowledge/agentos-docling-markdown-analyst"],
     "examples/agent-os/mcp-demo/overview": [
+        "examples/tools/mcp/dynamic-headers/overview",
+        "examples/tools/mcp-tools",
         "examples/agent-os/mcp-demo/custom-mcp-tool-example",
         "examples/agent-os/mcp-demo/oauth-authkit-example",
         "examples/agent-os/mcp-demo/oauth-builtin-example",
+        "examples/agent-os/mcp/basic",
+        "examples/agent-os/mcp/custom-tools",
+        "examples/agent-os/mcp/mcp-client",
+        "examples/agent-os/mcp/oauth-authkit",
+        "examples/agent-os/mcp/oauth-builtin",
+        "examples/agent-os/mcp/secure-mcp",
     ],
     "examples/agent-os/overview": [
         "examples/agent-os/factories/overview",
@@ -360,7 +369,25 @@ EXPLICIT_MISSING_ROWS = {
         "examples/teams/modes/tasks-stream",
         "examples/teams/modes/tasks/streaming-events",
     ],
-    "examples/teams/state/overview": ["examples/teams/session/custom-session-summary"],
+    "examples/teams/state/overview": [
+        "examples/teams/session/custom-session-summary",
+        "examples/teams/session/metadata-resolution",
+        "examples/teams/session/nested-team-deep-history",
+        "examples/teams/session/nested-team-history",
+        "examples/teams/session/nested-team-history-to-members",
+        "examples/teams/session/search-past-sessions",
+    ],
+    "examples/agent-os/client-a2a/servers/overview": [
+        "examples/agent-os/remote/servers/a2a-server",
+        "examples/agent-os/remote/servers/adk-server",
+    ],
+    "examples/agent-os/middleware/overview": [
+        "examples/agent-os/customize/custom-middleware",
+        "examples/agent-os/customize/response-middleware",
+        "examples/agent-os/security/cookie-auth",
+        "examples/agent-os/security/jwt-claims",
+        "examples/agent-os/security/service-accounts",
+    ],
     "examples/teams/structured-input-output/overview": ["examples/teams/structured-input-output/expected-output"],
     "examples/teams/tools/overview": [
         "examples/teams/tools/async-toolkit-context",
@@ -377,6 +404,9 @@ EXPLICIT_MISSING_ROWS = {
 # Existing overview rows that point at retained migration URLs but no longer
 # belong in the parent category.
 EXPLICIT_ROW_REMOVALS = {
+    "examples/agent-os/client-a2a/servers/overview": {"examples/introduction"},
+    "examples/agent-os/mcp-demo/overview": {"examples/introduction"},
+    "examples/agent-os/middleware/overview": {"examples/introduction"},
     "examples/agent-os/dbs/surreal-db/overview": {"examples/introduction"},
     "examples/agent-os/rbac/asymmetric/overview": {"examples/introduction"},
     "examples/agent-os/rbac/symmetric/overview": {"examples/introduction"},
@@ -405,6 +435,38 @@ EXPLICIT_ROW_REMOVALS = {
 # covers subgroup links without an overview page and factual corrections to
 # existing rows.
 EXPLICIT_ROW_OVERRIDES = {
+    "examples/teams/state/overview": {
+        "examples/teams/session/metadata-resolution": (
+            "Metadata Resolution",
+            "Resolve team, session, and call metadata with later layers taking precedence.",
+        ),
+        "examples/teams/session/nested-team-deep-history": (
+            "Deep Nested Team History",
+            "Reuse session history across a team nested three levels deep.",
+        ),
+        "examples/teams/session/nested-team-history": (
+            "Nested Team History",
+            "Persist a nested sub-team's conversation history across delegations.",
+        ),
+        "examples/teams/session/nested-team-history-to-members": (
+            "Nested Team History for Members",
+            "Pass a nested sub-team's filtered history to its members.",
+        ),
+        "examples/teams/session/search-past-sessions": (
+            "Search Past Sessions",
+            "List a user's team sessions, then read one session's history.",
+        ),
+    },
+    "examples/agent-os/client-a2a/servers/overview": {
+        "examples/agent-os/remote/servers/a2a-server": (
+            "Agno A2A Server",
+            "Serve an Agno Agent through the A2A REST interface.",
+        ),
+        "examples/agent-os/remote/servers/adk-server": (
+            "Google ADK A2A Server",
+            "Serve a Google ADK Agent through A2A JSON-RPC.",
+        ),
+    },
     "examples/workflows/cel-expressions/router/overview": {
         "examples/workflows/cel-expressions/router/cel-previous-step-route": (
             "CEL Previous Step Route",
@@ -508,6 +570,10 @@ EXPLICIT_ROW_OVERRIDES = {
         ),
     },
     "examples/agent-os/mcp-demo/overview": {
+        "examples/tools/mcp/dynamic-headers/overview": (
+            "Dynamic Headers",
+            "Send request-specific values to an MCP server through HTTP headers.",
+        ),
         "examples/agent-os/mcp-demo/oauth-authkit-example": (
             "OAuth with WorkOS AuthKit",
             "Bring a FastMCP AuthProvider backed by WorkOS AuthKit to the AgentOS MCP endpoint.",
@@ -1088,6 +1154,27 @@ EXPLICIT_LABEL_REFRESH = {
 # append-only indexes. Rebuild only their row order, using current target
 # frontmatter for the rows that the audit marked stale or missing.
 EXPLICIT_TABLE_ORDER = {
+    "examples/agent-os/client-a2a/servers/overview": [
+        "examples/agent-os/remote/servers/a2a-server",
+        "examples/agent-os/remote/servers/adk-server",
+    ],
+    "examples/agent-os/middleware/overview": [
+        "examples/agent-os/customize/custom-middleware",
+        "examples/agent-os/customize/response-middleware",
+        "examples/agent-os/security/cookie-auth",
+        "examples/agent-os/security/jwt-claims",
+        "examples/agent-os/security/service-accounts",
+    ],
+    "examples/agent-os/mcp-demo/overview": [
+        "examples/tools/mcp/dynamic-headers/overview",
+        "examples/tools/mcp-tools",
+        "examples/agent-os/mcp/basic",
+        "examples/agent-os/mcp/custom-tools",
+        "examples/agent-os/mcp/mcp-client",
+        "examples/agent-os/mcp/oauth-authkit",
+        "examples/agent-os/mcp/oauth-builtin",
+        "examples/agent-os/mcp/secure-mcp",
+    ],
     "examples/tools/mcp/streamable-http-transport/overview": [
         "examples/tools/mcp/streamable-http-transport/server",
         "examples/tools/mcp/streamable-http-transport/client",
@@ -4751,6 +4838,54 @@ The source uses the retired `imagen-4.0-generate-preview-05-20` model, the remov
   </Step>
 
   <Step title="Run Agent">""",
+    )
+
+    # Recover reviewed current destinations for retained AgentOS migration
+    # indexes before the overview-table pass evaluates legacy-only pages.
+    for path in (
+        "examples/agent-os/client-a2a/servers/overview.mdx",
+        "examples/agent-os/mcp-demo/overview.mdx",
+        "examples/agent-os/middleware/overview.mdx",
+    ):
+        root_sub(
+            path,
+            "The v3.0.4 cookbook contains no matching sources for this section's prior examples.",
+            "Current v3.0.4 examples:",
+            required=False,
+        )
+
+    root_sub(
+        "examples/tools/parallel/competitor-tracker.mdx",
+        "```\n\n## Run the Example",
+        """```
+
+<Warning>
+Parallel monitors continue running after the script exits and may consume usage. Save every `monitor_id` returned by the creation response. When you finish, create a `ParallelTools(enable_search=False, enable_extract=False, enable_monitor=True)` instance and call `cancel_monitor(monitor_id)` for each saved ID. Leave unrelated account monitors active.
+</Warning>
+
+## Run the Example""",
+    )
+    root_sub(
+        "examples/agent-os/customize/dependencies.mdx",
+        """  <Step title="Run the example">
+    Save the code above as `dependencies.py`, then run:
+    ```bash
+    python dependencies.py
+    ```
+  </Step>""",
+        """  <Step title="Start AgentOS">
+    Save the code above as `dependencies.py`, then run:
+    ```bash
+    python dependencies.py
+    ```
+  </Step>
+
+  <Step title="Run the dependency request">
+    In a second terminal with the same environment, run:
+    ```bash
+    python dependencies.py --demo
+    ```
+  </Step>""",
     )
 
     # 9. Reviewed frontmatter overrides consumed by the overview row pass.
