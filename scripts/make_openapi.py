@@ -432,6 +432,41 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         },
     }
 
+    checkpoint_snapshot = spec["paths"][
+        "/agents/{agent_id}/runs/{run_id}/checkpoints/{message_index}"
+    ]["get"]
+    assert checkpoint_snapshot["operationId"] == "get_agent_run_checkpoint_snapshot"
+    snapshot_success = checkpoint_snapshot["responses"]["200"]
+    assert snapshot_success["content"]["application/json"]["schema"] == {}
+    checkpoint_entry_schema = checkpoint_success["content"]["application/json"]["schema"][
+        "properties"
+    ]["checkpoints"]["items"]
+    snapshot_checkpoint_schema = json.loads(json.dumps(checkpoint_entry_schema))
+    snapshot_checkpoint_schema["properties"]["checkpoint_id"]["type"] = ["string", "null"]
+    snapshot_checkpoint_schema["properties"]["reason"]["enum"] = ["snapshot"]
+    snapshot_success["content"]["application/json"]["schema"] = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["checkpoint", "snapshot"],
+        "properties": {
+            "checkpoint": snapshot_checkpoint_schema,
+            "snapshot": {
+                "type": "object",
+                "additionalProperties": True,
+                "description": "Serialized AgentRunOutput truncated at the selected message boundary",
+            },
+        },
+    }
+    snapshot_bad_request = checkpoint_snapshot["responses"]["400"]
+    assert snapshot_bad_request["description"] == "Invalid checkpoint message index"
+    snapshot_bad_request["description"] = (
+        "The message index is invalid or checkpoint snapshots are unavailable for remote agents"
+    )
+    assert "403" not in checkpoint_snapshot["responses"]
+    checkpoint_snapshot["responses"]["403"] = {
+        "description": "The caller cannot run this agent"
+    }
+
     continue_team_run = spec["paths"]["/teams/{team_id}/runs/{run_id}/continue"]["post"]
     assert continue_team_run["operationId"] == "continue_team_run"
     assert "202" not in continue_team_run["responses"]
@@ -520,6 +555,27 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
     NOTES.append(
         "runtime Workflow run-list schema: WorkflowRunSchema array, complete RunStatus filter, and authorization response"
     )
+
+    list_workflows = spec["paths"]["/workflows"]["get"]
+    assert list_workflows["operationId"] == "get_workflows"
+    assert list_workflows["description"] == (
+        "Retrieve a comprehensive list of all workflows configured in this OS instance.\n\n"
+        "**Return Information:**\n"
+        "- Workflow metadata (ID, name, description)\n"
+        "- Input schema requirements\n"
+        "- Step sequence and execution flow\n"
+        "- Associated agents and teams"
+    )
+    list_workflows["description"] = (
+        "Retrieve summary records for the workflows configured in this AgentOS instance. "
+        "Each item includes identifiers, metadata, database association, factory or component "
+        "flags, and published stage or version fields when applicable. Use "
+        "`GET /workflows/{workflow_id}` for input schemas, steps, agents, and teams."
+    )
+    assert "403" not in list_workflows["responses"]
+    list_workflows["responses"]["403"] = {
+        "description": "The caller has no accessible workflow scopes"
+    }
 
     get_workflow_run = spec["paths"]["/workflows/{workflow_id}/runs/{run_id}"]["get"]
     assert get_workflow_run["operationId"] == "get_workflow_run"
@@ -764,6 +820,85 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         "description": "The component is not archived or the restore conflicts with another write"
     }
 
+    update_component = spec["paths"]["/components/{component_id}"]["patch"]
+    assert "403" not in update_component["responses"]
+    assert "409" not in update_component["responses"]
+    update_component["responses"]["403"] = {
+        "description": "The shared component or another user's published component cannot be modified"
+    }
+    update_component["responses"]["409"] = {
+        "description": "The version guard is stale or the component update conflicts with another write"
+    }
+
+    approval_count = spec["paths"]["/approvals/count"]["get"]
+    for status in ("401", "403", "503"):
+        assert status not in approval_count["responses"]
+    approval_count["responses"]["401"] = {
+        "description": "Authentication is required by the configured AgentOS security policy"
+    }
+    approval_count["responses"]["403"] = {
+        "description": "The caller lacks the approvals:read scope or a required isolated user ID"
+    }
+    approval_count["responses"]["503"] = {
+        "description": "The configured database does not support approval operations"
+    }
+
+    enable_schedule = spec["paths"]["/schedules/{schedule_id}/enable"]["post"]
+    assert enable_schedule.get("description") is None
+    enable_schedule["description"] = (
+        "Enable a schedule after verifying access to its target and confirming that the target "
+        "is published, active, and still matches the schedule endpoint."
+    )
+    for status in ("401", "403", "404", "409", "503"):
+        assert status not in enable_schedule["responses"]
+    enable_schedule["responses"]["401"] = {
+        "description": "Authentication is required by the configured AgentOS security policy"
+    }
+    enable_schedule["responses"]["403"] = {
+        "description": "The caller cannot run the target or schedule the target endpoint"
+    }
+    enable_schedule["responses"]["404"] = {"description": "Schedule not found"}
+    enable_schedule["responses"]["409"] = {
+        "description": (
+            "The target is archived or unpublished, or the schedule endpoint no longer matches "
+            "its target"
+        )
+    }
+    enable_schedule["responses"]["503"] = {
+        "description": (
+            "The configured database does not support scheduler operations or scheduler "
+            "dependencies are not installed"
+        )
+    }
+
+    update_session = spec["paths"]["/sessions/{session_id}"]["patch"]
+    assert update_session["operationId"] == "update_session"
+    update_request_media = update_session["requestBody"]["content"]["application/json"]
+    assert "examples" not in update_request_media
+    update_success_media = update_session["responses"]["200"]["content"]["application/json"]
+    request_examples = update_success_media.pop("examples")
+    assert set(request_examples) == {
+        "update_summary",
+        "update_metadata",
+        "update_session_name",
+        "update_session_state",
+    }
+    update_request_media["examples"] = request_examples
+    update_success_media["examples"] = {
+        "updated_agent_session": {
+            "summary": "Updated agent session",
+            "value": {
+                "agent_session_id": "session-123",
+                "session_id": "session-123",
+                "session_name": "Updated Session Name",
+                "session_summary": {
+                    "summary": "The user discussed project planning with the agent.",
+                    "updated_at": "2025-10-21T14:30:00Z",
+                },
+            },
+        }
+    }
+
     refresh_content = spec["paths"]["/knowledge/content/{content_id}/refresh"]["post"]
     assert "403" not in refresh_content["responses"]
     assert "501" not in refresh_content["responses"]
@@ -889,7 +1024,8 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         assert len(final_required) == 1
         assert len(final_no_security) == 9
     NOTES.append(
-        "runtime response enrichments: restore, knowledge refresh, Queue, and media branches; "
+        "runtime response enrichments: component update and restore, schedule enable, approval "
+        "count, session update, knowledge refresh, Queue, and media branches; "
         "PaginationInfo wording aligned with its emitted default and minimum"
     )
     NOTES.append(

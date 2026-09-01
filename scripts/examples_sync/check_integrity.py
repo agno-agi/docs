@@ -545,8 +545,8 @@ else:
         g_bad.append("migration manifest routes must be an object")
         raw_routes = {}
     migration_slugs = set(raw_routes)
-    if len(migration_slugs) != 270:
-        g_bad.append(f"expected 270 migration routes, found {len(migration_slugs)}")
+    if len(migration_slugs) != 271:
+        g_bad.append(f"expected 271 migration routes, found {len(migration_slugs)}")
     expected_source_evidence = {
         "agno_agentos_migration_ledger": {
             "commit_sha": "4cafec3d48c956fffaac6278ed0860e0d22e4fed",
@@ -566,8 +566,8 @@ else:
         no_direct_successors = {}
     if len(direct_successors) != 154:
         g_bad.append(f"expected 154 direct successors, found {len(direct_successors)}")
-    if len(no_direct_successors) != 116:
-        g_bad.append(f"expected 116 no-direct routes, found {len(no_direct_successors)}")
+    if len(no_direct_successors) != 117:
+        g_bad.append(f"expected 117 no-direct routes, found {len(no_direct_successors)}")
     if set(direct_successors) & set(no_direct_successors):
         g_bad.append("migration evidence partitions overlap")
     if migration_slugs != set(direct_successors) | set(no_direct_successors):

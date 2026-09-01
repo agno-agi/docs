@@ -96,7 +96,7 @@ This approach gives you fine-grained control: critical hooks are executed during
 See [Per-Hook Background Example](/agent-os/usage/background-hooks-decorator) for an example.
 
 <Check>
-**Background tasks require AgentOS.** When running agents directly (not through AgentOS), the `@hook(run_in_background=True)` decorator has no effect - hooks will run synchronously.
+**Background scheduling requires AgentOS.** Direct `arun()` calls await async hooks in the run path. Direct `run()` calls require synchronous hooks and raise `ValueError` when given an async hook.
 </Check>
 
 ## How It Works
@@ -112,7 +112,7 @@ Background tasks execute **sequentially** after the response is sent. If you hav
 
 ### Data Isolation
 
-When hooks run in the background, AgentOS automatically creates deep copies of:
+When hooks run in the background, AgentOS attempts to create deep copies of:
 
 - `run_input` - The input to the agent run
 - `run_context` - The current run context
@@ -121,7 +121,7 @@ When hooks run in the background, AgentOS automatically creates deep copies of:
 - `dependencies` - The dependencies passed to the run
 - `metadata` - The run metadata
 
-This prevents race conditions where background hooks might accidentally modify data that's being used elsewhere.
+If a value cannot be copied, AgentOS logs a warning and passes the original reference to the hook. Use immutable values or independently created dependencies when a background hook might mutate them.
 
 ### Error Handling
 
@@ -167,4 +167,3 @@ async def safe_background_hook(run_output, agent):
 
 - [@hook Decorator Reference](/reference/hooks/hook-decorator)
 - [Hooks Overview](/hooks/overview)
-

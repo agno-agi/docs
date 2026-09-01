@@ -910,9 +910,81 @@ paths:
           description: Run checkpoint snapshot retrieved successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - checkpoint
+                  - snapshot
+                properties:
+                  checkpoint:
+                    type: object
+                    additionalProperties: false
+                    required:
+                      - checkpoint_id
+                      - run_id
+                      - session_id
+                      - message_index
+                      - continue_from
+                      - status
+                      - reason
+                      - created_at
+                      - message_id
+                      - message_role
+                      - message_preview
+                      - is_latest
+                    properties:
+                      checkpoint_id:
+                        type:
+                          - string
+                          - 'null'
+                      run_id:
+                        type:
+                          - string
+                          - 'null'
+                      session_id:
+                        type:
+                          - string
+                          - 'null'
+                      message_index:
+                        type: integer
+                        minimum: 0
+                      continue_from:
+                        type: integer
+                        minimum: 0
+                      status:
+                        type:
+                          - string
+                          - 'null'
+                      reason:
+                        type: string
+                        enum:
+                          - snapshot
+                      created_at:
+                        type:
+                          - integer
+                          - 'null'
+                      message_id:
+                        type:
+                          - string
+                          - 'null'
+                      message_role:
+                        type:
+                          - string
+                          - 'null'
+                      message_preview:
+                        type:
+                          - string
+                          - 'null'
+                        maxLength: 120
+                      is_latest:
+                        type: boolean
+                  snapshot:
+                    type: object
+                    additionalProperties: true
+                    description: Serialized AgentRunOutput truncated at the selected message boundary
         '400':
-          description: Invalid checkpoint message index
+          description: The message index is invalid or checkpoint snapshots are unavailable for remote agents
           content:
             application/json:
               schema:
@@ -941,6 +1013,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: The caller cannot run this agent
   /agents/{agent_id}/runs/{run_id}/resume:
     post:
       tags:
@@ -1929,14 +2003,7 @@ paths:
       tags:
         - Workflows
       summary: List All Workflows
-      description: |-
-        Retrieve a comprehensive list of all workflows configured in this OS instance.
-
-        **Return Information:**
-        - Workflow metadata (ID, name, description)
-        - Input schema requirements
-        - Step sequence and execution flow
-        - Associated agents and teams
+      description: Retrieve summary records for the workflows configured in this AgentOS instance. Each item includes identifiers, metadata, database association, factory or component flags, and published stage or version fields when applicable. Use `GET /workflows/{workflow_id}` for input schemas, steps, agents, and teams.
       operationId: get_workflows
       responses:
         '200':
@@ -1983,6 +2050,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: The caller has no accessible workflow scopes
       security:
         - {}
         - HTTPBearer: []
@@ -4180,6 +4249,32 @@ paths:
             schema:
               $ref: '#/components/schemas/UpdateSessionRequest'
               description: Session update data
+            examples:
+              update_summary:
+                summary: Update session summary
+                value:
+                  summary:
+                    summary: The user discussed project planning with the agent.
+                    updated_at: '2025-10-21T14:30:00Z'
+              update_metadata:
+                summary: Update session metadata
+                value:
+                  metadata:
+                    tags:
+                      - planning
+                      - project
+                    priority: high
+              update_session_name:
+                summary: Update session name
+                value:
+                  session_name: Updated Session Name
+              update_session_state:
+                summary: Update session state
+                value:
+                  session_state:
+                    step: completed
+                    context: Project planning finished
+                    progress: 100
       responses:
         '200':
           description: Session updated successfully
@@ -4192,31 +4287,15 @@ paths:
                   - $ref: '#/components/schemas/WorkflowSessionDetailSchema'
                 title: Response Update Session
               examples:
-                update_summary:
-                  summary: Update session summary
+                updated_agent_session:
+                  summary: Updated agent session
                   value:
-                    summary:
+                    agent_session_id: session-123
+                    session_id: session-123
+                    session_name: Updated Session Name
+                    session_summary:
                       summary: The user discussed project planning with the agent.
                       updated_at: '2025-10-21T14:30:00Z'
-                update_metadata:
-                  summary: Update session metadata
-                  value:
-                    metadata:
-                      tags:
-                        - planning
-                        - project
-                      priority: high
-                update_session_name:
-                  summary: Update session name
-                  value:
-                    session_name: Updated Session Name
-                update_session_state:
-                  summary: Update session state
-                  value:
-                    session_state:
-                      step: completed
-                      context: Project planning finished
-                      progress: 100
         '400':
           description: Bad Request
           content:
@@ -9835,6 +9914,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: The shared component or another user's published component cannot be modified
+        '409':
+          description: The version guard is stale or the component update conflicts with another write
     delete:
       tags:
         - Components
@@ -10608,6 +10691,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '401':
+          description: Authentication is required by the configured AgentOS security policy
+        '403':
+          description: The caller cannot run the target or schedule the target endpoint
+        '404':
+          description: Schedule not found
+        '409':
+          description: The target is archived or unpublished, or the schedule endpoint no longer matches its target
+        '503':
+          description: The configured database does not support scheduler operations or scheduler dependencies are not installed
+      description: Enable a schedule after verifying access to its target and confirming that the target is published, active, and still matches the schedule endpoint.
   /schedules/{schedule_id}/disable:
     post:
       tags:
@@ -10913,6 +11007,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '401':
+          description: Authentication is required by the configured AgentOS security policy
+        '403':
+          description: The caller lacks the approvals:read scope or a required isolated user ID
+        '503':
+          description: The configured database does not support approval operations
   /approvals/{approval_id}/status:
     get:
       tags:

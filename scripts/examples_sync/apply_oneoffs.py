@@ -88,15 +88,17 @@ DESCRIPTION_OVERRIDES = {
     "examples/agent-os/client-a2a/overview": "A2AClient examples for messaging, streaming, errors, multi-turn runs, and Agno or Google ADK servers.",
     "examples/agent-os/interfaces/a2a/overview": "A2A interface examples for AgentOS: basic agents, teams, research, structured output, and multi-agent servers.",
     "examples/agent-os/dbs/overview": "Database backends for AgentOS agents, teams, workflows, and session storage.",
+    "examples/agent-os/dbs/surreal-db/overview": "Current AgentOS SurrealDB database example.",
     "examples/agent-os/knowledge/overview": "Serve AgentOS agents over Excel, markdown, Agno docs, and PgVector knowledge bases.",
     "examples/agent-os/mcp-demo/overview": "Expose AgentOS agents and custom tools through MCP with OAuth, dynamic headers, and managed MCPTools lifespans.",
     "examples/agent-os/middleware/overview": "AgentOS middleware examples for authentication, request context, rate limiting, and custom request handling.",
     "examples/agent-os/os-config/overview": "Configure AgentOS in Python or YAML, including manifests, memory, and interfaces.",
     "examples/agent-os/rbac/overview": "JWT-based AgentOS RBAC examples for symmetric and asymmetric keys, scope mapping, and user isolation.",
     "examples/agent-os/rbac/asymmetric/overview": "RS256 AgentOS RBAC examples for generated keys, custom scope mappings, and WorkOS-issued tokens.",
+    "examples/agent-os/rbac/symmetric/overview": "HS256 AgentOS RBAC examples for scopes, custom mappings, and user isolation.",
     "examples/agent-os/remote/overview": "Connect AgentOS to remote agents, teams, workflows, A2A endpoints, and gateway instances.",
     "examples/agent-os/skills/overview": "Load local skills into an AgentOS agent, including sample system-information scripts.",
-    "examples/agent-os/tracing/dbs/overview": "Persist AgentOS traces to ClickHouse, MongoDB, PostgreSQL, and SQLite.",
+    "examples/agent-os/tracing/dbs/overview": "Route AgentOS traces to a dedicated ClickHouse database.",
     "examples/tools/mcp/overview": "MCPTools examples for local, hosted, authenticated, and multi-server MCP connections.",
     "examples/tools/mcp/sse-transport/overview": "Connect agents to SSE MCP servers with MCPTools.",
     "examples/tools/mcp/streamable-http-transport/overview": "Connect agents to Streamable HTTP MCP servers with MCPTools.",
@@ -238,9 +240,21 @@ EXPLICIT_MISSING_ROWS = {
         "examples/agent-os/team-tasks/team-tasks-streaming",
     ],
     "examples/agent-os/interfaces/overview": ["examples/agent-os/interfaces/telegram/basic"],
+    "examples/agent-os/dbs/overview": [
+        "examples/agent-os/databases/basic",
+        "examples/agent-os/databases/postgres",
+    ],
+    "examples/agent-os/dbs/surreal-db/overview": ["examples/agent-os/databases/surreal"],
     "examples/agent-os/rbac/overview": ["examples/agent-os/rbac/test-scopes"],
-    "examples/agent-os/rbac/asymmetric/overview": ["examples/agent-os/rbac/asymmetric/workos-byot"],
-    "examples/agent-os/rbac/symmetric/overview": ["examples/agent-os/rbac/symmetric/user-isolation"],
+    "examples/agent-os/rbac/asymmetric/overview": [
+        "examples/agent-os/security/asymmetric-keys",
+        "examples/agent-os/security/workos-byot",
+    ],
+    "examples/agent-os/rbac/symmetric/overview": [
+        "examples/agent-os/security/basic-scopes",
+        "examples/agent-os/security/custom-scope-mappings",
+        "examples/agent-os/security/user-isolation",
+    ],
     "examples/agent-os/remote/overview": [
         "examples/agent-os/remote/remote-team-and-workflow",
         "examples/agent-os/remote/remote-via-a2a",
@@ -254,7 +268,7 @@ EXPLICIT_MISSING_ROWS = {
     "examples/agent-os/scheduler/overview": ["examples/agent-os/scheduler/scheduler-tools-agent"],
     "examples/agent-os/tracing/overview": ["examples/agent-os/tracing/advanced-trace-filtering"],
     "examples/agent-os/tracing/dbs/overview": [
-        "examples/agent-os/tracing/dbs/basic-agent-with-clickhousedb"
+        "examples/agent-os/observability/traces-to-clickhouse"
     ],
     "examples/agent-os/workflow/overview": ["examples/agent-os/workflow/workflow-with-workflow-as-step"],
     "examples/agents/advanced/overview": [
@@ -285,7 +299,11 @@ EXPLICIT_MISSING_ROWS = {
         "examples/agents/input-output/followup-suggestions",
         "examples/agents/input-output/followup-suggestions-streaming",
     ],
-    "examples/agents/state-and-session/overview": ["examples/agents/state-and-session/search-session-history"],
+    "examples/agents/state-and-session/overview": [
+        "examples/agents/state-and-session/search-session-history",
+        "examples/agents/state-and-session/metadata-resolution",
+        "examples/agents/state-and-session/search-past-sessions",
+    ],
     "examples/agents/tools/overview": ["examples/agents/tools/tools-with-literal-type-param"],
     "examples/components/overview": [
         "examples/components/auto-populate-registry",
@@ -356,6 +374,10 @@ EXPLICIT_MISSING_ROWS = {
 # Existing overview rows that point at retained migration URLs but no longer
 # belong in the parent category.
 EXPLICIT_ROW_REMOVALS = {
+    "examples/agent-os/dbs/surreal-db/overview": {"examples/introduction"},
+    "examples/agent-os/rbac/asymmetric/overview": {"examples/introduction"},
+    "examples/agent-os/rbac/symmetric/overview": {"examples/introduction"},
+    "examples/agent-os/tracing/dbs/overview": {"examples/introduction"},
     "examples/agent-os/remote/overview": {
         "examples/agent-os/remote/remote-team",
         "examples/agent-os/remote/remote-agno-a2a-agent",
@@ -1526,7 +1548,7 @@ def migration_manifest_targets() -> dict[str, tuple[tuple[str, str], ...]]:
             normalized.append((task, destination))
         targets[slug] = tuple(normalized)
 
-    assert len(targets) == 270, f"expected 270 migration routes, found {len(targets)}"
+    assert len(targets) == 271, f"expected 271 migration routes, found {len(targets)}"
 
     direct_successors = manifest.get("direct_successors")
     no_direct_successors = manifest.get("no_direct_successors")
@@ -1535,8 +1557,8 @@ def migration_manifest_targets() -> dict[str, tuple[tuple[str, str], ...]]:
     assert len(direct_successors) == 154, (
         f"expected 154 direct successors, found {len(direct_successors)}"
     )
-    assert len(no_direct_successors) == 116, (
-        f"expected 116 no-direct routes, found {len(no_direct_successors)}"
+    assert len(no_direct_successors) == 117, (
+        f"expected 117 no-direct routes, found {len(no_direct_successors)}"
     )
     assert not (set(direct_successors) & set(no_direct_successors)), (
         "migration evidence partitions overlap"
@@ -2887,18 +2909,27 @@ Valkey vector search requires""",
 
 <Note>""",
     )
+    approval_count_scope_note = """<Note>
+  With user isolation enabled, non-admin requests are scoped to the user ID in the JWT even when `user_id` is supplied.
+</Note>"""
+    root_sub(
+        "reference-api/schema/approvals/get-approval-count.mdx",
+        """<Warning>
+  This endpoint counts pending approvals. With user isolation enabled, non-admin requests are scoped to the user ID in the JWT even when `user_id` is supplied. Authentication failures can return `401`, and databases without approval support can return `503`; the current OpenAPI operation declares only `200` and `422`.
+</Warning>""",
+        approval_count_scope_note,
+        required=False,
+    )
     root_sub(
         "reference-api/schema/approvals/get-approval-count.mdx",
         """---
 openapi: get /approvals/count
 ---""",
-        """---
+        f"""---
 openapi: get /approvals/count
 ---
 
-<Warning>
-  This endpoint counts pending approvals. With user isolation enabled, non-admin requests are scoped to the user ID in the JWT even when `user_id` is supplied. Authentication failures can return `401`, and databases without approval support can return `503`; the current OpenAPI operation declares only `200` and `422`.
-</Warning>""",
+{approval_count_scope_note}""",
     )
     root_sub(
         "examples/tools/dalle-tools.mdx",
@@ -2984,82 +3015,41 @@ from agno.workflow.step import Step""",
         """tools=[WebSearchTools()],
     role="Search the web for the latest news and trends",""",
     )
-    # Keep the generated v3 source docstring byte-for-byte. The rendered setup
-    # derives the OpenAI dependency from imports, so no page-local patch is
-    # needed here. The incomplete cookbook docstring remains an upstream issue.
-    # Generated v3 Valkey pages now derive their source field, dependencies,
-    # OpenAI key, and local service step from the cookbook imports.
-    sub(
-        "agent-os/dbs/valkey-db.mdx",
-        "```python\n",
-        "```python valkey_db.py\n",
+    # Recover this legacy-only index now that the pinned source contains a
+    # direct ClickHouse tracing example under observability.
+    root_sub(
+        "examples/agent-os/tracing/dbs/overview.mdx",
+        """The v3.0.4 cookbook contains no matching sources for this section's prior examples.
+
+| Example | Description |
+|---------|-------------|
+| [Examples](/examples/introduction) | Browse current Agno v3.0.4 examples. |""",
+        """Current v3.0.4 examples:
+
+| Example | Description |
+|---------|-------------|
+| [Examples](/examples/introduction) | Browse current Agno v3.0.4 examples. |""",
+        required=False,
     )
-    sub(
-        "agent-os/dbs/valkey-db.mdx",
-        'description: "Setup the Valkey database."\n---',
-        'description: "Setup the Valkey database."\nsource: cookbook/05_agent_os/dbs/valkey_db.py\n---',
-    )
-    sub(
-        "agent-os/dbs/valkey-db.mdx",
-        """## Run the Example
-```bash
-# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/05_agent_os/dbs
+    for path in (
+        "examples/agent-os/dbs/surreal-db/overview.mdx",
+        "examples/agent-os/rbac/asymmetric/overview.mdx",
+        "examples/agent-os/rbac/symmetric/overview.mdx",
+    ):
+        root_sub(
+            path,
+            """The v3.0.4 cookbook contains no matching sources for this section's prior examples.
 
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
+| Example | Description |
+|---------|-------------|
+| [Examples](/examples/introduction) | Browse current Agno v3.0.4 examples. |""",
+            """Current v3.0.4 examples:
 
-python valkey_db.py
-```""",
-        """## Run the Example
-
-<Steps>
-  <Step title="Clone Agno">
-    Clone the repository and run the remaining commands from its root:
-    ```bash
-    git clone https://github.com/agno-agi/agno.git
-    cd agno
-    ```
-  </Step>
-
-  <Step title="Set up the demo environment">
-    ```bash
-    ./scripts/demo_setup.sh
-    source .venvs/demo/bin/activate
-    uv pip install -U valkey-glide-sync
-    ```
-  </Step>
-
-  <Step title="Export your OpenAI API key">
-    <CodeGroup>
-    ```bash Mac/Linux
-    export OPENAI_API_KEY="your_openai_api_key_here"
-    ```
-
-    ```bash Windows
-    $Env:OPENAI_API_KEY="your_openai_api_key_here"
-    ```
-    </CodeGroup>
-  </Step>
-
-  <Step title="Run Valkey">
-    ```bash
-    docker run -d --name my-valkey -p 6379:6379 valkey/valkey-bundle
-    ```
-  </Step>
-
-  <Step title="Run the example">
-    Run the example from the repository root:
-    ```bash
-    python cookbook/05_agent_os/dbs/valkey_db.py
-    ```
-  </Step>
-</Steps>
-
-Full source: [cookbook/05_agent_os/dbs/valkey_db.py](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/dbs/valkey_db.py)""",
-    )
+| Example | Description |
+|---------|-------------|
+| [Examples](/examples/introduction) | Browse current Agno v3.0.4 examples. |""",
+            required=False,
+        )
 
     root_sub(
         "knowledge/vector-stores/mongodb/usage/mongo-db-hybrid-search.mdx",

@@ -117,6 +117,7 @@ REDIRECT_SOURCE_SLUGS = {source for source, _ in CANONICAL_REDIRECT_OVERRIDES}
 # These shipped routes preserve stable URLs while pointing to the current v3
 # examples. Their source-free pages are reconstructed by apply_oneoffs.py.
 PRESERVED_MIGRATION_PAGE_SLUGS = {
+    "examples/agent-os/dbs/valkey-db",
     "examples/agent-os/dbs/surreal-db/run",
     "examples/agent-os/approvals/team/member-agent-level-approval",
     "examples/agent-os/approvals/team/team-and-member-agent-both-level-approval",
@@ -173,9 +174,7 @@ PRESERVED_TRACKED_PAGE_SLUGS = PRESERVED_MIGRATION_PAGE_SLUGS | {
 # shipped pages until the selected source contains them. The strict
 # source-field and navigation assertions make a renamed or replaced page fail
 # closed instead of silently bypassing source validation.
-POST_TAG_CURATED_SOURCE_OVERRIDES = {
-    "examples/agent-os/dbs/valkey-db": "05_agent_os/dbs/valkey_db.py",
-}
+POST_TAG_CURATED_SOURCE_OVERRIDES = {}
 
 # These generated examples were updated on docs main after the selected source
 # tag while their cookbook paths continued to exist. Keep only exceptions that
