@@ -37,6 +37,9 @@ would_apply = 0
 # Keep the URLs as exact, source-free migration pages. Each row is
 # (task label, current example slug).
 MIGRATION_PAGE_TARGETS = {
+    "examples/agent-os/dbs/surreal-db/run": (
+        ("Use the current SurrealDB AgentOS example", "examples/agent-os/databases/surreal"),
+    ),
     "examples/agent-os/approvals/team/member-agent-level-approval": (
         ("Use the current team approval example", "examples/agent-os/human-in-the-loop/team-approval"),
     ),
@@ -45,6 +48,13 @@ MIGRATION_PAGE_TARGETS = {
     ),
     "examples/agent-os/interfaces/agui/structured-output": (
         ("Open the current AG-UI example", "examples/agent-os/agui/structured-output"),
+    ),
+    "examples/agent-os/interfaces/agui/backend-tool-rendering": (
+        ("Render backend tool results with AG-UI", "examples/agent-os/agui/agent-with-tools"),
+    ),
+    "examples/agent-os/interfaces/agui/showcase": (
+        ("Start with a current AG-UI agent", "examples/agent-os/agui/basic"),
+        ("Build an AG-UI agent with tools", "examples/agent-os/agui/agent-with-tools"),
     ),
     "examples/agent-os/interfaces/slack/agent-with-user-memory": (
         ("Use Slack with user memory", "examples/agent-os/slack/user-memory"),
@@ -1545,7 +1555,7 @@ def write_migration_pages() -> None:
     global would_apply
     slack_overview = "examples/agent-os/interfaces/slack/overview"
     expected_slugs = set(MIGRATION_PAGE_TARGETS) | {slack_overview}
-    assert len(expected_slugs) == 35, "migration route inventory drifted"
+    assert len(expected_slugs) == 38, "migration route inventory drifted"
 
     for slug in sorted(expected_slugs):
         path = docs_path(slug)

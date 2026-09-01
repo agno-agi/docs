@@ -117,9 +117,12 @@ REDIRECT_SOURCE_SLUGS = {source for source, _ in CANONICAL_REDIRECT_OVERRIDES}
 # These shipped routes preserve stable URLs while pointing to the current v3
 # examples. Their source-free pages are reconstructed by apply_oneoffs.py.
 PRESERVED_MIGRATION_PAGE_SLUGS = {
+    "examples/agent-os/dbs/surreal-db/run",
     "examples/agent-os/approvals/team/member-agent-level-approval",
     "examples/agent-os/approvals/team/team-and-member-agent-both-level-approval",
     "examples/agent-os/interfaces/agui/structured-output",
+    "examples/agent-os/interfaces/agui/backend-tool-rendering",
+    "examples/agent-os/interfaces/agui/showcase",
     "examples/agent-os/interfaces/slack/agent-with-user-memory",
     "examples/agent-os/interfaces/slack/basic",
     "examples/agent-os/interfaces/slack/basic-workflow",

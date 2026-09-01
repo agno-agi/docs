@@ -378,6 +378,97 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         "runtime Team run-list schema: TeamRunSchema array, complete RunStatus filter, and authorization response"
     )
 
+    list_workflow_runs = spec["paths"]["/workflows/{workflow_id}/runs"]["get"]
+    assert list_workflow_runs["operationId"] == "list_workflow_runs"
+    list_workflow_runs_success = list_workflow_runs["responses"]["200"]
+    assert list_workflow_runs_success["description"] == "List of runs retrieved successfully"
+    assert list_workflow_runs_success["content"]["application/json"]["schema"] == {}
+    list_workflow_runs_success["content"]["application/json"]["schema"] = {
+        "type": "array",
+        "items": {"$ref": "#/components/schemas/WorkflowRunSchema"},
+    }
+    workflow_status_parameter = next(
+        parameter for parameter in list_workflow_runs["parameters"] if parameter["name"] == "status"
+    )
+    old_workflow_status_description = (
+        "Filter by run status (PENDING, RUNNING, COMPLETED, ERROR, PAUSED)"
+    )
+    assert workflow_status_parameter["description"] == old_workflow_status_description
+    assert workflow_status_parameter["schema"]["description"] == old_workflow_status_description
+    workflow_string_status_schema = next(
+        branch
+        for branch in workflow_status_parameter["schema"]["anyOf"]
+        if branch.get("type") == "string"
+    )
+    assert workflow_string_status_schema == {"type": "string"}
+    workflow_string_status_schema["enum"] = status_values
+    workflow_status_description = f"Filter by run status ({', '.join(status_values)})"
+    workflow_status_parameter["description"] = workflow_status_description
+    workflow_status_parameter["schema"]["description"] = workflow_status_description
+    assert "403" not in list_workflow_runs["responses"]
+    list_workflow_runs["responses"]["403"] = {"description": "Access denied to run this workflow"}
+    NOTES.append(
+        "runtime Workflow run-list schema: WorkflowRunSchema array, complete RunStatus filter, and authorization response"
+    )
+
+    get_workflow_run = spec["paths"]["/workflows/{workflow_id}/runs/{run_id}"]["get"]
+    assert get_workflow_run["operationId"] == "get_workflow_run"
+    get_workflow_run_success = get_workflow_run["responses"]["200"]
+    assert get_workflow_run_success["description"] == "Run output retrieved successfully"
+    assert get_workflow_run_success["content"]["application/json"]["schema"] == {}
+    get_workflow_run_success["content"]["application/json"]["schema"] = {
+        "anyOf": [
+            {"$ref": "#/components/schemas/WorkflowRunSchema"},
+            {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["run_id", "session_id", "status"],
+                "properties": {
+                    "run_id": {"type": "string"},
+                    "session_id": {"type": "string"},
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "PENDING",
+                            "RUNNING",
+                            "PAUSED",
+                            "COMPLETED",
+                            "ERROR",
+                            "CANCELLED",
+                        ],
+                    },
+                    "content": {"type": ["string", "null"]},
+                },
+            },
+        ]
+    }
+    NOTES.append(
+        "runtime Workflow run polling schema: persisted WorkflowRunSchema or durable queue ticket"
+    )
+
+    get_teams = spec["paths"]["/teams"]["get"]
+    assert get_teams["operationId"] == "get_teams"
+    assert get_teams["summary"] == "List All Teams"
+    assert get_teams["description"].startswith(
+        "Retrieve a comprehensive list of all teams configured in this OS instance."
+    )
+    get_teams["summary"] = "List Accessible Teams"
+    get_teams["description"] = (
+        "Retrieve the teams visible to the authenticated principal. Administrators can access "
+        "the complete roster. Scoped callers receive only teams allowed by their permissions."
+    )
+    assert "403" not in get_teams["responses"]
+    get_teams["responses"]["403"] = {"description": "Insufficient permission to list teams"}
+    NOTES.append("runtime Team roster visibility: scoped results and authorization response")
+
+    delete_memories = spec["paths"]["/memories"]["delete"]
+    assert delete_memories["operationId"] == "delete_memories"
+    assert delete_memories["responses"]["400"]["description"] == (
+        "Invalid request - empty memory_ids list"
+    )
+    del delete_memories["responses"]["400"]
+    NOTES.append("runtime memory validation: empty memory_ids is a request-model 422 response")
+
     component_config = spec["paths"]["/components/{component_id}/configs/{version}"]["get"]
     assert component_config["operationId"] == "get_config"
     component_config["operationId"] = "get_component_config"

@@ -1111,7 +1111,7 @@ paths:
           schema:
             anyOf:
               - type: string
-                enum:
+                enum: &id001
                   - PENDING
                   - RUNNING
                   - COMPLETED
@@ -1485,15 +1485,8 @@ paths:
     get:
       tags:
         - Teams
-      summary: List All Teams
-      description: |-
-        Retrieve a comprehensive list of all teams configured in this OS instance.
-
-        **Returns team information including:**
-        - Team metadata (ID, name, description, execution mode)
-        - Model configuration for team coordination
-        - Team member roster with roles and capabilities
-        - Knowledge sharing and memory configurations
+      summary: List Accessible Teams
+      description: Retrieve the teams visible to the authenticated principal. Administrators can access the complete roster. Scoped callers receive only teams allowed by their permissions.
       operationId: get_teams
       responses:
         '200':
@@ -1590,6 +1583,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: Insufficient permission to list teams
       security:
         - HTTPBearer: []
   /teams/{team_id}:
@@ -2145,10 +2140,11 @@ paths:
           schema:
             anyOf:
               - type: string
+                enum: *id001
               - type: 'null'
-            description: Filter by run status (PENDING, RUNNING, COMPLETED, ERROR, PAUSED)
+            description: Filter by run status (PENDING, RUNNING, COMPLETED, PAUSED, CANCELLED, ERROR, REGENERATED)
             title: Status
-          description: Filter by run status (PENDING, RUNNING, COMPLETED, ERROR, PAUSED)
+          description: Filter by run status (PENDING, RUNNING, COMPLETED, PAUSED, CANCELLED, ERROR, REGENERATED)
         - name: factory_input
           in: query
           required: false
@@ -2164,7 +2160,10 @@ paths:
           description: List of runs retrieved successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkflowRunSchema'
         '400':
           description: Bad Request
           content:
@@ -2195,6 +2194,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: Access denied to run this workflow
   /workflows/{workflow_id}/runs/{run_id}/continue:
     post:
       tags:
@@ -2466,7 +2467,33 @@ paths:
           description: Run output retrieved successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/WorkflowRunSchema'
+                  - type: object
+                    additionalProperties: false
+                    required:
+                      - run_id
+                      - session_id
+                      - status
+                    properties:
+                      run_id:
+                        type: string
+                      session_id:
+                        type: string
+                      status:
+                        type: string
+                        enum:
+                          - PENDING
+                          - RUNNING
+                          - PAUSED
+                          - COMPLETED
+                          - ERROR
+                          - CANCELLED
+                      content:
+                        type:
+                          - string
+                          - 'null'
         '400':
           description: Bad Request
           content:
@@ -4863,12 +4890,6 @@ paths:
       responses:
         '204':
           description: Memories deleted successfully
-        '400':
-          description: Invalid request - empty memory_ids list
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BadRequestResponse'
         '401':
           description: Unauthorized
           content:

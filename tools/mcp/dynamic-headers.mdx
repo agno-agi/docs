@@ -4,26 +4,28 @@ sidebarTitle: Dynamic Headers
 description: Setting dynamic headers with Agno MCP tools
 ---
 
-When using MCP tools, you will often want to send information to the MCP server via HTTP headers. For example, you may want to pass information about the current user, or authorization related data.
+Use `header_provider` to calculate HTTP headers when `MCPTools` connects and before each run.
 
-To do this dynamically, you can use the `header_provider` parameter when initializing the `MCPTools` class.
-
-You will also be able to access the `RunContext` object, which contains the current run's context, including the user ID, session ID, and metadata, together with the contextual `Agent` or `Team`. Simply add the `run_context`, `agent`, and `team` parameters to your `header_provider` function.
+The initial connection and tool discovery happen before a run exists. `run_context`, `agent`, and `team` can all be `None` on that first call. A protected MCP server therefore needs a credential that works during discovery. The example below uses one least-privileged service identity that is safe for every caller.
 
 
 ```python
+import os
 from typing import Optional
 
 from agno.run import RunContext
 from agno.tools.mcp import MCPTools
 
-# Our header_provider function, which will generate the headers per run.
+service_token = os.environ["MCP_SERVICE_TOKEN"]
+
+
 def header_provider(
-    run_context: Optional[RunContext] = None, # The current run's context
-    agent: Optional["Agent"] = None, # The contextual Agent instance
-    team: Optional["Team"] = None, # The contextual Team instance
+    run_context: Optional[RunContext] = None,
+    agent: Optional["Agent"] = None,
+    team: Optional["Team"] = None,
 ) -> dict:
     headers = {
+        "Authorization": f"Bearer {service_token}",
         "X-User-ID": (run_context.user_id if run_context else None) or "unknown",
         "X-Session-ID": (run_context.session_id if run_context else None) or "unknown",
         "X-Run-ID": (run_context.run_id if run_context else None) or "unknown",
@@ -32,7 +34,6 @@ def header_provider(
     }
     return headers
 
-# When these MCP tools are used, the header_provider function will be used to update the headers for each run.
 mcp_tools = MCPTools(
     url="http://localhost:8000/mcp",
     header_provider=header_provider,
@@ -45,7 +46,9 @@ Dynamic headers are only relevant when using HTTP-based transports (`streamable-
 
 ## The `header_provider` function
 
-The `header_provider` function you pass to your MCPTools instance will be used to update the headers every run.
+`MCPTools` calls the provider during initial connection and updates the headers before each run. Handle the initial call without relying on run-specific values.
+
+The service token above is sent during discovery and every run. Give it only permissions shared by all callers. For per-user authorization, use `run_context.user_id` as a non-secret lookup key and resolve the credential from an external secrets store inside the provider. Reject missing or unauthorized user IDs. Do not place bearer tokens in `RunContext.metadata`; run metadata is serialized and can be persisted with the session.
 
 The function is expected to return a `dict` of header name-value pairs.
 
@@ -53,9 +56,9 @@ The following parameters will be automatically injected into the function and ca
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `run_context` | `RunContext` | Contains run-specific data like `run_id`, `user_id`, `session_id`, and `metadata` |
-| `agent` | `Agent` | The Agent instance making the tool call (if applicable) |
-| `team` | `Team` | The Team instance making the tool call (if applicable) |
+| `run_context` | `RunContext` | Current run data such as `run_id`, `user_id`, `session_id`, and `metadata`. `None` during initial connection |
+| `agent` | `Agent` | Agent making the tool call. `None` during initial connection or for a Team |
+| `team` | `Team` | Team making the tool call. `None` during initial connection or for an Agent |
 
 You can read more about the `RunContext` object and its fields in the [RunContext reference](/reference/run/run-context).
 

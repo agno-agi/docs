@@ -36,9 +36,11 @@ import ast
 import functools
 import json
 import os
+import pkgutil
 import re
 import subprocess
 import sys
+import sysconfig
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -2104,6 +2106,14 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     # Fresh-eyes batch E.
     "91_tools/custom_tool_events.py": {
         "intro_override": "Yield custom events from a custom tool and consume them while streaming.",
+        "pre_code_warning": "The pinned source omits `stream_events=True`, so Agno discards the yielded custom event. Add the option before running.",
+        "pre_run_steps": [
+            (
+                "Enable custom events",
+                "In the saved file, add `stream_events=True` next to `stream=True` in the `agent.arun()` call.",
+                None,
+            )
+        ],
     },
     "91_tools/docker_tools.py": {
         "pre_run_steps": [
@@ -3389,9 +3399,20 @@ SUPPRESS_INTRO_SLUGS = {
     "examples/workflows/human-in-the-loop/dual-level-hitl/router-confirmation-and-tool-confirmation",
 }
 
-# Keep dependency inference stable across Python versions. Agno still probes
-# this removed stdlib module before falling back to `filetype`.
-STDLIB = set(getattr(sys, "stdlib_module_names", ())) | {"imghdr"}
+def stdlib_module_names() -> set[str]:
+    """Return stdlib roots on Python versions with or without the 3.10 API."""
+    names = set(getattr(sys, "stdlib_module_names", ()))
+    if not names:
+        names.update(sys.builtin_module_names)
+        roots = {sysconfig.get_path("stdlib"), sysconfig.get_path("platstdlib")}
+        for root in sorted(path for path in roots if path):
+            names.update(module.name for module in pkgutil.iter_modules([root]))
+    # Agno still probes this removed module before falling back to `filetype`.
+    names.add("imghdr")
+    return names
+
+
+STDLIB = stdlib_module_names()
 
 
 # ---------------------------------------------------------------------------
