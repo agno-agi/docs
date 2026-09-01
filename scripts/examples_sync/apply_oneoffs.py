@@ -377,6 +377,10 @@ EXPLICIT_MISSING_ROWS = {
         "examples/teams/session/nested-team-history-to-members",
         "examples/teams/session/search-past-sessions",
     ],
+    "examples/learning/basics/overview": [
+        "examples/learning/basics/entity-memory",
+        "examples/learning/basics/extraction-limits",
+    ],
     "examples/agent-os/client-a2a/servers/overview": [
         "examples/agent-os/remote/servers/a2a-server",
         "examples/agent-os/remote/servers/adk-server",
@@ -396,7 +400,12 @@ EXPLICIT_MISSING_ROWS = {
         "examples/teams/tools/tool-call-limit",
         "examples/teams/tools/tool-choice",
     ],
-    "examples/tools/mcp/overview": ["examples/tools/mcp/bgpt"],
+    "examples/tools/mcp/overview": [
+        "examples/tools/mcp/bgpt",
+        "examples/tools/mcp/emem",
+        "examples/tools/mcp/peer-cash",
+        "examples/tools/mcp/structured-content",
+    ],
     "examples/tools/tool-decorator/overview": ["examples/tools/tool-decorator/toolkit-per-tool-instructions"],
     "examples/tools/tool-hooks/overview": ["examples/tools/tool-hooks/message-history-in-hooks"],
 }

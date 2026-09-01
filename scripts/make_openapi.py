@@ -750,6 +750,26 @@ def apply_runtime_description_enrichments(spec: dict, interfaces: list) -> dict:
             }
             operation["responses"]["404"] = {"description": f"{kind} not found"}
 
+        stream_operations = [
+            spec["paths"]["/a2a/agents/{id}/v1/message:stream"]["post"],
+            spec["paths"]["/a2a/teams/{id}/v1/message:stream"]["post"],
+            spec["paths"]["/a2a/workflows/{id}/v1/message:stream"]["post"],
+        ]
+        for operation in stream_operations:
+            description = operation["description"]
+            assert description.endswith(
+                "Returns real-time updates as newline-delimited JSON (NDJSON)."
+            )
+            operation["description"] = description.replace(
+                "Returns real-time updates as newline-delimited JSON (NDJSON).",
+                "Returns real-time updates as server-sent events (SSE).",
+            )
+            success_content = operation["responses"]["200"]["content"]
+            assert success_content["application/json"] == {"schema": {}}
+            assert "text/event-stream" in success_content
+            success_content.pop("application/json")
+        NOTES.append("A2A streaming responses: publish SSE descriptions and media types")
+
     present_slack_routes, _ = present_optional_families(
         available_operation_keys,
         {"Slack": slack_route_keys},
@@ -803,6 +823,45 @@ def apply_runtime_description_enrichments(spec: dict, interfaces: list) -> dict:
             "description": "Retry attempt number (present on retried events)",
         },
     ]
+    assert "requestBody" not in slack_events
+    slack_events["requestBody"] = {
+        "required": True,
+        "content": {
+            "application/json": {
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": True,
+                    "required": ["type"],
+                    "properties": {"type": {"type": "string"}},
+                },
+                "examples": {
+                    "url_verification": {
+                        "summary": "URL verification challenge",
+                        "value": {
+                            "type": "url_verification",
+                            "challenge": "challenge-token",
+                            "token": "verification-token",
+                        },
+                    },
+                    "event_callback": {
+                        "summary": "App mention event",
+                        "value": {
+                            "type": "event_callback",
+                            "team_id": "T01234567",
+                            "event": {
+                                "type": "app_mention",
+                                "user": "U01234567",
+                                "text": "<@U76543210> summarize this thread",
+                                "ts": "1712345678.123456",
+                                "channel": "C01234567",
+                            },
+                        },
+                    },
+                },
+            }
+        },
+    }
+    NOTES.append("Slack events: required JSON request body with verification and event examples")
 
     assert slack_interactions["description"] == (
         "Handle Slack interactive components (HITL buttons / form submit)"
@@ -1061,6 +1120,17 @@ def apply_runtime_description_enrichments(spec: dict, interfaces: list) -> dict:
         }
     }
 
+    upload_content = spec["paths"]["/knowledge/content"]["post"]
+    upload_bad_request = upload_content["responses"]["400"]
+    assert upload_bad_request["description"] == (
+        "Invalid request - malformed metadata or missing content"
+    )
+    upload_bad_request["description"] = (
+        "Knowledge base selection is ambiguous; provide knowledge_id or a db_id that "
+        "resolves to one knowledge base"
+    )
+    NOTES.append("knowledge upload: document the runtime knowledge-selector 400 response")
+
     refresh_content = spec["paths"]["/knowledge/content/{content_id}/refresh"]["post"]
     assert "403" not in refresh_content["responses"]
     assert "501" not in refresh_content["responses"]
@@ -1108,6 +1178,23 @@ def apply_runtime_description_enrichments(spec: dict, interfaces: list) -> dict:
     assert pagination_page["default"] == 0
     assert pagination_page["minimum"] == 0
     pagination_page["description"] = "Current page number"
+
+    traces = spec["paths"]["/traces"]["get"]
+    traces_pagination = "- Use `page` (1-indexed) and `limit` parameters"
+    assert traces_pagination in traces["description"]
+    traces["description"] = traces["description"].replace(
+        traces_pagination,
+        "- Use `page` and `limit` parameters",
+    )
+    trace_page = next(
+        parameter for parameter in traces["parameters"] if parameter["name"] == "page"
+    )
+    assert trace_page["description"] == "Page number (1-indexed)"
+    assert trace_page["schema"]["description"] == "Page number (1-indexed)"
+    assert trace_page["schema"]["minimum"] == 0
+    trace_page["description"] = "Page number"
+    trace_page["schema"]["description"] = "Page number"
+    NOTES.append("traces pagination: remove the one-indexed claim while page zero remains valid")
 
     runtime_scope_mappings = get_default_scope_mappings()
     for interface in interfaces:
