@@ -32,6 +32,7 @@ import inspect
 import json
 import os
 import re
+import sys
 from dataclasses import MISSING as DC_MISSING
 from dataclasses import fields as dc_fields
 from dataclasses import is_dataclass
@@ -40,8 +41,15 @@ from pathlib import Path
 
 DOCS_ROOT = Path(__file__).resolve().parents[1]
 AGNO_ROOT = Path(os.environ.get("AGNO_REPO") or DOCS_ROOT / "agno")
-AGNO_SRC = AGNO_ROOT / "libs/agno/agno"
+AGNO_LIB = (AGNO_ROOT / "libs/agno").resolve()
+AGNO_SRC = AGNO_LIB / "agno"
 OUT_PATH = Path(__file__).resolve().parent / "out" / "drift-report.json"
+
+# Bind runtime introspection to the reviewed source tree. An earlier
+# PYTHONPATH entry must never substitute another installed Agno checkout.
+while str(AGNO_LIB) in sys.path:
+    sys.path.remove(str(AGNO_LIB))
+sys.path.insert(0, str(AGNO_LIB))
 
 REQUIRED = "<required>"
 
@@ -312,8 +320,22 @@ def _class_properties(obj) -> set[str]:
     return props
 
 
+def assert_reviewed_module(mod: object, module_name: str) -> None:
+    module_file = getattr(mod, "__file__", None)
+    if module_file is None:
+        raise RuntimeError(f"{module_name} has no filesystem provenance")
+    resolved = Path(module_file).resolve()
+    try:
+        resolved.relative_to(AGNO_SRC)
+    except ValueError as exc:
+        raise RuntimeError(
+            f"{module_name} imported from {resolved}, outside reviewed source {AGNO_SRC}"
+        ) from exc
+
+
 def introspect_target(module_name: str, obj_name: str, is_function: bool) -> SourceParams:
     mod = importlib.import_module(module_name)
+    assert_reviewed_module(mod, module_name)
     obj = getattr(mod, obj_name)
     src_file = None
     try:
@@ -909,6 +931,7 @@ class Resolver:
         for module, _path in entries[:4]:
             try:
                 mod = importlib.import_module(module)
+                assert_reviewed_module(mod, module)
                 cls = getattr(mod, class_name)
                 fn = getattr(cls, method, None)
                 if fn is None:
@@ -1303,6 +1326,7 @@ def main() -> None:
     report = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "agno_source": str(AGNO_SRC),
+        "agno_import_root": str(AGNO_LIB),
         "docs_root": str(DOCS_ROOT),
         "notes": [
             "documented_aliases are deprecated alias params still documented: not phantoms.",

@@ -19,10 +19,10 @@ from agno.os.middleware.jwt import TokenSource
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `app` | - | Required | The FastAPI app instance. Supplied automatically by `app.add_middleware` |
-| `verification_keys` | `Optional[List[str]]` | `JWT_VERIFICATION_KEY` env var | List of keys for JWT verification. For RS256, use public keys. For HS256, use shared secrets. Each key is tried in order until one succeeds - useful for accepting tokens from multiple issuers. |
+| `verification_keys` | `Optional[List[str]]` | `None` | Explicit JWT verification keys. If `JWT_VERIFICATION_KEY` is set, its value is appended even when this list is supplied. Unset the environment variable to stop trusting that key. Each key is tried in order. |
 | `jwks_file` | `Optional[str]` | `JWT_JWKS_FILE` env var | Path to a static JWKS (JSON Web Key Set) file. Keys are looked up by `kid` (key ID) from the JWT header. |
 | `algorithm` | `str` | `"RS256"` | JWT algorithm (RS256, HS256, ES256, etc.) |
-| `validate` | `bool` | `True` | Whether to validate JWT tokens |
+| `validate` | `bool` | `True` | Verify token signatures and reject invalid or expired tokens. `False` disables signature verification and is limited to development or deployments with a trusted upstream validator. |
 | `authorization` | `Optional[bool]` | `None` | Enable RBAC scope checking. If left `None` and `scope_mappings` is provided, RBAC is auto-enabled. |
 | `token_source` | `TokenSource` | `TokenSource.HEADER` | Where to extract JWT token from |
 | `token_header_key` | `str` | `"Authorization"` | Header key for Authorization |
@@ -36,7 +36,7 @@ from agno.os.middleware.jwt import TokenSource
 | `dependencies_claims` | `Optional[List[str]]` | `None` | Claims to extract for `dependencies` parameter |
 | `session_state_claims` | `Optional[List[str]]` | `None` | Claims to extract for `session_state` parameter |
 | `scope_mappings` | `Optional[Dict[str, List[str]]]` | `None` | Custom route-to-scope mappings (additive to defaults) |
-| `excluded_route_paths` | `Optional[List[str]]` | See below | Routes to skip JWT/RBAC checks. |
+| `excluded_route_paths` | `Optional[List[str]]` | See below | Routes that bypass all AuthMiddleware authentication, authorization, and request-state population. |
 | `admin_scope` | `Optional[str]` | `None` | Scope that grants full admin access. Defaults to `"agent_os:admin"` when unset |
 | `user_isolation` | `bool` | `False` | Opt-in per-user data isolation. When `True`, non-admin callers can only read and write rows associated with their JWT `sub` claim. Cancel/resume/continue routes verify run ownership. |
 | `service_account_verifier` | `Optional[ServiceAccountVerifier]` | `None` | Verifier for service account tokens (`agno_pat_...`). When set, bearer tokens with the `agno_pat_` prefix authenticate as service accounts: `user_id` is the account principal (`sa:<name>`) and scopes are the account's stored scopes, enforced against scope mappings even when `authorization` is disabled. |
@@ -170,21 +170,14 @@ app.add_middleware(
 
 ## Request State
 
-After processing, the middleware stores the following in `request.state`:
+State fields depend on the authentication path. Excluded routes and `OPTIONS` requests return before authentication and do not receive these fields.
 
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| `authenticated` | `bool` | Whether the user is authenticated |
-| `user_id` | `Optional[str]` | User ID from token claims |
-| `session_id` | `Optional[str]` | Session ID from token claims |
-| `scopes` | `List[str]` | User's permission scopes |
-| `claims` | `Dict[str, Any]` | Full decoded JWT payload. [Factories](/reference/agent-os/factories) read it as `ctx.trusted.claims` |
-| `audience` | `Optional[str]` | Audience claim value |
-| `token` | `str` | The raw JWT token |
-| `authorization_enabled` | `bool` | Whether RBAC is enabled |
-| `dependencies` | `Dict[str, Any]` | Extracted dependencies claims |
-| `session_state` | `Dict[str, Any]` | Extracted session state claims |
-| `accessible_resource_ids` | `Set[str]` | Resource IDs user can access (for listing endpoints) |
+| Authentication path | Populated fields |
+|---------------------|------------------|
+| JWT | `authenticated`, `user_id`, `session_id`, `scopes`, `claims`, `audience`, `token`, and `authorization_enabled`. `dependencies`, `session_state`, and `accessible_resource_ids` are added only when configured or applicable. [Factories](/reference/agent-os/factories) read JWT claims as `ctx.trusted.claims`. |
+| Service account token (`agno_pat_...`) | `authenticated`, `user_id`, `session_id`, `scopes`, `authorization_enabled`, `service_account_name`, and authorization metadata. Service account requests do not include `claims` or `token`. |
+| Internal scheduler token | `authenticated`, `user_id`, `session_id`, `scopes`, `authorization_enabled`, and scheduler authorization metadata. |
+| Security key | `authenticated` only. |
 
 ## Error Responses
 
@@ -194,6 +187,8 @@ After processing, the middleware stores the following in `request.state`:
 | `401 Unauthorized` | Token has expired |
 | `401 Unauthorized` | Invalid audience (token not for this AgentOS) |
 | `403 Forbidden` | Insufficient scopes for the requested operation |
+| `429 Too Many Requests` | Service account verification is rate limited |
+| `503 Service Unavailable` | Service account verification is unavailable |
 
 ## See Also
 

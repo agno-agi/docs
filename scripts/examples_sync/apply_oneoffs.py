@@ -8,12 +8,13 @@ error. Idempotent: re-running after a regeneration re-applies exactly the same
 edits. --check reports each fix's state without writing.
 
 Usage:
-    python scripts/examples_sync/apply_oneoffs.py [--check]
+    python scripts/examples_sync/apply_oneoffs.py [--check | --refresh-preserve-baseline]
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -25,134 +26,19 @@ import generate as gen  # noqa: E402
 
 ROOT = HERE.parents[1]
 DOCS = ROOT / "examples"
+PLAN_PATH = HERE / "out" / "sync-plan.json"
+MIGRATION_MANIFEST_PATH = HERE / "migration-routes.json"
+PRESERVE_STATE_PATH = HERE / "out" / "preserve-curated-state.json"
+PRESERVE_BASELINE_PATH = HERE / "preserve-curated-baseline.json"
 GENERATED_DESCRIPTION_OVERRIDES = json.loads(
     (HERE / "description-overrides.json").read_text(encoding="utf-8")
 )
 
 CHECK = False
+REFRESH_PRESERVE_BASELINE = False
 would_apply = 0
+EXTERNAL_ONEOFF_PATHS: set[str] = set()
 
-
-# Stable routes whose source examples moved or were retired before v3.0.4.
-# Keep the URLs as exact, source-free migration pages. Each row is
-# (task label, current example slug).
-MIGRATION_PAGE_TARGETS = {
-    "examples/agent-os/dbs/surreal-db/run": (
-        ("Use the current SurrealDB AgentOS example", "examples/agent-os/databases/surreal"),
-    ),
-    "examples/agent-os/approvals/team/member-agent-level-approval": (
-        ("Use the current team approval example", "examples/agent-os/human-in-the-loop/team-approval"),
-    ),
-    "examples/agent-os/approvals/team/team-and-member-agent-both-level-approval": (
-        ("Use the current team approval example", "examples/agent-os/human-in-the-loop/team-approval"),
-    ),
-    "examples/agent-os/interfaces/agui/structured-output": (
-        ("Open the current AG-UI example", "examples/agent-os/agui/structured-output"),
-    ),
-    "examples/agent-os/interfaces/agui/backend-tool-rendering": (
-        ("Render backend tool results with AG-UI", "examples/agent-os/agui/agent-with-tools"),
-    ),
-    "examples/agent-os/interfaces/agui/showcase": (
-        ("Start with a current AG-UI agent", "examples/agent-os/agui/basic"),
-        ("Build an AG-UI agent with tools", "examples/agent-os/agui/agent-with-tools"),
-    ),
-    "examples/agent-os/interfaces/slack/agent-with-user-memory": (
-        ("Use Slack with user memory", "examples/agent-os/slack/user-memory"),
-    ),
-    "examples/agent-os/interfaces/slack/basic": (
-        ("Build a Slack agent", "examples/agent-os/slack/basic"),
-    ),
-    "examples/agent-os/interfaces/slack/basic-workflow": (
-        ("Build a Slack workflow", "examples/agent-os/slack/workflow"),
-    ),
-    "examples/agent-os/interfaces/slack/channel-summarizer": (
-        ("Use Slack tools", "examples/agent-os/slack/slack-tools"),
-    ),
-    "examples/agent-os/interfaces/slack/file-analyst": (
-        ("Use Slack tools", "examples/agent-os/slack/slack-tools"),
-    ),
-    "examples/agent-os/interfaces/slack/hitl-audit-flow": (
-        ("Build an incident approval flow", "examples/agent-os/slack/hitl-incident-commander"),
-    ),
-    "examples/agent-os/interfaces/slack/hitl-confirmation": (
-        ("Require confirmation in Slack", "examples/agent-os/slack/hitl-confirmation"),
-    ),
-    "examples/agent-os/interfaces/slack/hitl-external-execution": (
-        ("Execute tools outside the agent", "examples/agent-os/slack/hitl-external-execution"),
-    ),
-    "examples/agent-os/interfaces/slack/hitl-incident-commander": (
-        ("Build an incident approval flow", "examples/agent-os/slack/hitl-incident-commander"),
-    ),
-    "examples/agent-os/interfaces/slack/hitl-required-approval": (
-        ("Require confirmation in Slack", "examples/agent-os/slack/hitl-confirmation"),
-        ("Persist approval records", "examples/agent-os/human-in-the-loop/with-approval-record"),
-    ),
-    "examples/agent-os/interfaces/slack/hitl-simple": (
-        ("Require confirmation in Slack", "examples/agent-os/slack/hitl-confirmation"),
-    ),
-    "examples/agent-os/interfaces/slack/hitl-user-feedback": (
-        ("Collect approval feedback", "examples/agent-os/slack/hitl-incident-commander"),
-    ),
-    "examples/agent-os/interfaces/slack/hitl-user-input": (
-        ("Collect user input in Slack", "examples/agent-os/slack/hitl-user-input"),
-    ),
-    "examples/agent-os/interfaces/slack/multi-bot": (
-        ("Run multiple Slack bots", "examples/agent-os/slack/multiple-bots"),
-    ),
-    "examples/agent-os/interfaces/slack/multimodal-team": (
-        ("Start with the current Slack team", "examples/agent-os/slack/team"),
-    ),
-    "examples/agent-os/interfaces/slack/multimodal-workflow": (
-        ("Start with the current Slack workflow", "examples/agent-os/slack/workflow"),
-    ),
-    "examples/agent-os/interfaces/slack/multiple-instances": (
-        ("Run multiple Slack bots", "examples/agent-os/slack/multiple-bots"),
-    ),
-    "examples/agent-os/interfaces/slack/reasoning-agent": (
-        ("Build a Slack agent", "examples/agent-os/slack/basic"),
-        ("Add reasoning tools", "examples/reasoning/tools/overview"),
-    ),
-    "examples/agent-os/interfaces/slack/research-assistant": (
-        ("Use Slack tools", "examples/agent-os/slack/slack-tools"),
-        ("Stream long-running work", "examples/agent-os/slack/streaming-ux"),
-    ),
-    "examples/agent-os/interfaces/slack/streaming-deep-research": (
-        ("Stream long-running work", "examples/agent-os/slack/streaming-ux"),
-    ),
-    "examples/agent-os/interfaces/slack/support-team": (
-        ("Build a Slack team", "examples/agent-os/slack/team"),
-    ),
-    "examples/agent-os/interfaces/slack/team-hitl-confirmation": (
-        ("Require member confirmation", "examples/teams/human-in-the-loop/confirmation-required"),
-    ),
-    "examples/agent-os/interfaces/slack/team-hitl-external-execution-simple": (
-        ("Execute a team tool externally", "examples/teams/human-in-the-loop/external-tool-execution"),
-    ),
-    "examples/agent-os/interfaces/slack/team-hitl-team-tool-simple": (
-        ("Confirm a team tool", "examples/teams/human-in-the-loop/team-tool-confirmation"),
-    ),
-    "examples/agent-os/interfaces/slack/team-hitl-user-input-simple": (
-        ("Collect team user input", "examples/teams/human-in-the-loop/user-input-required"),
-    ),
-    "examples/agent-os/mcp-demo/dynamic-headers/client": (
-        ("Open the current client", "examples/tools/mcp/dynamic-headers/client"),
-    ),
-    "examples/agent-os/mcp-demo/dynamic-headers/overview": (
-        ("Open the current guide", "examples/tools/mcp/dynamic-headers/overview"),
-    ),
-    "examples/agent-os/mcp-demo/dynamic-headers/server": (
-        ("Open the current server", "examples/tools/mcp/dynamic-headers/server"),
-    ),
-    "examples/agent-os/remote/agno-a2a-server": (
-        ("Run the current A2A server", "examples/agent-os/remote/servers/a2a-server"),
-    ),
-    "examples/agent-os/tracing/basic-team-tracing": (
-        ("Enable current AgentOS tracing", "examples/agent-os/observability/basic"),
-    ),
-    "examples/models/openai/responses/verbosity-control": (
-        ("Control OpenAI Chat verbosity", "examples/models/openai/chat/verbosity-control"),
-    ),
-}
 
 SLACK_INDEX_TARGETS = (
     "examples/agent-os/slack/basic",
@@ -170,6 +56,20 @@ SLACK_INDEX_TARGETS = (
 )
 
 MIGRATION_PAGE_INTROS = {
+    "examples/agent-os/scheduler/run-history": (
+        "The source for this example was removed. In Agno v3, "
+        "`ScheduleManager.get_runs()` paginates with `page`."
+    ),
+    "examples/agents/advanced/use-cultural-knowledge-in-agent": (
+        "The Culture feature and `Agent(add_culture_to_context=...)` parameter were removed in Agno v3. "
+        "See the [Culture migration notice](/culture/overview). Use [Knowledge](/knowledge/overview) "
+        "for reviewed organizational content, or Learned Knowledge for reusable insights captured from interactions."
+    ),
+    "examples/agents/advanced/automatic-cultural-management": (
+        "The Culture feature and `Agent(update_cultural_knowledge=...)` parameter were removed in Agno v3. "
+        "See the [Culture migration notice](/culture/overview). Agentic Learned Knowledge lets an agent decide "
+        "when to save and retrieve reusable insights."
+    ),
     "examples/agent-os/interfaces/slack/multimodal-team": (
         "The v3.0.4 Slack cookbook has no one-to-one multimodal team successor. "
         "Start with the current Slack team example."
@@ -342,8 +242,14 @@ EXPLICIT_MISSING_ROWS = {
     "examples/agent-os/rbac/asymmetric/overview": ["examples/agent-os/rbac/asymmetric/workos-byot"],
     "examples/agent-os/rbac/symmetric/overview": ["examples/agent-os/rbac/symmetric/user-isolation"],
     "examples/agent-os/remote/overview": [
-        "examples/agent-os/remote/remote-agent-as-team-member",
-        "examples/agent-os/remote/a2a-agent-as-team-member",
+        "examples/agent-os/remote/remote-team-and-workflow",
+        "examples/agent-os/remote/remote-via-a2a",
+        "examples/agent-os/remote/remote-as-team-member",
+        "examples/agent-os/remote/gateway",
+        "examples/agent-os/remote/remote-auth",
+        "examples/agent-os/remote/servers/a2a-server",
+        "examples/agent-os/remote/servers/adk-server",
+        "examples/agent-os/remote/servers/agentos-server",
     ],
     "examples/agent-os/scheduler/overview": ["examples/agent-os/scheduler/scheduler-tools-agent"],
     "examples/agent-os/tracing/overview": ["examples/agent-os/tracing/advanced-trace-filtering"],
@@ -450,6 +356,17 @@ EXPLICIT_MISSING_ROWS = {
 # Existing overview rows that point at retained migration URLs but no longer
 # belong in the parent category.
 EXPLICIT_ROW_REMOVALS = {
+    "examples/agent-os/remote/overview": {
+        "examples/agent-os/remote/remote-team",
+        "examples/agent-os/remote/remote-agno-a2a-agent",
+        "examples/agent-os/remote/remote-adk-agent",
+        "examples/agent-os/remote/agent-os-gateway",
+        "examples/agent-os/remote/adk-server",
+        "examples/agent-os/remote/agno-a2a-server",
+        "examples/agent-os/remote/server",
+        "examples/agent-os/remote/remote-agent-as-team-member",
+        "examples/agent-os/remote/a2a-agent-as-team-member",
+    },
     "examples/agents/human-in-the-loop/overview": {
         "examples/agent-os/approvals/team/member-agent-level-approval",
         "examples/agent-os/approvals/team/team-and-member-agent-both-level-approval",
@@ -737,9 +654,7 @@ EXPLICIT_ROW_REFRESH = {
         "examples/agent-os/rbac/symmetric/with-cookie",
     },
     "examples/agent-os/remote/overview": {
-        "examples/agent-os/remote/agno-a2a-server",
         "examples/agent-os/remote/remote-agent",
-        "examples/agent-os/remote/remote-team",
     },
     "examples/agent-os/scheduler/overview": {
         "examples/agent-os/scheduler/manage-with-python",
@@ -1437,8 +1352,17 @@ ROW_REPAIR_OVERVIEWS = {
 }
 
 
+def register_external_oneoff_path(p: Path) -> None:
+    """Record every non-example page whose final bytes this script owns."""
+    relative = p.relative_to(ROOT).as_posix()
+    assert relative.endswith(".mdx"), f"one-off output is not an MDX page: {relative}"
+    if not relative.startswith("examples/"):
+        EXTERNAL_ONEOFF_PATHS.add(relative)
+
+
 def sub_file(p: Path, old: str, new: str, required: bool = True) -> None:
     global would_apply
+    register_external_oneoff_path(p)
     path = str(p.relative_to(ROOT))
     text = p.read_text(encoding="utf-8")
     # `new` may contain `old` as a substring (insertion-style fixes), so the
@@ -1460,6 +1384,7 @@ def sub_file(p: Path, old: str, new: str, required: bool = True) -> None:
 
 def sub_all_file(p: Path, old: str, new: str, expected: int) -> None:
     global would_apply
+    register_external_oneoff_path(p)
     path = str(p.relative_to(ROOT))
     text = p.read_text(encoding="utf-8")
     old_count = text.count(old)
@@ -1491,10 +1416,15 @@ def root_sub(path: str, old: str, new: str, required: bool = True) -> None:
     sub_file(ROOT / path, old, new, required)
 
 
+def root_sub_all(path: str, old: str, new: str, expected: int) -> None:
+    sub_all_file(ROOT / path, old, new, expected)
+
+
 def normalize_terminal_newlines(path: str, count: int = 1) -> None:
     global would_apply
     assert count >= 0, "terminal newline count must be non-negative"
     p = ROOT / path
+    register_external_oneoff_path(p)
     data = p.read_bytes()
     assert b"\r\n" not in data, f"{path}: CRLF is not supported"
     normalized = data.rstrip(b"\n") + (b"\n" * count)
@@ -1550,12 +1480,237 @@ def desired_row(overview: str, target: str) -> tuple[str, str, bool]:
     return label, row_description, True
 
 
-def write_migration_pages() -> None:
+def migration_manifest_targets() -> dict[str, tuple[tuple[str, str], ...]]:
+    """Load the reviewed migration-route manifest and validate new DELETE routes."""
+    assert PLAN_PATH.is_file(), f"missing sync plan: {PLAN_PATH}"
+    assert MIGRATION_MANIFEST_PATH.is_file(), (
+        f"missing migration manifest: {MIGRATION_MANIFEST_PATH}"
+    )
+    manifest = json.loads(MIGRATION_MANIFEST_PATH.read_text(encoding="utf-8"))
+    assert manifest.get("schema_version") == 2, "migration manifest schema_version is not 2"
+    assert manifest.get("source_ref") == "v3.0.4", "migration manifest source_ref drifted"
+    source_evidence = manifest.get("source_evidence")
+    assert isinstance(source_evidence, dict), "migration source evidence is missing"
+    ledger_evidence = source_evidence.get("agno_agentos_migration_ledger")
+    assert ledger_evidence == {
+        "commit_sha": "4cafec3d48c956fffaac6278ed0860e0d22e4fed",
+        "remote_url": "https://github.com/agno-agi/specs.git",
+        "resource": "cookbooks/05_agent_os/path-map.md",
+    }, "AgentOS migration ledger evidence drifted"
+
+    raw_routes = manifest.get("routes")
+    assert isinstance(raw_routes, dict), "migration manifest routes must be an object"
+    targets: dict[str, tuple[tuple[str, str], ...]] = {}
+    for slug, raw_targets in raw_routes.items():
+        assert isinstance(slug, str) and slug.startswith("examples/"), (
+            f"invalid migration slug: {slug!r}"
+        )
+        assert isinstance(raw_targets, list) and raw_targets, (
+            f"migration route has no targets: {slug}"
+        )
+        normalized = []
+        for target in raw_targets:
+            assert isinstance(target, dict), f"invalid migration target row: {slug}"
+            task = target.get("task")
+            destination = target.get("target")
+            assert (
+                isinstance(task, str)
+                and task.strip() == task
+                and task
+                and "\n" not in task
+                and "|" not in task
+            ), f"invalid migration task: {slug}"
+            assert isinstance(destination, str) and destination.startswith("examples/"), (
+                f"invalid migration destination: {slug} -> {destination!r}"
+            )
+            normalized.append((task, destination))
+        targets[slug] = tuple(normalized)
+
+    assert len(targets) == 270, f"expected 270 migration routes, found {len(targets)}"
+
+    direct_successors = manifest.get("direct_successors")
+    no_direct_successors = manifest.get("no_direct_successors")
+    assert isinstance(direct_successors, dict), "direct-successor evidence is missing"
+    assert isinstance(no_direct_successors, dict), "no-direct-successor evidence is missing"
+    assert len(direct_successors) == 154, (
+        f"expected 154 direct successors, found {len(direct_successors)}"
+    )
+    assert len(no_direct_successors) == 116, (
+        f"expected 116 no-direct routes, found {len(no_direct_successors)}"
+    )
+    assert not (set(direct_successors) & set(no_direct_successors)), (
+        "migration evidence partitions overlap"
+    )
+    assert set(targets) == set(direct_successors) | set(no_direct_successors), (
+        "migration evidence does not partition every route"
+    )
+    for slug, row in direct_successors.items():
+        assert isinstance(row, dict), f"invalid direct-successor evidence: {slug}"
+        target = row.get("target")
+        task = row.get("task")
+        successor_source = row.get("successor_source")
+        assert targets[slug] == ((task, target),), (
+            f"direct-successor target drifted: {slug}"
+        )
+        assert isinstance(successor_source, str) and successor_source.startswith("cookbook/"), (
+            f"direct-successor source is invalid: {slug}"
+        )
+        target_text = docs_path(target).read_text(encoding="utf-8")
+        source_matches = re.findall(
+            r"^(?:source|curated_source):\s*(cookbook/\S+)\s*$",
+            target_text,
+            re.M,
+        )
+        assert source_matches == [successor_source], (
+            f"direct-successor source binding drifted: {slug} -> {target}"
+        )
+    for slug, row in no_direct_successors.items():
+        assert isinstance(row, dict) and isinstance(row.get("evidence"), dict), (
+            f"invalid no-direct-successor evidence: {slug}"
+        )
+        related = row.get("related_current_targets")
+        if related is not None:
+            assert isinstance(related, list) and related, (
+                f"invalid related-current targets: {slug}"
+            )
+            expected = tuple((item.get("task"), item.get("target")) for item in related)
+            assert targets[slug] == expected, f"related-current target drifted: {slug}"
+
+    plan = json.loads(PLAN_PATH.read_text(encoding="utf-8"))
+    delete_slugs = {
+        entry["slug"] for entry in plan["pages"] if entry["class"] == "DELETE"
+    }
+    unreviewed = sorted(delete_slugs - targets.keys())
+    assert not unreviewed, (
+        "DELETE routes require reviewed migration targets: " + repr(unreviewed[:10])
+    )
+    return targets
+
+
+def sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def verify_preserve_boundary() -> dict[str, str]:
+    """Fail before edits if generation changed a curated page from the plan."""
+    assert PLAN_PATH.is_file(), f"missing sync plan: {PLAN_PATH}"
+    plan = json.loads(PLAN_PATH.read_text(encoding="utf-8"))
+    planned: dict[str, str] = {}
+    problems: list[str] = []
+    for entry in plan["pages"]:
+        if entry["class"] != "PRESERVE_CURATED":
+            continue
+        slug = entry["slug"]
+        expected = entry.get("content_sha256")
+        if not isinstance(expected, str) or re.fullmatch(r"[0-9a-f]{64}", expected) is None:
+            problems.append(f"{slug}: missing or invalid planned content_sha256")
+            continue
+        path = ROOT / f"{slug}.mdx"
+        if not path.is_file():
+            problems.append(f"{slug}: page missing at one-off boundary")
+            continue
+        actual = sha256_file(path)
+        if actual != expected:
+            problems.append(f"{slug}: {actual} != planned {expected}")
+        planned[slug] = expected
+    assert not problems, "PRESERVE_CURATED boundary mismatch:\n" + "\n".join(problems[:20])
+    return planned
+
+
+def write_preserve_state(planned: dict[str, str]) -> None:
+    """Record deterministic pre-oneoff and final curated-page fingerprints."""
+    rows = []
+    for slug in sorted(planned):
+        final = sha256_file(ROOT / f"{slug}.mdx")
+        rows.append(
+            {
+                "slug": slug,
+                "planned_sha256": planned[slug],
+                "final_sha256": final,
+                "changed_by_oneoffs": final != planned[slug],
+            }
+        )
+    state = {
+        "schema_version": 2,
+        "plan_sha256": sha256_file(PLAN_PATH),
+        "apply_oneoffs_sha256": sha256_file(Path(__file__)),
+        "migration_manifest_sha256": sha256_file(MIGRATION_MANIFEST_PATH),
+        "external_pages": [
+            {
+                "path": path,
+                "final_sha256": sha256_file(ROOT / path),
+            }
+            for path in sorted(EXTERNAL_ONEOFF_PATHS)
+        ],
+        "pages": rows,
+    }
+    PRESERVE_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temporary = PRESERVE_STATE_PATH.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(PRESERVE_STATE_PATH)
+
+
+def write_preserve_baseline(planned: dict[str, str]) -> None:
+    """Explicitly refresh the tracked final-output lock after reviewed edits."""
+    manifest = json.loads(MIGRATION_MANIFEST_PATH.read_text(encoding="utf-8"))
+    source_ref = manifest.get("source_ref")
+    assert isinstance(source_ref, str) and source_ref, "migration source_ref is missing"
+    baseline = {
+        "schema_version": 1,
+        "source_ref": source_ref,
+        "preserve_curated": [
+            {
+                "path": f"{slug}.mdx",
+                "sha256": sha256_file(ROOT / f"{slug}.mdx"),
+            }
+            for slug in sorted(planned)
+        ],
+        "external_oneoffs": [
+            {
+                "path": path,
+                "sha256": sha256_file(ROOT / path),
+            }
+            for path in sorted(EXTERNAL_ONEOFF_PATHS)
+        ],
+    }
+    temporary = PRESERVE_BASELINE_PATH.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(baseline, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(PRESERVE_BASELINE_PATH)
+    print(f"refreshed tracked preserve baseline: {PRESERVE_BASELINE_PATH}")
+
+
+def validate_external_oneoff_ownership() -> None:
+    """Require the tracked baseline to cover every discovered external output."""
+    assert PRESERVE_BASELINE_PATH.is_file(), (
+        f"missing tracked preserve baseline: {PRESERVE_BASELINE_PATH}"
+    )
+    baseline = json.loads(PRESERVE_BASELINE_PATH.read_text(encoding="utf-8"))
+    raw_rows = baseline.get("external_oneoffs")
+    assert isinstance(raw_rows, list), "baseline external_oneoffs must be a list"
+    paths: list[str] = []
+    for index, row in enumerate(raw_rows):
+        assert isinstance(row, dict) and set(row) == {"path", "sha256"}, (
+            f"baseline external_oneoffs[{index}] has invalid fields"
+        )
+        path = row.get("path")
+        assert isinstance(path, str), f"baseline external_oneoffs[{index}] path is invalid"
+        paths.append(path)
+    assert len(paths) == len(set(paths)), "baseline external_oneoffs contains duplicates"
+    baseline_paths = set(paths)
+    assert baseline_paths == EXTERNAL_ONEOFF_PATHS, (
+        "external one-off ownership differs from the tracked baseline: "
+        f"missing={sorted(EXTERNAL_ONEOFF_PATHS - baseline_paths)[:20]}, "
+        f"unexpected={sorted(baseline_paths - EXTERNAL_ONEOFF_PATHS)[:20]}"
+    )
+
+
+def write_migration_pages(
+    migration_targets: dict[str, tuple[tuple[str, str], ...]],
+) -> None:
     """Reconstruct reviewed source-free pages for retained legacy routes."""
     global would_apply
     slack_overview = "examples/agent-os/interfaces/slack/overview"
-    expected_slugs = set(MIGRATION_PAGE_TARGETS) | {slack_overview}
-    assert len(expected_slugs) == 38, "migration route inventory drifted"
+    expected_slugs = set(migration_targets) | {slack_overview}
 
     for slug in sorted(expected_slugs):
         path = docs_path(slug)
@@ -1586,16 +1741,18 @@ def write_migration_pages() -> None:
             description = f"Migration route for {title} to current Agno v3.0.4 examples."
             intro = MIGRATION_PAGE_INTROS.get(
                 slug,
-                "This retained route points to the current Agno v3.0.4 example below.",
+                "This retained route has no matching v3.0.4 cookbook source. Use the current page below.",
             )
             rows = []
-            for task, target in MIGRATION_PAGE_TARGETS[slug]:
+            for task, target in migration_targets[slug]:
                 assert docs_path(target).is_file(), f"migration target is missing: {slug} -> {target}"
                 target_title, _ = desired_frontmatter(target)
+                if target.endswith("/overview") and task == "Open the current example":
+                    task = f"Browse {target_title}"
                 rows.append(f"| {task} | [{target_title}](/" + target + ") |")
             body = (
                 intro
-                + "\n\n| Task | Current example |\n"
+                + "\n\n| Task | Current page |\n"
                 "| --- | --- |\n"
                 + "\n".join(rows)
                 + "\n"
@@ -1629,7 +1786,7 @@ def apply_frontmatter_overrides() -> None:
         assert p.is_file(), f"missing override target: {slug}"
         text = p.read_text(encoding="utf-8")
         replacements: list[tuple[str, str, str]] = []
-        if slug in DESCRIPTION_OVERRIDES:
+        if slug in DESCRIPTION_OVERRIDES and LEGACY_OVERVIEW_NOTICE not in text:
             value = DESCRIPTION_OVERRIDES[slug]
             assert "\n" not in value and '"' not in value and "—" not in value, f"invalid description override: {slug}"
             replacements.append(("description", frontmatter_value(text, "description", slug), value))
@@ -1752,6 +1909,10 @@ ROW_RE = re.compile(
     r"^\|\s*\[(?P<label>.+)\]\((?P<href>/examples/[^)]+)\)\s*\|\s*(?P<description>.*?)\s*\|\s*$"
 )
 TABLE_HEADER_RE = re.compile(r"^\|\s*Example\s*\|\s*Description\s*\|\s*$")
+INTERNAL_DOC_LINK_RE = re.compile(r"\]\(/([^\s)#?]+)")
+LEGACY_OVERVIEW_NOTICE = (
+    "The v3.0.4 cookbook contains no matching sources for this section's prior examples."
+)
 
 
 def table_rows(text: str, slug: str) -> tuple[list[str], int, int, list[dict[str, str]]]:
@@ -1864,9 +2025,27 @@ def new_row(overview: str, target: str) -> dict[str, str]:
     return {"label": title, "target": target, "description": description, "raw": ""}
 
 
-def repair_overview_tables() -> None:
+def nearest_live_overview(overview: str, migration_slugs: set[str]) -> str:
+    """Return the stable examples landing page for a legacy-only section."""
+    assert overview.endswith("/overview"), f"not an overview slug: {overview}"
+    assert overview not in migration_slugs, f"migration overview cannot be its own fallback: {overview}"
+    introduction = "examples/introduction"
+    assert docs_path(introduction).is_file(), "examples introduction is missing"
+    return introduction
+
+
+def repair_overview_tables(
+    migration_targets: dict[str, tuple[tuple[str, str], ...]],
+) -> None:
     global would_apply
     nav = navigation_order()
+    migration_slugs = set(migration_targets)
+    migration_overviews = {
+        target
+        for targets in migration_targets.values()
+        for _, target in targets
+        if target.endswith("/overview")
+    }
     for overview, overrides in EXPLICIT_ROW_OVERRIDES.items():
         for target, (label, description) in overrides.items():
             assert docs_path(target).is_file(), f"row override target is missing: {overview} -> {target}"
@@ -1901,6 +2080,7 @@ def repair_overview_tables() -> None:
         | FULL_ROW_REFRESH_OVERVIEWS
         | ACRONYM_LABEL_REFRESH_OVERVIEWS
         | set(EXPLICIT_TABLE_ORDER)
+        | migration_overviews
     )
     for overview in sorted(overview_slugs):
         p = docs_path(overview)
@@ -1909,6 +2089,36 @@ def repair_overview_tables() -> None:
         # Only pages with the standard two-column table participate. Other
         # overview formats are intentionally left alone.
         if not any(TABLE_HEADER_RE.fullmatch(line) for line in text.splitlines()):
+            if overview in migration_overviews:
+                kept_lines = []
+                removed = 0
+                for line in text.splitlines(keepends=True):
+                    links = set(INTERNAL_DOC_LINK_RE.findall(line))
+                    if line.lstrip().startswith("|") and links & migration_slugs:
+                        removed += 1
+                        continue
+                    kept_lines.append(line)
+                new_text = "".join(kept_lines)
+                assert removed > 0 or new_text == text, (
+                    f"{overview}: nonstandard migration cleanup was inconsistent"
+                )
+                remaining_links = set(INTERNAL_DOC_LINK_RE.findall(new_text))
+                assert not (remaining_links & migration_slugs), (
+                    f"{overview}: unsupported non-table migration link remains"
+                )
+                assert any(
+                    target not in migration_slugs
+                    and (ROOT / f"{target}.mdx").is_file()
+                    for target in remaining_links
+                ), f"{overview}: nonstandard overview has no live destination"
+                if new_text != text:
+                    would_apply += 1
+                    if CHECK:
+                        print(f"  would repair nonstandard overview: {overview}")
+                    else:
+                        p.write_text(new_text, encoding="utf-8")
+                        print(f"  repaired nonstandard overview: {overview}")
+                continue
             assert (
                 overview not in EXPLICIT_MISSING_ROWS
                 and overview not in EXPLICIT_ROW_OVERRIDES
@@ -1920,7 +2130,7 @@ def repair_overview_tables() -> None:
             continue
         lines, start, end, rows = table_rows(text, overview)
         changed = False
-        removals = EXPLICIT_ROW_REMOVALS.get(overview, set())
+        removals = EXPLICIT_ROW_REMOVALS.get(overview, set()) | migration_slugs
         if removals:
             retained_rows = [row for row in rows if row["target"] not in removals]
             changed = len(retained_rows) != len(rows)
@@ -1941,7 +2151,11 @@ def repair_overview_tables() -> None:
         repaired: list[dict[str, str]] = []
         existing_targets = set(counts)
         full_refresh = overview in FULL_ROW_REFRESH_OVERVIEWS
-        forced = existing_targets if full_refresh else EXPLICIT_ROW_REFRESH.get(overview, set())
+        forced = (
+            existing_targets
+            if full_refresh
+            else EXPLICIT_ROW_REFRESH.get(overview, set()) - migration_slugs
+        )
         missing = EXPLICIT_MISSING_ROWS.get(overview, [])
         for target in forced:
             assert target in existing_targets, f"{overview}: explicit refresh target is absent: {target}"
@@ -1956,6 +2170,8 @@ def repair_overview_tables() -> None:
             changed |= row_changed
 
         for target in missing:
+            if target in migration_slugs:
+                continue
             if target in existing_targets:
                 continue
             repaired.append(new_row(overview, target))
@@ -1963,7 +2179,11 @@ def repair_overview_tables() -> None:
             changed = True
 
         if overview in EXPLICIT_TABLE_ORDER:
-            order = EXPLICIT_TABLE_ORDER[overview]
+            order = [
+                target
+                for target in EXPLICIT_TABLE_ORDER[overview]
+                if target not in migration_slugs
+            ]
             assert len(order) == len(set(order)), f"{overview}: duplicate explicit table target"
             assert set(existing_targets) == set(order), (
                 f"{overview}: table membership drift; expected {order}, found {sorted(existing_targets)}"
@@ -1975,17 +2195,139 @@ def repair_overview_tables() -> None:
             for row in repaired:
                 row["raw"] = render_row(row)
 
-        if not changed:
-            continue
+        legacy_only = LEGACY_OVERVIEW_NOTICE in text
+        if legacy_only:
+            repaired = []
+            changed = True
+        if not repaired:
+            fallback = nearest_live_overview(overview, migration_slugs)
+            fallback_title, _ = desired_frontmatter(fallback)
+            repaired = [
+                {
+                    "label": fallback_title,
+                    "target": fallback,
+                    "description": "Browse current Agno v3.0.4 examples.",
+                    "raw": "",
+                }
+            ]
+            changed = True
+            legacy_only = True
+
         replacement = [row["raw"] or render_row(row) for row in repaired]
         new_text = "".join(lines[:start] + replacement + lines[end:])
-        assert new_text != text, f"{overview}: repair reported change without text delta"
+        if legacy_only:
+            title = frontmatter_value(new_text, "title", overview)
+            description = f"Current Agno v3.0.4 alternatives for {title} examples."
+            new_text, count = re.subn(
+                r'^description:\s*.+$',
+                f'description: "{description}"',
+                new_text,
+                count=1,
+                flags=re.M,
+            )
+            assert count == 1, f"{overview}: could not update legacy overview description"
+            if LEGACY_OVERVIEW_NOTICE not in new_text:
+                header = "| Example | Description |"
+                assert header in new_text, f"{overview}: table header disappeared"
+                new_text = new_text.replace(
+                    header,
+                    LEGACY_OVERVIEW_NOTICE + "\n\n" + header,
+                    1,
+                )
+        if new_text == text:
+            continue
         would_apply += 1
         if CHECK:
             print(f"  would repair overview: {overview}")
         else:
             p.write_text(new_text, encoding="utf-8")
             print(f"  repaired overview: {overview}")
+
+
+def reaches_concrete_page(
+    slug: str,
+    migration_slugs: set[str],
+    visiting: frozenset[str] = frozenset(),
+) -> bool:
+    """Return whether internal links reach a non-overview current page."""
+    if slug in visiting or slug in migration_slugs:
+        return False
+    path = docs_path(slug)
+    if not path.is_file():
+        return False
+    if not slug.endswith("/overview"):
+        return True
+    children = {
+        link
+        for link in INTERNAL_DOC_LINK_RE.findall(path.read_text(encoding="utf-8"))
+        if link.startswith("examples/")
+    }
+    next_visiting = visiting | {slug}
+    return any(
+        reaches_concrete_page(child, migration_slugs, next_visiting)
+        for child in children
+    )
+
+
+def validate_migration_graph(
+    migration_targets: dict[str, tuple[tuple[str, str], ...]],
+) -> None:
+    """Reject migration targets that are missing, cyclic, or legacy-only."""
+    migration_slugs = set(migration_targets)
+    rendered_migrations = {
+        str(path.relative_to(ROOT).with_suffix(""))
+        for path in DOCS.rglob("*.mdx")
+        if re.search(
+            r'^description: "Migration route for ',
+            path.read_text(encoding="utf-8"),
+            re.M,
+        )
+    }
+    assert rendered_migrations == migration_slugs, (
+        "migration manifest/page membership differs: "
+        f"missing={sorted(migration_slugs - rendered_migrations)[:10]}, "
+        f"unmanaged={sorted(rendered_migrations - migration_slugs)[:10]}"
+    )
+
+    overview_targets: set[str] = set()
+    for slug, targets in migration_targets.items():
+        source_text = docs_path(slug).read_text(encoding="utf-8")
+        assert "```" not in source_text, f"migration page contains a code fence: {slug}"
+        assert re.search(r"^(?:source|curated_source):", source_text, re.M) is None, (
+            f"migration page retains a source binding: {slug}"
+        )
+        for link in INTERNAL_DOC_LINK_RE.findall(source_text):
+            if link.startswith("examples/"):
+                assert docs_path(link).is_file(), f"migration page has a dead link: {slug} -> {link}"
+        for _, target in targets:
+            target_path = docs_path(target)
+            assert target_path.is_file(), f"migration target is missing: {slug} -> {target}"
+            assert target not in migration_slugs, (
+                f"migration target is another migration page: {slug} -> {target}"
+            )
+            target_links = set(
+                INTERNAL_DOC_LINK_RE.findall(target_path.read_text(encoding="utf-8"))
+            )
+            assert slug not in target_links, f"migration target links back: {slug} -> {target}"
+            if target.endswith("/overview"):
+                overview_targets.add(target)
+                legacy_links = sorted(target_links & migration_slugs)
+                assert not legacy_links, (
+                    f"migration overview retains legacy rows: {target} -> {legacy_links[:10]}"
+                )
+                live_links = {
+                    link
+                    for link in target_links
+                    if link not in migration_slugs and (ROOT / f"{link}.mdx").is_file()
+                }
+                assert live_links, f"migration overview has no live destination: {slug} -> {target}"
+                assert reaches_concrete_page(target, migration_slugs), (
+                    f"migration overview cannot reach a concrete current page: {slug} -> {target}"
+                )
+    print(
+        f"migration graph valid: {len(migration_slugs)} routes, "
+        f"{len(overview_targets)} overview targets"
+    )
 
 
 def render_toolkit_card(title: str, href: str, description: str) -> str:
@@ -2003,6 +2345,7 @@ def repair_toolkit_index() -> None:
     """Add reviewed post-tag toolkit cards without duplicating upstream additions."""
     global would_apply
     p = ROOT / "tools/toolkits/overview.mdx"
+    register_external_oneoff_path(p)
     text = p.read_text(encoding="utf-8")
     changed = False
 
@@ -2049,10 +2392,138 @@ def repair_toolkit_index() -> None:
 
 
 def main() -> None:
-    global CHECK
+    global CHECK, REFRESH_PRESERVE_BASELINE
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--check", action="store_true", help="report fix state without writing")
-    CHECK = ap.parse_args().check
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--check", action="store_true", help="report fix state without writing")
+    mode.add_argument(
+        "--refresh-preserve-baseline",
+        action="store_true",
+        help="rewrite the tracked final-output lock after reviewed changes",
+    )
+    args = ap.parse_args()
+    CHECK = args.check
+    REFRESH_PRESERVE_BASELINE = args.refresh_preserve_baseline
+    planned_preserve_hashes = {} if CHECK else verify_preserve_boundary()
+
+    # Accepted sample-5 corrections for curated references and guides.
+    root_sub(
+        "reference/agent-os/jwt-middleware.mdx",
+        '| `verification_keys` | `Optional[List[str]]` | `JWT_VERIFICATION_KEY` env var | List of keys for JWT verification. For RS256, use public keys. For HS256, use shared secrets. Each key is tried in order until one succeeds - useful for accepting tokens from multiple issuers. |',
+        '| `verification_keys` | `Optional[List[str]]` | `None` | Explicit JWT verification keys. If `JWT_VERIFICATION_KEY` is set, its value is appended even when this list is supplied. Unset the environment variable to stop trusting that key. Each key is tried in order. |',
+    )
+    root_sub(
+        "reference/agent-os/jwt-middleware.mdx",
+        '| `validate` | `bool` | `True` | Whether to validate JWT tokens |',
+        '| `validate` | `bool` | `True` | Verify token signatures and reject invalid or expired tokens. `False` disables signature verification and is limited to development or deployments with a trusted upstream validator. |',
+    )
+    root_sub(
+        "reference/agent-os/jwt-middleware.mdx",
+        '| `excluded_route_paths` | `Optional[List[str]]` | See below | Routes to skip JWT/RBAC checks. |',
+        '| `excluded_route_paths` | `Optional[List[str]]` | See below | Routes that bypass all AuthMiddleware authentication, authorization, and request-state population. |',
+    )
+    root_sub(
+        "reference/agent-os/jwt-middleware.mdx",
+        """After processing, the middleware stores the following in `request.state`:
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `authenticated` | `bool` | Whether the user is authenticated |
+| `user_id` | `Optional[str]` | User ID from token claims |
+| `session_id` | `Optional[str]` | Session ID from token claims |
+| `scopes` | `List[str]` | User's permission scopes |
+| `claims` | `Dict[str, Any]` | Full decoded JWT payload. [Factories](/reference/agent-os/factories) read it as `ctx.trusted.claims` |
+| `audience` | `Optional[str]` | Audience claim value |
+| `token` | `str` | The raw JWT token |
+| `authorization_enabled` | `bool` | Whether RBAC is enabled |
+| `dependencies` | `Dict[str, Any]` | Extracted dependencies claims |
+| `session_state` | `Dict[str, Any]` | Extracted session state claims |
+| `accessible_resource_ids` | `Set[str]` | Resource IDs user can access (for listing endpoints) |""",
+        """State fields depend on the authentication path. Excluded routes and `OPTIONS` requests return before authentication and do not receive these fields.
+
+| Authentication path | Populated fields |
+|---------------------|------------------|
+| JWT | `authenticated`, `user_id`, `session_id`, `scopes`, `claims`, `audience`, `token`, and `authorization_enabled`. `dependencies`, `session_state`, and `accessible_resource_ids` are added only when configured or applicable. [Factories](/reference/agent-os/factories) read JWT claims as `ctx.trusted.claims`. |
+| Service account token (`agno_pat_...`) | `authenticated`, `user_id`, `session_id`, `scopes`, `authorization_enabled`, `service_account_name`, and authorization metadata. Service account requests do not include `claims` or `token`. |
+| Internal scheduler token | `authenticated`, `user_id`, `session_id`, `scopes`, `authorization_enabled`, and scheduler authorization metadata. |
+| Security key | `authenticated` only. |""",
+    )
+    root_sub(
+        "reference/agent-os/jwt-middleware.mdx",
+        """| `403 Forbidden` | Insufficient scopes for the requested operation |""",
+        """| `403 Forbidden` | Insufficient scopes for the requested operation |
+| `429 Too Many Requests` | Service account verification is rate limited |
+| `503 Service Unavailable` | Service account verification is unavailable |""",
+    )
+    root_sub(
+        "tools/toolkits/social/telegram.mdx",
+        """export TELEGRAM_TOKEN=***
+export TELEGRAM_CHAT_ID=***""",
+        """export OPENAI_API_KEY=***
+export TELEGRAM_TOKEN=***
+export TELEGRAM_CHAT_ID=***""",
+    )
+    root_sub(
+        "teams/building-teams.mdx",
+        """team.print_response("What are the trending AI stories and how is NVDA stock doing?", stream=True)
+```
+
+## Team Modes""",
+        """team.print_response("What are the trending AI stories and how is NVDA stock doing?", stream=True)
+```
+
+## Run the Minimal Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai yfinance
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```powershell Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the team">
+    ```bash
+    python research_team.py
+    ```
+  </Step>
+</Steps>
+
+## Team Modes""",
+    )
+    root_sub(
+        "teams/building-teams.mdx",
+        "Pass a function instead of a static list for `members`, `tools`, or `knowledge`. The function is called at the start of each run, so the composition can vary per user or session.",
+        "Pass a function instead of a static list for `members`, `tools`, or `knowledge`. Factories resolve during run setup. By default, results are cached by custom key, then user ID, then session ID. Set `cache_callables=False`, as below, to resolve on every run.",
+    )
+    root_sub(
+        "teams/building-teams.mdx",
+        """| `agent` | `Agent` | The current Agent instance |
+| `team` | `Team` | The current Team instance |""",
+        """| `agent` | `Team` | Owning Team instance. This alias supports factories shared by Agents and Teams. |
+| `team` | `Team` | Owning Team instance. |""",
+    )
+    root_sub_all(
+        "models/providers/native/google/gemini-interactions.mdx",
+        "gemini-3-flash-preview",
+        "gemini-3.7-flash",
+        7,
+    )
 
     # Source-backed corrections identified by the generated-example review.
     sub(
@@ -4304,11 +4775,14 @@ The source uses the retired `imagen-4.0-generate-preview-05-20` model, the remov
             count += 1
 
     # 11. Reconstruct retained legacy routes as source-free migration pages.
-    write_migration_pages()
+    migration_targets = migration_manifest_targets()
+    write_migration_pages(migration_targets)
 
     # 12. Refresh only malformed or explicitly stale overview rows, then add
     #    only the navigation-backed omissions approved by the audit.
-    repair_overview_tables()
+    repair_overview_tables(migration_targets)
+    if not CHECK or (would_apply == 0 and count == 0):
+        validate_migration_graph(migration_targets)
 
     # 13. Restore post-tag toolkit cards that shipped in navigation without
     #     corresponding entries in the hand-maintained complete index.
@@ -4319,9 +4793,17 @@ The source uses the retired `imagen-4.0-generate-preview-05-20` model, the remov
     normalize_terminal_newlines("tracing/db-functions.mdx")
     normalize_terminal_newlines("reference-api/schema/approvals/get-approval-count.mdx")
 
+    if not REFRESH_PRESERVE_BASELINE:
+        validate_external_oneoff_ownership()
+
     if CHECK:
         print(f"check: {would_apply} fixes would apply; title-casing would change {count} pages")
+        if would_apply or count:
+            raise SystemExit(1)
     else:
+        write_preserve_state(planned_preserve_hashes)
+        if REFRESH_PRESERVE_BASELINE:
+            write_preserve_baseline(planned_preserve_hashes)
         print(f"one-offs applied; title-casing fixed on {count} additional pages")
 
 

@@ -154,7 +154,6 @@ PRESERVED_MIGRATION_PAGE_SLUGS = {
     "examples/agent-os/mcp-demo/dynamic-headers/server",
     "examples/agent-os/remote/agno-a2a-server",
     "examples/agent-os/tracing/basic-team-tracing",
-    "examples/models/openai/responses/verbosity-control",
 }
 
 # These shipped routes own tracked content outside the current navigation.
@@ -949,6 +948,16 @@ def main() -> None:
     ]
     if len(redirects) != len({redirect["source"] for redirect in redirects}):
         raise RuntimeError("duplicate redirect source in output")
+
+    # Bind every curated page to its bytes at the generator boundary. The
+    # one-off pass verifies these hashes before making sanctioned edits.
+    for entry in results:
+        if entry["class"] != "PRESERVE_CURATED":
+            continue
+        page_path = docs / f"{entry['slug']}.mdx"
+        if not page_path.is_file():
+            raise RuntimeError(f"preserved curated page is missing: {entry['slug']}")
+        entry["content_sha256"] = hashlib.sha256(page_path.read_bytes()).hexdigest()
 
     # ---- outputs -----------------------------------------------------------
     counts: dict[str, int] = {}

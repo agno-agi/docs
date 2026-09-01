@@ -788,6 +788,14 @@ SCHEDULER_TOOLS_SERVER_STEP = (
         "Windows": ".venv\\Scripts\\activate\n$Env:OPENAI_API_KEY=\"your_openai_api_key_here\"\nSet-Location agno\npython cookbook/05_agent_os/12_scheduler/04_scheduler_tools_agent.py",
     },
 )
+SCHEDULER_REST_SERVER_STEP = (
+    "Start PostgreSQL and AgentOS",
+    "Open another terminal in the parent directory where `.venv` and the cloned `agno` directory are siblings. Start PostgreSQL, then keep AgentOS running on port 7777:",
+    {
+        "Mac/Linux": "docker run -d -e POSTGRES_DB=ai -e POSTGRES_USER=ai -e POSTGRES_PASSWORD=ai -e PGDATA=/var/lib/postgresql -v pgvolume:/var/lib/postgresql -p 5532:5432 --name pgvector agnohq/pgvector:18\nsource .venv/bin/activate\nexport OPENAI_API_KEY=\"your_openai_api_key_here\"\ncd agno\npython cookbook/05_agent_os/12_scheduler/01_run_in_agentos.py",
+        "Windows": "docker run -d -e POSTGRES_DB=ai -e POSTGRES_USER=ai -e POSTGRES_PASSWORD=ai -e PGDATA=/var/lib/postgresql -v pgvolume:/var/lib/postgresql -p 5532:5432 --name pgvector agnohq/pgvector:18\n.venv\\Scripts\\activate\n$Env:OPENAI_API_KEY=\"your_openai_api_key_here\"\nSet-Location agno\npython cookbook/05_agent_os/12_scheduler/01_run_in_agentos.py",
+    },
+)
 REMOTE_AGENTOS_SERVER_STEP = (
     "Start the remote AgentOS",
     "Open another terminal in the parent directory where `.venv` and the cloned `agno` directory are siblings, then start the upstream on port 7780:",
@@ -842,6 +850,19 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "pre_run_steps": [SCHEDULER_TOOLS_SERVER_STEP],
         "run_title": "Run the demo",
         "run_command": "python cookbook/05_agent_os/12_scheduler/04_scheduler_tools_agent.py --demo",
+    },
+    "05_agent_os/12_scheduler/02_rest_api.py": {
+        "repo_layout": True,
+        "needs_agno": True,
+        "extra_add": {"os"},
+        "package_add": {"httpx", "openai", "psycopg[binary]", "sqlalchemy"},
+        "env_add": {"OPENAI_API_KEY"},
+        "pre_run_steps": [SCHEDULER_REST_SERVER_STEP],
+        "run_title": "Run the REST client",
+    },
+    "03_teams/04_structured_input_output/json_schema_output.py": {
+        "intro_override": "Return a parsed stock-analysis dictionary through JSON mode with a JSON schema included in the prompt.",
+        "pre_code_warning": "`use_json_mode=True` requests a generic JSON object from the provider. The `output_schema` still guides the prompt and parses the result, but the provider does not enforce that schema. Remove `use_json_mode=True` to use provider-native structured output.",
     },
     "05_agent_os/08_os_config/yaml_config.py": {
         "repo_layout": True,
@@ -5255,10 +5276,11 @@ def render(
     if needs_repo_layout:
         parts.append("")
         parts.append('  <Step title="Clone Agno">')
-        parts.append("    Clone the repository and run the remaining commands from its root:")
+        parts.append("    Clone the pinned Agno source and run the remaining commands from its root:")
         parts.append("    ```bash")
         parts.append("    git clone https://github.com/agno-agi/agno.git")
         parts.append("    cd agno")
+        parts.append(f"    git checkout {exact_source_tag(str(agno_root.resolve()))}")
         parts.append("    ```")
         parts.append("  </Step>")
     for step_title, step_text, command in render_override.get("pre_run_steps", []):

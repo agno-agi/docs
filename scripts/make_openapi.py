@@ -34,6 +34,80 @@ NEW_YAML = OUT_DIR / "openapi.yaml"
 DIFF_MD = OUT_DIR / "openapi-diff.md"
 DOCS_JSON = REPO_ROOT / "docs.json"
 SCHEMA_DIR = REPO_ROOT / "reference-api" / "schema"
+AGNO_SOURCE_ROOT = Path(os.environ.get("AGNO_REPO") or REPO_ROOT / "agno").resolve()
+AGNO_IMPORT_ROOT = (AGNO_SOURCE_ROOT / "libs" / "agno").resolve()
+
+
+def _source_git(*args: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(AGNO_SOURCE_ROOT), *args],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or f"git {' '.join(args)} failed")
+    return result.stdout.strip()
+
+
+def verify_source_checkout_before_import() -> dict[str, str]:
+    """Verify the reviewed checkout before any Agno module can be imported."""
+    package = AGNO_IMPORT_ROOT / "agno" / "__init__.py"
+    if not package.is_file():
+        raise RuntimeError(f"Agno import package not found below {AGNO_IMPORT_ROOT}")
+
+    pyproject = AGNO_SOURCE_ROOT / "libs" / "agno" / "pyproject.toml"
+    if not pyproject.is_file():
+        raise RuntimeError(f"Agno source pyproject not found at {pyproject}")
+    project_match = re.search(
+        r"(?ms)^\[project\]\s*$.*?^version\s*=\s*[\"']([^\"']+)[\"']\s*$",
+        pyproject.read_text(encoding="utf-8"),
+    )
+    if project_match is None:
+        raise RuntimeError(f"Agno source version not found in {pyproject}")
+    source_version = project_match.group(1)
+
+    expected_sha = os.environ.get("AGNO_EXPECTED_SHA")
+    if not expected_sha:
+        raise RuntimeError("AGNO_EXPECTED_SHA is required")
+    if not re.fullmatch(r"[0-9a-f]{40}", expected_sha):
+        raise RuntimeError("AGNO_EXPECTED_SHA must be a full lowercase commit SHA")
+
+    git_root = Path(_source_git("rev-parse", "--show-toplevel")).resolve()
+    if git_root != AGNO_SOURCE_ROOT:
+        raise RuntimeError(
+            f"Agno source root {AGNO_SOURCE_ROOT} is inside a different checkout {git_root}"
+        )
+    source_sha = _source_git("rev-parse", "--verify", "HEAD^{commit}")
+    if source_sha != expected_sha:
+        raise RuntimeError(
+            f"Agno source SHA {source_sha} does not match AGNO_EXPECTED_SHA {expected_sha}"
+        )
+    source_tag = _source_git("describe", "--tags", "--exact-match", "HEAD")
+    expected_tag = f"v{source_version}"
+    if source_tag != expected_tag:
+        raise RuntimeError(
+            f"Agno source tag {source_tag!r} does not match source version {expected_tag!r}"
+        )
+    dirty = _source_git("status", "--porcelain=v1", "--untracked-files=all")
+    if dirty:
+        summary = dirty.splitlines()[:10]
+        raise RuntimeError(
+            "Agno source checkout is dirty; generation requires reviewed committed bytes: "
+            + repr(summary)
+        )
+
+    return {
+        "import_root": str(AGNO_IMPORT_ROOT),
+        "source_root": str(AGNO_SOURCE_ROOT),
+        "source_sha": source_sha,
+        "source_tag": source_tag,
+        "source_version": source_version,
+    }
+
+
+PREIMPORT_SOURCE_PROVENANCE = verify_source_checkout_before_import()
+sys.path.insert(0, str(AGNO_IMPORT_ROOT))
 
 # Fake credentials: everything is constructed offline, nothing is called.
 os.environ.setdefault("OPENAI_API_KEY", "sk-fake-not-a-real-key")
@@ -61,57 +135,93 @@ from agno.workflow.step import Step  # noqa: E402
 
 NOTES = []  # inclusion/exclusion notes surfaced at the end of the run
 
+CORE_PARENT_AUTH_OPERATIONS: set[tuple[str, str]] = set()
+CORE_PUBLIC_OPERATIONS = {("/health", "get"), ("/info", "get")}
+OPTIONAL_PARENT_AUTH_FAMILIES = {
+    "AGUI": {("/agui", "post"), ("/status", "get")},
+    "A2A": {
+        ("/a2a/agents/{id}/.well-known/agent-card.json", "get"),
+        ("/a2a/agents/{id}/v1/message:send", "post"),
+        ("/a2a/agents/{id}/v1/tasks:get", "post"),
+        ("/a2a/agents/{id}/v1/tasks:cancel", "post"),
+        ("/a2a/agents/{id}/v1/message:stream", "post"),
+        ("/a2a/teams/{id}/.well-known/agent-card.json", "get"),
+        ("/a2a/teams/{id}/v1/message:send", "post"),
+        ("/a2a/teams/{id}/v1/tasks:get", "post"),
+        ("/a2a/teams/{id}/v1/tasks:cancel", "post"),
+        ("/a2a/teams/{id}/v1/message:stream", "post"),
+        ("/a2a/workflows/{id}/.well-known/agent-card.json", "get"),
+        ("/a2a/workflows/{id}/v1/message:send", "post"),
+        ("/a2a/workflows/{id}/v1/message:stream", "post"),
+    },
+}
+OPTIONAL_PUBLIC_FAMILIES = {
+    "Slack": {("/slack/events", "post"), ("/slack/interactions", "post")},
+    "Whatsapp": {
+        ("/whatsapp/status", "get"),
+        ("/whatsapp/webhook", "get"),
+        ("/whatsapp/webhook", "post"),
+    },
+    "Telegram": {
+        ("/telegram/status", "get"),
+        ("/telegram/webhook", "post"),
+    },
+}
+OPTIONAL_INTERFACE_OPERATIONS = set().union(
+    *OPTIONAL_PARENT_AUTH_FAMILIES.values(),
+    *OPTIONAL_PUBLIC_FAMILIES.values(),
+)
+
+
+def present_optional_families(
+    operation_keys: set[tuple[str, str]],
+    families: dict[str, set[tuple[str, str]]],
+) -> tuple[set[tuple[str, str]], set[str]]:
+    """Return complete optional route families and reject partial mounts."""
+    present_routes: set[tuple[str, str]] = set()
+    present_names: set[str] = set()
+    for name, family in families.items():
+        present = operation_keys & family
+        if present and present != family:
+            raise RuntimeError(
+                f"optional interface {name} is partially mounted: "
+                f"missing={sorted(family - present)}"
+            )
+        if present:
+            present_routes.update(family)
+            present_names.add(name)
+    return present_routes, present_names
+
 
 def verify_source_provenance() -> dict[str, str]:
-    source_root = Path(os.environ.get("AGNO_REPO") or REPO_ROOT / "agno").resolve()
-    pyproject = source_root / "libs" / "agno" / "pyproject.toml"
-    if not pyproject.is_file():
-        raise RuntimeError(f"Agno source pyproject not found at {pyproject}")
-
-    project_match = re.search(
-        r"(?ms)^\[project\]\s*$.*?^version\s*=\s*[\"']([^\"']+)[\"']\s*$",
-        pyproject.read_text(),
-    )
-    if project_match is None:
-        raise RuntimeError(f"Agno source version not found in {pyproject}")
-    source_version = project_match.group(1)
+    provenance = verify_source_checkout_before_import()
+    if provenance != PREIMPORT_SOURCE_PROVENANCE:
+        raise RuntimeError("Agno source provenance changed after the pre-import check")
+    source_version = provenance["source_version"]
     if source_version != agno_version:
         raise RuntimeError(
             f"Agno source version {source_version} does not match imported package version {agno_version}"
         )
 
-    def git(*args: str) -> str:
-        result = subprocess.run(
-            ["git", "-C", str(source_root), *args],
-            check=False,
-            capture_output=True,
-            text=True,
+    imported_modules = {}
+    outside_modules = {}
+    for name, module in sorted(sys.modules.items()):
+        if name != "agno" and not name.startswith("agno."):
+            continue
+        module_file = getattr(module, "__file__", None)
+        if module_file is None:
+            continue
+        resolved = Path(module_file).resolve()
+        imported_modules[name] = str(resolved)
+        if not resolved.is_relative_to(AGNO_IMPORT_ROOT):
+            outside_modules[name] = str(resolved)
+    if outside_modules:
+        raise RuntimeError(
+            "Agno modules resolved outside the reviewed source tree: "
+            + json.dumps(outside_modules, sort_keys=True)
         )
-        if result.returncode != 0:
-            raise RuntimeError(result.stderr.strip() or f"git {' '.join(args)} failed")
-        return result.stdout.strip()
 
-    source_sha = git("rev-parse", "HEAD")
-    source_tag = git("describe", "--tags", "--exact-match", "HEAD")
-    expected_tag = f"v{agno_version}"
-    if source_tag != expected_tag:
-        raise RuntimeError(f"Agno source tag {source_tag!r} does not match imported version {expected_tag!r}")
-
-    expected_sha = os.environ.get("AGNO_EXPECTED_SHA")
-    if not expected_sha:
-        raise RuntimeError("AGNO_EXPECTED_SHA is required")
-    if not re.fullmatch(r"[0-9a-f]{40}", expected_sha):
-        raise RuntimeError("AGNO_EXPECTED_SHA must be a full lowercase commit SHA")
-    if source_sha != expected_sha:
-        raise RuntimeError(f"Agno source SHA {source_sha} does not match AGNO_EXPECTED_SHA {expected_sha}")
-
-    return {
-        "source_root": str(source_root),
-        "source_sha": source_sha,
-        "source_tag": source_tag,
-        "source_version": source_version,
-        "imported_module": str(Path(sys.modules["agno"].__file__).resolve()),
-    }
+    return {**provenance, "imported_module": imported_modules["agno"]}
 
 # Interface imports are optional: each pulls in an extra (a2a-sdk, ag-ui-protocol,
 # slack-sdk, ...) that may be absent from the venv. Missing ones are excluded
@@ -461,6 +571,44 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
     get_teams["responses"]["403"] = {"description": "Insufficient permission to list teams"}
     NOTES.append("runtime Team roster visibility: scoped results and authorization response")
 
+    delete_all_content = spec["paths"]["/knowledge/content"]["delete"]
+    assert delete_all_content["operationId"] == "delete_all_content"
+    assert delete_all_content["description"] == (
+        "Permanently remove all content from the knowledge base. This is a destructive "
+        "operation that cannot be undone. Use with extreme caution."
+    )
+    delete_all_content["description"] = (
+        "Permanently remove content from the knowledge base. With user isolation enabled, "
+        "a non-admin caller removes only its own content; shared and other users' content "
+        "remain. Admins and unscoped callers remove all content. This action cannot be undone."
+    )
+    delete_all_success = delete_all_content["responses"]["200"]
+    assert delete_all_success["content"]["application/json"]["schema"] == {}
+    delete_all_success["content"]["application/json"]["schema"] = {
+        "type": ["string", "null"],
+        "enum": ["success", None],
+    }
+
+    delete_content = spec["paths"]["/knowledge/content/{content_id}"]["delete"]
+    assert delete_content["operationId"] == "delete_content_by_id"
+    assert delete_content["description"] == (
+        "Permanently remove a specific content item from the knowledge base. "
+        "This action cannot be undone."
+    )
+    delete_content["description"] = (
+        "Permanently remove a specific content item from the knowledge base. With user "
+        "isolation enabled, a non-admin caller can delete its own content but cannot delete "
+        "shared content. Content outside the caller's scope is reported as not found. "
+        "This action cannot be undone."
+    )
+    assert "403" not in delete_content["responses"]
+    delete_content["responses"]["403"] = {
+        "description": "Shared content cannot be deleted by a scoped caller"
+    }
+    NOTES.append(
+        "runtime knowledge deletion: owner scoping, shared-content denial, and string/null delete-all result"
+    )
+
     delete_memories = spec["paths"]["/memories"]["delete"]
     assert delete_memories["operationId"] == "delete_memories"
     assert delete_memories["responses"]["400"]["description"] == (
@@ -489,7 +637,27 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         "uses get_component_config to avoid the pinned v3.0.4 get_config collision"
     )
 
-    slack_events = spec["paths"]["/slack/events"]["post"]
+    slack_route_keys = OPTIONAL_PUBLIC_FAMILIES["Slack"]
+    available_operation_keys = {
+        (path, method)
+        for path, path_item in spec["paths"].items()
+        for method in path_item
+        if method in {"get", "post", "put", "patch", "delete", "options", "head"}
+    }
+    present_slack_routes, _ = present_optional_families(
+        available_operation_keys,
+        {"Slack": slack_route_keys},
+    )
+    if present_slack_routes:
+        slack_events = spec["paths"]["/slack/events"]["post"]
+        slack_interactions = spec["paths"]["/slack/interactions"]["post"]
+    else:
+        # Run the deterministic assertions against local placeholders when the
+        # optional Slack interface is unavailable. The spec remains unchanged.
+        slack_events = {"description": "Process incoming Slack events"}
+        slack_interactions = {
+            "description": "Handle Slack interactive components (HITL buttons / form submit)"
+        }
     assert slack_events["description"] == "Process incoming Slack events"
     slack_events["description"] = (
         "Receives incoming Slack events (messages, mentions, thread starts).\n\n"
@@ -530,7 +698,6 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
         },
     ]
 
-    slack_interactions = spec["paths"]["/slack/interactions"]["post"]
     assert slack_interactions["description"] == (
         "Handle Slack interactive components (HITL buttons / form submit)"
     )
@@ -582,9 +749,10 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
             }
         },
     }
-    NOTES.append(
-        "Slack enrichments: preserved header parameters, form request body, and HITL descriptions"
-    )
+    if present_slack_routes:
+        NOTES.append(
+            "Slack enrichments: preserved header parameters, form request body, and HITL descriptions"
+        )
 
     restore_component = spec["paths"]["/components/{component_id}/restore"]["post"]
     assert "403" not in restore_component["responses"]
@@ -643,9 +811,91 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
     assert pagination_page["default"] == 0
     assert pagination_page["minimum"] == 0
     pagination_page["description"] = "Current page number"
+
+    # The generated reference covers both open AgentOS instances and protected
+    # deployments. FastAPI emits an unconditional bearer requirement for its
+    # optional HTTPBearer dependency, so add the empty alternative required by
+    # OpenAPI for anonymous access. Service-account creation explicitly rejects
+    # anonymous callers and remains bearer-only. Parent AuthMiddleware protects
+    # AG-UI, status, and A2A routes without adding operation-level metadata, so
+    # enrich those interface operations explicitly.
+    bearer_shape = [{"HTTPBearer": []}]
+    required_bearer = {("/service-accounts", "post")}
+    operation_keys = {
+        (path, method)
+        for path, path_item in spec["paths"].items()
+        for method in path_item
+        if method in {"get", "post", "put", "patch", "delete", "options", "head"}
+    }
+    optional_parent_routes, present_parent_families = present_optional_families(
+        operation_keys, OPTIONAL_PARENT_AUTH_FAMILIES
+    )
+    optional_public_routes, present_public_families = present_optional_families(
+        operation_keys, OPTIONAL_PUBLIC_FAMILIES
+    )
+    expected_parent_optional_bearer = CORE_PARENT_AUTH_OPERATIONS | optional_parent_routes
+    expected_public_no_security = CORE_PUBLIC_OPERATIONS | optional_public_routes
+    if not expected_parent_optional_bearer <= operation_keys:
+        raise RuntimeError("core parent-auth operations are missing")
+    if not expected_public_no_security <= operation_keys:
+        raise RuntimeError("core public operations are missing")
+    raw_bearer: set[tuple[str, str]] = set()
+    found_required_bearer: set[tuple[str, str]] = set()
+    found_parent_optional_bearer: set[tuple[str, str]] = set()
+    for path, path_item in spec["paths"].items():
+        for method, operation in path_item.items():
+            if method not in {"get", "post", "put", "patch", "delete", "options", "head"}:
+                continue
+            key = (path, method)
+            if key in expected_parent_optional_bearer:
+                assert "security" not in operation
+                operation["security"] = [{}, {"HTTPBearer": []}]
+                found_parent_optional_bearer.add(key)
+                continue
+            if operation.get("security") != bearer_shape:
+                continue
+            raw_bearer.add(key)
+            if key in required_bearer:
+                found_required_bearer.add(key)
+                continue
+            operation["security"] = [{}, {"HTTPBearer": []}]
+    assert found_required_bearer == required_bearer
+    assert found_parent_optional_bearer == expected_parent_optional_bearer
+    optional_shape = [{}, {"HTTPBearer": []}]
+    final_optional = set()
+    final_required = set()
+    final_no_security = set()
+    for path, path_item in spec["paths"].items():
+        for method, operation in path_item.items():
+            if method not in {"get", "post", "put", "patch", "delete", "options", "head"}:
+                continue
+            key = (path, method)
+            if operation.get("security") == optional_shape:
+                final_optional.add(key)
+            elif operation.get("security") == bearer_shape:
+                final_required.add(key)
+            elif "security" not in operation:
+                final_no_security.add(key)
+    assert final_optional == (raw_bearer - required_bearer) | expected_parent_optional_bearer
+    assert final_required == required_bearer
+    assert final_no_security == expected_public_no_security
+    full_interface_profile = (
+        present_parent_families == set(OPTIONAL_PARENT_AUTH_FAMILIES)
+        and present_public_families == set(OPTIONAL_PUBLIC_FAMILIES)
+    )
+    if full_interface_profile:
+        assert len(raw_bearer) == 122
+        assert len(final_optional) == 136
+        assert len(final_required) == 1
+        assert len(final_no_security) == 9
     NOTES.append(
         "runtime response enrichments: restore, knowledge refresh, Queue, and media branches; "
         "PaginationInfo wording aligned with its emitted default and minimum"
+    )
+    NOTES.append(
+        f"authentication profile: {len(final_optional)} HTTPBearer operations allow the documented "
+        f"open-AgentOS alternative; {len(final_required)} operation remains bearer-only and "
+        f"{len(final_no_security)} public or self-authenticating operations remain open"
     )
     return spec
 
@@ -788,7 +1038,14 @@ def validate_endpoint_page_coverage(spec: dict) -> None:
         route for route in nav_counts if route.startswith("reference-api/schema/")
     ):
         declared = [key for key, routes in declarations.items() if page_route in routes]
-        if len(declared) != 1 or declared[0] not in expected:
+        declared_key = None
+        if len(declared) == 1:
+            method, route = declared[0].split(" ", 1)
+            declared_key = (route, method.lower())
+        if len(declared) != 1 or (
+            declared[0] not in expected
+            and declared_key not in OPTIONAL_INTERFACE_OPERATIONS
+        ):
             stale_nav.append((page_route, declared))
 
     if missing_pages or duplicate_pages or missing_nav or duplicate_nav or stale_nav:
