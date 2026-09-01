@@ -448,6 +448,24 @@ EXPLICIT_ROW_OVERRIDES = {
             "Run a team hosted on another AgentOS with RemoteTeam in single-shot or streaming mode.",
         ),
     },
+    "examples/agent-os/scheduler/overview": {
+        "examples/agent-os/scheduler/run-in-agentos": (
+            "Run in AgentOS",
+            "Seed a schedule, let the AgentOS poller execute it, and inspect the persisted run history.",
+        ),
+        "examples/agent-os/scheduler/rest-api": (
+            "Use the REST API",
+            "Create, list, update, enable, disable, trigger, and delete schedules through REST endpoints.",
+        ),
+        "examples/agent-os/scheduler/manage-with-python": (
+            "Manage with Python",
+            "Use synchronous and asynchronous `ScheduleManager` APIs, including validation, retries, and timeouts.",
+        ),
+        "examples/agent-os/scheduler/scheduler-tools-agent": (
+            "Give an Agent Scheduler Tools",
+            "Let an agent create and inspect schedules through `SchedulerTools`.",
+        ),
+    },
     "examples/models/anthropic/overview": {
         "examples/models/anthropic/adaptive-thinking": (
             "Anthropic Adaptive Thinking",
@@ -579,8 +597,9 @@ EXPLICIT_ROW_REFRESH = {
         "examples/agent-os/remote/remote-team",
     },
     "examples/agent-os/scheduler/overview": {
-        "examples/agent-os/scheduler/rest-api-schedules",
-        "examples/agent-os/scheduler/scheduler-with-agentos",
+        "examples/agent-os/scheduler/manage-with-python",
+        "examples/agent-os/scheduler/rest-api",
+        "examples/agent-os/scheduler/run-in-agentos",
         "examples/agent-os/scheduler/scheduler-tools-agent",
     },
     "examples/agent-os/schemas/overview": {
@@ -937,8 +956,9 @@ EXPLICIT_LABEL_REFRESH = {
     "examples/agent-os/interfaces/whatsapp/multiple-instances",
     "examples/agent-os/scheduler/async-schedule",
     "examples/agent-os/scheduler/demo",
-    "examples/agent-os/scheduler/rest-api-schedules",
-    "examples/agent-os/scheduler/scheduler-with-agentos",
+    "examples/agent-os/scheduler/manage-with-python",
+    "examples/agent-os/scheduler/rest-api",
+    "examples/agent-os/scheduler/run-in-agentos",
     "examples/agent-os/scheduler/scheduler-tools-agent",
     "examples/agent-os/schemas/agent-schemas",
     "examples/agent-os/schemas/team-schemas",
