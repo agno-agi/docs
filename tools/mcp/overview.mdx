@@ -102,7 +102,14 @@ async def run_agent(message: str) -> None:
     file_path = "<path to the directory you want to explore>"
 
     # Initialize and connect to the MCP server to access the filesystem
-    mcp_tools = MCPTools(command=f"npx -y @modelcontextprotocol/server-filesystem {file_path}")
+    mcp_tools = MCPTools(
+        command=f"npx -y @modelcontextprotocol/server-filesystem {file_path}",
+        include_tools=[
+            "list_allowed_directories",
+            "list_directory",
+            "read_file",
+        ],
+    )
     await mcp_tools.connect()
 
     try:
@@ -198,14 +205,14 @@ This is the recommended way to manage the connection lifecycle of the MCP server
 
 ## Connection Refresh
 
-Set `refresh_connection` on an `MCPTools` instance to refresh its connection to the MCP server on each run.
+Set `refresh_connection` on an `MCPTools` instance to check its MCP session before each run. An unhealthy session is reconnected, then the available tools are refreshed.
 
 ```python
 mcp_tools = MCPTools(command="uvx mcp-server-git", refresh_connection=True)
 await mcp_tools.connect()
 
 agent = Agent(model=OpenAIResponses(id="gpt-5.2"), tools=[mcp_tools])
-await agent.aprint_response("What is the license for this project?", stream=True)  # The connection will be refreshed on each run.
+await agent.aprint_response("What is the license for this project?", stream=True)  # The connection is checked and tools are refreshed on each run.
 
 await mcp_tools.close()
 ```

@@ -54,6 +54,7 @@ from agno.knowledge.knowledge import Knowledge  # noqa: E402
 from agno.models.openai import OpenAIChat  # noqa: E402
 from agno.os import AgentOS, QueueConfig  # noqa: E402
 from agno.registry import Registry  # noqa: E402
+from agno.run.base import RunStatus  # noqa: E402
 from agno.team import Team  # noqa: E402
 from agno.workflow import Workflow  # noqa: E402
 from agno.workflow.step import Step  # noqa: E402
@@ -343,6 +344,38 @@ def apply_runtime_description_enrichments(spec: dict) -> dict:
     }
     NOTES.append(
         "runtime response schemas: Agent checkpoint envelope and durable Team continuation acceptance"
+    )
+
+    list_team_runs = spec["paths"]["/teams/{team_id}/runs"]["get"]
+    assert list_team_runs["operationId"] == "list_team_runs"
+    list_team_runs_success = list_team_runs["responses"]["200"]
+    assert list_team_runs_success["description"] == "List of runs retrieved successfully"
+    assert list_team_runs_success["content"]["application/json"]["schema"] == {}
+    list_team_runs_success["content"]["application/json"]["schema"] = {
+        "type": "array",
+        "items": {"$ref": "#/components/schemas/TeamRunSchema"},
+    }
+    status_parameter = next(
+        parameter for parameter in list_team_runs["parameters"] if parameter["name"] == "status"
+    )
+    old_status_description = "Filter by run status (PENDING, RUNNING, COMPLETED, ERROR)"
+    assert status_parameter["description"] == old_status_description
+    assert status_parameter["schema"]["description"] == old_status_description
+    status_values = [status.value for status in RunStatus]
+    string_status_schema = next(
+        branch
+        for branch in status_parameter["schema"]["anyOf"]
+        if branch.get("type") == "string"
+    )
+    assert string_status_schema == {"type": "string"}
+    string_status_schema["enum"] = status_values
+    status_description = f"Filter by run status ({', '.join(status_values)})"
+    status_parameter["description"] = status_description
+    status_parameter["schema"]["description"] = status_description
+    assert "403" not in list_team_runs["responses"]
+    list_team_runs["responses"]["403"] = {"description": "Access denied to run this team"}
+    NOTES.append(
+        "runtime Team run-list schema: TeamRunSchema array, complete RunStatus filter, and authorization response"
     )
 
     component_config = spec["paths"]["/components/{component_id}/configs/{version}"]["get"]

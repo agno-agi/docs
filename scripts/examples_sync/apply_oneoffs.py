@@ -33,6 +33,144 @@ CHECK = False
 would_apply = 0
 
 
+# Stable routes whose source examples moved or were retired before v3.0.4.
+# Keep the URLs as exact, source-free migration pages. Each row is
+# (task label, current example slug).
+MIGRATION_PAGE_TARGETS = {
+    "examples/agent-os/approvals/team/member-agent-level-approval": (
+        ("Use the current team approval example", "examples/agent-os/human-in-the-loop/team-approval"),
+    ),
+    "examples/agent-os/approvals/team/team-and-member-agent-both-level-approval": (
+        ("Use the current team approval example", "examples/agent-os/human-in-the-loop/team-approval"),
+    ),
+    "examples/agent-os/interfaces/agui/structured-output": (
+        ("Open the current AG-UI example", "examples/agent-os/agui/structured-output"),
+    ),
+    "examples/agent-os/interfaces/slack/agent-with-user-memory": (
+        ("Use Slack with user memory", "examples/agent-os/slack/user-memory"),
+    ),
+    "examples/agent-os/interfaces/slack/basic": (
+        ("Build a Slack agent", "examples/agent-os/slack/basic"),
+    ),
+    "examples/agent-os/interfaces/slack/basic-workflow": (
+        ("Build a Slack workflow", "examples/agent-os/slack/workflow"),
+    ),
+    "examples/agent-os/interfaces/slack/channel-summarizer": (
+        ("Use Slack tools", "examples/agent-os/slack/slack-tools"),
+    ),
+    "examples/agent-os/interfaces/slack/file-analyst": (
+        ("Use Slack tools", "examples/agent-os/slack/slack-tools"),
+    ),
+    "examples/agent-os/interfaces/slack/hitl-audit-flow": (
+        ("Build an incident approval flow", "examples/agent-os/slack/hitl-incident-commander"),
+    ),
+    "examples/agent-os/interfaces/slack/hitl-confirmation": (
+        ("Require confirmation in Slack", "examples/agent-os/slack/hitl-confirmation"),
+    ),
+    "examples/agent-os/interfaces/slack/hitl-external-execution": (
+        ("Execute tools outside the agent", "examples/agent-os/slack/hitl-external-execution"),
+    ),
+    "examples/agent-os/interfaces/slack/hitl-incident-commander": (
+        ("Build an incident approval flow", "examples/agent-os/slack/hitl-incident-commander"),
+    ),
+    "examples/agent-os/interfaces/slack/hitl-required-approval": (
+        ("Require confirmation in Slack", "examples/agent-os/slack/hitl-confirmation"),
+        ("Persist approval records", "examples/agent-os/human-in-the-loop/with-approval-record"),
+    ),
+    "examples/agent-os/interfaces/slack/hitl-simple": (
+        ("Require confirmation in Slack", "examples/agent-os/slack/hitl-confirmation"),
+    ),
+    "examples/agent-os/interfaces/slack/hitl-user-feedback": (
+        ("Collect approval feedback", "examples/agent-os/slack/hitl-incident-commander"),
+    ),
+    "examples/agent-os/interfaces/slack/hitl-user-input": (
+        ("Collect user input in Slack", "examples/agent-os/slack/hitl-user-input"),
+    ),
+    "examples/agent-os/interfaces/slack/multi-bot": (
+        ("Run multiple Slack bots", "examples/agent-os/slack/multiple-bots"),
+    ),
+    "examples/agent-os/interfaces/slack/multimodal-team": (
+        ("Start with the current Slack team", "examples/agent-os/slack/team"),
+    ),
+    "examples/agent-os/interfaces/slack/multimodal-workflow": (
+        ("Start with the current Slack workflow", "examples/agent-os/slack/workflow"),
+    ),
+    "examples/agent-os/interfaces/slack/multiple-instances": (
+        ("Run multiple Slack bots", "examples/agent-os/slack/multiple-bots"),
+    ),
+    "examples/agent-os/interfaces/slack/reasoning-agent": (
+        ("Build a Slack agent", "examples/agent-os/slack/basic"),
+        ("Add reasoning tools", "examples/reasoning/tools/overview"),
+    ),
+    "examples/agent-os/interfaces/slack/research-assistant": (
+        ("Use Slack tools", "examples/agent-os/slack/slack-tools"),
+        ("Stream long-running work", "examples/agent-os/slack/streaming-ux"),
+    ),
+    "examples/agent-os/interfaces/slack/streaming-deep-research": (
+        ("Stream long-running work", "examples/agent-os/slack/streaming-ux"),
+    ),
+    "examples/agent-os/interfaces/slack/support-team": (
+        ("Build a Slack team", "examples/agent-os/slack/team"),
+    ),
+    "examples/agent-os/interfaces/slack/team-hitl-confirmation": (
+        ("Require member confirmation", "examples/teams/human-in-the-loop/confirmation-required"),
+    ),
+    "examples/agent-os/interfaces/slack/team-hitl-external-execution-simple": (
+        ("Execute a team tool externally", "examples/teams/human-in-the-loop/external-tool-execution"),
+    ),
+    "examples/agent-os/interfaces/slack/team-hitl-team-tool-simple": (
+        ("Confirm a team tool", "examples/teams/human-in-the-loop/team-tool-confirmation"),
+    ),
+    "examples/agent-os/interfaces/slack/team-hitl-user-input-simple": (
+        ("Collect team user input", "examples/teams/human-in-the-loop/user-input-required"),
+    ),
+    "examples/agent-os/mcp-demo/dynamic-headers/client": (
+        ("Open the current client", "examples/tools/mcp/dynamic-headers/client"),
+    ),
+    "examples/agent-os/mcp-demo/dynamic-headers/overview": (
+        ("Open the current guide", "examples/tools/mcp/dynamic-headers/overview"),
+    ),
+    "examples/agent-os/mcp-demo/dynamic-headers/server": (
+        ("Open the current server", "examples/tools/mcp/dynamic-headers/server"),
+    ),
+    "examples/agent-os/remote/agno-a2a-server": (
+        ("Run the current A2A server", "examples/agent-os/remote/servers/a2a-server"),
+    ),
+    "examples/agent-os/tracing/basic-team-tracing": (
+        ("Enable current AgentOS tracing", "examples/agent-os/observability/basic"),
+    ),
+    "examples/models/openai/responses/verbosity-control": (
+        ("Control OpenAI Chat verbosity", "examples/models/openai/chat/verbosity-control"),
+    ),
+}
+
+SLACK_INDEX_TARGETS = (
+    "examples/agent-os/slack/basic",
+    "examples/agent-os/slack/hitl-confirmation",
+    "examples/agent-os/slack/hitl-external-execution",
+    "examples/agent-os/slack/hitl-incident-commander",
+    "examples/agent-os/slack/hitl-user-input",
+    "examples/agent-os/slack/multiple-bots",
+    "examples/agent-os/slack/peer-agents",
+    "examples/agent-os/slack/slack-tools",
+    "examples/agent-os/slack/streaming-ux",
+    "examples/agent-os/slack/team",
+    "examples/agent-os/slack/user-memory",
+    "examples/agent-os/slack/workflow",
+)
+
+MIGRATION_PAGE_INTROS = {
+    "examples/agent-os/interfaces/slack/multimodal-team": (
+        "The v3.0.4 Slack cookbook has no one-to-one multimodal team successor. "
+        "Start with the current Slack team example."
+    ),
+    "examples/agent-os/interfaces/slack/multimodal-workflow": (
+        "The v3.0.4 Slack cookbook has no one-to-one multimodal workflow successor. "
+        "Start with the current Slack workflow example."
+    ),
+}
+
+
 # Curated overview frontmatter that cannot be derived from a cookbook docstring.
 # Keys are docs slugs so the same values can be used while --check simulates
 # the changes without writing the pages first.
@@ -42,7 +180,6 @@ DESCRIPTION_OVERRIDES = {
     "examples/agent-os/dbs/overview": "Database backends for AgentOS agents, teams, workflows, and session storage.",
     "examples/agent-os/knowledge/overview": "Serve AgentOS agents over Excel, markdown, Agno docs, and PgVector knowledge bases.",
     "examples/agent-os/mcp-demo/overview": "Expose AgentOS agents and custom tools through MCP with OAuth, dynamic headers, and managed MCPTools lifespans.",
-    "examples/agent-os/mcp-demo/dynamic-headers/overview": "Pass request-specific headers from AgentOS through MCPTools to an MCP server.",
     "examples/agent-os/middleware/overview": "AgentOS middleware examples for authentication, request context, rate limiting, and custom request handling.",
     "examples/agent-os/os-config/overview": "Configure AgentOS in Python or YAML, including manifests, memory, and interfaces.",
     "examples/agent-os/rbac/overview": "JWT-based AgentOS RBAC examples for symmetric and asymmetric keys, scope mapping, and user isolation.",
@@ -71,6 +208,7 @@ DESCRIPTION_OVERRIDES = {
     "examples/models/ollama/overview": "Ollama Chat and Responses API examples for local and cloud models, knowledge, memory, reasoning, structured output, and tools.",
     "examples/models/openai/overview": "OpenAI Chat and Responses API examples for multimodal input, tools, reasoning, structured output, storage, and streaming.",
     "examples/models/openai/chat/overview": "OpenAI Chat examples for multimodal input and output, tools, reasoning, structured output, storage, and retries.",
+    "examples/models/openai/responses/overview": "OpenAI Responses API examples for structured output, tool use, multimodal input, deep research, reasoning, and storage controls.",
     "examples/models/openrouter/overview": "OpenRouter Chat and Responses API examples for model routing, retries, structured output, and tools.",
     "examples/models/vertexai/overview": "Vertex AI examples for Claude models, retries, multimodal input, knowledge, memory, caching, structured output, and tools.",
     "examples/teams/context-compression/overview": "Compress team tool results to keep long-running collaboration within model context limits.",
@@ -160,24 +298,6 @@ EXPLICIT_MISSING_ROWS = {
         "examples/agent-os/interfaces/agui/team-state-events",
         "examples/agent-os/interfaces/agui/tool-based-generative-ui",
     ],
-    "examples/agent-os/interfaces/slack/overview": [
-        "examples/agent-os/interfaces/slack/hitl-audit-flow",
-        "examples/agent-os/interfaces/slack/hitl-confirmation",
-        "examples/agent-os/interfaces/slack/hitl-external-execution",
-        "examples/agent-os/interfaces/slack/hitl-incident-commander",
-        "examples/agent-os/interfaces/slack/hitl-required-approval",
-        "examples/agent-os/interfaces/slack/hitl-simple",
-        "examples/agent-os/interfaces/slack/hitl-user-feedback",
-        "examples/agent-os/interfaces/slack/hitl-user-input",
-        "examples/agent-os/interfaces/slack/multi-bot",
-        "examples/agent-os/interfaces/slack/multimodal-team",
-        "examples/agent-os/interfaces/slack/multimodal-workflow",
-        "examples/agent-os/interfaces/slack/streaming-deep-research",
-        "examples/agent-os/interfaces/slack/team-hitl-confirmation",
-        "examples/agent-os/interfaces/slack/team-hitl-external-execution-simple",
-        "examples/agent-os/interfaces/slack/team-hitl-team-tool-simple",
-        "examples/agent-os/interfaces/slack/team-hitl-user-input-simple",
-    ],
     "examples/agent-os/interfaces/whatsapp/overview": [
         "examples/agent-os/interfaces/whatsapp/deep-research",
         "examples/agent-os/interfaces/whatsapp/interactive-concierge",
@@ -242,8 +362,8 @@ EXPLICIT_MISSING_ROWS = {
         "examples/agents/human-in-the-loop/mixed-external-and-regular-tools",
         "examples/agents/human-in-the-loop/user-feedback",
         "examples/agents/approvals/approval-post-hook",
-        "examples/agent-os/approvals/team/member-agent-level-approval",
-        "examples/agent-os/approvals/team/team-and-member-agent-both-level-approval",
+        "examples/agents/human-in-the-loop/side-effecting-tool-approval",
+        "examples/agent-os/human-in-the-loop/team-approval",
     ],
     "examples/agents/input-output/overview": [
         "examples/agents/input-output/followup-suggestions",
@@ -272,6 +392,7 @@ EXPLICIT_MISSING_ROWS = {
         "examples/models/openai/responses/background",
         "examples/models/openai/responses/file-input-direct",
         "examples/models/openai/responses/image-agent-file",
+        "examples/models/openai/responses/reasoning-effort",
     ],
     "examples/models/anthropic/overview": [
         "examples/models/anthropic/adaptive-thinking",
@@ -314,6 +435,18 @@ EXPLICIT_MISSING_ROWS = {
     "examples/tools/mcp/overview": ["examples/tools/mcp/bgpt"],
     "examples/tools/tool-decorator/overview": ["examples/tools/tool-decorator/toolkit-per-tool-instructions"],
     "examples/tools/tool-hooks/overview": ["examples/tools/tool-hooks/message-history-in-hooks"],
+}
+
+# Existing overview rows that point at retained migration URLs but no longer
+# belong in the parent category.
+EXPLICIT_ROW_REMOVALS = {
+    "examples/agents/human-in-the-loop/overview": {
+        "examples/agent-os/approvals/team/member-agent-level-approval",
+        "examples/agent-os/approvals/team/team-and-member-agent-both-level-approval",
+    },
+    "examples/models/openai/responses/overview": {
+        "examples/models/openai/responses/verbosity-control",
+    },
 }
 
 # Reviewed row copy that cannot be derived from the linked page alone. This
@@ -549,14 +682,11 @@ EXPLICIT_ROW_REFRESH = {
     },
     "examples/agent-os/customize/overview": {"examples/agent-os/customize/custom-fastapi-app"},
     "examples/agent-os/mcp-demo/overview": {
+        "examples/agent-os/mcp-demo/dynamic-headers/overview",
         "examples/agent-os/mcp-demo/mcp-tools-advanced-example",
         "examples/agent-os/mcp-demo/mcp-tools-existing-lifespan",
         "examples/agent-os/mcp-demo/oauth-authkit-example",
         "examples/agent-os/mcp-demo/oauth-builtin-example",
-    },
-    "examples/agent-os/mcp-demo/dynamic-headers/overview": {
-        "examples/agent-os/mcp-demo/dynamic-headers/client",
-        "examples/agent-os/mcp-demo/dynamic-headers/server",
     },
     "examples/agent-os/overview": {
         "examples/agent-os/basic",
@@ -571,13 +701,8 @@ EXPLICIT_ROW_REFRESH = {
         "examples/agent-os/background-tasks/evals-demo",
     },
     "examples/agent-os/interfaces/agui/overview": {
+        "examples/agent-os/interfaces/agui/structured-output",
         "examples/agent-os/interfaces/agui/tool-based-generative-ui",
-    },
-    "examples/agent-os/interfaces/slack/overview": {
-        "examples/agent-os/interfaces/slack/basic",
-        "examples/agent-os/interfaces/slack/multiple-instances",
-        "examples/agent-os/interfaces/slack/multimodal-team",
-        "examples/agent-os/interfaces/slack/multimodal-workflow",
     },
     "examples/agent-os/interfaces/whatsapp/overview": {
         "examples/agent-os/interfaces/whatsapp/multiple-instances",
@@ -602,6 +727,7 @@ EXPLICIT_ROW_REFRESH = {
         "examples/agent-os/rbac/symmetric/with-cookie",
     },
     "examples/agent-os/remote/overview": {
+        "examples/agent-os/remote/agno-a2a-server",
         "examples/agent-os/remote/remote-agent",
         "examples/agent-os/remote/remote-team",
     },
@@ -818,6 +944,7 @@ EXPLICIT_ROW_REFRESH = {
         "examples/models/ollama/responses/structured-output",
     },
     "examples/models/openai/responses/overview": {
+        "examples/models/openai/responses/background",
         "examples/models/openai/responses/basic",
         "examples/models/openai/responses/db",
         "examples/models/openai/responses/image-generation-agent",
@@ -1193,11 +1320,9 @@ ROW_REPAIR_OVERVIEWS = {
     "examples/agent-os/interfaces/a2a/overview",
     "examples/agent-os/interfaces/agui/overview",
     "examples/agent-os/interfaces/overview",
-    "examples/agent-os/interfaces/slack/overview",
     "examples/agent-os/interfaces/whatsapp/overview",
     "examples/agent-os/knowledge/overview",
     "examples/agent-os/mcp-demo/overview",
-    "examples/agent-os/mcp-demo/dynamic-headers/overview",
     "examples/agent-os/os-config/overview",
     "examples/agent-os/overview",
     "examples/agent-os/rbac/symmetric/overview",
@@ -1413,6 +1538,75 @@ def desired_row(overview: str, target: str) -> tuple[str, str, bool]:
         return title, description, False
     label, row_description = override
     return label, row_description, True
+
+
+def write_migration_pages() -> None:
+    """Reconstruct reviewed source-free pages for retained legacy routes."""
+    global would_apply
+    slack_overview = "examples/agent-os/interfaces/slack/overview"
+    expected_slugs = set(MIGRATION_PAGE_TARGETS) | {slack_overview}
+    assert len(expected_slugs) == 35, "migration route inventory drifted"
+
+    for slug in sorted(expected_slugs):
+        path = docs_path(slug)
+        assert path.is_file(), f"migration route is missing: {slug}"
+        current = path.read_text(encoding="utf-8")
+        title = frontmatter_value(current, "title", slug)
+        assert '"' not in title and "\n" not in title, f"invalid migration title: {slug}"
+
+        sidebar = 'sidebarTitle: "Overview"\n' if slug.endswith("/overview") else ""
+        if slug == slack_overview:
+            description = "Current AgentOS Slack examples for bots, tools, streaming, teams, memory, workflows, and human approval."
+            rows = []
+            for target in SLACK_INDEX_TARGETS:
+                assert docs_path(target).is_file(), f"Slack index target is missing: {target}"
+                label, row_description, _ = desired_row(slug, target)
+                assert is_suitable_target(row_description, label), (
+                    f"Slack index target has an unsuitable description: {target}"
+                )
+                rows.append(f"| [{label}](/" + target + f") | {row_description} |")
+            body = (
+                "The current v3.0.4 Slack examples:\n\n"
+                "| Example | Description |\n"
+                "| --- | --- |\n"
+                + "\n".join(rows)
+                + "\n"
+            )
+        else:
+            description = f"Migration route for {title} to current Agno v3.0.4 examples."
+            intro = MIGRATION_PAGE_INTROS.get(
+                slug,
+                "This retained route points to the current Agno v3.0.4 example below.",
+            )
+            rows = []
+            for task, target in MIGRATION_PAGE_TARGETS[slug]:
+                assert docs_path(target).is_file(), f"migration target is missing: {slug} -> {target}"
+                target_title, _ = desired_frontmatter(target)
+                rows.append(f"| {task} | [{target_title}](/" + target + ") |")
+            body = (
+                intro
+                + "\n\n| Task | Current example |\n"
+                "| --- | --- |\n"
+                + "\n".join(rows)
+                + "\n"
+            )
+
+        expected = (
+            "---\n"
+            f'title: "{title}"\n'
+            + sidebar
+            + f'description: "{description}"\n'
+            "---\n\n"
+            + body
+        )
+        if current == expected:
+            continue
+        would_apply += 1
+        if CHECK:
+            print(f"  would write migration page: {slug}")
+        else:
+            path.write_text(expected, encoding="utf-8")
+            print(f"  wrote migration page: {slug}")
 
 
 def apply_frontmatter_overrides() -> None:
@@ -1691,6 +1885,7 @@ def repair_overview_tables() -> None:
     overview_slugs = (
         ROW_REPAIR_OVERVIEWS
         | set(EXPLICIT_MISSING_ROWS)
+        | set(EXPLICIT_ROW_REMOVALS)
         | set(EXPLICIT_ROW_OVERRIDES)
         | set(EXPLICIT_ROW_REFRESH)
         | FULL_ROW_REFRESH_OVERVIEWS
@@ -1715,6 +1910,11 @@ def repair_overview_tables() -> None:
             continue
         lines, start, end, rows = table_rows(text, overview)
         changed = False
+        removals = EXPLICIT_ROW_REMOVALS.get(overview, set())
+        if removals:
+            retained_rows = [row for row in rows if row["target"] not in removals]
+            changed = len(retained_rows) != len(rows)
+            rows = retained_rows
         rewrites = ROW_TARGET_REWRITES.get(overview, {})
         for index, row in enumerate(rows):
             target = rewrites.get(row["target"])
@@ -4093,15 +4293,18 @@ The source uses the retired `imagen-4.0-generate-preview-05-20` model, the remov
                 p.write_text(text.replace(f'title: "{old_t}"', f'title: "{new_t}"', 1), encoding="utf-8")
             count += 1
 
-    # 11. Refresh only malformed or explicitly stale overview rows, then add
+    # 11. Reconstruct retained legacy routes as source-free migration pages.
+    write_migration_pages()
+
+    # 12. Refresh only malformed or explicitly stale overview rows, then add
     #    only the navigation-backed omissions approved by the audit.
     repair_overview_tables()
 
-    # 12. Restore post-tag toolkit cards that shipped in navigation without
+    # 13. Restore post-tag toolkit cards that shipped in navigation without
     #     corresponding entries in the hand-maintained complete index.
     repair_toolkit_index()
 
-    # 13. Preserve the reviewed byte-level terminal-newline convention after
+    # 14. Preserve the reviewed byte-level terminal-newline convention after
     #     deterministic reconstruction.
     normalize_terminal_newlines("tracing/db-functions.mdx")
     normalize_terminal_newlines("reference-api/schema/approvals/get-approval-count.mdx")

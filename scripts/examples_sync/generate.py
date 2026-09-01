@@ -717,6 +717,46 @@ LITELLM_STEP = (
     "Start the local OpenAI-compatible proxy on port 4000:",
     "litellm --model gpt-4o --host 127.0.0.1 --port 4000",
 )
+NEXUS_CONFIG_STEP = (
+    "Configure Nexus",
+    "[Install Nexus](https://nexusrouter.com/docs/installation), then create `nexus.toml` for the Anthropic model and the `/llm/v1/` endpoint used by Agno:",
+    """cat > nexus.toml <<'TOML'
+[server]
+listen_address = "127.0.0.1:8000"
+
+[llm]
+enabled = true
+
+[llm.protocols.openai]
+enabled = true
+path = "/llm"
+
+[llm.providers.anthropic]
+type = "anthropic"
+api_key = "{{ env.ANTHROPIC_API_KEY }}"
+
+[llm.providers.anthropic.models."claude-sonnet-4-6"]
+TOML""",
+)
+NEXUS_GATEWAY_STEP = (
+    "Start Nexus",
+    "Start the gateway from the directory that contains `nexus.toml`:",
+    "nexus",
+)
+NEXUS_RETRY_SETUP = (
+    f"{NEXUS_CONFIG_STEP[1]}\n\n"
+    f"```bash\n{NEXUS_CONFIG_STEP[2]}\n{NEXUS_GATEWAY_STEP[2]}\n```\n\n"
+)
+NEXUS_CLAUDE_MIGRATION_STEP = (
+    "Use a current Claude model",
+    "Replace `anthropic/claude-sonnet-4-20250514` with `anthropic/claude-sonnet-4-6` in the saved file.",
+    None,
+)
+NEXUS_RETIRED_MODEL_WARNING = (
+    "The source routes requests to Anthropic's retired `claude-sonnet-4-20250514` model. "
+    "Replace it with `anthropic/claude-sonnet-4-6` before running. See "
+    "[Anthropic model deprecations](https://platform.claude.com/docs/en/about-claude/model-deprecations)."
+)
 MCP_TOOLBOX_STEP = (
     "Start MCP Toolbox",
     "Start the demo database and toolbox service on port 5001:",
@@ -1764,6 +1804,25 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "90_models/anthropic/prompt_caching.py": {
         "intro_override": "Use prompt caching with Anthropic agents to cache the system prompt passed to the model.",
+        "pre_code_warning": "Anthropic retired the source's `claude-sonnet-4-20250514` model on June 15, 2026. Replace it with `claude-sonnet-4-6` before running. See [Anthropic model deprecations](https://platform.claude.com/docs/en/about-claude/model-deprecations).",
+        "pre_run_steps": [
+            (
+                "Update the Claude model",
+                "Replace `Claude(id=\"claude-sonnet-4-20250514\")` with `Claude(id=\"claude-sonnet-4-6\")` in the saved file.",
+                None,
+            )
+        ],
+    },
+    "90_models/anthropic/prompt_caching_multi_block.py": {
+        "intro_override": "Configure per-block prompt-cache TTLs and cache tool definitions with Claude.",
+        "pre_code_warning": "The source creates `blocks` once, so the timestamp labeled as dynamic stays fixed for the model instance. Use a zero-argument block factory to rebuild dynamic content for every request.",
+        "pre_run_steps": [
+            (
+                "Refresh dynamic blocks per request",
+                "Move the `blocks` list into a zero-argument `build_system_prompt_blocks()` function that returns the list. Then pass the function with `system_prompt_blocks=build_system_prompt_blocks`. See [Prompt Caching With a Dynamic Block](/examples/models/anthropic/prompt-caching-with-dynamic-block) for the complete pattern.",
+                None,
+            )
+        ],
     },
     "90_models/vertexai/claude/prompt_caching.py": {
         "intro_override": "Use prompt caching with Claude on Vertex AI to cache the system prompt passed to the model.",
@@ -1955,15 +2014,19 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "env_remove": {"LITELLM_API_KEY"},
         "env_title": "Export your Anthropic API key",
     },
+    "90_models/nexus/basic.py": {
+        "env_add": {"ANTHROPIC_API_KEY", "OPENAI_API_KEY"},
+        "pre_code_warning": NEXUS_RETIRED_MODEL_WARNING,
+        "pre_run_steps": [NEXUS_CLAUDE_MIGRATION_STEP, NEXUS_CONFIG_STEP, NEXUS_GATEWAY_STEP],
+    },
+    "90_models/nexus/tool_use.py": {
+        "env_add": {"ANTHROPIC_API_KEY", "OPENAI_API_KEY"},
+        "pre_code_warning": NEXUS_RETIRED_MODEL_WARNING,
+        "pre_run_steps": [NEXUS_CLAUDE_MIGRATION_STEP, NEXUS_CONFIG_STEP, NEXUS_GATEWAY_STEP],
+    },
     "90_models/nexus/retry.py": {
         "env_add": {"ANTHROPIC_API_KEY", "OPENAI_API_KEY"},
-        "pre_run_steps": [
-            (
-                "Start Nexus",
-                "Run a local [Nexus gateway](https://nexusrouter.com/docs) at `http://localhost:8000`. Configure the gateway with the provider keys exported above.",
-                None,
-            )
-        ],
+        "pre_run_steps": [NEXUS_CONFIG_STEP, NEXUS_GATEWAY_STEP],
     },
     "90_models/perplexity/knowledge.py": {
         "env_add": {"OPENAI_API_KEY"},
@@ -2672,6 +2735,14 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "90_models/openai/chat/memory.py": {
         "pre_code_warning": "The pinned source docstring points to the nonexistent `cookbook/agents/personalized_memories_and_summaries.py` path. Save this fence as `memory.py` and use the generated run step below.",
+    },
+    "90_models/openai/responses/zdr_reasoning_agent.py": {
+        "intro_override": "Use `store=False` to disable Responses application-state storage while keeping multi-turn context in `InMemoryDb`.",
+        "pre_code_warning": "The source labels this agent ZDR compliant. `store=False` disables Responses application-state storage; default abuse-monitoring retention can still apply. Zero Data Retention requires prior OpenAI approval and organization or project configuration. See [OpenAI data controls](https://platform.openai.com/docs/models/default-usage-policies-by-endpoint).",
+    },
+    "90_models/openai/responses/background.py": {
+        "intro_override": "Background mode submits a Responses request and polls automatically for completion. Agno stops after `background_max_wait`, which defaults to 600 seconds.",
+        "pre_code_warning": "The source docstring overstates background-mode resilience. Polling requires connectivity, stops after `background_max_wait`, and surfaces polling failures.",
     },
     "90_models/anthropic/prompt_caching_extended.py": {
         "pre_code_warning": "Anthropic retired the source's `claude-sonnet-4-20250514` model on June 15, 2026. Replace it with `claude-sonnet-4-6` before running. See [Anthropic model deprecations](https://platform.claude.com/docs/en/about-claude/model-deprecations).",
@@ -4850,7 +4921,11 @@ def apply_source_render_override(
         override["pre_code_warning"] = INVALID_MODEL_RETRY_WARNING
         override["replacement_only"] = True
         override["replacement_heading"] = "Current Alternative"
-        override["run_replacement"] = INVALID_MODEL_RETRY_REPLACEMENT
+        override["run_replacement"] = (
+            f"{NEXUS_RETRY_SETUP}{INVALID_MODEL_RETRY_REPLACEMENT}"
+            if rel == "90_models/nexus/retry.py"
+            else INVALID_MODEL_RETRY_REPLACEMENT
+        )
     package_remove = {
         requirement_key(str(package)) for package in override.get("package_remove", set())
     }
@@ -5189,7 +5264,7 @@ def render(
         elif command:
             parts.append("    ```bash")
             for command_line in str(command).splitlines():
-                parts.append(f"    {command_line}")
+                parts.append(f"    {command_line}" if command_line else "")
             parts.append("    ```")
         parts.append("  </Step>")
     parts.append("")

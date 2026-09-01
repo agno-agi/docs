@@ -106,7 +106,7 @@ TABLE_OVERRIDES: dict[tuple[str, str], str] = {
     # event (agent_id, content, ...), which is BaseAgentRunEvent in source;
     # BaseRunOutputEvent in run/base.py is a thin mixin without those fields.
     ("reference/agents/run-response.mdx", "baserunoutputevent"): "agno.run.agent:BaseAgentRunEvent",
-    ("reference/teams/team-response.mdx", "baserunoutputevent"): "agno.run.team:BaseTeamRunEvent",
+    ("reference/teams/team-response.mdx", "baseteamrunoutputevent"): "agno.run.team:BaseTeamRunEvent",
 }
 
 SKIP_PAGES: dict[str, str] = {
@@ -388,6 +388,20 @@ def introspect_target(module_name: str, obj_name: str, is_function: bool) -> Sou
             else:
                 default = REQUIRED
             params[f.name] = {"default": default, "deprecated": False}
+        # dataclasses.fields() excludes annotations inherited from plain base
+        # classes. Agno uses that pattern for serialized public attributes such
+        # as event_index, so merge those annotations into the runtime surface.
+        for klass in reversed(obj.__mro__[1:]):
+            if is_dataclass(klass) or not klass.__module__.startswith("agno"):
+                continue
+            for name, annotation in getattr(klass, "__annotations__", {}).items():
+                if name.startswith("_") or name in params:
+                    continue
+                if "ClassVar" in str(annotation):
+                    continue
+                default_value = vars(klass).get(name, DC_MISSING)
+                default = REQUIRED if default_value is DC_MISSING else _default_repr(default_value)
+                params[name] = {"default": default, "deprecated": False}
         for p in find_deprecated_params(src, set(params), corpus):
             params[p]["deprecated"] = True
         return SourceParams(params, "introspection", module_name, obj_name,

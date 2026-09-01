@@ -4,6 +4,10 @@ description: "Call WebSearchTools from Claude Sonnet 4 routed through the Nexus 
 source: cookbook/90_models/nexus/tool_use.py
 ---
 
+<Warning>
+  The source routes requests to Anthropic's retired `claude-sonnet-4-20250514` model. Replace it with `anthropic/claude-sonnet-4-6` before running. See [Anthropic model deprecations](https://platform.claude.com/docs/en/about-claude/model-deprecations).
+</Warning>
+
 ```python tool_use.py
 """Run `uv pip install ddgs` to install dependencies."""
 
@@ -48,6 +52,54 @@ if __name__ == "__main__":
   <Step title="Install dependencies">
     ```bash
     uv pip install -U agno ddgs openai
+    ```
+  </Step>
+
+  <Step title="Export your API keys">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export ANTHROPIC_API_KEY="your_anthropic_api_key_here"
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:ANTHROPIC_API_KEY="your_anthropic_api_key_here"
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Use a current Claude model">
+    Replace `anthropic/claude-sonnet-4-20250514` with `anthropic/claude-sonnet-4-6` in the saved file.
+  </Step>
+
+  <Step title="Configure Nexus">
+    [Install Nexus](https://nexusrouter.com/docs/installation), then create `nexus.toml` for the Anthropic model and the `/llm/v1/` endpoint used by Agno:
+    ```bash
+    cat > nexus.toml <<'TOML'
+    [server]
+    listen_address = "127.0.0.1:8000"
+
+    [llm]
+    enabled = true
+
+    [llm.protocols.openai]
+    enabled = true
+    path = "/llm"
+
+    [llm.providers.anthropic]
+    type = "anthropic"
+    api_key = "{{ env.ANTHROPIC_API_KEY }}"
+
+    [llm.providers.anthropic.models."claude-sonnet-4-6"]
+    TOML
+    ```
+  </Step>
+
+  <Step title="Start Nexus">
+    Start the gateway from the directory that contains `nexus.toml`:
+    ```bash
+    nexus
     ```
   </Step>
 

@@ -114,9 +114,49 @@ KNOWLEDGE_REDIRECT_SIM = 0.5
 CANONICAL_REDIRECT_OVERRIDES: tuple[tuple[str, str], ...] = ()
 REDIRECT_SOURCE_SLUGS = {source for source, _ in CANONICAL_REDIRECT_OVERRIDES}
 
+# These shipped routes preserve stable URLs while pointing to the current v3
+# examples. Their source-free pages are reconstructed by apply_oneoffs.py.
+PRESERVED_MIGRATION_PAGE_SLUGS = {
+    "examples/agent-os/approvals/team/member-agent-level-approval",
+    "examples/agent-os/approvals/team/team-and-member-agent-both-level-approval",
+    "examples/agent-os/interfaces/agui/structured-output",
+    "examples/agent-os/interfaces/slack/agent-with-user-memory",
+    "examples/agent-os/interfaces/slack/basic",
+    "examples/agent-os/interfaces/slack/basic-workflow",
+    "examples/agent-os/interfaces/slack/channel-summarizer",
+    "examples/agent-os/interfaces/slack/file-analyst",
+    "examples/agent-os/interfaces/slack/hitl-audit-flow",
+    "examples/agent-os/interfaces/slack/hitl-confirmation",
+    "examples/agent-os/interfaces/slack/hitl-external-execution",
+    "examples/agent-os/interfaces/slack/hitl-incident-commander",
+    "examples/agent-os/interfaces/slack/hitl-required-approval",
+    "examples/agent-os/interfaces/slack/hitl-simple",
+    "examples/agent-os/interfaces/slack/hitl-user-feedback",
+    "examples/agent-os/interfaces/slack/hitl-user-input",
+    "examples/agent-os/interfaces/slack/multi-bot",
+    "examples/agent-os/interfaces/slack/multimodal-team",
+    "examples/agent-os/interfaces/slack/multimodal-workflow",
+    "examples/agent-os/interfaces/slack/multiple-instances",
+    "examples/agent-os/interfaces/slack/overview",
+    "examples/agent-os/interfaces/slack/reasoning-agent",
+    "examples/agent-os/interfaces/slack/research-assistant",
+    "examples/agent-os/interfaces/slack/streaming-deep-research",
+    "examples/agent-os/interfaces/slack/support-team",
+    "examples/agent-os/interfaces/slack/team-hitl-confirmation",
+    "examples/agent-os/interfaces/slack/team-hitl-external-execution-simple",
+    "examples/agent-os/interfaces/slack/team-hitl-team-tool-simple",
+    "examples/agent-os/interfaces/slack/team-hitl-user-input-simple",
+    "examples/agent-os/mcp-demo/dynamic-headers/client",
+    "examples/agent-os/mcp-demo/dynamic-headers/overview",
+    "examples/agent-os/mcp-demo/dynamic-headers/server",
+    "examples/agent-os/remote/agno-a2a-server",
+    "examples/agent-os/tracing/basic-team-tracing",
+    "examples/models/openai/responses/verbosity-control",
+}
+
 # These shipped routes own tracked content outside the current navigation.
 # Preserve them as pages instead of classifying them as deletion candidates.
-PRESERVED_TRACKED_PAGE_SLUGS = {
+PRESERVED_TRACKED_PAGE_SLUGS = PRESERVED_MIGRATION_PAGE_SLUGS | {
     "examples/agent-os/workflow/customer-research-workflow-parallel",
     "examples/agent-os/factories/agent/hitl-factory",
     "examples/agent-os/factories/agent/jwt-role-factory",
