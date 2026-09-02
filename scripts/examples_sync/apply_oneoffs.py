@@ -23,6 +23,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import generate as gen  # noqa: E402
+from migration_manifest import MigrationManifest, load_migration_manifest  # noqa: E402
 
 ROOT = HERE.parents[1]
 DOCS = ROOT / "examples"
@@ -56,10 +57,6 @@ SLACK_INDEX_TARGETS = (
 )
 
 MIGRATION_PAGE_INTROS = {
-    "examples/agent-os/scheduler/run-history": (
-        "The source for this example was removed. In Agno v3, "
-        "`ScheduleManager.get_runs()` paginates with `page`."
-    ),
     "examples/agents/advanced/use-cultural-knowledge-in-agent": (
         "The Culture feature and `Agent(add_culture_to_context=...)` parameter were removed in Agno v3. "
         "See the [Culture migration notice](/culture/overview). Use [Knowledge](/knowledge/overview) "
@@ -72,11 +69,11 @@ MIGRATION_PAGE_INTROS = {
     ),
     "examples/agent-os/interfaces/slack/multimodal-team": (
         "The v3.0.4 Slack cookbook has no one-to-one multimodal team successor. "
-        "Start with the current Slack team example."
+        "Use the current Slack team and multimodal team examples together."
     ),
-    "examples/agent-os/interfaces/slack/multimodal-workflow": (
-        "The v3.0.4 Slack cookbook has no one-to-one multimodal workflow successor. "
-        "Start with the current Slack workflow example."
+    "examples/reasoning/agents/mistral-reasoning-cot": (
+        "The built-in chain-of-thought example for Mistral was removed. "
+        "Use the current reasoning-agent patterns and select a supported model."
     ),
 }
 
@@ -1583,9 +1580,19 @@ def normalize_terminal_newlines(path: str, count: int = 1) -> None:
     print(f"  normalized terminal newlines: {path}")
 
 
+def internal_docs_path(slug: str) -> Path:
+    assert (
+        slug
+        and not slug.startswith("/")
+        and ".." not in slug.split("/")
+        and not any(character.isspace() for character in slug)
+    ), f"not a safe internal docs slug: {slug!r}"
+    return ROOT / f"{slug}.mdx"
+
+
 def docs_path(slug: str) -> Path:
     assert slug.startswith("examples/"), f"not an example slug: {slug}"
-    return ROOT / f"{slug}.mdx"
+    return internal_docs_path(slug)
 
 
 def frontmatter_value(text: str, field: str, slug: str) -> str:
@@ -1599,7 +1606,7 @@ def frontmatter_value(text: str, field: str, slug: str) -> str:
 
 
 def desired_frontmatter(slug: str) -> tuple[str, str]:
-    p = docs_path(slug)
+    p = internal_docs_path(slug)
     assert p.is_file(), f"missing target page: {slug}"
     text = p.read_text(encoding="utf-8")
     title = TITLE_OVERRIDES.get(slug, gen.fix_title_casing(frontmatter_value(text, "title", slug)))
@@ -1624,111 +1631,19 @@ def desired_row(overview: str, target: str) -> tuple[str, str, bool]:
     return label, row_description, True
 
 
-def migration_manifest_targets() -> dict[str, tuple[tuple[str, str], ...]]:
-    """Load the reviewed migration-route manifest and validate new DELETE routes."""
+def migration_manifest_contract() -> MigrationManifest:
+    """Load the migration policy and reject every unreviewed planned deletion."""
+    manifest = load_migration_manifest(MIGRATION_MANIFEST_PATH)
     assert PLAN_PATH.is_file(), f"missing sync plan: {PLAN_PATH}"
-    assert MIGRATION_MANIFEST_PATH.is_file(), (
-        f"missing migration manifest: {MIGRATION_MANIFEST_PATH}"
-    )
-    manifest = json.loads(MIGRATION_MANIFEST_PATH.read_text(encoding="utf-8"))
-    assert manifest.get("schema_version") == 2, "migration manifest schema_version is not 2"
-    assert manifest.get("source_ref") == "v3.0.4", "migration manifest source_ref drifted"
-    source_evidence = manifest.get("source_evidence")
-    assert isinstance(source_evidence, dict), "migration source evidence is missing"
-    ledger_evidence = source_evidence.get("agno_agentos_migration_ledger")
-    assert ledger_evidence == {
-        "commit_sha": "4cafec3d48c956fffaac6278ed0860e0d22e4fed",
-        "remote_url": "https://github.com/agno-agi/specs.git",
-        "resource": "cookbooks/05_agent_os/path-map.md",
-    }, "AgentOS migration ledger evidence drifted"
-
-    raw_routes = manifest.get("routes")
-    assert isinstance(raw_routes, dict), "migration manifest routes must be an object"
-    targets: dict[str, tuple[tuple[str, str], ...]] = {}
-    for slug, raw_targets in raw_routes.items():
-        assert isinstance(slug, str) and slug.startswith("examples/"), (
-            f"invalid migration slug: {slug!r}"
-        )
-        assert isinstance(raw_targets, list) and raw_targets, (
-            f"migration route has no targets: {slug}"
-        )
-        normalized = []
-        for target in raw_targets:
-            assert isinstance(target, dict), f"invalid migration target row: {slug}"
-            task = target.get("task")
-            destination = target.get("target")
-            assert (
-                isinstance(task, str)
-                and task.strip() == task
-                and task
-                and "\n" not in task
-                and "|" not in task
-            ), f"invalid migration task: {slug}"
-            assert isinstance(destination, str) and destination.startswith("examples/"), (
-                f"invalid migration destination: {slug} -> {destination!r}"
-            )
-            normalized.append((task, destination))
-        targets[slug] = tuple(normalized)
-
-    assert len(targets) == 271, f"expected 271 migration routes, found {len(targets)}"
-
-    direct_successors = manifest.get("direct_successors")
-    no_direct_successors = manifest.get("no_direct_successors")
-    assert isinstance(direct_successors, dict), "direct-successor evidence is missing"
-    assert isinstance(no_direct_successors, dict), "no-direct-successor evidence is missing"
-    assert len(direct_successors) == 154, (
-        f"expected 154 direct successors, found {len(direct_successors)}"
-    )
-    assert len(no_direct_successors) == 117, (
-        f"expected 117 no-direct routes, found {len(no_direct_successors)}"
-    )
-    assert not (set(direct_successors) & set(no_direct_successors)), (
-        "migration evidence partitions overlap"
-    )
-    assert set(targets) == set(direct_successors) | set(no_direct_successors), (
-        "migration evidence does not partition every route"
-    )
-    for slug, row in direct_successors.items():
-        assert isinstance(row, dict), f"invalid direct-successor evidence: {slug}"
-        target = row.get("target")
-        task = row.get("task")
-        successor_source = row.get("successor_source")
-        assert targets[slug] == ((task, target),), (
-            f"direct-successor target drifted: {slug}"
-        )
-        assert isinstance(successor_source, str) and successor_source.startswith("cookbook/"), (
-            f"direct-successor source is invalid: {slug}"
-        )
-        target_text = docs_path(target).read_text(encoding="utf-8")
-        source_matches = re.findall(
-            r"^(?:source|curated_source):\s*(cookbook/\S+)\s*$",
-            target_text,
-            re.M,
-        )
-        assert source_matches == [successor_source], (
-            f"direct-successor source binding drifted: {slug} -> {target}"
-        )
-    for slug, row in no_direct_successors.items():
-        assert isinstance(row, dict) and isinstance(row.get("evidence"), dict), (
-            f"invalid no-direct-successor evidence: {slug}"
-        )
-        related = row.get("related_current_targets")
-        if related is not None:
-            assert isinstance(related, list) and related, (
-                f"invalid related-current targets: {slug}"
-            )
-            expected = tuple((item.get("task"), item.get("target")) for item in related)
-            assert targets[slug] == expected, f"related-current target drifted: {slug}"
-
     plan = json.loads(PLAN_PATH.read_text(encoding="utf-8"))
     delete_slugs = {
         entry["slug"] for entry in plan["pages"] if entry["class"] == "DELETE"
     }
-    unreviewed = sorted(delete_slugs - targets.keys())
+    unreviewed = sorted(delete_slugs - manifest.redirect_slugs)
     assert not unreviewed, (
-        "DELETE routes require reviewed migration targets: " + repr(unreviewed[:10])
+        "DELETE routes require reviewed redirect policy: " + repr(unreviewed[:10])
     )
-    return targets
+    return manifest
 
 
 def sha256_file(path: Path) -> str:
@@ -1848,13 +1763,18 @@ def validate_external_oneoff_ownership() -> None:
     )
 
 
-def write_migration_pages(
-    migration_targets: dict[str, tuple[tuple[str, str], ...]],
-) -> None:
+def write_migration_pages(manifest: MigrationManifest) -> None:
     """Reconstruct reviewed source-free pages for retained legacy routes."""
     global would_apply
     slack_overview = "examples/agent-os/interfaces/slack/overview"
-    expected_slugs = set(migration_targets) | {slack_overview}
+    redirect_pages_on_disk = sorted(
+        slug for slug in manifest.redirect_slugs if docs_path(slug).is_file()
+    )
+    assert not redirect_pages_on_disk, (
+        "redirect-backed migration pages must be removed: "
+        + ", ".join(redirect_pages_on_disk[:20])
+    )
+    expected_slugs = set(manifest.retained_page_slugs) | {slack_overview}
 
     for slug in sorted(expected_slugs):
         path = docs_path(slug)
@@ -1882,14 +1802,22 @@ def write_migration_pages(
                 + "\n"
             )
         else:
-            description = f"Migration route for {title} to current Agno v3.0.4 examples."
-            intro = MIGRATION_PAGE_INTROS.get(
-                slug,
-                "This retained route has no matching v3.0.4 cookbook source. Use the current page below.",
-            )
+            if slug in manifest.chooser_pages:
+                description = f"Current alternatives for the retired {title} example."
+                default_intro = (
+                    "This legacy example combined behavior now covered by multiple "
+                    "v3.0.4 examples. Choose the current page that matches your task."
+                )
+            else:
+                description = f"Migration notice for the retired {title} example."
+                default_intro = (
+                    "This legacy example has no one-to-one v3.0.4 replacement. "
+                    "Use the related current guidance below."
+                )
+            intro = MIGRATION_PAGE_INTROS.get(slug, default_intro)
             rows = []
-            for task, target in migration_targets[slug]:
-                assert docs_path(target).is_file(), f"migration target is missing: {slug} -> {target}"
+            for task, target in manifest.targets[slug]:
+                assert internal_docs_path(target).is_file(), f"migration target is missing: {slug} -> {target}"
                 target_title, _ = desired_frontmatter(target)
                 if target.endswith("/overview") and task == "Open the current example":
                     task = f"Browse {target_title}"
@@ -1920,13 +1848,16 @@ def write_migration_pages(
             print(f"  wrote migration page: {slug}")
 
 
-def apply_frontmatter_overrides() -> None:
+def apply_frontmatter_overrides(migration_redirect_slugs: frozenset[str]) -> None:
     """Apply reviewed manual descriptions/titles before table rows consume them."""
     global would_apply
     for slug in sorted(
         set(DESCRIPTION_OVERRIDES) | set(TITLE_OVERRIDES) | set(SIDEBAR_TITLE_OVERRIDES)
     ):
         p = docs_path(slug)
+        if slug in migration_redirect_slugs:
+            assert not p.exists(), f"redirect-backed migration route still has a page: {slug}"
+            continue
         assert p.is_file(), f"missing override target: {slug}"
         text = p.read_text(encoding="utf-8")
         replacements: list[tuple[str, str, str]] = []
@@ -2188,10 +2119,12 @@ def repair_overview_tables(
         target
         for targets in migration_targets.values()
         for _, target in targets
-        if target.endswith("/overview")
+        if target.startswith("examples/") and target.endswith("/overview")
     }
     for overview, overrides in EXPLICIT_ROW_OVERRIDES.items():
         for target, (label, description) in overrides.items():
+            if target in migration_slugs:
+                continue
             assert docs_path(target).is_file(), f"row override target is missing: {overview} -> {target}"
             assert label.strip() == label and "\n" not in label and "|" not in label, (
                 f"invalid row label override: {overview} -> {target}"
@@ -2203,6 +2136,8 @@ def repair_overview_tables(
         assert overview in nav, f"overview is no longer in navigation: {overview}"
         positions = []
         for target in targets:
+            if target in migration_slugs:
+                continue
             assert target in nav, f"explicit target is no longer in navigation: {overview} -> {target}"
             assert docs_path(target).is_file(), f"explicit target is missing: {overview} -> {target}"
             positions.append(nav[target])
@@ -2211,8 +2146,9 @@ def repair_overview_tables(
         )
     for overview, targets in EXPLICIT_TABLE_ORDER.items():
         assert overview in nav, f"ordered overview is no longer in navigation: {overview}"
-        assert all(target in nav for target in targets), f"ordered table target left navigation: {overview}"
-        positions = [nav[target] for target in targets]
+        current_targets = [target for target in targets if target not in migration_slugs]
+        assert all(target in nav for target in current_targets), f"ordered table target left navigation: {overview}"
+        positions = [nav[target] for target in current_targets]
         assert positions == sorted(positions), f"ordered table is not in docs.json order: {overview}"
 
     overview_slugs = (
@@ -2393,18 +2329,19 @@ def reaches_concrete_page(
     migration_slugs: set[str],
     visiting: frozenset[str] = frozenset(),
 ) -> bool:
-    """Return whether internal links reach a non-overview current page."""
+    """Return whether a current page contains or reaches concrete guidance."""
     if slug in visiting or slug in migration_slugs:
         return False
-    path = docs_path(slug)
+    path = internal_docs_path(slug)
     if not path.is_file():
         return False
-    if not slug.endswith("/overview"):
+    text = path.read_text(encoding="utf-8")
+    if not slug.endswith("/overview") or "```" in text:
         return True
     children = {
         link
-        for link in INTERNAL_DOC_LINK_RE.findall(path.read_text(encoding="utf-8"))
-        if link.startswith("examples/")
+        for link in INTERNAL_DOC_LINK_RE.findall(text)
+        if internal_docs_path(link).is_file()
     }
     next_visiting = visiting | {slug}
     return any(
@@ -2413,38 +2350,42 @@ def reaches_concrete_page(
     )
 
 
-def validate_migration_graph(
-    migration_targets: dict[str, tuple[tuple[str, str], ...]],
-) -> None:
+def validate_migration_graph(manifest: MigrationManifest) -> None:
     """Reject migration targets that are missing, cyclic, or legacy-only."""
-    migration_slugs = set(migration_targets)
+    migration_slugs = set(manifest.targets)
+    retained_slugs = set(manifest.retained_page_slugs)
     rendered_migrations = {
         str(path.relative_to(ROOT).with_suffix(""))
         for path in DOCS.rglob("*.mdx")
         if re.search(
-            r'^description: "Migration route for ',
+            r'^description: "(?:Current alternatives|Migration notice) for the retired ',
             path.read_text(encoding="utf-8"),
             re.M,
         )
     }
-    assert rendered_migrations == migration_slugs, (
+    assert rendered_migrations == retained_slugs, (
         "migration manifest/page membership differs: "
-        f"missing={sorted(migration_slugs - rendered_migrations)[:10]}, "
-        f"unmanaged={sorted(rendered_migrations - migration_slugs)[:10]}"
+        f"missing={sorted(retained_slugs - rendered_migrations)[:10]}, "
+        f"unmanaged={sorted(rendered_migrations - retained_slugs)[:10]}"
     )
 
     overview_targets: set[str] = set()
-    for slug, targets in migration_targets.items():
-        source_text = docs_path(slug).read_text(encoding="utf-8")
-        assert "```" not in source_text, f"migration page contains a code fence: {slug}"
-        assert re.search(r"^(?:source|curated_source):", source_text, re.M) is None, (
-            f"migration page retains a source binding: {slug}"
-        )
-        for link in INTERNAL_DOC_LINK_RE.findall(source_text):
-            if link.startswith("examples/"):
-                assert docs_path(link).is_file(), f"migration page has a dead link: {slug} -> {link}"
+    for slug, targets in manifest.targets.items():
+        source_path = docs_path(slug)
+        if slug in manifest.redirect_slugs:
+            assert not source_path.exists(), f"migration redirect retains a page: {slug}"
+        else:
+            source_text = source_path.read_text(encoding="utf-8")
+            assert "\x60\x60\x60" not in source_text, f"migration page contains a code fence: {slug}"
+            assert re.search(r"^(?:source|curated_source):", source_text, re.M) is None, (
+                f"migration page retains a source binding: {slug}"
+            )
+            for link in INTERNAL_DOC_LINK_RE.findall(source_text):
+                assert internal_docs_path(link).is_file(), (
+                    f"migration page has a dead link: {slug} -> {link}"
+                )
         for _, target in targets:
-            target_path = docs_path(target)
+            target_path = internal_docs_path(target)
             assert target_path.is_file(), f"migration target is missing: {slug} -> {target}"
             assert target not in migration_slugs, (
                 f"migration target is another migration page: {slug} -> {target}"
@@ -2464,12 +2405,16 @@ def validate_migration_graph(
                     for link in target_links
                     if link not in migration_slugs and (ROOT / f"{link}.mdx").is_file()
                 }
-                assert live_links, f"migration overview has no live destination: {slug} -> {target}"
+                assert live_links, (
+                    f"migration overview has no live destination: {slug} -> {target}"
+                )
                 assert reaches_concrete_page(target, migration_slugs), (
                     f"migration overview cannot reach a concrete current page: {slug} -> {target}"
                 )
     print(
         f"migration graph valid: {len(migration_slugs)} routes, "
+        f"{len(manifest.redirect_slugs)} redirects, "
+        f"{len(retained_slugs)} hidden pages, "
         f"{len(overview_targets)} overview targets"
     )
 
@@ -4916,8 +4861,11 @@ Parallel monitors continue running after the script exits and may consume usage.
   </Step>""",
     )
 
+    migration_manifest = migration_manifest_contract()
+
     # 9. Reviewed frontmatter overrides consumed by the overview row pass.
-    apply_frontmatter_overrides()
+    #    Redirect-backed legacy routes intentionally have no page to update.
+    apply_frontmatter_overrides(migration_manifest.redirect_slugs)
 
     # 10. Title-casing pass over every page (fixes curated overview stubs:
     #    Openai -> OpenAI, Vertexai -> Vertex AI, Mcp Demo -> MCP Demo, ...).
@@ -4934,15 +4882,16 @@ Parallel monitors continue running after the script exits and may consume usage.
                 p.write_text(text.replace(f'title: "{old_t}"', f'title: "{new_t}"', 1), encoding="utf-8")
             count += 1
 
-    # 11. Reconstruct retained legacy routes as source-free migration pages.
-    migration_targets = migration_manifest_targets()
-    write_migration_pages(migration_targets)
+    # 11. Reconstruct only reviewed chooser and removal-notice routes. Routes
+    #     with approved destinations are redirect-only and have no page file.
+    migration_targets = migration_manifest.targets
+    write_migration_pages(migration_manifest)
 
     # 12. Refresh only malformed or explicitly stale overview rows, then add
     #    only the navigation-backed omissions approved by the audit.
     repair_overview_tables(migration_targets)
     if not CHECK or (would_apply == 0 and count == 0):
-        validate_migration_graph(migration_targets)
+        validate_migration_graph(migration_manifest)
 
     # 13. Restore post-tag toolkit cards that shipped in navigation without
     #     corresponding entries in the hand-maintained complete index.

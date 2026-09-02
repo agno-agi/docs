@@ -42,10 +42,13 @@ import sys
 from pathlib import Path
 
 import generate  # the page generator; shared title/slug helpers
+from migration_manifest import load_migration_manifest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_AGNO = Path(os.environ.get("AGNO_REPO") or REPO_ROOT / "agno")
 OUT_DIR = Path(__file__).resolve().parent / "out"
+MIGRATION_MANIFEST_PATH = Path(__file__).resolve().parent / "migration-routes.json"
+MIGRATION_MANIFEST = load_migration_manifest(MIGRATION_MANIFEST_PATH)
 
 # ---------------------------------------------------------------------------
 # Scope and slug conventions
@@ -109,53 +112,17 @@ NAV_SEEDS = {
 
 KNOWLEDGE_REDIRECT_SIM = 0.5
 
-# Reserve explicit redirect overrides for retired routes without tracked page
-# content. Tracked pages remain live pages and must not be listed here.
-CANONICAL_REDIRECT_OVERRIDES: tuple[tuple[str, str], ...] = ()
+# Reviewed redirect-only migration routes. Direct successors come from the
+# pinned AgentOS path map; fallback redirects are approved in the manifest.
+CANONICAL_REDIRECT_OVERRIDES = tuple(
+    (slug, MIGRATION_MANIFEST.targets[slug][0][1])
+    for slug in sorted(MIGRATION_MANIFEST.redirect_slugs)
+)
 REDIRECT_SOURCE_SLUGS = {source for source, _ in CANONICAL_REDIRECT_OVERRIDES}
 
-# These shipped routes preserve stable URLs while pointing to the current v3
-# examples. Their source-free pages are reconstructed by apply_oneoffs.py.
-PRESERVED_MIGRATION_PAGE_SLUGS = {
-    "examples/agent-os/dbs/valkey-db",
-    "examples/agent-os/dbs/surreal-db/run",
-    "examples/agent-os/approvals/team/member-agent-level-approval",
-    "examples/agent-os/approvals/team/team-and-member-agent-both-level-approval",
-    "examples/agent-os/interfaces/agui/structured-output",
-    "examples/agent-os/interfaces/agui/backend-tool-rendering",
-    "examples/agent-os/interfaces/agui/showcase",
-    "examples/agent-os/interfaces/slack/agent-with-user-memory",
-    "examples/agent-os/interfaces/slack/basic",
-    "examples/agent-os/interfaces/slack/basic-workflow",
-    "examples/agent-os/interfaces/slack/channel-summarizer",
-    "examples/agent-os/interfaces/slack/file-analyst",
-    "examples/agent-os/interfaces/slack/hitl-audit-flow",
-    "examples/agent-os/interfaces/slack/hitl-confirmation",
-    "examples/agent-os/interfaces/slack/hitl-external-execution",
-    "examples/agent-os/interfaces/slack/hitl-incident-commander",
-    "examples/agent-os/interfaces/slack/hitl-required-approval",
-    "examples/agent-os/interfaces/slack/hitl-simple",
-    "examples/agent-os/interfaces/slack/hitl-user-feedback",
-    "examples/agent-os/interfaces/slack/hitl-user-input",
-    "examples/agent-os/interfaces/slack/multi-bot",
-    "examples/agent-os/interfaces/slack/multimodal-team",
-    "examples/agent-os/interfaces/slack/multimodal-workflow",
-    "examples/agent-os/interfaces/slack/multiple-instances",
-    "examples/agent-os/interfaces/slack/overview",
-    "examples/agent-os/interfaces/slack/reasoning-agent",
-    "examples/agent-os/interfaces/slack/research-assistant",
-    "examples/agent-os/interfaces/slack/streaming-deep-research",
-    "examples/agent-os/interfaces/slack/support-team",
-    "examples/agent-os/interfaces/slack/team-hitl-confirmation",
-    "examples/agent-os/interfaces/slack/team-hitl-external-execution-simple",
-    "examples/agent-os/interfaces/slack/team-hitl-team-tool-simple",
-    "examples/agent-os/interfaces/slack/team-hitl-user-input-simple",
-    "examples/agent-os/mcp-demo/dynamic-headers/client",
-    "examples/agent-os/mcp-demo/dynamic-headers/overview",
-    "examples/agent-os/mcp-demo/dynamic-headers/server",
-    "examples/agent-os/remote/agno-a2a-server",
-    "examples/agent-os/tracing/basic-team-tracing",
-}
+# Chooser and removal-notice pages preserve useful context at legacy URLs but
+# stay outside navigation.
+PRESERVED_MIGRATION_PAGE_SLUGS = set(MIGRATION_MANIFEST.retained_page_slugs)
 
 # These shipped routes own tracked content outside the current navigation.
 # Preserve them as pages instead of classifying them as deletion candidates.
@@ -450,7 +417,14 @@ def main() -> None:
     walk_nav(tab["groups"], lambda s, p: (nav_slugs.append(s), nav_group_of.__setitem__(s, p)))
 
     page_files = {str(p.relative_to(docs))[:-4]: p for p in sorted((docs / "examples").rglob("*.mdx"))}
-    all_slugs = sorted(set(nav_slugs) | set(page_files))
+    nav_missing_files = set(nav_slugs) - set(page_files)
+    unexpected_missing_files = nav_missing_files - REDIRECT_SOURCE_SLUGS
+    if unexpected_missing_files:
+        raise RuntimeError(
+            "navigation routes missing page files: "
+            + ", ".join(sorted(unexpected_missing_files)[:20])
+        )
+    all_slugs = sorted((set(nav_slugs) | set(page_files)) - nav_missing_files)
 
     # cookbook index
     cookbook = agno / "cookbook"
@@ -589,20 +563,30 @@ def main() -> None:
             })
             results.append(entry)
             continue
+        if slug in REDIRECT_SOURCE_SLUGS:
+            redirect_to = dict(CANONICAL_REDIRECT_OVERRIDES)[slug]
+            entry.update({
+                "class": "DELETE",
+                "subtype": "migration-redirect",
+                "redirect_to": redirect_to,
+                "note": "reviewed legacy route replaced by a permanent redirect",
+            })
+            results.append(entry)
+            continue
+        if slug in PRESERVED_MIGRATION_PAGE_SLUGS:
+            entry.update({
+                "class": "PRESERVE_CURATED",
+                "subtype": "migration-page",
+                "in_nav": False,
+                "note": "reviewed chooser or removal notice retained outside navigation",
+            })
+            results.append(entry)
+            continue
         if slug in PRESERVED_TRACKED_PAGE_SLUGS:
             entry.update({
                 "class": "PRESERVE_CURATED",
                 "subtype": "tracked-page",
                 "note": "tracked page retained outside navigation",
-            })
-            results.append(entry)
-            continue
-        if slug in REDIRECT_SOURCE_SLUGS:
-            entry.update({
-                "class": "PRESERVE_CURATED",
-                "subtype": "redirect-source",
-                "in_nav": False,
-                "note": "preserved hidden source for an explicit canonical redirect",
             })
             results.append(entry)
             continue
@@ -922,7 +906,7 @@ def main() -> None:
     if len(override_sources) != len(set(override_sources)):
         raise RuntimeError("duplicate source in CANONICAL_REDIRECT_OVERRIDES")
     for source, dest in CANONICAL_REDIRECT_OVERRIDES:
-        if dest not in live:
+        if dest not in live and not (docs / f"{dest}.mdx").is_file():
             raise RuntimeError(
                 f"canonical redirect destination is not live: /{source} -> /{dest}"
             )

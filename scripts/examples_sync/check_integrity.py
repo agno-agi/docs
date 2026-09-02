@@ -29,6 +29,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import generate as gen  # noqa: E402
+from migration_manifest import load_migration_manifest  # noqa: E402
 
 DOCS_ROOT = HERE.parents[1]
 AGNO_ROOT = Path(os.environ.get("AGNO_REPO") or DOCS_ROOT / "agno")
@@ -497,17 +498,24 @@ for problem in f2_bad[:20]:
 problems += [f"(f2) {problem}" for problem in f2_bad]
 
 # ---------------------------------------------------------------------------
-# (g) retained migration pages are manifest-owned and graph-safe
+# (g) migration redirects and hidden pages are manifest-owned and graph-safe
 # ---------------------------------------------------------------------------
 g_bad: list[str] = []
-internal_link_re = re.compile(r"\]\(/([^\s)#?]+)")
-raw_routes: dict[str, object] = {}
-overview_targets: set[str] = set()
+internal_link_re = re.compile(r'''(?:\]\(/|href=["']/)([^\s)"'#?]+)''')
+manifest = load_migration_manifest(MIGRATION_MANIFEST_PATH)
+migration_slugs = set(manifest.targets)
+retained_slugs = set(manifest.retained_page_slugs)
+redirect_slugs = set(manifest.redirect_slugs)
+unreviewed_delete_slugs = sorted(planned_delete_slugs - redirect_slugs)
+if unreviewed_delete_slugs:
+    g_bad.append(
+        "planned DELETE routes lack reviewed redirect policy: "
+        f"{unreviewed_delete_slugs[:10]}"
+    )
 
 
 def reaches_concrete_page(
     slug: str,
-    migration_slugs: set[str],
     visiting: frozenset[str] = frozenset(),
 ) -> bool:
     if slug in visiting or slug in migration_slugs:
@@ -515,166 +523,183 @@ def reaches_concrete_page(
     path = DOCS_ROOT / f"{slug}.mdx"
     if not path.is_file():
         return False
-    if not slug.endswith("/overview"):
+    text = path.read_text(encoding="utf-8")
+    if not slug.endswith("/overview") or "```" in text:
         return True
     children = {
         link
-        for link in internal_link_re.findall(path.read_text(encoding="utf-8"))
-        if link.startswith("examples/")
+        for link in internal_link_re.findall(text)
+        if (DOCS_ROOT / f"{link}.mdx").is_file()
     }
     next_visiting = visiting | {slug}
-    return any(
-        reaches_concrete_page(child, migration_slugs, next_visiting)
-        for child in children
+    return any(reaches_concrete_page(child, next_visiting) for child in children)
+
+
+docs_json = json.loads((DOCS_ROOT / "docs.json").read_text(encoding="utf-8"))
+examples_tabs = [
+    tab for tab in docs_json["navigation"]["tabs"] if tab.get("tab") == "Examples"
+]
+if len(examples_tabs) != 1:
+    g_bad.append(f"expected one Examples tab, found {len(examples_tabs)}")
+
+
+def navigation_routes(items: object) -> list[str]:
+    routes: list[str] = []
+    if isinstance(items, str):
+        return [items]
+    if isinstance(items, list):
+        for item in items:
+            routes.extend(navigation_routes(item))
+    elif isinstance(items, dict):
+        routes.extend(navigation_routes(items.get("pages", [])))
+    return routes
+
+
+nav_routes = (
+    navigation_routes(examples_tabs[0].get("groups", [])) if len(examples_tabs) == 1 else []
+)
+legacy_nav_routes = sorted(set(nav_routes) & migration_slugs)
+if legacy_nav_routes:
+    g_bad.append(f"migration routes remain in navigation: {legacy_nav_routes[:10]}")
+
+raw_redirects = docs_json.get("redirects")
+redirect_rows = raw_redirects if isinstance(raw_redirects, list) else []
+if not isinstance(raw_redirects, list):
+    g_bad.append("docs.json redirects must be a list")
+redirect_sources = [
+    row.get("source") for row in redirect_rows if isinstance(row, dict)
+]
+duplicate_redirects = sorted(
+    source for source, count in Counter(redirect_sources).items() if count > 1
+)
+if duplicate_redirects:
+    g_bad.append(f"duplicate docs.json redirect sources: {duplicate_redirects[:10]}")
+actual_managed_redirects = {
+    row.get("source"): row.get("destination")
+    for row in redirect_rows
+    if isinstance(row, dict)
+    and isinstance(row.get("source"), str)
+    and row["source"].removeprefix("/") in migration_slugs
+}
+expected_managed_redirects = {
+    "/" + slug: "/" + manifest.targets[slug][0][1]
+    for slug in redirect_slugs
+}
+if actual_managed_redirects != expected_managed_redirects:
+    g_bad.append(
+        "managed migration redirects differ: "
+        f"missing={sorted(expected_managed_redirects.keys() - actual_managed_redirects.keys())[:10]}, "
+        f"unexpected={sorted(actual_managed_redirects.keys() - expected_managed_redirects.keys())[:10]}, "
+        f"wrong={sorted(source for source in expected_managed_redirects.keys() & actual_managed_redirects.keys() if expected_managed_redirects[source] != actual_managed_redirects[source])[:10]}"
     )
 
+rendered_migrations = {
+    str(path.relative_to(DOCS_ROOT).with_suffix(""))
+    for path in all_mdx
+    if re.search(
+        r'^description: "(?:Current alternatives|Migration notice) for the retired ',
+        path.read_text(encoding="utf-8"),
+        re.M,
+    )
+}
+if rendered_migrations != retained_slugs:
+    g_bad.append(
+        "migration manifest/page membership differs: "
+        f"missing={sorted(retained_slugs - rendered_migrations)[:10]}, "
+        f"unmanaged={sorted(rendered_migrations - retained_slugs)[:10]}"
+    )
 
-if not MIGRATION_MANIFEST_PATH.is_file():
-    g_bad.append("migration-routes.json missing")
-else:
-    manifest = json.loads(MIGRATION_MANIFEST_PATH.read_text(encoding="utf-8"))
-    if manifest.get("schema_version") != 2:
-        g_bad.append("migration manifest schema_version is not 2")
-    if manifest.get("source_ref") != EXPECTED_SOURCE_REF:
-        g_bad.append(
-            f"migration manifest source_ref {manifest.get('source_ref')!r} "
-            f"!= {EXPECTED_SOURCE_REF!r}"
-        )
-    raw_routes = manifest.get("routes")
-    if not isinstance(raw_routes, dict):
-        g_bad.append("migration manifest routes must be an object")
-        raw_routes = {}
-    migration_slugs = set(raw_routes)
-    if len(migration_slugs) != 271:
-        g_bad.append(f"expected 271 migration routes, found {len(migration_slugs)}")
-    expected_source_evidence = {
-        "agno_agentos_migration_ledger": {
-            "commit_sha": "4cafec3d48c956fffaac6278ed0860e0d22e4fed",
-            "remote_url": "https://github.com/agno-agi/specs.git",
-            "resource": "cookbooks/05_agent_os/path-map.md",
-        }
+for slug in sorted(redirect_slugs):
+    if (DOCS_ROOT / f"{slug}.mdx").exists():
+        g_bad.append(f"{slug}: redirect route retains a page file")
+for slug in sorted(retained_slugs):
+    path = DOCS_ROOT / f"{slug}.mdx"
+    if not path.is_file():
+        g_bad.append(f"{slug}: retained migration page missing")
+        continue
+    source_text = path.read_text(encoding="utf-8")
+    if "\x60\x60\x60" in source_text:
+        g_bad.append(f"{slug}: migration page contains a code fence")
+    if re.search(r"^(?:source|curated_source):", source_text, re.M):
+        g_bad.append(f"{slug}: migration page retains a source binding")
+    expected_prefix = (
+        'description: "Current alternatives for the retired '
+        if slug in manifest.chooser_pages
+        else 'description: "Migration notice for the retired '
+    )
+    if expected_prefix not in source_text:
+        g_bad.append(f"{slug}: retained migration page has the wrong disposition copy")
+    page_links = set(internal_link_re.findall(source_text))
+    missing_targets = {
+        target for _, target in manifest.targets[slug] if target not in page_links
     }
-    if manifest.get("source_evidence") != expected_source_evidence:
-        g_bad.append("AgentOS migration ledger evidence drifted")
-    direct_successors = manifest.get("direct_successors")
-    no_direct_successors = manifest.get("no_direct_successors")
-    if not isinstance(direct_successors, dict):
-        g_bad.append("direct-successor evidence must be an object")
-        direct_successors = {}
-    if not isinstance(no_direct_successors, dict):
-        g_bad.append("no-direct-successor evidence must be an object")
-        no_direct_successors = {}
-    if len(direct_successors) != 154:
-        g_bad.append(f"expected 154 direct successors, found {len(direct_successors)}")
-    if len(no_direct_successors) != 117:
-        g_bad.append(f"expected 117 no-direct routes, found {len(no_direct_successors)}")
-    if set(direct_successors) & set(no_direct_successors):
-        g_bad.append("migration evidence partitions overlap")
-    if migration_slugs != set(direct_successors) | set(no_direct_successors):
-        g_bad.append("migration evidence does not partition every route")
-    rendered_migrations = {
-        str(path.relative_to(DOCS_ROOT).with_suffix(""))
-        for path in all_mdx
-        if re.search(
-            r'^description: "Migration route for ',
-            path.read_text(encoding="utf-8"),
-            re.M,
-        )
-    }
-    if rendered_migrations != migration_slugs:
-        g_bad.append(
-            "migration manifest/page membership differs: "
-            f"missing={sorted(migration_slugs - rendered_migrations)[:10]}, "
-            f"unmanaged={sorted(rendered_migrations - migration_slugs)[:10]}"
-        )
-    for slug, row in sorted(direct_successors.items()):
-        if not isinstance(row, dict):
-            g_bad.append(f"{slug}: invalid direct-successor evidence")
-            continue
-        target = row.get("target")
-        task = row.get("task")
-        successor_source = row.get("successor_source")
-        raw_targets = raw_routes.get(slug)
-        if raw_targets != [{"target": target, "task": task}]:
-            g_bad.append(f"{slug}: direct-successor route target drifted")
-        if not isinstance(target, str):
-            continue
+    if missing_targets:
+        g_bad.append(f"{slug}: migration page omits targets {sorted(missing_targets)}")
+
+repo_mdx_raw = subprocess.run(
+    [
+        "git",
+        "-C",
+        str(DOCS_ROOT),
+        "ls-files",
+        "-z",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+        "--",
+        "*.mdx",
+    ],
+    capture_output=True,
+    check=True,
+).stdout
+all_repo_mdx = [
+    DOCS_ROOT / os.fsdecode(item)
+    for item in repo_mdx_raw.split(b"\0")
+    if item and (DOCS_ROOT / os.fsdecode(item)).is_file()
+]
+for path in all_repo_mdx:
+    source_slug = str(path.relative_to(DOCS_ROOT).with_suffix(""))
+    links = set(internal_link_re.findall(path.read_text(encoding="utf-8")))
+    legacy_links = sorted(links & migration_slugs)
+    if legacy_links:
+        g_bad.append(f"{source_slug}: links to legacy migration routes {legacy_links[:10]}")
+
+overview_targets: set[str] = set()
+for slug, targets in sorted(manifest.targets.items()):
+    direct = manifest.direct_successors.get(slug)
+    if direct is not None:
+        target = direct["target"]
+        target_path = DOCS_ROOT / f"{target}.mdx"
+        if target_path.is_file():
+            source_matches = re.findall(
+                r"^(?:source|curated_source):\s*(cookbook/\S+)\s*$",
+                target_path.read_text(encoding="utf-8"),
+                re.M,
+            )
+            if source_matches != [direct["successor_source"]]:
+                g_bad.append(f"{slug}: direct-successor source binding drifted: {target}")
+    for _, target in targets:
         target_path = DOCS_ROOT / f"{target}.mdx"
         if not target_path.is_file():
+            g_bad.append(f"{slug}: migration target missing: {target}")
             continue
-        source_matches = re.findall(
-            r"^(?:source|curated_source):\s*(cookbook/\S+)\s*$",
-            target_path.read_text(encoding="utf-8"),
-            re.M,
+        if target in migration_slugs:
+            g_bad.append(f"{slug}: target is another migration route: {target}")
+            continue
+        target_links = set(
+            internal_link_re.findall(target_path.read_text(encoding="utf-8"))
         )
-        if source_matches != [successor_source]:
-            g_bad.append(f"{slug}: direct-successor source binding drifted: {target}")
-    for slug, row in sorted(no_direct_successors.items()):
-        if not isinstance(row, dict) or not isinstance(row.get("evidence"), dict):
-            g_bad.append(f"{slug}: invalid no-direct-successor evidence")
-            continue
-        related = row.get("related_current_targets")
-        if related is not None and raw_routes.get(slug) != related:
-            g_bad.append(f"{slug}: related-current targets drifted")
-    for slug, raw_targets in sorted(raw_routes.items()):
-        source_path = DOCS_ROOT / f"{slug}.mdx"
-        if not source_path.is_file():
-            g_bad.append(f"{slug}: migration page missing")
-            continue
-        source_text = source_path.read_text(encoding="utf-8")
-        if "```" in source_text:
-            g_bad.append(f"{slug}: migration page contains a code fence")
-        if re.search(r"^(?:source|curated_source):", source_text, re.M):
-            g_bad.append(f"{slug}: migration page retains a source binding")
-        if not isinstance(raw_targets, list) or not raw_targets:
-            g_bad.append(f"{slug}: migration route has no manifest targets")
-            continue
-        for raw_target in raw_targets:
-            if not isinstance(raw_target, dict):
-                g_bad.append(f"{slug}: invalid migration target row")
-                continue
-            target = raw_target.get("target")
-            task = raw_target.get("task")
-            if not isinstance(task, str) or not task.strip() or "|" in task or "\n" in task:
-                g_bad.append(f"{slug}: invalid migration task")
-            if not isinstance(target, str) or not target.startswith("examples/"):
-                g_bad.append(f"{slug}: invalid migration target {target!r}")
-                continue
-            target_path = DOCS_ROOT / f"{target}.mdx"
-            if not target_path.is_file():
-                g_bad.append(f"{slug}: migration target missing: {target}")
-                continue
-            if target in migration_slugs:
-                g_bad.append(f"{slug}: target is another migration page: {target}")
-                continue
-            target_links = set(
-                internal_link_re.findall(target_path.read_text(encoding="utf-8"))
-            )
-            if slug in target_links:
-                g_bad.append(f"{slug}: migration target links back: {target}")
-            if target.endswith("/overview"):
-                overview_targets.add(target)
-                legacy_links = sorted(target_links & migration_slugs)
-                if legacy_links:
-                    g_bad.append(
-                        f"{target}: overview retains migration links {legacy_links[:10]}"
-                    )
-                live_links = {
-                    link
-                    for link in target_links
-                    if link not in migration_slugs
-                    and (DOCS_ROOT / f"{link}.mdx").is_file()
-                }
-                if not live_links:
-                    g_bad.append(f"{target}: overview has no live destination")
-                elif not reaches_concrete_page(target, migration_slugs):
-                    g_bad.append(
-                        f"{target}: overview cannot reach a concrete current page"
-                    )
+        if slug in target_links:
+            g_bad.append(f"{target}: links back to migration route {slug}")
+        if target.endswith("/overview"):
+            overview_targets.add(target)
+            if not reaches_concrete_page(target):
+                g_bad.append(f"{slug}: overview cannot reach a concrete current page: {target}")
+
 print(
-    f"(g) migration graph: {len(raw_routes)} routes and "
-    f"{len(overview_targets)} overview targets; "
-    f"{len(g_bad)} problems"
+    f"(g) migration graph: {len(manifest.targets)} routes, "
+    f"{len(redirect_slugs)} redirects, {len(retained_slugs)} hidden pages, "
+    f"{len(overview_targets)} overview targets; {len(g_bad)} problems"
 )
 for problem in g_bad[:20]:
     print("   BAD:", problem)
