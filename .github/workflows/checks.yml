@@ -15,6 +15,7 @@ on:
 env:
   AGNO_REPO: ${{ github.workspace }}/agno
   AGNO_EXPECTED_SHA: 9dd8f80d8984ceed5ae6bbde16eddf7475eaffa1
+  DOCS_VENV: ${{ github.workspace }}/../docs-venv
 
 jobs:
   validate:
@@ -50,25 +51,25 @@ jobs:
         run: |
           npm install -g mint@4.2.687
           python -m pip install uv==0.12.5
-          uv venv .venv --python 3.12
-          uv pip install --python .venv/bin/python -e "./agno/libs/agno[os,mcp,telegram,agui,a2a,slack,openai]" pyyaml
+          uv venv "$DOCS_VENV" --python 3.12
+          uv pip install --python "$DOCS_VENV/bin/python" -e "./agno/libs/agno[os,mcp,telegram,agui,a2a,slack,openai]" pyyaml
 
       - name: Check generated examples
         run: |
-          .venv/bin/python -B scripts/examples_sync/plan.py --agno-root "$AGNO_REPO"
-          .venv/bin/python -B scripts/examples_sync/merge_nav.py --check
-          .venv/bin/python -B scripts/examples_sync/drive_sync.py
-          .venv/bin/python -B scripts/examples_sync/dedupe_titles.py
-          .venv/bin/python -B scripts/examples_sync/apply_oneoffs.py
+          "$DOCS_VENV/bin/python" -B scripts/examples_sync/plan.py --agno-root "$AGNO_REPO"
+          "$DOCS_VENV/bin/python" -B scripts/examples_sync/merge_nav.py --check
+          "$DOCS_VENV/bin/python" -B scripts/examples_sync/drive_sync.py
+          "$DOCS_VENV/bin/python" -B scripts/examples_sync/dedupe_titles.py
+          "$DOCS_VENV/bin/python" -B scripts/examples_sync/apply_oneoffs.py
           git diff --exit-code -- .
-          .venv/bin/python -B scripts/examples_sync/check_integrity.py
+          "$DOCS_VENV/bin/python" -B scripts/examples_sync/check_integrity.py
 
       - name: Check repository inventory and imports
         run: |
-          .venv/bin/python -B scripts/inventory/run_all.py --json
-          .venv/bin/python -B scripts/check_install_coverage.py --json --limit 0
-          .venv/bin/python -B scripts/reference_drift.py
-          .venv/bin/python -B scripts/check_imports.py
+          "$DOCS_VENV/bin/python" -B scripts/inventory/run_all.py --json
+          "$DOCS_VENV/bin/python" -B scripts/check_install_coverage.py --json --limit 0
+          "$DOCS_VENV/bin/python" -B scripts/reference_drift.py
+          "$DOCS_VENV/bin/python" -B scripts/check_imports.py
 
       - name: Check OpenAPI freshness
         env:
@@ -81,7 +82,8 @@ jobs:
           TELEGRAM_TOKEN: 123456789:AAFakeTokenValueForOpenAPIGenerationOnly
           TELEGRAM_WEBHOOK_SECRET_TOKEN: fake-telegram-webhook-secret
           AGNO_TELEMETRY: "false"
-        run: .venv/bin/python -B scripts/make_openapi.py --check
+        run: |
+          "$DOCS_VENV/bin/python" -B scripts/make_openapi.py --check
 
       - name: Check Mintlify links and structure
         run: |
