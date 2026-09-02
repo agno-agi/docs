@@ -1,0 +1,140 @@
+---
+title: "Slack Channel"
+description: "Run an AG-UI agent as a Slack bot with the CopilotKit Channels SDK."
+---
+
+Serve an Agno agent over AG-UI and drive it from Slack with a [CopilotKit Channels](https://docs.copilotkit.ai/slack/agno) process. The AgentOS server is unchanged. The channel is a separate Node process, connected to Slack through CopilotKit Intelligence, that runs the agent through `AgnoAgent` from [`@ag-ui/agno`](https://www.npmjs.com/package/@ag-ui/agno).
+
+```python basic.py
+from agno.agent.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.os import AgentOS
+from agno.os.interfaces.agui import AGUI
+
+chat_agent = Agent(
+    name="Assistant",
+    model=OpenAIResponses(id="gpt-5.4"),
+    instructions="You are a helpful AI assistant.",
+    add_datetime_to_context=True,
+    markdown=True,
+)
+
+agent_os = AgentOS(
+    agents=[chat_agent],
+    interfaces=[AGUI(agent=chat_agent)],
+)
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="basic:app", reload=True)
+```
+
+```ts agent.ts
+import { AgnoAgent } from "@ag-ui/agno";
+
+export function makeAgent(threadId: string) {
+  const agent = new AgnoAgent({
+    url: process.env.AGNO_AGUI_URL ?? "http://localhost:7777/agui",
+  });
+  agent.threadId = threadId;
+  return agent;
+}
+```
+
+```ts channel.ts
+import { createChannel } from "@copilotkit/channels";
+import { CopilotRuntime, CopilotKitIntelligence } from "@copilotkit/runtime/v2";
+import { createCopilotNodeListener } from "@copilotkit/runtime/v2/node";
+
+import { makeAgent } from "./agent";
+
+const required = (name: string) => {
+  const value = process.env[name];
+  if (!value) throw new Error(`Missing ${name}`);
+  return value;
+};
+
+const channel = createChannel({
+  name: required("INTELLIGENCE_CHANNEL_ID"),
+  identifyUser: "platform",
+  agent: makeAgent,
+});
+
+channel.onMention(async ({ thread }) => {
+  await thread.subscribe();
+  await thread.runAgent();
+});
+channel.onMessage(async ({ thread }) => {
+  if (await thread.isSubscribed()) await thread.runAgent();
+});
+
+const runtime = new CopilotRuntime({
+  agents: {},
+  intelligence: new CopilotKitIntelligence({
+    apiKey: required("INTELLIGENCE_API_KEY"),
+  }),
+  channels: [channel],
+});
+
+const listener = createCopilotNodeListener({ runtime });
+await listener.channels?.ready({ timeoutMs: 15_000 });
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U "agno[agui,os]" openai
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the AgentOS server">
+    Save the Python code above as `basic.py`, then run:
+    ```bash
+    python basic.py
+    ```
+  </Step>
+
+  <Step title="Set up the channel project">
+    In a separate directory, save `agent.ts` and `channel.ts` from above and install:
+    ```bash
+    npm init -y
+    npm pkg set type=module
+    npm install @copilotkit/channels @copilotkit/runtime @ag-ui/agno
+    npm install -D tsx
+    ```
+  </Step>
+
+  <Step title="Export the CopilotKit Intelligence credentials">
+    Create a Channel in the CopilotKit Intelligence dashboard and connect Slack there, then:
+    ```bash
+    export INTELLIGENCE_API_KEY="..."
+    export INTELLIGENCE_CHANNEL_ID="..."
+    ```
+    Slack setup is covered in the [CopilotKit Slack guide](https://docs.copilotkit.ai/slack/agno).
+  </Step>
+
+  <Step title="Run the channel">
+    ```bash
+    npx tsx channel.ts
+    ```
+    Mention the bot in Slack. The channel runs the agent over AG-UI and streams the reply into the thread. The thread stays subscribed, so follow-up messages run without another mention.
+  </Step>
+</Steps>
+
+See [Channels](/agent-os/interfaces/ag-ui/channels) for how Channels fit together with AG-UI, other platforms, and production notes.
