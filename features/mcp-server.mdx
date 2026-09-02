@@ -1,0 +1,89 @@
+---
+title: AgentOS MCP Server
+sidebarTitle: MCP Server
+description: "Expose agents, teams, workflows, and custom tools to MCP clients through AgentOS."
+---
+
+Set `mcp=True` to serve an MCP endpoint at `/mcp` alongside the AgentOS REST API.
+
+```python mcp_server.py
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIResponses
+from agno.os import AgentOS
+
+db = SqliteDb(db_file="agentos.db")
+
+assistant = Agent(
+    id="assistant",
+    model=OpenAIResponses(id="gpt-5.5"),
+    db=db,
+    add_history_to_context=True,
+)
+
+agent_os = AgentOS(
+    agents=[assistant],
+    db=db,
+    mcp=True,
+)
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app=app)
+```
+
+Install the AgentOS, MCP, and model dependencies:
+
+```bash
+uv pip install -U "agno[os,mcp,openai]"
+```
+
+Set `OPENAI_API_KEY`, then run `python mcp_server.py`. The MCP endpoint is available at `http://localhost:7777/mcp`.
+
+The default MCP surface provides eight tools for discovering registered components, running agents, teams, and workflows, continuing or cancelling paused runs, and reading session history.
+
+## Publish Selected Components
+
+Use `MCPConfig` to publish selected components or custom callables as MCP tools:
+
+```python
+from agno.os import AgentOS, MCPConfig
+
+agent_os = AgentOS(
+    agents=[assistant],
+    mcp=MCPConfig(
+        default_tools=False,
+        tools=[
+            assistant.as_tool(
+                name="assistant",
+                description="Answer questions with the registered assistant",
+            ),
+        ],
+    ),
+)
+```
+
+Published components use the same AgentOS execution, persistence, and authorization paths as the built-in run tools. Lifecycle tools remain available by default so MCP clients can continue or cancel paused runs.
+
+## Connect MCP Clients
+
+Connect Claude Code, Claude Desktop, Codex, or Cursor to a running AgentOS:
+
+```bash
+agno connect --url http://localhost:7777
+```
+
+`agno connect` discovers the MCP endpoint, configures detected clients, and verifies each connection with an MCP handshake.
+
+## Choose the MCP Direction
+
+| Task | API | Guide |
+|------|-----|-------|
+| Expose AgentOS to MCP clients | `AgentOS(mcp=...)` | [AgentOS as an MCP server](/agent-os/mcp/mcp) |
+| Give an agent access to external MCP servers | `MCPTools` | [MCPTools within AgentOS](/agent-os/mcp/tools) |
+
+## Developer Resources
+
+- [MCP server configuration](/agent-os/mcp/mcp)
+- [Connect clients with `agno connect`](/cli/connect)
+- [Runnable MCP examples](/examples/agent-os/mcp/basic)

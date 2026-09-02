@@ -4540,7 +4540,7 @@ def derive_requirements(
     if any(
         has_nonfalse_keyword(src, "AgentOS", keyword)
         for src in srcs
-        for keyword in ("mcp_server", "mcp_auth")
+        for keyword in ("mcp", "mcp_server", "mcp_auth")
     ):
         req.extras.add("mcp")
     if any(has_nonfalse_keyword(src, "AgentOS", "a2a_interface") for src in srcs):

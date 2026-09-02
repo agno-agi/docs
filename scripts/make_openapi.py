@@ -363,7 +363,7 @@ def build_app():
         registry=registry,
         db=db,
         queue=QueueConfig(durable=True),
-        mcp_server=True,  # mounts /mcp sub-app; sub-app routes don't appear in app.openapi()
+        mcp=True,  # mounts /mcp sub-app; sub-app routes don't appear in app.openapi()
         telemetry=False,  # telemetry POSTs home at init; this is an offline dry run
     )
     return agent_os.get_app(), interfaces
