@@ -1,0 +1,137 @@
+---
+title: Human-in-the-Loop Continuations
+description: "Continue a paused durable run through the queue with background=true. Same job, same run_id, one more attempt."
+---
+
+```bash
+pip install "agno[os]" openai psycopg
+```
+
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIResponses
+from agno.os import AgentOS, QueueConfig
+from agno.tools import tool
+
+
+@tool(requires_confirmation=True)
+def delete_temp_files(directory: str) -> str:
+    """Delete temporary files in a directory. Requires human confirmation."""
+    return f"Deleted temp files in {directory}"
+
+
+db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+agent = Agent(
+    name="HITL Agent",
+    id="hitl-agent",
+    model=OpenAIResponses(id="gpt-5.5"),
+    db=db,
+    tools=[delete_temp_files],
+    instructions="Use delete_temp_files when asked to delete or clean up files.",
+)
+
+agent_os = AgentOS(
+    agents=[agent],
+    db=db,
+    queue=QueueConfig(durable=True),
+)
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="durable_continue:app", port=7777)
+```
+
+A durable run that pauses for confirmation parks its queue job as `paused`. Continuing it with `background=true` flips the same job back to `queued`, merges your confirmations into its payload, and lets whichever replica claims it finish the run. Kill the server after the `202` and restart it: the continuation still runs.
+
+## Flow
+
+<Steps>
+  <Step title="Submit">
+```bash
+curl -X POST localhost:7777/agents/hitl-agent/runs \
+  -F "message=Delete the temp files in /tmp/scratch" \
+  -F "background=true" -F "stream=false"
+```
+  </Step>
+  <Step title="Poll until PAUSED">
+```bash
+curl "localhost:7777/agents/hitl-agent/runs/{run_id}?session_id={session_id}"
+```
+    The response carries `status: "PAUSED"` and a `tools` array with the pending `delete_temp_files` call. The job is paused too: `GET /queue/jobs/{run_id}` shows `status: "paused"`.
+  </Step>
+  <Step title="Continue through the queue">
+    Set `confirmed: true` on the tool entry and send it back with `background=true`:
+```bash
+curl -X POST localhost:7777/agents/hitl-agent/runs/{run_id}/continue \
+  -F "session_id={session_id}" \
+  -F "background=true" -F "stream=false" \
+  -F 'tools=[{"tool_call_id": "...", "tool_name": "delete_temp_files", "confirmed": true, ...}]'
+```
+```json
+{"run_id": "{run_id}", "session_id": "{session_id}", "status": "PENDING"}
+```
+  </Step>
+  <Step title="Poll to completion">
+    The same poll URL returns `COMPLETED`. `GET /queue/jobs/{run_id}` shows `status: "completed"`, `attempt: 2`, `max_attempts: 2`.
+  </Step>
+</Steps>
+
+Teams use `/teams/{team_id}/runs/{run_id}/continue` with `requirements`; workflows use `/workflows/{workflow_id}/runs/{run_id}/continue` with `step_requirements`. The queue semantics are identical.
+
+## Job lifecycle
+
+| Event | Job status | `run_id` |
+|-------|---------------|----------|
+| Submission accepted | `queued` | Minted |
+| Worker claims | `running` | Same |
+| Run pauses for input | `paused` | Same |
+| Continue with `background=true` | `queued` (one more attempt granted) | Same |
+| Continuation claimed | `running` | Same |
+| Run finishes, or pauses again | `completed` / `paused` | Same |
+
+There is one row per run. Poll, resume, cancel, and idempotency all key on the original `run_id` across any number of pause and continue cycles. A continuation gets exactly one execution regardless of `max_attempts`. A continuation that crashes is marked failed and re-driven with [requeue](/agent-os/background-execution/operations#requeue), which replays the same confirmations.
+
+## Responses
+
+| Situation | Response |
+|-----------|----------|
+| Continue accepted | `202` with the same `run_id`. |
+| Second identical continue while the first is still queued | `202`. The second click attaches to the first. Its inputs are discarded. |
+| Continue while the run is transitioning between the pause and the continuation | `409` with `Retry-After: 1`. The window is the gap between two adjacent writes. Retry. |
+| Continue of a cancelled or finished run | `409`. |
+| Continue with `stream=true` on a run submitted with `stream=false` | `409`. The continuation would publish no events. Poll it. |
+| Continue **without** `background=true` on a queue-owned run | `409`: "Run ... was submitted through the durable queue; continue it with background=true". |
+
+## Why inline continues are refused
+
+A job in `paused`, `queued`, or `running` owns its run's continuation. Every other continue path (inline sync, inline SSE, MCP, AG-UI, Slack) refuses with `409`. Without that rule, an inline continue could validate against the run row while a durable continue validated against the job, and both could pass before either persisted. An approved tool would then execute twice. If the job cannot be looked up at all, the request fails with `503` instead of proceeding unverified.
+
+Runs that never rode the queue, and `fork` or `regenerate` requests (which mint a new run), are unaffected.
+
+## Cancel and retention
+
+Paused jobs are exempt from retention. A paused run is waiting for a person, and there is no bound on how long that takes, so the job is never removed on age. An abandoned paused run persists until it is cancelled:
+
+```bash
+curl -X POST "localhost:7777/agents/hitl-agent/runs/{run_id}/cancel?session_id={session_id}"
+```
+
+Cancel moves the job to `cancelled` and the run row to `CANCELLED`. A later continue gets `409` instead of resurrecting the run.
+
+<Note>
+With `serialize_sessions=True` (the default), a paused run also holds its session's line. Later submissions to the same session wait until the paused run is continued or cancelled. See [Session serialization](/agent-os/background-execution/durable-queue#session-serialization).
+</Note>
+
+## Streaming continuations
+
+If the original submission used `stream=true`, continue with `stream=true` and `background=true` to receive an SSE tail of the post-approval events. Earlier events belong to `/resume`. Event indices keep increasing across the pause, so a client that resumes with its last index does not replay pre-approval history.
+
+## Next Steps
+
+| Task | Guide |
+|------|-------|
+| Re-drive a crashed continuation | [Requeue](/agent-os/background-execution/operations#requeue) |
+| Confirmation and approval flows in general | [Human-in-the-loop](/hitl/overview) |
+| Approvals from the Control Plane | [Approvals](/agent-os/approvals/overview) |

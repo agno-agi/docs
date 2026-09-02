@@ -104,19 +104,17 @@ The major changes are:
 </Accordion>
 
 <Accordion title="Durable background execution">
-  - Accepted `background=True` requests are committed job rows that survive
-    crashes, restarts and deploys. Any replica's worker can claim and execute
-    them.
-  - Concurrency is bounded. Excess submissions wait in `pending` status instead
-    of overloading the process.
-  - Runs can be tailed (`stream=true`), resumed after a disconnect (`/resume`)
-    and cancelled from any replica.
-  - `Idempotency-Key` headers deduplicate resubmissions.
-  - Redis is optional coordination (live event streams, cross-replica
-    cancellation), never truth. A Redis fault degrades the live view; it cannot
-    lose or corrupt a run.
-  - Background execution requires a `db` on the component and returns a 400
-    without one.
+  - Background runs are capped at 32 per replica by default; excess submissions
+    wait as `PENDING`. Configure with `QueueConfig(max_concurrency=...)` or
+    `AGNO_BACKGROUND_MAX_CONCURRENCY`.
+  - `QueueConfig(durable=True)`: accepted requests are committed job rows that
+    survive crashes, restarts and deploys. Any replica's worker can claim and
+    execute them. Enables `Idempotency-Key` deduplication and the `/queue`
+    operations endpoints.
+  - `QueueConfig(redis=...)`: live event streams and cross-replica cancellation
+    from one setting, so runs can be tailed, resumed and cancelled from any
+    replica. Redis is coordination, never truth. A Redis fault degrades the live
+    view; it cannot lose or corrupt a run.
   - External framework agents (LangGraph, Claude, DSPy, etc.) stream inline
     when `background=true` is requested; their runs are not resumable.
 </Accordion>
