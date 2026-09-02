@@ -319,9 +319,13 @@ The `/resume` stream can include these meta events:
 
 ## Multi-Container Deployments
 
+<Note>
+AgentOS can remove the affinity requirement entirely. `QueueConfig(redis=...)` wires a shared event stream and cancellation manager so `/resume` and `/cancel` work from any replica, and `QueueConfig(durable=True)` makes accepted runs survive process restarts. See [AgentOS Background Execution](/agent-os/background-execution/overview).
+</Note>
+
 The detached task and event buffer live in-process on the instance that started the run. The default cancellation manager is also in-memory. In a multi-replica setup, a `/resume` request that lands on a different instance can replay persisted events for a local entity when `session_id` is provided, then closes. It cannot tail the live task on the originating instance. A `/cancel` request on the wrong instance does not stop the task on the origin.
 
-Configure session affinity on the initial run-start request, then route that client's `/resume` and `/cancel` requests to the same instance. An explicit `run_id`-to-instance mapping can provide the same guarantee. Hashing only the generated `run_id` on reconnect is insufficient because the initial request was routed before that ID existed. A shared cancellation manager such as `RedisRunCancellationManager` removes the affinity requirement for `/cancel`, but live `/resume` still needs the originating instance.
+Configure session affinity on the initial run-start request, then route that client's `/resume` and `/cancel` requests to the same instance. An explicit `run_id`-to-instance mapping can provide the same guarantee. Hashing only the generated `run_id` on reconnect is insufficient because the initial request was routed before that ID existed. In AgentOS, `QueueConfig(redis=...)` removes the affinity requirement for both: it sets the cancellation manager (`RedisRunCancellationManager`) and the event stream (`RedisEventStream`) on every replica, so `/cancel` and live `/resume` work from any instance. See [Multi-replica deployments](/agent-os/background-execution/multi-replica).
 
 ## Developer Resources
 

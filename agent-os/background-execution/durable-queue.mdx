@@ -1,0 +1,167 @@
+---
+title: Durable Queue
+description: "QueueConfig(durable=True): accepted background runs become committed rows that survive crashes and deploys."
+---
+
+```python
+from agno.os import AgentOS, QueueConfig
+
+agent_os = AgentOS(
+    agents=[agent],
+    db=db,  # Postgres. The queue table lives here too.
+    queue=QueueConfig(
+        durable=True,
+        max_concurrency=8,  # per replica
+        max_queue_depth=1000,  # 429 beyond this
+        max_attempts=1,  # a crashed run fails visibly, never re-executes
+    ),
+)
+```
+
+With `durable=True`, a `background=true` submission is written to the `agno_jobs` table before the `202` is returned. That job row is the acceptance. The run itself is stored in your sessions database as usual (the run row). A worker on every replica polls the jobs table, claims jobs, and executes them under a lease that it refreshes with heartbeats. The client contract is unchanged: `202` with `run_id`, then poll or stream.
+
+## The guarantee
+
+Every accepted run reaches a terminal, visible outcome. Poll it and you will eventually see `COMPLETED`, `ERROR`, or `CANCELLED`. A run never stays `RUNNING` indefinitely and never disappears.
+
+This is not the same as a promise that every run executes. What happens to a run whose worker dies mid-execution depends on `max_attempts`:
+
+| `max_attempts` | Crash behavior | Use when |
+|----------------|----------------|----------|
+| `1` (default) | After `lock_grace_seconds` without a heartbeat, another replica's sweep (the periodic check for abandoned jobs) marks the run `ERROR` with the reason on `content`, and the job `failed`. Nothing re-executes. | Tools have side effects (emails, payments, writes). A killed run may already have acted. |
+| `2` or more | Another live replica reclaims the stale job and re-executes the run, with jittered backoff. A worker that turns out to be alive after being presumed dead has its late writes discarded on the job, the run row, and the event stream. | Runs are safe to repeat, or at-least-once beats a manual requeue. |
+
+At the default, a crashed run is marked failed and an operator grants one more attempt through [requeue](/agent-os/background-execution/operations#requeue). The run's `content` carries the reason:
+
+```
+Worker lost and attempt budget exhausted; run was not re-executed. Crashed runs
+fail visibly instead of silently re-executing (at-most-once, max_attempts=1 by
+default): set QueueConfig(max_attempts=2) or higher to allow automatic
+re-execution, or grant one attempt via POST /queue/jobs/{id}/requeue.
+```
+
+Failures that retrying cannot cure (schema violations, guardrail refusals, a `TypeError` in the call) go straight to `failed` regardless of remaining budget.
+
+### How it stays correct
+
+Each claim increments the job's `attempt` counter. That number is recorded on every write the attempt makes: the job row, the run row, and the event stream. A write carrying an older attempt than the one currently recorded is refused. This is what makes `max_attempts > 1` safe: a worker that was swept while still alive cannot corrupt the retry's output.
+
+## Queue retries and model retries
+
+Model retries and queue retries are independent layers:
+
+| Layer | Setting | What is retried | Default |
+|-------|---------|-----------------|---------|
+| Model | `Model(retries=..., delay_between_retries=..., exponential_backoff=...)` | One model call, inside the running attempt. Only retryable `ModelProviderError`s (not 400, 401, 403, 404, 413, 422). Run context and prior tool results are kept. | `retries=0` |
+| Queue | `QueueConfig(max_attempts=..., retry_delay_seconds=...)` | The whole run, from the start, as a new attempt under the same `run_id`. Applies to crashes, timeouts, and runs that ended in `ERROR`. | `max_attempts=1` |
+
+When model retries are exhausted, the run finishes with status `ERROR`. The worker then consults the queue budget: with attempts remaining it requeues the job after a jittered delay, otherwise the job is `failed`. At the defaults, a model outage fails the run on the first error with no re-execution at either layer.
+
+```python
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.5", retries=3, delay_between_retries=2, exponential_backoff=True),
+    db=db,
+)
+agent_os = AgentOS(agents=[agent], db=db, queue=QueueConfig(durable=True, max_attempts=2))
+```
+
+Use model retries for transient provider errors. They are cheap and keep the run's context. Use queue attempts for worker loss. A queue attempt repeats every tool call the previous attempt already made, so keep `max_attempts=1` for runs with side effects. The two budgets multiply: at most `max_attempts * (retries + 1)` model calls per step.
+
+## Queue stores
+
+The queue store defaults to the AgentOS `db`. A dedicated store isolates queue polling from your session data.
+
+| Store | Support | Notes |
+|-------|---------|-------|
+| `PostgresDb` / `AsyncPostgresDb` | Yes | Claims use `SELECT ... FOR UPDATE SKIP LOCKED`. Recommended for production. |
+| `RedisDb` | Yes | Job durability depends on Redis persistence. Configure AOF with `appendfsync everysec` or `always`. Default RDB snapshotting can lose recently accepted jobs on a Redis crash. A warning is logged at startup. |
+| `RedisCluster` client | Rejected | The store's transactions need `WATCH`/`MULTI`, which cluster pipelines do not support. Use a standalone Redis or Valkey instance. |
+| Any other `db` | Rejected at startup | `durable=True` over a store without the queue contract raises a `ValueError` during lifespan startup. |
+
+```python
+from agno.db.redis import RedisDb
+
+queue=QueueConfig(
+    durable=True,
+    db=RedisDb(db_url="redis://localhost:6379"),  # queue jobs only
+)
+```
+
+`db=` requires `durable=True`. Passing a queue store without durability raises at construction.
+
+<Warning>
+The queue store and the session store are separate concerns. Sessions and run rows on a non-Postgres store lose the attempt fencing described above, and the worker cannot update the run to `RUNNING` (queued runs poll `PENDING` while executing). Acceptance and terminal error persistence still work. A warning is logged at startup. Use Postgres for sessions in production.
+</Warning>
+
+## Idempotency keys
+
+Send an `Idempotency-Key` header to make a resubmission return the original run instead of enqueueing a second one:
+
+```bash
+curl -X POST localhost:7777/agents/durable-agent/runs \
+  -H "Idempotency-Key: order-42" \
+  -F "message=Process order 42" \
+  -F "background=true" -F "stream=false"
+```
+
+| Situation | Response |
+|-----------|----------|
+| First submission | `202` with a new `run_id`. |
+| Same key, same user, same component | `202` with the original `run_id` and its current status (`PENDING`, `RUNNING`, `COMPLETED`, `ERROR`, ...). |
+| Same key on a different agent, team, or workflow | `409`. Keys retry the same submission, never alias a different one. |
+| Same key, original was `stream=false`, replay asks for `stream=true` | `409`. The original never published events, so there is nothing to tail. Poll it instead. |
+| Key longer than 512 characters | `422`. |
+
+Keys are scoped per user: the same key from two different `user_id` values is two runs. Anonymous submissions share one namespace.
+
+Asking is idempotent. Executing is not. A run that reached a tool with side effects has already acted, and a retry acts again. Agno does not keep a side-effect ledger. If a tool must not run twice, make the tool itself idempotent.
+
+## Session serialization
+
+`serialize_sessions=True` (the default) allows at most one live run per session, executed in submission order. Two `background=true` submissions to the same session run one after the other instead of racing each other's context reads and session-state writes. Different sessions still run concurrently under `max_concurrency`.
+
+| Situation | Behavior |
+|-----------|----------|
+| Runs A, B, C submitted to one session | A executes. B waits until A is terminal, then C. |
+| Runs in different sessions | Claimed concurrently. |
+| A crashes with retries left | A is reclaimed, not bypassed. FIFO holds across recovery. |
+| A pauses for human input | **B and C wait until A is continued or cancelled.** |
+
+<Warning>
+A `PAUSED` run holds its session's line. Runs queued behind a human-in-the-loop pause wait for the approval, because their input likely refers to its outcome. Continue or cancel the paused run to release them. Watch `paused` in `/queue/stats` if a session looks stuck.
+</Warning>
+
+Set `serialize_sessions=False` to restore fully concurrent claiming. Serialization applies at durable-queue claim time only. The non-durable in-process path is not session-gated.
+
+## Latency
+
+A submission accepted on a replica wakes that replica's worker as soon as the row commits, so execution starts in milliseconds. `poll_interval` (default `1.0` seconds) bounds three other things: how quickly a replica picks up jobs enqueued by other replicas, when a retry becomes claimable, and how often the sweep runs. Lowering it below the default rarely helps a single-replica deployment.
+
+## Configuration
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `durable` | `False` | Write accepted runs to the queue table. |
+| `db` | `None` | Queue store override. `None` uses the AgentOS `db`. Requires `durable=True`. |
+| `max_concurrency` | `None` | Background runs executing at once per replica, shared across agents, teams, and workflows. `None` keeps the process setting (`AGNO_BACKGROUND_MAX_CONCURRENCY` or 32). `0` or below disables the cap. |
+| `redis` | `None` | Cross-replica coordination. See [Multi-replica deployments](/agent-os/background-execution/multi-replica). |
+| `max_queue_depth` | `1000` | Accepted-but-unstarted jobs across the fleet. Submissions beyond it get `429`. `0` is unbounded. |
+| `max_attempts` | `1` | Executions per run under any failure mode. Must be at least 1. |
+| `retry_delay_seconds` | `30` | Base retry delay. Attempt N waits a random time up to `base * 2**(N-1)`, capped at 10 times the base. `0` disables backoff. |
+| `timeout_seconds` | `3600` | Per-run execution timeout enforced by the worker. `None` disables. |
+| `deployment_id` | `None` | Claim affinity for mixed fleets. See [Operations](/agent-os/background-execution/operations#deployment-affinity). |
+| `lock_grace_seconds` | `60` | Seconds without a heartbeat before a claimed job counts as abandoned. Minimum 3. Heartbeats fire every third of this. |
+| `poll_interval` | `1.0` | Seconds an idle worker waits between claim passes. |
+| `retention_seconds` | `86400` | Terminal jobs older than this are deleted hourly. Paused jobs are exempt. |
+| `stop_timeout_seconds` | `None` | Graceful-shutdown drain window. `None` means 30 seconds, clamped below `lock_grace_seconds`. Must be strictly below `lock_grace_seconds` when set. |
+| `serialize_sessions` | `True` | One live run per session, FIFO. `False` restores concurrent claiming. |
+
+The timing fields (`lock_grace_seconds`, `stop_timeout_seconds`, `retention_seconds`, `max_attempts`, `timeout_seconds`) must be identical on every replica sharing a queue table. See [Fleet-wide settings](/agent-os/background-execution/operations#fleet-wide-settings).
+
+## Next Steps
+
+| Task | Guide |
+|------|-------|
+| Run more than one replica | [Multi-replica deployments](/agent-os/background-execution/multi-replica) |
+| Continue a paused run durably | [Human-in-the-loop continuations](/agent-os/background-execution/hitl-continuations) |
+| Requeue failed jobs, watch depth | [Operations and monitoring](/agent-os/background-execution/operations) |
