@@ -52,12 +52,7 @@ finally:
 ```
 
 
-You can also use multiple MCP servers at once, with the `MultiMCPTools` class. For example:
-
-<Note>
-`MultiMCPTools` is deprecated and will be removed in a future version. Use multiple `MCPTools` instances instead.
-</Note>
-
+You can also use multiple MCP servers at once, with one `MCPTools` instance per server. For example:
 
 ```python
 import asyncio
@@ -65,7 +60,7 @@ import os
 from datetime import date, timedelta
 
 from agno.agent import Agent
-from agno.tools.mcp import MultiMCPTools
+from agno.tools.mcp import MCPTools
 
 
 async def run_agent(message: str) -> None:
@@ -76,32 +71,28 @@ async def run_agent(message: str) -> None:
     }
 
     # Initialize and connect to multiple MCP servers
-    mcp_tools = MultiMCPTools(
-        commands=[
-            "npx -y @openbnb/mcp-server-airbnb --ignore-robots-txt",
-            "npx -y @modelcontextprotocol/server-google-maps",
-        ],
-        env=env,
-    )
-    await mcp_tools.connect()
+    airbnb_tools = MCPTools(command="npx -y @openbnb/mcp-server-airbnb --ignore-robots-txt")
+    google_maps_tools = MCPTools(command="npx -y @modelcontextprotocol/server-google-maps", env=env)
+    await airbnb_tools.connect()
+    await google_maps_tools.connect()
 
     try:
         agent = Agent(
-            tools=[mcp_tools],
+            tools=[airbnb_tools, google_maps_tools],
             markdown=True,
         )
 
         await agent.aprint_response(message, stream=True)
     finally:
-        # Always close the connection when done
-        await mcp_tools.close()
+        # Always close the connections when done
+        await airbnb_tools.close()
+        await google_maps_tools.close()
 
 
 # Example usage
 if __name__ == "__main__":
     check_in = date.today() + timedelta(days=30)
     check_out = check_in + timedelta(days=3)
-    # Pull request example
     asyncio.run(
         run_agent(
             f"What listings are available in Cape Town for 2 people "

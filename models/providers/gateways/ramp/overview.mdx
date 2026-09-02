@@ -1,0 +1,98 @@
+---
+title: Ramp Router
+sidebarTitle: Overview
+description: Use Ramp Router's model-routing API with Agno agents.
+---
+
+<Badge icon="code-branch" color="orange">
+    <Tooltip tip="Introduced in v3.0.0" cta="View release notes" href="https://github.com/agno-agi/agno/releases/tag/v3.0.0">v3.0.0</Tooltip>
+</Badge>
+
+[Ramp Router](https://router.com) routes requests across model providers behind one OpenAI-compatible Responses endpoint. `RampRouter` connects Agno agents to it.
+
+Model ids are account-scoped: Router's `GET /v1/models` lists what your key can use. Router's rate limits, per-model service tiers, timeout maxima, and spend controls are set by Router and vary by model — see Router's [errors and limits](https://docs.router.com/api/errors-and-limits) and [control spend](https://docs.router.com/guides/control-spend) pages rather than this one.
+
+## Installation
+
+```bash
+uv pip install -U "agno[openai]"
+```
+
+`RampRouter` uses the OpenAI Python SDK, which the `agno[openai]` extra provides.
+
+## Authentication
+
+Set your `RAMP_ROUTER_API_KEY` environment variable. Get your key from the Router dashboard.
+
+<CodeGroup>
+
+```bash Mac
+export RAMP_ROUTER_API_KEY=***
+```
+
+```bash Windows
+setx RAMP_ROUTER_API_KEY ***
+```
+
+</CodeGroup>
+
+## Example
+
+Use `RampRouter` with your `Agent`:
+
+<CodeGroup>
+
+```python agent.py
+from agno.agent import Agent
+from agno.models.ramp import RampRouter
+
+agent = Agent(
+    model=RampRouter(id="gpt-5.6-luna"),
+    markdown=True,
+)
+
+agent.print_response("Share a 2 sentence horror story.")
+```
+
+</CodeGroup>
+
+The model string `"ramp:gpt-5.6-luna"` resolves to the same class. The spelling `"ramprouter:"` also resolves, but `"ramp:"` is the registered form.
+
+## Server-Side Fallback
+
+`models=[...]` is Router's server-side fallback: one to fifteen Router catalog ids (for example `"openai:gpt-5-nano"`, optionally `":flex"`-suffixed), tried in order on Router's side. When `models` is set, Agno omits the single `id` from the request. This is distinct from Agno's client-side [fallback models](/models/fallback-models), which retry against a different provider from your process.
+
+```python
+from agno.agent import Agent
+from agno.models.ramp import RampRouter
+
+agent = Agent(
+    model=RampRouter(models=["openai:gpt-5-nano", "anthropic:claude-haiku-4-5"]),
+    markdown=True,
+)
+```
+
+`allow_flex_tier` is forwarded to Router with the request; Router accepts `False` on any model and rejects `True` with a 400 on models without Flex capacity. See Router's [request fields](https://docs.router.com/api/request-fields) for the tier semantics.
+
+## Behavior Notes
+
+- Background mode is not supported: constructing `RampRouter(background=True)` raises `ValueError`.
+- Token counting is local. `count_tokens` and `acount_tokens` estimate from the messages in your process instead of calling the API.
+- A generation that runs out of `max_output_tokens` ends as an incomplete response; Agno reads the usage from it and logs that Router stopped the response early.
+
+## Parameters
+
+| Parameter | Type | Default | Description |
+| --------- | ---- | ------- | ----------- |
+| `id` | `str` | `"gpt-5.6-luna"` | The id of the model to route to. Account-scoped; Router's `GET /v1/models` is the authoritative list |
+| `name` | `str` | `"RampRouter"` | The name of the model |
+| `provider` | `str` | `"RampRouter"` | The provider of the model |
+| `api_key` | `Optional[str]` | `None` | Router API key (defaults to the `RAMP_ROUTER_API_KEY` env var) |
+| `base_url` | `str` | `"https://api.router.com/v1"` | The base URL for the Router API |
+| `store` | `Optional[bool]` | `None` | Whether to store the response on the provider side. When unset, Router applies its own default |
+| `models` | `Optional[List[str]]` | `None` | Server-side fallback list of Router catalog ids, tried in order. Mutually exclusive with `id` in the request |
+| `allow_flex_tier` | `Optional[bool]` | `None` | Forwarded to Router; see Router's [request fields](https://docs.router.com/api/request-fields) |
+| `provider_timeout` | `Optional[float]` | `None` | Router-side per-provider timeout in seconds, forwarded in the request body. Maxima are set per gateway by Router |
+| `timeout_before_headers` | `Optional[float]` | `None` | Router-side timeout in seconds until response headers arrive, forwarded in the request body. Maxima are set per gateway by Router |
+
+`RampRouter` extends [OpenResponses](/reference/models/open-responses) and accepts all of its parameters.

@@ -1,0 +1,101 @@
+---
+title: MiniMax
+description: "MiniMaxTools generate videos from text prompts through the MiniMax API."
+---
+
+<Badge icon="code-branch" color="orange">
+    <Tooltip tip="Introduced in v3.0.0" cta="View release notes" href="https://github.com/agno-agi/agno/releases/tag/v3.0.0">v3.0.0</Tooltip>
+</Badge>
+
+**MiniMaxTools** enable an Agent to generate videos from text prompts with [MiniMax](https://www.minimax.io/)'s video generation API. Generation is asynchronous on MiniMax's side: the tool submits the job, polls until it finishes, and returns the video as a remote URL.
+
+## Prerequisites
+
+No extra package is required beyond `agno` — the toolkit uses `httpx`, an Agno core dependency. The example also uses the `openai` library:
+
+```shell
+uv pip install -U agno openai
+```
+
+Set the `MINIMAX_API_KEY` environment variable. Get your key from [MiniMax's platform](https://platform.minimax.io/).
+
+```shell
+export MINIMAX_API_KEY=***
+```
+
+Without the key, construction logs an error and every call returns "Please set the MINIMAX_API_KEY" as the tool result.
+
+## Example
+
+```python cookbook/91_tools/minimax_tools.py
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.tools.minimax import MiniMaxTools
+
+minimax_agent = Agent(
+    name="MiniMax Video Generator Agent",
+    model=OpenAIResponses(id="gpt-5.6-luna"),
+    tools=[
+        MiniMaxTools(
+            # Use region="cn_zh" for the mainland China endpoint.
+            region="global_en",
+            model="MiniMax-H3",
+        )
+    ],
+    description="You are an AI agent that can generate videos using the MiniMax API.",
+    instructions=[
+        "When the user asks you to create a video, use the `generate_video` tool.",
+        "Duration is given in whole seconds, from 4 through 15.",
+        "Return the URL as raw to the user.",
+    ],
+    markdown=True,
+)
+
+minimax_agent.print_response("Generate a video of a paper boat crossing a moonlit lake")
+```
+
+## How Generation Runs
+
+`generate_video` submits the prompt, reads the task id from the response, and polls the task status every `poll_interval` seconds until MiniMax reports it succeeded, failed, or cancelled — or until `max_wait_time` is reached. The tool call blocks for the whole wait; each poll request times out at `timeout` seconds, clipped to the remaining budget.
+
+On success, the tool returns "Video generated successfully" with the video attached as an `agno.media.Video` artifact carrying a remote URL (`video/mp4`). The bytes are never downloaded — how long MiniMax serves the URL is MiniMax's side; see [MiniMax's platform docs](https://platform.minimax.io/).
+
+The tool never raises. Every failure comes back as the tool result's text: a missing task id or video URL, the failure message on a failed or cancelled task, "Video generation timed out after `max_wait_time` seconds", or "Error generating video: ..." for HTTP errors.
+
+## Custom Endpoints
+
+`region` selects the default endpoint: `"global_en"` uses `https://api.minimax.io/v2/video_generation` and `"cn_zh"` uses `https://api.minimaxi.com/v2/video_generation`. Any other value raises a `ValueError` at construction — also when `base_url` is set.
+
+`base_url`, when set, overrides the region default and must be the full video-generation endpoint. The task-status endpoint is not configurable separately: it is derived by replacing `/v2/video_generation` with `/v2/query/video_generation` in `base_url`, with the task id appended. A trailing slash is stripped.
+
+<Warning>
+A `base_url` without the `/v2/video_generation` path breaks polling: the submit request goes to the URL as-is and the status poll goes to `<base_url>/<task_id>`, failing at request time as an "Error generating video" tool result. Nothing fails at construction.
+</Warning>
+
+## Toolkit Params
+
+| Parameter | Type | Default | Description |
+| --------- | ---- | ------- | ----------- |
+| `api_key` | `Optional[str]` | `None` | MiniMax API key. If not provided, uses the `MINIMAX_API_KEY` env variable. |
+| `base_url` | `Optional[str]` | `None` | Full video-generation endpoint. Overrides `region`. See [Custom Endpoints](#custom-endpoints). |
+| `region` | `str` | `"global_en"` | Endpoint region, `"global_en"` or `"cn_zh"`. An invalid value raises a `ValueError`. |
+| `model` | `str` | `"MiniMax-H3"` | MiniMax video model id. See [MiniMax's platform docs](https://platform.minimax.io/) for available models. |
+| `poll_interval` | `float` | `5` | Seconds between task-status polls. |
+| `max_wait_time` | `float` | `600` | Wall-clock cap in seconds on one generation, submit to finish. |
+| `timeout` | `int` | `30` | Per-request HTTP timeout in seconds. |
+| `enable_generate_video` | `bool` | `True` | Enable the generate_video function. |
+| `all` | `bool` | `False` | Enable all functions. |
+
+## Toolkit Functions
+
+| Function | Description |
+| -------- | ----------- |
+| `generate_video` | Generate a video from a text prompt and return it as a remote-URL video artifact. Parameters: `prompt` (str), `resolution` (str, default="2K"), `duration` (int, seconds, default=5), `ratio` (str, default="16:9"). The toolkit validates none of these values — MiniMax's API is authoritative for the supported ranges. |
+
+The function has an async variant registered under the same name, used automatically with `arun` and `aprint_response`.
+
+## Developer Resources
+
+- [Tools](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/tools/minimax.py)
+- [Cookbook](https://github.com/agno-agi/agno/blob/main/cookbook/91_tools/minimax_tools.py)
+- [MiniMax Platform Docs](https://platform.minimax.io/)

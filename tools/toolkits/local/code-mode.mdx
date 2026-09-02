@@ -1,0 +1,114 @@
+---
+title: CodeMode
+description: "CodeMode gives an agent one persistent IPython kernel to write Python in, with its tools bound as awaitable handles."
+---
+
+<Badge icon="code-branch" color="orange">
+    <Tooltip tip="Introduced in v3.0.0" cta="View release notes" href="https://github.com/agno-agi/agno/releases/tag/v3.0.0">v3.0.0</Tooltip>
+</Badge>
+
+**CodeMode** replaces a wide tool schema with one programmable environment. The model writes Python that runs in an IPython kernel persisting for the session, so variables, imports, and helper functions survive across turns. Toolkits passed to it are not listed in the model's schema: they are bound inside the kernel as awaitable handles the code can call, composing tools with variables, loops, and helpers instead of round-tripping each call through the transcript.
+
+<Warning>
+CodeMode is not a sandbox. Cells run arbitrary Python — and, by default, `%%bash` shell commands — with the host process's permissions, and restoring a persisted snapshot is itself code execution. `allow_shell=False` removes the shell magic but is a footgun reducer, not a security boundary. For untrusted use, run the agent inside a real sandbox (container or VM).
+</Warning>
+
+## Prerequisites
+
+CodeMode requires Python 3.10 or newer. The `agno[code]` extra provides `ipykernel`, `jupyter_client`, and `dill`; the example also uses the `openai` library:
+
+```shell
+uv pip install -U "agno[code]" openai
+```
+
+## Example
+
+```python cookbook/code/01_basics/basic.py
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.tools.code import CodeMode
+
+code = CodeMode()
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.5"),
+    tools=[code],
+    instructions="Use the code environment to compute answers. Print summaries, not raw data.",
+    markdown=True,
+)
+
+try:
+    agent.print_response(
+        "Build a list of the first 200 Fibonacci numbers in the code environment, "
+        "keep it in a variable, and tell me only how many of them are even and "
+        "how many digits the largest one has.",
+        session_id="code-mode-basic",
+    )
+finally:
+    code.shutdown()
+```
+
+## How a Cell Runs
+
+The model sees two tools by default: `execute` and, unless `allow_restart=False`, `restart`. The first `execute` in a session starts an IPython kernel subprocess keyed on the run's session id — the id comes from the framework, never from a model argument — and the kernel is reused across runs in the same process until it has been idle for `idle_ttl` seconds.
+
+Toolkits and functions passed via `tools=` become awaitable handles inside the kernel: the handle name is the toolkit name with a trailing `_tools` stripped, and each function is an async stub the code can `await`. The host runs the real tool call, so `tool_hooks`, `pre_hook`/`post_hook`, and result caching still apply — and a whole cell counts as one call toward the agent's `tool_call_limit`. Tools that pause a run (`requires_confirmation`, `external_execution`, `requires_user_input`) are bound as stubs that refuse with a fixed message, because a cell cannot pause the run. The generated instructions tell the model which handles exist, that state persists, and the `%%bash` rules.
+
+Cell output returns stdout, a stderr block, the `Out[n]:` repr, or a traceback; each stream is capped at `max_output_chars` with the truncated streams named, and PNG display output is promoted to image artifacts (at most `max_images_per_cell`, each at most `max_image_bytes`).
+
+Failure modes:
+
+- An exception in the cell returns its traceback to the model as an error result.
+- A cell over `timeout` seconds is interrupted; if the kernel does not respond to the interrupt, the cell returns as aborted and the next cell must wait for the kernel to clear within `busy_wait` seconds — otherwise the model is told the environment is busy and to retry or restart. With `on_busy_kernel="restart"`, CodeMode instead restarts the kernel and re-runs the cell once.
+- A kernel that dies mid-cell reports the death; a fresh kernel starts on the next `execute`, with previous state gone.
+- A bridged tool result over `max_result_bytes` raises a `ResultTooLarge` error inside the cell, telling the model to enable result offloading or write large payloads to the file system — unless the agent has result offloading enabled, in which case the result is offloaded and the cell receives an envelope id.
+
+## Persistence
+
+With `fs=` set to an AgentFS `FileSystem` and `snapshot=True` (the default), every successful cell schedules a debounced per-variable snapshot, and a new kernel for a known session restores it before binding tools — so kernel state survives process restarts. Unpicklable or oversized variables are skipped and named in the restore notice the model sees. The snapshot caps are lowered to the FileSystem's own per-file and per-namespace limits when those are smaller, with a warning naming the reduction.
+
+A session is owned by the `user_id` of the run that created it; a later run with a different `user_id` is refused and gets no kernel. The run-end `close()` flushes pending snapshots but keeps kernels alive; call `shutdown()` to snapshot and kill them.
+
+## Teams
+
+A team leader and members share the team session id, so members sharing one CodeMode instance share one kernel namespace — and concurrent cells contend for it under the busy-kernel rules above. Share one instance when members should build on each other's variables; give members separate instances when their state must stay isolated.
+
+## Toolkit Params
+
+| Parameter | Type | Default | Description |
+| --------- | ---- | ------- | ----------- |
+| `tools` | `Optional[Sequence[Union[Toolkit, Callable, Function]]]` | `None` | Toolkits and functions to bind inside the kernel as awaitable handles. |
+| `fs` | `Optional[FileSystem]` | `None` | AgentFS file system for snapshots. Without it, `snapshot` is inert. |
+| `snapshot` | `bool` | `True` | Persist kernel variables to `fs` after successful cells and restore them for known sessions. |
+| `snapshot_debounce` | `float` | `1.5` | Seconds to debounce snapshot writes after a cell. |
+| `max_variable_bytes` | `int` | `2000000` | Per-variable snapshot cap. Lowered to the FileSystem's per-file limit when that is smaller. |
+| `max_snapshot_bytes` | `int` | `64000000` | Per-snapshot cap. Lowered to the FileSystem's per-namespace limit when that is smaller. |
+| `max_output_chars` | `int` | `65536` | Cap per output stream (stdout, stderr, result), truncating with head and tail kept. |
+| `max_result_bytes` | `int` | `1000000` | Cap on a bridged tool result entering the kernel. Over it, the cell gets a `ResultTooLarge` error unless result offloading is enabled. |
+| `allow_restart` | `bool` | `True` | Register the restart tool. |
+| `allow_shell` | `bool` | `True` | Allow `%%bash` cells. `False` removes the magic; it is not a security boundary. |
+| `on_busy_kernel` | `Literal["wait", "restart"]` | `"wait"` | What to do when a cell arrives while the kernel is busy: report busy after `busy_wait`, or restart and re-run once. |
+| `busy_wait` | `float` | `5.0` | Seconds to wait for a busy kernel to clear. |
+| `idle_ttl` | `int` | `1800` | Seconds of idleness before a kernel is evicted, snapshot flushed first. |
+| `timeout` | `Optional[int]` | `300` | Per-cell timeout in seconds. `None` waits indefinitely. |
+| `python` | `Optional[str]` | `None` | Python executable for the kernel. Defaults to the running interpreter. |
+| `cwd` | `Optional[str]` | `None` | Working directory for the kernel subprocess. |
+| `env` | `Optional[Dict[str, str]]` | `None` | Environment variables laid over the process environment for the kernel subprocess. |
+| `startup_code` | `Optional[str]` | `None` | Code run once when a kernel starts. |
+| `max_images_per_cell` | `int` | `8` | Cap on PNG images promoted from one cell's display output. |
+| `max_image_bytes` | `int` | `5000000` | Cap per promoted image. |
+| `max_kernels` | `Optional[int]` | `None` | Cap on live kernels; idle sessions are evicted least-recently-used first. `None` keeps every session until `idle_ttl`. |
+
+## Toolkit Functions
+
+| Function | Description |
+| -------- | ----------- |
+| `execute` | Run a Python cell (or a `%%bash` cell when enabled) in the session's kernel. Parameters: `code` (str). Returns the cell output, with images attached as artifacts. |
+| `restart` | Discard the kernel and all its state, including the persisted snapshot, and start fresh. Registered unless `allow_restart=False`. |
+
+Both tools have async variants registered under the same names. A developer surface exists alongside the model-facing tools — `run`, `variables`, `value`, and `shutdown`, each with an `a`-prefixed async twin — for driving or inspecting a session from your own code.
+
+## Developer Resources
+
+- [Tools](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/tools/code/code_mode.py)
+- [Cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/code)

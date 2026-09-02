@@ -350,7 +350,13 @@ Two API changes come with it:
 - **AgentOS metadata routes**: `GET /models` was removed (its data moved into
   `GET /config` under `available_models`), and `GET /` is now a minimal landing
   response. `GET /info` is the single unauthenticated metadata endpoint.
-- **Toolkits have an `id`**, used by AgentOS to reference tools stably.
+- **`Toolkit` gained an `id` parameter** as the second positional argument,
+  after `name`. Positional `tools` no longer works: `Toolkit("my_tools", [my_fn])`
+  now assigns the list to `id` and registers no tools, without an error. Pass
+  tools by keyword — `Toolkit(name="my_tools", tools=[my_fn])`. Built-in
+  toolkits are unaffected. When not passed, `id` is derived from `name`
+  (lower-cased, spaces and underscores replaced by hyphens); it is reserved —
+  nothing reads it in v3.0 except `repr()`.
 - **Schedule provenance columns**: the schedules table gains eight nullable
   columns (`managed_by`, `target_type`, `target_id`, `created_by_run_id`,
   `created_by_session_id`, `updated_by_run_id`, `updated_by_session_id`,
@@ -419,6 +425,22 @@ Two API changes come with it:
 - **Cerebras default model**: `Cerebras` and `CerebrasOpenAI` now default to
   `gpt-oss-120b` instead of `llama-4-scout-17b-16e-instruct`. Pin the old id
   explicitly if you depend on it.
+- **Groq default model**: `Groq` now defaults to `openai/gpt-oss-120b`. The old
+  default `llama-3.3-70b-versatile` was shut down by Groq on 2026-08-16 for
+  free and developer-tier keys, so pinning it returns a 404 — move to
+  `openai/gpt-oss-120b` or another current Groq model.
+- **Gemini default model**: `Gemini` now defaults to `gemini-3.7-flash` (was
+  `gemini-3.5-flash`) and `GeminiInteractions` to `gemini-3.7-flash` (was
+  `gemini-3-flash-preview`). Pin the old id explicitly if you depend on it.
+- **`agno[anthropic]` pins `anthropic>=0.77.0`**: structured output now rides
+  in `output_config`, which that SDK release introduced. If you pin the SDK
+  yourself, raise the floor; on an older SDK, a request that sets
+  `output_config` fails at send time with
+  `TypeError: ... unexpected keyword argument 'output_config'`.
+- **Redis vector store rename**: `RedisDB` -> `RedisDb`. The old spelling still
+  works as a deprecated alias with no warning. Use `RedisVectorDb` to
+  disambiguate from the `agno.db.redis.RedisDb` storage adapter when both are
+  imported in one module.
 - **`agno[postgres]` installs a working driver**: the extra previously
   installed `psycopg-binary` only, so `PostgresDb` failed with
   `ModuleNotFoundError: No module named 'sqlalchemy'`. It now pulls `psycopg`
@@ -461,6 +483,10 @@ Rename these imports and modules wherever they appear:
 - from agno.models.metrics import Metrics -> from agno.metrics import RunMetrics
 - SeltzTools kwarg max_documents= -> max_results=
 - BrandfetchTools: drop any async_tools= argument
+- from agno.vectordb.redis import RedisDB -> RedisDb (the old alias still
+  works; use RedisVectorDb when agno.db.redis.RedisDb is imported in the same module)
+- Toolkit("name", [fns]) with positional tools -> Toolkit(name="name", tools=[fns])
+  (JUDGMENT: positional tools now binds to the new id parameter and registers nothing)
 - LanceDb: drop any use_tantivy= argument
 - AgentOS(enable_mcp_server=X, mcp_config=Y) -> AgentOS(mcp_server=Y or X)
 

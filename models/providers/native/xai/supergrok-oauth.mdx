@@ -1,0 +1,177 @@
+---
+title: SuperGrok OAuth
+sidebarTitle: SuperGrok OAuth
+description: Sign in to xAI with a SuperGrok subscription and run Grok models through xAIResponses without an API key.
+---
+
+<Badge icon="code-branch" color="orange">
+    <Tooltip tip="Introduced in v3.0.0" cta="View release notes" href="https://github.com/agno-agi/agno/releases/tag/v3.0.0">v3.0.0</Tooltip>
+</Badge>
+
+**xAIResponses** runs Grok models on xAI's Responses API with two credential modes: an API key (`XAI_API_KEY`), or a SuperGrok subscription sign-in through xAI's device-code flow. This page covers the sign-in path.
+
+<Warning>
+SuperGrok sign-in works only on `xAIResponses`. The `xAI` chat class is unchanged and takes an API key only.
+</Warning>
+
+See all xAI models [here](https://docs.x.ai/docs/models).
+
+- We recommend setting `id="grok-4.3"` explicitly. The class default `grok-4-1-fast-non-reasoning-latest` is an alias xAI has retired and redirects to Grok 4.3.
+
+## Installation
+
+```bash
+uv pip install -U "agno[openai,sqlite]" cryptography
+```
+
+SuperGrok sign-in needs `openai>=1.106.0` — the first release whose client accepts a callable API key — and the `agno[openai]` extra pins it. It also needs the `cryptography` package, which is in no Agno extra: tokens are stored encrypted with Fernet. If `cryptography` is missing, nothing fails at construction, but the first successful login — and any later token refresh or load — raises `ImportError`, and the sign-in does not persist across restarts. The `agno[sqlite]` extra covers `sqlalchemy` for the examples' SQLite token store.
+
+## Authentication
+
+Set `XAI_TOKEN_ENCRYPTION_KEY` to a Fernet key. Generate one:
+
+```bash
+python -c "from agno.utils.encryption import generate_encryption_key; print(generate_encryption_key())"
+```
+
+<CodeGroup>
+
+```bash Mac
+export XAI_TOKEN_ENCRYPTION_KEY=***
+```
+
+```bash Windows
+setx XAI_TOKEN_ENCRYPTION_KEY ***
+```
+
+</CodeGroup>
+
+Token encryption is required by default. Without the key, a completed sign-in is kept in process memory but not saved — a restart signs you out, with a warning in the logs. `XAITokenManager(encrypt_tokens=False)` stores the token unencrypted and needs no key; use it for local development only.
+
+### Entitlement
+
+The device-code flow requests the OAuth scopes `openid profile email offline_access grok-cli:access api:access` from `auth.x.ai`, then calls the same `https://api.x.ai/v1` endpoints an API key would. Whether your SuperGrok subscription includes API access is decided by xAI, not by Agno — check your plan at [x.ai](https://x.ai). If it does not, the first request fails with a 403 that Agno rewrites as:
+
+```text
+xAI rejected this request (403). When signed in with SuperGrok this usually
+means the subscription tier does not include this model or API access, the
+subscription is inactive, or its quota is exhausted — note X Premium does not
+include xAI API access. Retrying or re-logging-in will not help. To use
+pay-per-token access instead, set XAI_API_KEY.
+```
+
+followed by xAI's own error message.
+
+## Example
+
+In a terminal, drive the device flow directly: show the URL and code, wait for the browser approval, and run the agent.
+
+<CodeGroup>
+
+```python oauth_device_login.py
+import time
+
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.xai import xAIResponses
+from agno.models.xai.oauth import XAITokenManager
+
+# SqliteDb is for local development only; use PostgresDb in production
+db = SqliteDb(db_file="tmp/xai_oauth.db")
+token_manager = XAITokenManager(db=db)
+
+info = token_manager.start_device_login()
+print("Open this URL and approve the sign-in:")
+print(info.verification_uri_complete)
+print("Code: " + info.user_code)
+token_manager.poll_for_token(
+    info.device_code, info.interval, time.time() + info.expires_in
+)
+
+agent = Agent(model=xAIResponses(id="grok-4.3", token_manager=token_manager), markdown=True)
+agent.print_response("Share a 2 sentence horror story")
+```
+
+</CodeGroup>
+
+The model string `"xai-responses:grok-4.3"` resolves to the same class. The string form constructs the model with its id only, so attach the session afterwards: `agent.model.token_manager = token_manager`.
+
+## Signing In from Chat
+
+For chatbots and web UIs, where a terminal device flow cannot run, the `XAIAuth` toolkit wraps the same manager as two agent tools: `sign_in_with_supergrok` hands back the approval link and code, and `check_supergrok_login` completes the login on a later turn. The in-flight login is stored in the database, so whichever replica handles the user's next turn can finish it. AgentOS ships no sign-in route of its own — `XAIAuth` is the only sign-in path there.
+
+An agent cannot sign in to the model it is running on: reaching the sign-in tool takes an inference call, and that call is the one with no credential yet. Put `XAIAuth` on an agent running a different model:
+
+```python
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIResponses
+from agno.models.xai import xAIResponses
+from agno.models.xai.oauth import XAITokenManager
+from agno.tools.xai_auth import XAIAuth
+
+db = SqliteDb(db_file="tmp/xai_oauth.db")
+token_manager = XAITokenManager(db=db)
+
+signin_agent = Agent(
+    model=OpenAIResponses(id="gpt-5.5"),
+    tools=[XAIAuth(token_manager=token_manager)],
+    db=db,
+    # The second turn refers back to the link handed out on the first
+    add_history_to_context=True,
+    markdown=True,
+)
+
+grok_agent = Agent(model=xAIResponses(id="grok-4.3", token_manager=token_manager), markdown=True)
+```
+
+## Token Storage
+
+Where the signed-in token lives, in order of preference:
+
+- **Database** — pass `db=` to `XAITokenManager`. Auth-token storage is implemented by the Postgres and SQLite adapters, sync and async; the table (`agno_auth_tokens` by default) is created on demand, with no migration to run. Rows are keyed by provider (`"xai"`), user id, and service (`"supergrok"`), and the token data inside the row is encrypted. Any other adapter logs a warning and falls back to the file store.
+- **File** — with no database, the token lands in `xai_token.json` relative to the process working directory (override with `token_path`), written with file mode 0600. The file holds one session: the shared deployment slot.
+- **Memory** — with encryption required but no key configured, the token stays in process memory only.
+
+A sync run (`agent.run`) with an async DB adapter cannot await the adapter: it logs a warning and falls back to the file store. Async runs (`agent.arun`) use the async adapters natively.
+
+Access tokens are refreshed automatically shortly before expiry. A refresh that fails with `invalid_grant` deletes the stored token and raises a `ModelAuthenticationError` telling the user to sign in again or set `XAI_API_KEY`.
+
+## Multiple Users
+
+Per-user sign-in keys each token to the run's `user_id`: a user who signed in through `XAIAuth` gets their own stored session, and requests for that user are sent with their token. Per-user tokens require a database — the file store holds only the deployment slot, and refuses per-user writes with a warning.
+
+Requests for an identified user with no stored session fall back to the deployment slot. Set `require_user_token=True` on `xAIResponses` to refuse that fallback: requests for a user who has not signed in then fail with a `ModelAuthenticationError` instead of silently spending the shared subscription.
+
+## Signing Out
+
+`sign_out(user_id)` on the manager deletes the stored token. It does not call a revocation endpoint — the grant lives on server-side until it expires or is revoked from the xAI account page.
+
+## Parameters
+
+| Parameter | Type | Default | Description |
+| --------- | ---- | ------- | ----------- |
+| `id` | `str` | `"grok-4-1-fast-non-reasoning-latest"` | The id of the xAI model to use |
+| `name` | `str` | `"xAIResponses"` | The name of the model |
+| `provider` | `str` | `"xAI"` | The provider of the model |
+| `api_key` | `Optional[str]` | `None` | xAI API key. When set, it wins over every sign-in field; when unset and no sign-in field is configured, falls back to the `XAI_API_KEY` env var |
+| `base_url` | `str` | `"https://api.x.ai/v1"` | The base URL for the xAI API, in both credential modes |
+| `store` | `Optional[bool]` | `False` | Whether to store the response on the provider side |
+| `token_provider` | `Optional[Callable[[], str]]` | `None` | Callable returning a bearer token, for custom token sources |
+| `async_token_provider` | `Optional[Callable[[], Awaitable[str]]]` | `None` | Async variant of `token_provider`. Cannot serve the sync client |
+| `token_manager` | `Optional[XAITokenManager]` | `None` | Manages the SuperGrok device login, token refresh, and storage |
+| `require_user_token` | `bool` | `False` | Refuse the deployment-slot fallback for identified users. Requires `token_manager` |
+
+### XAITokenManager
+
+| Parameter | Type | Default | Description |
+| --------- | ---- | ------- | ----------- |
+| `db` | `Optional[Any]` | `None` | Database for token storage. Postgres and SQLite adapters, sync and async |
+| `token_path` | `Optional[str]` | `None` | Token file path. Defaults to `xai_token.json` in the process working directory |
+| `encryption_key` | `Optional[str]` | `None` | Fernet key for token encryption. Defaults to the `XAI_TOKEN_ENCRYPTION_KEY` env var |
+| `encrypt_tokens` | `bool` | `True` | Require encryption. Without a key the token is not persisted; `False` stores plaintext (local development only) |
+| `http_client` | `Optional[httpx.Client]` | `None` | Custom httpx client for the OAuth endpoints |
+| `async_http_client` | `Optional[httpx.AsyncClient]` | `None` | Custom async httpx client for the OAuth endpoints |
+| `timeout` | `float` | `30.0` | Timeout in seconds for OAuth requests |
+
+`xAIResponses` extends [OpenResponses](/reference/models/open-responses) and accepts all of its parameters. For the API-key mode and the `xAI` chat class, see the [xAI overview](/models/providers/native/xai/overview).
