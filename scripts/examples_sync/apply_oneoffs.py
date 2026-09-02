@@ -3703,7 +3703,7 @@ $Env:OPENAI_API_KEY="your_openai_api_key_here"
 
 ## Calling it from a surface""",
         """if __name__ == "__main__":
-    agent_os.serve(app="copilot:app", port=7777)
+    agent_os.serve(app="customer_agent:app", port=7777)
 ```
 
 Supplying `cors_allowed_origins` replaces the AgentOS defaults. Include every browser and AgentOS UI origin that needs to call the backend.
@@ -3734,9 +3734,9 @@ Supplying `cors_allowed_origins` replaces the AgentOS defaults. Include every br
   <Snippet file="run-pgvector-step.mdx" />
 
   <Step title="Start AgentOS">
-    Save the code as `copilot.py`, then run:
+    Save the code as `customer_agent.py`, then run:
     ```bash
-    python copilot.py
+    python customer_agent.py
     ```
   </Step>
 </Steps>
@@ -3746,7 +3746,28 @@ Supplying `cors_allowed_origins` replaces the AgentOS defaults. Include every br
     root_sub(
         "use-cases/product-agents/serve-as-an-api.mdx",
         "async function askCopilot(message, threadId) {",
-        "async function askCopilot(message, threadId, jwt) {",
+        "async function askCustomerAgent(message, threadId, jwt) {",
+    )
+    root_sub(
+        "use-cases/product-agents/serve-as-an-api.mdx",
+        "```python copilot.py",
+        "```python customer_agent.py",
+    )
+    root_sub(
+        "use-cases/product-agents/serve-as-an-api.mdx",
+        'id="copilot"',
+        'id="customer-agent"',
+    )
+    root_sub_all(
+        "use-cases/product-agents/serve-as-an-api.mdx",
+        "/agents/copilot/runs",
+        "/agents/customer-agent/runs",
+        expected=2,
+    )
+    root_sub(
+        "use-cases/product-agents/serve-as-an-api.mdx",
+        '"agent_id": "copilot"',
+        '"agent_id": "customer-agent"',
     )
     root_sub(
         "use-cases/product-agents/serve-as-an-api.mdx",
