@@ -2,33 +2,8 @@ openapi: 3.1.0
 info:
   title: Agno API Reference
   description: The all-in-one, private, secure agent platform that runs in your cloud.
-  version: 2.7.2
+  version: 3.0.4
 paths:
-  /:
-    get:
-      tags:
-        - Home
-      summary: API Information
-      description: |-
-        Get basic information about this AgentOS API instance, including:
-
-        - API metadata and version
-        - Available capabilities overview
-        - Links to key endpoints and documentation
-      operationId: get_api_info
-      responses:
-        '200':
-          description: API information retrieved successfully
-          content:
-            application/json:
-              schema: {}
-              examples:
-                home:
-                  summary: Example home response
-                  value:
-                    name: AgentOS API
-                    id: demo-os
-                    version: 1.0.0
   /health:
     get:
       tags:
@@ -83,7 +58,11 @@ paths:
               example:
                 id: demo
                 description: Example AgentOS configuration
-                available_models: []
+                available_models:
+                  - id: gpt-4
+                    provider: openai
+                  - id: claude-3-sonnet
+                    provider: anthropic
                 databases:
                   - 9c884dc4-9066-448c-9074-ef49ec7eb73c
                 session:
@@ -148,61 +127,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): config:read'
       security:
-        - HTTPBearer: []
-  /models:
-    get:
-      tags:
-        - Core
-      summary: Get Available Models
-      description: Retrieve a list of all unique models currently used by agents and teams in this OS instance. This includes the model ID and provider information for each model.
-      operationId: get_models
-      responses:
-        '200':
-          description: List of models retrieved successfully
-          content:
-            application/json:
-              schema:
-                items:
-                  $ref: '#/components/schemas/Model'
-                type: array
-                title: Response Get Models
-              example:
-                - id: gpt-4
-                  provider: openai
-                - id: claude-3-sonnet
-                  provider: anthropic
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BadRequestResponse'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UnauthenticatedResponse'
-        '404':
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NotFoundResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationErrorResponse'
-        '500':
-          description: Internal Server Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InternalServerErrorResponse'
-      security:
+        - {}
         - HTTPBearer: []
   /agents/{agent_id}/runs:
     post:
@@ -223,6 +151,7 @@ paths:
         When `stream=true`, returns SSE events with `event` and `data` fields.
       operationId: create_agent_run
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: agent_id
@@ -281,6 +210,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): agents:run'
     get:
       tags:
         - Agents
@@ -291,6 +222,7 @@ paths:
         Useful for monitoring background runs and viewing run history.
       operationId: list_agent_runs
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: agent_id
@@ -353,6 +285,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): agents:read'
   /agents/{agent_id}/runs/{run_id}/cancel:
     post:
       tags:
@@ -364,6 +298,7 @@ paths:
         **Note:** Cancellation may not be immediate for all operations.
       operationId: cancel_agent_run
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: agent_id
@@ -424,13 +359,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): agents:run'
   /agents/{agent_id}/runs/{run_id}/continue:
     post:
       tags:
         - Agents
       summary: Continue Agent Run
       description: |-
-        Advance a persisted agent run from its current state. Dispatches on the body shape and the persisted run state (see ADR-003 in specs/agno/features/checkpointing/decisions.md).
+        Advance a persisted agent run from its current state. Dispatches on the body shape and the persisted run state.
 
         **Variants:**
         - PAUSED + tools provided → apply HITL tool results, resume
@@ -442,6 +379,7 @@ paths:
         JSON string containing array of tool execution objects with results. Optional — only required when the persisted run has unresolved HITL requirements.
       operationId: continue_agent_run
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: agent_id
@@ -504,6 +442,8 @@ paths:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
         '403':
           description: Run has a pending admin approval and cannot be continued by the user yet.
+        '409':
+          description: 'Continuation conflict: a durable queue ticket owns this run''s continuation (continue it with background=true), or a continuation is already queued or executing. Runs in any state can be continued - a COMPLETED run forks into a follow-up; RUNNING/ERROR runs resume.'
   /agents/{agent_id}/sessions/{session_id}/fork:
     post:
       tags:
@@ -515,6 +455,7 @@ paths:
         Distinct from ``/continue?fork=true``: that creates a sibling **run** inside the **same** session. This creates a sibling **session**.
       operationId: fork_agent_session
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: agent_id
@@ -643,7 +584,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): agents:read'
       security:
+        - {}
         - HTTPBearer: []
   /agents/{agent_id}:
     get:
@@ -662,6 +606,7 @@ paths:
         - System prompts and response formatting options
       operationId: get_agent
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: agent_id
@@ -722,6 +667,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): agents:read'
   /agents/{agent_id}/runs/{run_id}:
     get:
       tags:
@@ -733,6 +680,7 @@ paths:
         Requires the `session_id` that was returned when the run was created.
       operationId: get_agent_run
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: agent_id
@@ -791,6 +739,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): agents:read'
   /agents/{agent_id}/runs/{run_id}/checkpoints:
     get:
       tags:
@@ -799,6 +749,7 @@ paths:
       description: List FE-friendly continuation boundaries derived from the current stored run. No separate checkpoint table is used; entries are inferred from message-level checkpoint markers and the terminal end of the transcript.
       operationId: list_agent_run_checkpoints
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: agent_id
@@ -826,7 +777,81 @@ paths:
           description: Run checkpoints retrieved successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - run_id
+                  - session_id
+                  - checkpoints
+                properties:
+                  run_id:
+                    type: string
+                  session_id:
+                    type: string
+                  checkpoints:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required:
+                        - checkpoint_id
+                        - run_id
+                        - session_id
+                        - message_index
+                        - continue_from
+                        - status
+                        - reason
+                        - created_at
+                        - message_id
+                        - message_role
+                        - message_preview
+                        - is_latest
+                      properties:
+                        checkpoint_id:
+                          type: string
+                        run_id:
+                          type:
+                            - string
+                            - 'null'
+                        session_id:
+                          type:
+                            - string
+                            - 'null'
+                        message_index:
+                          type: integer
+                          minimum: 0
+                        continue_from:
+                          type: integer
+                          minimum: 0
+                        status:
+                          type:
+                            - string
+                            - 'null'
+                        reason:
+                          type: string
+                          enum:
+                            - checkpoint
+                            - end
+                        created_at:
+                          type:
+                            - integer
+                            - 'null'
+                        message_id:
+                          type:
+                            - string
+                            - 'null'
+                        message_role:
+                          type:
+                            - string
+                            - 'null'
+                        message_preview:
+                          type:
+                            - string
+                            - 'null'
+                          maxLength: 120
+                        is_latest:
+                          type: boolean
         '400':
           description: Bad Request
           content:
@@ -857,6 +882,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): agents:read'
   /agents/{agent_id}/runs/{run_id}/checkpoints/{message_index}:
     get:
       tags:
@@ -865,6 +892,7 @@ paths:
       description: Return a derived run snapshot truncated at a message boundary. Use the returned message_index as `continue_from` when continuing this run.
       operationId: get_agent_run_checkpoint_snapshot
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: agent_id
@@ -898,9 +926,81 @@ paths:
           description: Run checkpoint snapshot retrieved successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - checkpoint
+                  - snapshot
+                properties:
+                  checkpoint:
+                    type: object
+                    additionalProperties: false
+                    required:
+                      - checkpoint_id
+                      - run_id
+                      - session_id
+                      - message_index
+                      - continue_from
+                      - status
+                      - reason
+                      - created_at
+                      - message_id
+                      - message_role
+                      - message_preview
+                      - is_latest
+                    properties:
+                      checkpoint_id:
+                        type:
+                          - string
+                          - 'null'
+                      run_id:
+                        type:
+                          - string
+                          - 'null'
+                      session_id:
+                        type:
+                          - string
+                          - 'null'
+                      message_index:
+                        type: integer
+                        minimum: 0
+                      continue_from:
+                        type: integer
+                        minimum: 0
+                      status:
+                        type:
+                          - string
+                          - 'null'
+                      reason:
+                        type: string
+                        enum:
+                          - snapshot
+                      created_at:
+                        type:
+                          - integer
+                          - 'null'
+                      message_id:
+                        type:
+                          - string
+                          - 'null'
+                      message_role:
+                        type:
+                          - string
+                          - 'null'
+                      message_preview:
+                        type:
+                          - string
+                          - 'null'
+                        maxLength: 120
+                      is_latest:
+                        type: boolean
+                  snapshot:
+                    type: object
+                    additionalProperties: true
+                    description: Serialized AgentRunOutput truncated at the selected message boundary
         '400':
-          description: Invalid checkpoint message index
+          description: The message index is invalid or checkpoint snapshots are unavailable for remote agents
           content:
             application/json:
               schema:
@@ -929,6 +1029,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: The caller cannot run this agent
   /agents/{agent_id}/runs/{run_id}/resume:
     post:
       tags:
@@ -948,6 +1050,7 @@ paths:
         Track `event_index` from each SSE event. On reconnection, pass the last received `event_index` as `last_event_index`.
       operationId: resume_agent_run_stream
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: agent_id
@@ -1023,6 +1126,7 @@ paths:
         When `stream=true`, returns SSE events with `event` and `data` fields.
       operationId: create_team_run
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: team_id
@@ -1078,6 +1182,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): teams:run'
     get:
       tags:
         - Teams
@@ -1088,6 +1194,7 @@ paths:
         Useful for monitoring background runs and viewing run history.
       operationId: list_team_runs
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: team_id
@@ -1110,16 +1217,27 @@ paths:
           schema:
             anyOf:
               - type: string
+                enum: &id001
+                  - PENDING
+                  - RUNNING
+                  - COMPLETED
+                  - PAUSED
+                  - CANCELLED
+                  - ERROR
+                  - REGENERATED
               - type: 'null'
-            description: Filter by run status (PENDING, RUNNING, COMPLETED, ERROR)
+            description: Filter by run status (PENDING, RUNNING, COMPLETED, PAUSED, CANCELLED, ERROR, REGENERATED)
             title: Status
-          description: Filter by run status (PENDING, RUNNING, COMPLETED, ERROR)
+          description: Filter by run status (PENDING, RUNNING, COMPLETED, PAUSED, CANCELLED, ERROR, REGENERATED)
       responses:
         '200':
           description: List of runs retrieved successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TeamRunSchema'
         '400':
           description: Bad Request
           content:
@@ -1150,6 +1268,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: Access denied to run this team
   /teams/{team_id}/runs/{run_id}/cancel:
     post:
       tags:
@@ -1161,6 +1281,7 @@ paths:
         **Note:** Cancellation may not be immediate for all operations.
       operationId: cancel_team_run
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: team_id
@@ -1221,6 +1342,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): teams:run'
   /teams/{team_id}/runs/{run_id}/resume:
     post:
       tags:
@@ -1240,6 +1363,7 @@ paths:
         Track `event_index` from each SSE event. On reconnection, pass the last received `event_index` as `last_event_index`.
       operationId: resume_team_run_stream
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: team_id
@@ -1314,6 +1438,7 @@ paths:
         Can be empty when an admin-required approval has been resolved.
       operationId: continue_team_run
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: team_id
@@ -1377,7 +1502,27 @@ paths:
         '403':
           description: Run has a pending admin approval and cannot be continued by the user yet.
         '409':
-          description: Run is not paused (e.g. run is already running, continued, or errored). Only PAUSED runs can be continued.
+          description: 'Continuation conflict: a durable queue ticket owns this run''s continuation (continue it with background=true), or a continuation is already queued or executing. Runs in any state can be continued - a COMPLETED run forks into a follow-up; RUNNING/ERROR runs resume.'
+        '202':
+          description: Durable background continuation accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - run_id
+                  - session_id
+                  - status
+                properties:
+                  run_id:
+                    type: string
+                  session_id:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - PENDING
   /teams/{team_id}/sessions/{session_id}/fork:
     post:
       tags:
@@ -1389,6 +1534,7 @@ paths:
         Distinct from ``/continue?fork=true``: that creates a sibling **run** inside the **same** session. This creates a sibling **session**.
       operationId: fork_team_session
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: team_id
@@ -1451,15 +1597,8 @@ paths:
     get:
       tags:
         - Teams
-      summary: List All Teams
-      description: |-
-        Retrieve a comprehensive list of all teams configured in this OS instance.
-
-        **Returns team information including:**
-        - Team metadata (ID, name, description, execution mode)
-        - Model configuration for team coordination
-        - Team member roster with roles and capabilities
-        - Knowledge sharing and memory configurations
+      summary: List Accessible Teams
+      description: Retrieve the teams visible to the authenticated principal. Administrators can access the complete roster. Scoped callers receive only teams allowed by their permissions.
       operationId: get_teams
       responses:
         '200':
@@ -1556,7 +1695,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: Insufficient permission to list teams
       security:
+        - {}
         - HTTPBearer: []
   /teams/{team_id}:
     get:
@@ -1566,6 +1708,7 @@ paths:
       description: Retrieve detailed configuration and member information for a specific team.
       operationId: get_team
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: team_id
@@ -1665,6 +1808,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): teams:read'
   /teams/{team_id}/runs/{run_id}:
     get:
       tags:
@@ -1676,6 +1821,7 @@ paths:
         Requires the `session_id` that was returned when the run was created.
       operationId: get_team_run
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: team_id
@@ -1703,7 +1849,27 @@ paths:
           description: Run output retrieved successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/TeamRunSchema'
+                  - type: object
+                    additionalProperties: false
+                    required:
+                      - run_id
+                      - session_id
+                      - status
+                    properties:
+                      run_id:
+                        type: string
+                      session_id:
+                        type: string
+                      status:
+                        type: string
+                        enum: *id001
+                      content:
+                        type:
+                          - string
+                          - 'null'
         '400':
           description: Bad Request
           content:
@@ -1734,6 +1900,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: Insufficient permissions. Requires teams:read and run access to the requested team
   /teams/{team_id}/runs/{run_id}/checkpoints:
     get:
       tags:
@@ -1742,6 +1910,7 @@ paths:
       description: List FE-friendly continuation boundaries derived from the current stored team run. No separate checkpoint table is used; entries are inferred from message-level checkpoint markers and the terminal end of the transcript.
       operationId: list_team_run_checkpoints
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: team_id
@@ -1800,6 +1969,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): teams:read'
   /teams/{team_id}/runs/{run_id}/checkpoints/{message_index}:
     get:
       tags:
@@ -1808,6 +1979,7 @@ paths:
       description: Return a derived team run snapshot truncated at a message boundary. Use the returned message_index as `continue_from` when continuing this run.
       operationId: get_team_run_checkpoint_snapshot
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: team_id
@@ -1872,19 +2044,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): teams:read'
   /workflows:
     get:
       tags:
         - Workflows
       summary: List All Workflows
-      description: |-
-        Retrieve a comprehensive list of all workflows configured in this OS instance.
-
-        **Return Information:**
-        - Workflow metadata (ID, name, description)
-        - Input schema requirements
-        - Step sequence and execution flow
-        - Associated agents and teams
+      description: Retrieve summary records for the workflows configured in this AgentOS instance. Each item includes identifiers, metadata, database association, factory or component flags, and published stage or version fields when applicable. Use `GET /workflows/{workflow_id}` for input schemas, steps, agents, and teams.
       operationId: get_workflows
       responses:
         '200':
@@ -1931,7 +2098,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: The caller has no accessible workflow scopes
       security:
+        - {}
         - HTTPBearer: []
   /workflows/{workflow_id}:
     get:
@@ -1941,6 +2111,7 @@ paths:
       description: Retrieve detailed configuration and step information for a specific workflow.
       operationId: get_workflow
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: workflow_id
@@ -2001,6 +2172,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): workflows:read'
   /workflows/{workflow_id}/runs:
     post:
       tags:
@@ -2024,6 +2197,7 @@ paths:
         Workflows support session continuity for stateful execution across multiple runs.
       operationId: create_workflow_run
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: workflow_id
@@ -2043,11 +2217,12 @@ paths:
           description: Workflow executed successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/WorkflowRunSchema'
             text/event-stream:
               example: |+
-                event: RunStarted
-                data: {"content": "Hello!", "run_id": "123..."}
+                event: WorkflowStarted
+                data: {"event": "WorkflowStarted", "workflow_id": "workflow-123", "session_id": "session-123", "run_id": "run-123", "nested_depth": 0, "created_at": 1770000000}
 
         '400':
           description: Invalid input data or workflow configuration
@@ -2079,6 +2254,31 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '202':
+          description: Workflow accepted for background execution
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - run_id
+                  - session_id
+                  - status
+                properties:
+                  run_id:
+                    type: string
+                  session_id:
+                    type: string
+                  status:
+                    type: string
+                    enum: *id001
+        '409':
+          description: The idempotency key conflicts with an incompatible or unrecoverable run
+        '429':
+          description: The durable workflow queue is full
+        '403':
+          description: 'Insufficient permissions. Required scope(s): workflows:run'
     get:
       tags:
         - Workflows
@@ -2089,6 +2289,7 @@ paths:
         Useful for monitoring background runs and viewing run history.
       operationId: list_workflow_runs
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: workflow_id
@@ -2111,10 +2312,11 @@ paths:
           schema:
             anyOf:
               - type: string
+                enum: *id001
               - type: 'null'
-            description: Filter by run status (PENDING, RUNNING, COMPLETED, ERROR, PAUSED)
+            description: Filter by run status (PENDING, RUNNING, COMPLETED, PAUSED, CANCELLED, ERROR, REGENERATED)
             title: Status
-          description: Filter by run status (PENDING, RUNNING, COMPLETED, ERROR, PAUSED)
+          description: Filter by run status (PENDING, RUNNING, COMPLETED, PAUSED, CANCELLED, ERROR, REGENERATED)
         - name: factory_input
           in: query
           required: false
@@ -2130,7 +2332,10 @@ paths:
           description: List of runs retrieved successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkflowRunSchema'
         '400':
           description: Bad Request
           content:
@@ -2161,6 +2366,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: Access denied to run this workflow
   /workflows/{workflow_id}/runs/{run_id}/continue:
     post:
       tags:
@@ -2177,6 +2384,7 @@ paths:
         JSON string containing the resolved step requirements.
       operationId: continue_workflow_run
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: workflow_id
@@ -2239,6 +2447,8 @@ paths:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
         '409':
           description: Run is not paused. Only PAUSED runs can be continued.
+        '403':
+          description: 'Insufficient permissions. Required scope(s): workflows:run'
   /workflows/{workflow_id}/runs/{run_id}/cancel:
     post:
       tags:
@@ -2249,6 +2459,7 @@ paths:
         **Note:** Complex workflows with multiple parallel steps may take time to fully cancel.
       operationId: cancel_workflow_run
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: workflow_id
@@ -2309,6 +2520,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): workflows:run'
   /workflows/{workflow_id}/runs/{run_id}/resume:
     post:
       tags:
@@ -2328,6 +2541,7 @@ paths:
         Track `event_index` from each SSE event. On reconnection, pass the last received `event_index` as `last_event_index`.
       operationId: resume_workflow_run_stream
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: workflow_id
@@ -2395,6 +2609,7 @@ paths:
         Requires the `session_id` that was returned when the run was created.
       operationId: get_workflow_run
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: workflow_id
@@ -2432,7 +2647,27 @@ paths:
           description: Run output retrieved successfully
           content:
             application/json:
-              schema: {}
+              schema:
+                anyOf:
+                  - $ref: '#/components/schemas/WorkflowRunSchema'
+                  - type: object
+                    additionalProperties: false
+                    required:
+                      - run_id
+                      - session_id
+                      - status
+                    properties:
+                      run_id:
+                        type: string
+                      session_id:
+                        type: string
+                      status:
+                        type: string
+                        enum: *id001
+                      content:
+                        type:
+                          - string
+                          - 'null'
         '400':
           description: Bad Request
           content:
@@ -2463,6 +2698,285 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): workflows:read'
+  /queue/jobs:
+    get:
+      tags:
+        - Queue
+      summary: List Queue Jobs
+      description: 'List job queue jobs, optionally filtered by status. Repeat the status param to match any of several (e.g. status=failed&status=cancelled for the requeueable set; status=failed alone is the dead-letter list). Useful sort_by fields: created_at (default), updated_at, completed_at, status, attempt, component_type, component_id, user_id. Unknown sort fields are ignored.'
+      operationId: list_queue_jobs
+      security:
+        - {}
+        - HTTPBearer: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: array
+                items:
+                  type: string
+              - type: 'null'
+            description: Status filter; repeatable to match any of several statuses
+            title: Status
+          description: Status filter; repeatable to match any of several statuses
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            maximum: 1000
+            minimum: 1
+            description: Number of jobs to return per page
+            default: 20
+            title: Limit
+          description: Number of jobs to return per page
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            description: Page number for pagination
+            default: 1
+            title: Page
+          description: Page number for pagination
+        - name: sort_by
+          in: query
+          required: false
+          schema:
+            type: string
+            description: Field to sort jobs by
+            default: created_at
+            title: Sort By
+          description: Field to sort jobs by
+        - name: sort_order
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/SortOrder'
+            description: Sort order (asc or desc)
+            default: desc
+          description: Sort order (asc or desc)
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponse_QueueJobSchema_'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: Durable job queue not enabled on this replica
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          description: Job queue operations require an admin scope
+  /queue/jobs/{job_id}:
+    get:
+      tags:
+        - Queue
+      summary: Get Queue Job
+      operationId: get_queue_job
+      security:
+        - {}
+        - HTTPBearer: []
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Job Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueueJobSchema'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: Durable job queue not enabled on this replica
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          description: Job queue operations require an admin scope
+  /queue/jobs/{job_id}/requeue:
+    post:
+      tags:
+        - Queue
+      summary: Requeue Failed Queue Job
+      description: 'Requeue a terminally failed or cancelled job for one more execution (raises its attempt budget by one). The operator remedy for crashed runs under the no-silent-re-execution default. Requeueing a CANCELLED job whose cancellation intent is still live requires clear_cancellation=true - an explicit override of the recorded cancel; without it the re-driven attempt is re-cancelled at its first checkpoint. Requeueing a job that FAILED within the last lock_grace seconds requires force=true: its worker may still be executing (swept-but-alive), and a second producer would race unfenced writes.'
+      operationId: requeue_queue_job
+      security:
+        - {}
+        - HTTPBearer: []
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: Job Id
+        - name: clear_cancellation
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+            title: Clear Cancellation
+        - name: force
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+            title: Force
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueueJobSchema'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: Durable job queue not enabled on this replica
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          description: Job queue operations require an admin scope
+        '409':
+          description: The failed job may still be executing within the lock grace period; retry later or pass force=true
+  /queue/stats:
+    get:
+      tags:
+        - Queue
+      summary: Queue Stats
+      description: Job counts by status and the oldest queued job's age - the queue-health signals to alert on.
+      operationId: get_queue_stats
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: Durable job queue not enabled on this replica
+        '403':
+          description: Job queue operations require an admin scope
+      security:
+        - {}
+        - HTTPBearer: []
   /slack/events:
     post:
       tags:
@@ -2514,6 +3028,36 @@ paths:
           schema:
             type: string
           description: Retry attempt number (present on retried events)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              required:
+                - type
+              properties:
+                type:
+                  type: string
+            examples:
+              url_verification:
+                summary: URL verification challenge
+                value:
+                  type: url_verification
+                  challenge: challenge-token
+                  token: verification-token
+              event_callback:
+                summary: App mention event
+                value:
+                  type: event_callback
+                  team_id: T01234567
+                  event:
+                    type: app_mention
+                    user: U01234567
+                    text: <@U76543210> summarize this thread
+                    ts: '1712345678.123456'
+                    channel: C01234567
   /slack/interactions:
     post:
       tags:
@@ -2659,6 +3203,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): agents:run'
+      security:
+        - {}
+        - HTTPBearer: []
   /status:
     get:
       tags:
@@ -2670,7 +3219,19 @@ paths:
           description: Successful Response
           content:
             application/json:
-              schema: {}
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - status
+                properties:
+                  status:
+                    type: string
+                    enum:
+                      - available
+      security:
+        - {}
+        - HTTPBearer: []
   /a2a/agents/{id}/.well-known/agent-card.json:
     get:
       tags:
@@ -2689,13 +3250,21 @@ paths:
           description: Successful Response
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/AgentCard'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '404':
+          description: Agent not found
+        '403':
+          description: 'Insufficient permissions. Required scope(s): agents:read'
+      security:
+        - {}
+        - HTTPBearer: []
   /a2a/agents/{id}/v1/message:send:
     post:
       tags:
@@ -2741,6 +3310,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): agents:run'
+      security:
+        - {}
+        - HTTPBearer: []
   /a2a/agents/{id}/v1/tasks:get:
     post:
       tags:
@@ -2760,13 +3334,56 @@ paths:
           description: Successful Response
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/SendMessageSuccessResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '400':
+          description: Missing task ID, unsupported RemoteAgent, or missing context ID
+        '404':
+          description: Agent or task not found
+        '501':
+          description: Task retrieval is not supported for this agent type
+        '403':
+          description: 'Insufficient permissions. Required scope(s): agents:read'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              required:
+                - params
+              properties:
+                id:
+                  type:
+                    - string
+                    - integer
+                    - 'null'
+                params:
+                  type: object
+                  additionalProperties: true
+                  required:
+                    - id
+                    - contextId
+                  properties:
+                    id:
+                      type: string
+                    contextId:
+                      type: string
+            example:
+              id: request-1
+              params:
+                id: task-1
+                contextId: context-1
+      security:
+        - {}
+        - HTTPBearer: []
   /a2a/agents/{id}/v1/tasks:cancel:
     post:
       tags:
@@ -2793,12 +3410,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): agents:run'
+      security:
+        - {}
+        - HTTPBearer: []
   /a2a/agents/{id}/v1/message:stream:
     post:
       tags:
         - A2A
       summary: Stream Message Agent
-      description: 'Stream a message to an Agno Agent (streaming). The Agent is identified via the path parameter ''{id}''. Optional: Pass user ID via X-User-ID header (recommended) or ''userId'' in params.message.metadata. Returns real-time updates as newline-delimited JSON (NDJSON).'
+      description: 'Stream a message to an Agno Agent (streaming). The Agent is identified via the path parameter ''{id}''. Optional: Pass user ID via X-User-ID header (recommended) or ''userId'' in params.message.metadata. Returns real-time updates as server-sent events (SSE).'
       operationId: stream_message_agent
       parameters:
         - name: id
@@ -2811,8 +3433,6 @@ paths:
         '200':
           description: Streaming response with task updates
           content:
-            application/json:
-              schema: {}
             text/event-stream:
               example: |+
                 event: TaskStatusUpdateEvent
@@ -2831,6 +3451,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): agents:run'
+      security:
+        - {}
+        - HTTPBearer: []
   /a2a/teams/{id}/.well-known/agent-card.json:
     get:
       tags:
@@ -2849,13 +3474,21 @@ paths:
           description: Successful Response
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/AgentCard'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '404':
+          description: Team not found
+        '403':
+          description: 'Insufficient permissions. Required scope(s): teams:read'
+      security:
+        - {}
+        - HTTPBearer: []
   /a2a/teams/{id}/v1/message:send:
     post:
       tags:
@@ -2901,6 +3534,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): teams:run'
+      security:
+        - {}
+        - HTTPBearer: []
   /a2a/teams/{id}/v1/tasks:get:
     post:
       tags:
@@ -2927,6 +3565,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): teams:read'
+      security:
+        - {}
+        - HTTPBearer: []
   /a2a/teams/{id}/v1/tasks:cancel:
     post:
       tags:
@@ -2953,12 +3596,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): teams:run'
+      security:
+        - {}
+        - HTTPBearer: []
   /a2a/teams/{id}/v1/message:stream:
     post:
       tags:
         - A2A
       summary: Stream Message Team
-      description: 'Stream a message to an Agno Team (streaming). The Team is identified via the path parameter ''{id}''. Optional: Pass user ID via X-User-ID header (recommended) or ''userId'' in params.message.metadata. Returns real-time updates as newline-delimited JSON (NDJSON).'
+      description: 'Stream a message to an Agno Team (streaming). The Team is identified via the path parameter ''{id}''. Optional: Pass user ID via X-User-ID header (recommended) or ''userId'' in params.message.metadata. Returns real-time updates as server-sent events (SSE).'
       operationId: stream_message_team
       parameters:
         - name: id
@@ -2971,8 +3619,6 @@ paths:
         '200':
           description: Streaming response with task updates
           content:
-            application/json:
-              schema: {}
             text/event-stream:
               example: |+
                 event: TaskStatusUpdateEvent
@@ -2991,6 +3637,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): teams:run'
+      security:
+        - {}
+        - HTTPBearer: []
   /a2a/workflows/{id}/.well-known/agent-card.json:
     get:
       tags:
@@ -3009,13 +3660,21 @@ paths:
           description: Successful Response
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/AgentCard'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '404':
+          description: Workflow not found
+        '403':
+          description: 'Insufficient permissions. Required scope(s): workflows:read'
+      security:
+        - {}
+        - HTTPBearer: []
   /a2a/workflows/{id}/v1/message:send:
     post:
       tags:
@@ -3061,12 +3720,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): workflows:run'
+      security:
+        - {}
+        - HTTPBearer: []
   /a2a/workflows/{id}/v1/message:stream:
     post:
       tags:
         - A2A
       summary: Stream Message Workflow
-      description: 'Stream a message to an Agno Workflow (streaming). The Workflow is identified via the path parameter ''{id}''. Optional: Pass user ID via X-User-ID header (recommended) or ''userId'' in params.message.metadata. Returns real-time updates as newline-delimited JSON (NDJSON).'
+      description: 'Stream a message to an Agno Workflow (streaming). The Workflow is identified via the path parameter ''{id}''. Optional: Pass user ID via X-User-ID header (recommended) or ''userId'' in params.message.metadata. Returns real-time updates as server-sent events (SSE).'
       operationId: stream_message_workflow
       parameters:
         - name: id
@@ -3079,8 +3743,6 @@ paths:
         '200':
           description: Streaming response with task updates
           content:
-            application/json:
-              schema: {}
             text/event-stream:
               example: |+
                 event: TaskStatusUpdateEvent
@@ -3099,63 +3761,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /a2a/message/send:
-    post:
-      tags:
-        - A2A
-      summary: Send Message
-      description: '[DEPRECATED] Send a message to an Agno Agent, Team, or Workflow. The Agent, Team or Workflow is identified via the ''agentId'' field in params.message or X-Agent-ID header. Optional: Pass user ID via X-User-ID header (recommended) or ''userId'' in params.message.metadata.'
-      operationId: send_message
-      responses:
-        '200':
-          description: Message sent successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SendMessageSuccessResponse'
-              example:
-                jsonrpc: '2.0'
-                id: request-123
-                result:
-                  task:
-                    id: task-456
-                    context_id: context-789
-                    status: completed
-                    history:
-                      - message_id: msg-1
-                        role: agent
-                        parts:
-                          - kind: text
-                            text: Response from agent
-        '400':
-          description: Invalid request or unsupported method
-        '404':
-          description: Agent, Team, or Workflow not found
-  /a2a/message/stream:
-    post:
-      tags:
-        - A2A
-      summary: Stream Message
-      description: '[DEPRECATED] Stream a message to an Agno Agent, Team, or Workflow. The Agent, Team or Workflow is identified via the ''agentId'' field in params.message or X-Agent-ID header. Optional: Pass user ID via X-User-ID header (recommended) or ''userId'' in params.message.metadata. Returns real-time updates as newline-delimited JSON (NDJSON).'
-      operationId: stream_message
-      responses:
-        '200':
-          description: Streaming response with task updates
-          content:
-            application/json:
-              schema: {}
-            text/event-stream:
-              example: |+
-                event: TaskStatusUpdateEvent
-                data: {"jsonrpc":"2.0","id":"request-123","result":{"taskId":"task-456","status":"working"}}
-
-                event: Message
-                data: {"jsonrpc":"2.0","id":"request-123","result":{"messageId":"msg-1","role":"agent","parts":[{"kind":"text","text":"Response"}]}}
-
-        '400':
-          description: Invalid request or unsupported method
-        '404':
-          description: Agent, Team, or Workflow not found
+        '403':
+          description: 'Insufficient permissions. Required scope(s): workflows:run'
+      security:
+        - {}
+        - HTTPBearer: []
   /sessions:
     get:
       tags:
@@ -3164,6 +3774,7 @@ paths:
       description: Retrieve paginated list of sessions with filtering and sorting options. Supports filtering by session type (agent, team, workflow), component, user, and name. Sessions represent conversation histories and execution contexts.
       operationId: get_sessions
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: type
@@ -3319,6 +3930,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): sessions:read'
     post:
       tags:
         - Sessions
@@ -3326,6 +3939,7 @@ paths:
       description: Create a new empty session with optional configuration. Useful for pre-creating sessions with specific session_state, metadata, or other properties before running any agent/team/workflow interactions. The session can later be used by providing its session_id in run requests.
       operationId: create_session
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: type
@@ -3409,6 +4023,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '409':
+          description: A session with the supplied session_id already exists
+        '403':
+          description: 'Insufficient permissions. Required scope(s): sessions:write'
     delete:
       tags:
         - Sessions
@@ -3416,6 +4034,7 @@ paths:
       description: Delete multiple sessions by their IDs in a single operation. This action cannot be undone and will permanently remove all specified sessions and their runs.
       operationId: delete_sessions
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: user_id
@@ -3448,6 +4067,15 @@ paths:
             description: Table to use for deletion
             title: Table
           description: Table to use for deletion
+        - name: delete_media
+          in: query
+          required: false
+          schema:
+            type: boolean
+            description: Also delete the sessions' offloaded media from media storage
+            default: false
+            title: Delete Media
+          description: Also delete the sessions' offloaded media from media storage
       requestBody:
         required: true
         content:
@@ -3487,6 +4115,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): sessions:delete'
   /sessions/{session_id}:
     get:
       tags:
@@ -3495,6 +4125,7 @@ paths:
       description: Retrieve detailed information about a specific session including metadata, configuration, and run history. Response schema varies based on session type (agent, team, or workflow).
       operationId: get_session_by_id
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: session_id
@@ -3653,6 +4284,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): sessions:read'
     delete:
       tags:
         - Sessions
@@ -3660,6 +4293,7 @@ paths:
       description: Permanently delete a specific session and all its associated runs. This action cannot be undone and will remove all conversation history.
       operationId: delete_session
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: session_id
@@ -3700,6 +4334,15 @@ paths:
             description: Table to use for deletion
             title: Table
           description: Table to use for deletion
+        - name: delete_media
+          in: query
+          required: false
+          schema:
+            type: boolean
+            description: Also delete the session's offloaded media from media storage
+            default: false
+            title: Delete Media
+          description: Also delete the session's offloaded media from media storage
       responses:
         '204':
           description: Successful Response
@@ -3733,6 +4376,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): sessions:delete'
     patch:
       tags:
         - Sessions
@@ -3740,6 +4385,7 @@ paths:
       description: Update session properties such as session_name, session_state, metadata, or summary. Use this endpoint to modify the session name, update state, add metadata, or update the session summary.
       operationId: update_session
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: session_id
@@ -3797,6 +4443,32 @@ paths:
             schema:
               $ref: '#/components/schemas/UpdateSessionRequest'
               description: Session update data
+            examples:
+              update_summary:
+                summary: Update session summary
+                value:
+                  summary:
+                    summary: The user discussed project planning with the agent.
+                    updated_at: '2025-10-21T14:30:00Z'
+              update_metadata:
+                summary: Update session metadata
+                value:
+                  metadata:
+                    tags:
+                      - planning
+                      - project
+                    priority: high
+              update_session_name:
+                summary: Update session name
+                value:
+                  session_name: Updated Session Name
+              update_session_state:
+                summary: Update session state
+                value:
+                  session_state:
+                    step: completed
+                    context: Project planning finished
+                    progress: 100
       responses:
         '200':
           description: Session updated successfully
@@ -3809,31 +4481,15 @@ paths:
                   - $ref: '#/components/schemas/WorkflowSessionDetailSchema'
                 title: Response Update Session
               examples:
-                update_summary:
-                  summary: Update session summary
+                updated_agent_session:
+                  summary: Updated agent session
                   value:
-                    summary:
+                    agent_session_id: session-123
+                    session_id: session-123
+                    session_name: Updated Session Name
+                    session_summary:
                       summary: The user discussed project planning with the agent.
                       updated_at: '2025-10-21T14:30:00Z'
-                update_metadata:
-                  summary: Update session metadata
-                  value:
-                    metadata:
-                      tags:
-                        - planning
-                        - project
-                      priority: high
-                update_session_name:
-                  summary: Update session name
-                  value:
-                    session_name: Updated Session Name
-                update_session_state:
-                  summary: Update session state
-                  value:
-                    session_state:
-                      step: completed
-                      context: Project planning finished
-                      progress: 100
         '400':
           description: Bad Request
           content:
@@ -3864,6 +4520,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): sessions:write'
   /sessions/{session_id}/runs:
     get:
       tags:
@@ -3872,6 +4530,7 @@ paths:
       description: Retrieve all runs (executions) for a specific session with optional timestamp filtering. Runs represent individual interactions or executions within a session. Response schema varies based on session type.
       operationId: get_session_runs
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: session_id
@@ -4065,6 +4724,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): sessions:read'
   /sessions/{session_id}/runs/{run_id}:
     get:
       tags:
@@ -4073,6 +4734,7 @@ paths:
       description: Retrieve a specific run by its ID from a session. Response schema varies based on the run type (agent run, team run, or workflow run).
       operationId: get_session_run
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: session_id
@@ -4183,6 +4845,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): sessions:read'
   /sessions/{session_id}/rename:
     post:
       tags:
@@ -4191,6 +4855,7 @@ paths:
       description: Update the name of an existing session. Useful for organizing and categorizing sessions with meaningful names for better identification and management.
       operationId: rename_session
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: session_id
@@ -4355,6 +5020,128 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): sessions:write'
+  /sessions/{session_id}/media/{storage_key}:
+    get:
+      tags:
+        - Media
+      summary: Fetch stored media for a session
+      description: Stream (or, with redirect=true, redirect to a freshly-signed URL for) a piece of media stored in external media storage. Scoped to the caller's session ownership; the storage_key must belong to the session.
+      operationId: get_session_media
+      security:
+        - {}
+        - HTTPBearer: []
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Session ID the media belongs to
+            title: Session Id
+          description: Session ID the media belongs to
+        - name: storage_key
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Storage key of the media to fetch
+            title: Storage Key
+          description: Storage key of the media to fetch
+        - name: type
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - $ref: '#/components/schemas/SessionType'
+              - type: 'null'
+            description: Session type (agent, team, or workflow). If not provided, auto-detected from session data.
+            title: Type
+          description: Session type (agent, team, or workflow). If not provided, auto-detected from session data.
+        - name: user_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: User ID to query session from
+            title: User Id
+          description: User ID to query session from
+        - name: db_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Database ID to query session from
+            title: Db Id
+          description: Database ID to query session from
+        - name: table
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Table to query session from
+            title: Table
+          description: Table to query session from
+        - name: redirect
+          in: query
+          required: false
+          schema:
+            type: boolean
+            description: Redirect to a freshly-signed URL instead of streaming bytes
+            default: false
+            title: Redirect
+          description: Redirect to a freshly-signed URL instead of streaming bytes
+      responses:
+        '200':
+          description: The media bytes, served with the stored mime type
+          content:
+            application/json:
+              schema: {}
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Session or media not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '500':
+          description: Media storage could not be reached
+        '501':
+          description: Remote databases are not supported
+        '503':
+          description: Media storage is not configured
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '307':
+          description: Redirect to a freshly signed HTTP or HTTPS media URL when redirect=true
+          headers:
+            Location:
+              description: Freshly signed media URL
+              schema:
+                type: string
+                format: uri
+        '403':
+          description: 'Insufficient permissions. Required scope(s): sessions:read'
   /memories:
     post:
       tags:
@@ -4363,6 +5150,7 @@ paths:
       description: Create a new user memory with content and associated topics. Memories are used to store contextual information for users across conversations.
       operationId: create_memory
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: db_id
@@ -4438,6 +5226,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): memories:write'
     delete:
       tags:
         - Memory
@@ -4445,6 +5235,7 @@ paths:
       description: Delete multiple user memories by their IDs in a single operation. This action cannot be undone and all specified memories will be permanently removed.
       operationId: delete_memories
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: db_id
@@ -4476,12 +5267,6 @@ paths:
       responses:
         '204':
           description: Memories deleted successfully
-        '400':
-          description: Invalid request - empty memory_ids list
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BadRequestResponse'
         '401':
           description: Unauthorized
           content:
@@ -4506,6 +5291,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): memories:delete'
     get:
       tags:
         - Memory
@@ -4513,6 +5300,7 @@ paths:
       description: Retrieve paginated list of user memories with filtering and search capabilities. Filter by user, agent, team, topics, or search within memory content.
       operationId: get_memories
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: user_id
@@ -4680,14 +5468,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): memories:read'
   /memories/{memory_id}:
     delete:
       tags:
         - Memory
       summary: Delete Memory
-      description: Permanently delete a specific user memory. This action cannot be undone.
+      description: Delete a specific user memory. A valid local database request returns 204 even when no memory matches the ID.
       operationId: delete_memory
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: memory_id
@@ -4744,7 +5535,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/UnauthenticatedResponse'
         '404':
-          description: Memory not found
+          description: The selected database or table was not found
           content:
             application/json:
               schema:
@@ -4761,6 +5552,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): memories:delete'
     get:
       tags:
         - Memory
@@ -4768,6 +5561,7 @@ paths:
       description: Retrieve detailed information about a specific user memory by its ID.
       operationId: get_memory
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: memory_id
@@ -4852,6 +5646,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): memories:read'
     patch:
       tags:
         - Memory
@@ -4859,6 +5655,7 @@ paths:
       description: Update an existing user memory's content and topics. Replaces the entire memory content and topic list with the provided values.
       operationId: update_memory
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: memory_id
@@ -4939,6 +5736,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): memories:write'
   /memory_topics:
     get:
       tags:
@@ -4947,6 +5746,7 @@ paths:
       description: Retrieve all unique topics associated with memories in the system. Useful for filtering and categorizing memories by topic.
       operationId: get_memory_topics
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: user_id
@@ -5029,6 +5829,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): memories:read'
   /user_memory_stats:
     get:
       tags:
@@ -5037,6 +5839,7 @@ paths:
       description: Retrieve paginated statistics about memory usage by user. Provides insights into user engagement and memory distribution across users.
       operationId: get_user_memory_stats
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: limit
@@ -5105,6 +5908,12 @@ paths:
                   - user_id: '123'
                     total_memories: 3
                     last_memory_updated_at: '2025-09-01T07:53:17Z'
+                meta:
+                  page: 1
+                  limit: 20
+                  total_pages: 1
+                  total_count: 1
+                  search_time_ms: 0
         '400':
           description: Bad Request
           content:
@@ -5135,6 +5944,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): memories:read'
   /optimize-memories:
     post:
       tags:
@@ -5143,6 +5954,7 @@ paths:
       description: Optimize all memories for a given user using the default summarize strategy. This operation combines all memories into a single comprehensive summary, achieving maximum token reduction while preserving all key information. To use a custom model, specify the model parameter in 'provider:model_id' format (e.g., 'openai:gpt-4o-mini', 'anthropic:claude-3-5-sonnet-20241022'). If not specified, uses MemoryManager's default model (gpt-4o). Set apply=false to preview optimization results without saving to database.
       operationId: optimize_memories
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: db_id
@@ -5226,6 +6038,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): memories:write'
   /learnings:
     get:
       tags:
@@ -5234,6 +6048,7 @@ paths:
       description: List learning records with pagination and optional filters. For a scoped (non-admin) caller with user isolation enabled, results are bound to that user and also include records with no owner (`user_id IS NULL`) — this covers global, agent, team, session, and entity-scoped learnings; passing a `user_id` that differs from the caller is rejected with 403. Admins and unscoped callers see all records (optionally filtered by `user_id`).
       operationId: list_learnings
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: learning_type
@@ -5415,13 +6230,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: A scoped caller cannot list learnings for another user
+        '501':
+          description: Learnings are not supported by the selected remote or configured database
     post:
       tags:
         - Learnings
       summary: Create Learning
-      description: Create a new learning record. For the identity-keyed learning types (`user_profile`, `user_memory`, `session_context`, `entity_memory`) the record id is derived deterministically from the identity fields so it reconciles with what the agent reads/writes — provide those fields (else 422), and if a record already exists the request is rejected with 409 (use PATCH to update it). Other types get a generated id. For a scoped (non-admin) caller, the body's `user_id` must be omitted/null or match the caller (mismatch → 403); admins and unscoped callers may set any `user_id`.
+      description: Create a new learning record. For the identity-keyed learning types (`user_profile`, `user_memory`, `session_context`, `entity_memory`) the record id is derived deterministically from the identity fields so it reconciles with what the agent reads/writes — provide those fields (else 422), and if a record already exists the request is rejected with 409 (use PATCH to update it). Other types get a generated id. For a scoped (non-admin) caller, the body's `user_id` must be omitted/null or match the caller (mismatch → 403); admins and unscoped callers may set any `user_id`. An `entity_memory` record whose body omits `namespace` is stored under the `global` default; the endpoint cannot see how a given store is configured, so a caller writing for a store running with `namespace="user"` or a custom namespace must pass `namespace` explicitly or the record will not be visible to it.
       operationId: create_learning
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: db_id
@@ -5487,6 +6307,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): learnings:write'
   /learnings/users:
     get:
       tags:
@@ -5495,6 +6317,7 @@ paths:
       description: 'List the users that own learning records, with a per-user count and last-updated timestamp. Intended as the entry point for a per-user view: list users here, then drill into a single user''s learnings via `GET /learnings?user_id=...`. Records with no owner (`user_id IS NULL`) are excluded. Pass `learning_type` to restrict the grouping to a single store (e.g. `user_profile` or `user_memory`). For a scoped (non-admin) caller results are bound to that user; an explicit `user_id` that differs is rejected with 403. Admins and unscoped callers list all users. Sortable by `user_id` or `last_learning_updated_at` (the default).'
       operationId: list_learning_users
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: learning_type
@@ -5616,6 +6439,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '501':
+          description: Learning-user statistics are not supported by the selected remote or configured database
+        '403':
+          description: 'Insufficient permissions. Required scope(s): learnings:read'
   /learnings/users/{user_id}:
     delete:
       tags:
@@ -5624,6 +6451,7 @@ paths:
       description: Delete the learning records owned by a user. By default removes every learning type backed by the agno_learnings table (user_profile, user_memory, and any user-scoped entity records); pass `learning_type` to restrict deletion to a single store. Records with no owner (`user_id IS NULL`) are not affected. For a scoped (non-admin) caller, only their own learnings may be deleted; a different `user_id` is rejected with 403. Admins and unscoped callers may delete any user's learnings. Returns 204 even if the user had no matching records.
       operationId: delete_learning_user
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: user_id
@@ -5697,6 +6525,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '501':
+          description: Learning deletion is not supported by the selected remote or configured database
+        '403':
+          description: 'Insufficient permissions. Required scope(s): learnings:delete'
   /learnings/{learning_id}:
     get:
       tags:
@@ -5705,6 +6537,7 @@ paths:
       description: Retrieve a single learning record by its ID.
       operationId: get_learning
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: learning_id
@@ -5772,6 +6605,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): learnings:read'
     patch:
       tags:
         - Learnings
@@ -5779,6 +6614,7 @@ paths:
       description: Update a learning record. Only `content` and `metadata` may be modified; identity fields (user_id, agent_id, team_id, etc.) are immutable. Provided fields fully replace the existing values. Records with no owner (`user_id IS NULL` — shared agent/team/session/entity learnings) are readable by any caller but may only be modified by an admin.
       operationId: update_learning
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: learning_id
@@ -5852,6 +6688,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): learnings:write'
     delete:
       tags:
         - Learnings
@@ -5859,6 +6697,7 @@ paths:
       description: Permanently delete a learning record by its ID. Records with no owner (`user_id IS NULL` — shared agent/team/session/entity learnings) may only be deleted by an admin.
       operationId: delete_learning
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: learning_id
@@ -5922,6 +6761,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '501':
+          description: Learning deletion is not supported by the selected remote or configured database
+        '403':
+          description: 'Insufficient permissions. Required scope(s): learnings:delete'
   /eval-runs:
     get:
       tags:
@@ -5930,6 +6773,7 @@ paths:
       description: Retrieve paginated evaluation runs with filtering and sorting options. Filter by agent, team, workflow, model, or evaluation type.
       operationId: get_eval_runs
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: agent_id
@@ -6115,6 +6959,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): evals:read'
     delete:
       tags:
         - Evals
@@ -6122,6 +6968,7 @@ paths:
       description: Delete multiple evaluation runs by their IDs. This action cannot be undone.
       operationId: delete_eval_runs
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: db_id
@@ -6183,6 +7030,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): evals:delete'
     post:
       tags:
         - Evals
@@ -6190,6 +7039,7 @@ paths:
       description: Run evaluation tests on agents or teams. Supports accuracy, agent-as-judge, performance, and reliability evaluations. Requires either agent_id or team_id, but not both.
       operationId: run_eval
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: db_id
@@ -6268,6 +7118,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): evals:write'
   /eval-runs/{eval_run_id}:
     get:
       tags:
@@ -6276,6 +7128,7 @@ paths:
       description: Retrieve detailed results and metrics for a specific evaluation run.
       operationId: get_eval_run
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: eval_run_id
@@ -6358,6 +7211,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): evals:read'
     patch:
       tags:
         - Evals
@@ -6365,6 +7220,7 @@ paths:
       description: Update the name or other properties of an existing evaluation run.
       operationId: update_eval_run
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: eval_run_id
@@ -6453,6 +7309,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): evals:write'
   /metrics:
     get:
       tags:
@@ -6461,6 +7319,7 @@ paths:
       description: Retrieve AgentOS metrics and analytics data for a specified date range. If no date range is specified, returns all available metrics.
       operationId: get_metrics
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: starting_date
@@ -6485,6 +7344,16 @@ paths:
             description: Ending date for metrics range (YYYY-MM-DD format)
             title: Ending Date
           description: Ending date for metrics range (YYYY-MM-DD format)
+        - name: user_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Return only this user's metrics. Ignored for non-admin callers
+            title: User Id
+          description: Return only this user's metrics. Ignored for non-admin callers
         - name: db_id
           in: query
           required: false
@@ -6514,7 +7383,7 @@ paths:
                 $ref: '#/components/schemas/MetricsResponse'
               example:
                 metrics:
-                  - id: 7bf39658-a00a-484c-8a28-67fd8a9ddb2a
+                  - id: 2025-07-31_daily
                     agent_runs_count: 5
                     agent_sessions_count: 5
                     team_runs_count: 0
@@ -6569,14 +7438,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): metrics:read'
   /metrics/refresh:
     post:
       tags:
         - Metrics
       summary: Refresh Metrics
-      description: Manually trigger recalculation of system metrics from raw data. This operation analyzes system activity logs and regenerates aggregated metrics. Useful for ensuring metrics are up-to-date or after system maintenance.
+      description: 'Manually trigger recalculation of system metrics from raw data. This operation analyzes system activity logs and regenerates aggregated metrics. Useful for ensuring metrics are up-to-date or after system maintenance. By default the refresh runs synchronously and returns the refreshed metrics. Pass background=true to run the refresh in the background instead: the endpoint returns 202 Accepted immediately and GET /metrics can be polled for results. If a background refresh is already in progress for the target database, returns status ''already_running'' without starting a new one.'
       operationId: refresh_metrics
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: db_id
@@ -6599,18 +7471,39 @@ paths:
             description: Table to use for metrics calculation
             title: Table
           description: Table to use for metrics calculation
+        - name: user_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Return only this user's metrics. Ignored for non-admin callers
+            title: User Id
+          description: Return only this user's metrics. Ignored for non-admin callers
+        - name: background
+          in: query
+          required: false
+          schema:
+            type: boolean
+            description: Run the refresh in the background and return 202 immediately
+            default: false
+            title: Background
+          description: Run the refresh in the background and return 202 immediately
       responses:
         '200':
           description: Metrics refreshed successfully
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/DayAggregatedMetrics'
+                anyOf:
+                  - type: array
+                    items:
+                      $ref: '#/components/schemas/DayAggregatedMetrics'
+                  - $ref: '#/components/schemas/MetricsRefreshResponse'
                 title: Response Refresh Metrics
               example:
-                - id: e77c9531-818b-47a5-99cd-59fed61e5403
+                - id: 2025-08-12_daily
                   agent_runs_count: 2
                   agent_sessions_count: 2
                   team_runs_count: 0
@@ -6622,14 +7515,8 @@ paths:
                     input_tokens: 256
                     output_tokens: 441
                     total_tokens: 697
-                    audio_total_tokens: 0
-                    audio_input_tokens: 0
-                    audio_output_tokens: 0
-                    cache_read_tokens: 0
-                    cache_write_tokens: 0
-                    reasoning_tokens: 0
                   model_metrics:
-                    - model_id: gpt-4o
+                    - model_id: gpt-5.5
                       model_provider: OpenAI
                       count: 2
                   date: '2025-08-12T00:00:00Z'
@@ -6665,6 +7552,89 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '202':
+          description: Background refresh started
+          content:
+            application/json:
+              example:
+                status: started
+                message: Metrics refresh started in background
+        '403':
+          description: 'Insufficient permissions. Required scope(s): metrics:write'
+  /metrics/refresh/status:
+    get:
+      tags:
+        - Metrics
+      summary: Get Metrics Refresh Status
+      description: Get the status of the most recent metrics refresh for the target database. Returns 'running' while a refresh is in progress, then 'completed' or 'failed' with the finish timestamp — the state updates even when a refresh completes without writing new data. Returns 'idle' if no refresh has been triggered since this server process started. For remote databases the status is fetched from the remote AgentOS. Intended for polling after starting a background refresh via POST /metrics/refresh?background=true.
+      operationId: get_metrics_refresh_status
+      security:
+        - {}
+        - HTTPBearer: []
+      parameters:
+        - name: db_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Database ID to get the refresh status for
+            title: Db Id
+          description: Database ID to get the refresh status for
+        - name: table
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Table to get the refresh status for
+            title: Table
+          description: Table to get the refresh status for
+      responses:
+        '200':
+          description: Current refresh status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsRefreshStatusResponse'
+              example:
+                status: completed
+                started_at: '2025-08-12T08:01:47Z'
+                finished_at: '2025-08-12T08:01:49Z'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Database not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Failed to get refresh status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): metrics:read'
   /knowledge/content:
     post:
       tags:
@@ -6673,6 +7643,7 @@ paths:
       description: Upload content to the knowledge base. Supports file uploads, text content, or URLs. Content is processed asynchronously in the background. Supports custom readers and chunking strategies.
       operationId: upload_content
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: db_id
@@ -6716,7 +7687,7 @@ paths:
                   priority: high
                 status: processing
         '400':
-          description: Invalid request - malformed metadata or missing content
+          description: Knowledge base selection is ambiguous; provide knowledge_id or a db_id that resolves to one knowledge base
           content:
             application/json:
               schema:
@@ -6745,6 +7716,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: No knowledge base is configured on this AgentOS
+        '403':
+          description: 'Insufficient permissions. Required scope(s): knowledge:write'
     get:
       tags:
         - Knowledge
@@ -6752,6 +7727,7 @@ paths:
       description: Retrieve paginated list of all content in the knowledge base with filtering and sorting options. Filter by status, content type, or metadata properties.
       operationId: get_content
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: limit
@@ -6820,6 +7796,16 @@ paths:
             description: Knowledge base ID to use
             title: Knowledge Id
           description: Knowledge base ID to use
+        - name: parent_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Only page rows of this site row (exact id match)
+            title: Parent Id
+          description: Only page rows of this site row (exact id match)
       responses:
         '200':
           description: Content list retrieved successfully
@@ -6875,13 +7861,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: No knowledge base is configured on this AgentOS
+        '403':
+          description: 'Insufficient permissions. Required scope(s): knowledge:read'
     delete:
       tags:
         - Knowledge
       summary: Delete All Content
-      description: Permanently remove all content from the knowledge base. This is a destructive operation that cannot be undone. Use with extreme caution.
+      description: Permanently remove content from the knowledge base. With user isolation enabled, a non-admin caller removes only its own content; shared and other users' content remain. Admins and unscoped callers remove all content. This action cannot be undone.
       operationId: delete_all_content
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: db_id
@@ -6909,7 +7900,13 @@ paths:
           description: Successful Response
           content:
             application/json:
-              schema: {}
+              schema:
+                type:
+                  - string
+                  - 'null'
+                enum:
+                  - success
+                  - null
         '400':
           description: Bad Request
           content:
@@ -6940,6 +7937,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: No knowledge base is configured on this AgentOS
+        '403':
+          description: 'Insufficient permissions. Required scope(s): knowledge:delete'
   /knowledge/remote-content:
     post:
       tags:
@@ -6948,6 +7949,7 @@ paths:
       description: Upload content from a remote source (S3, GCS, SharePoint, GitHub) to the knowledge base. Content is processed asynchronously in the background.
       operationId: upload_remote_content
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: db_id
@@ -7020,6 +8022,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: No knowledge base is configured on this AgentOS
+        '403':
+          description: 'Insufficient permissions. Required scope(s): knowledge:write'
   /knowledge/content/{content_id}:
     patch:
       tags:
@@ -7028,6 +8034,7 @@ paths:
       description: Update content properties such as name, description, metadata, or processing configuration. Allows modification of existing content without re-uploading.
       operationId: update_content
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: content_id
@@ -7112,6 +8119,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: No knowledge base is configured on this AgentOS
+        '403':
+          description: 'Insufficient permissions. Required scope(s): knowledge:write'
     get:
       tags:
         - Knowledge
@@ -7119,6 +8130,7 @@ paths:
       description: Retrieve detailed information about a specific content item including processing status and metadata.
       operationId: get_content_by_id
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: content_id
@@ -7196,13 +8208,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: No knowledge base is configured on this AgentOS
+        '403':
+          description: 'Insufficient permissions. Required scope(s): knowledge:read'
     delete:
       tags:
         - Knowledge
       summary: Delete Content by ID
-      description: Permanently remove a specific content item from the knowledge base. This action cannot be undone.
+      description: Permanently remove a specific content item from the knowledge base. With user isolation enabled, a non-admin caller can delete its own content but cannot delete shared content. Content outside the caller's scope is reported as not found. This action cannot be undone.
       operationId: delete_content_by_id
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: content_id
@@ -7268,6 +8285,92 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: No knowledge base is configured on this AgentOS
+        '403':
+          description: Shared content cannot be deleted by a scoped caller
+  /knowledge/content/{content_id}/refresh:
+    post:
+      tags:
+        - Knowledge
+      summary: Refresh Content
+      description: Re-ingest a URL- or path-sourced content row from its source. For a site row this refreshes changed pages, retries failed ones, and removes pages that left the site.
+      operationId: refresh_content
+      security:
+        - {}
+        - HTTPBearer: []
+      parameters:
+        - name: content_id
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Content ID to refresh
+            title: Content Id
+          description: Content ID to refresh
+        - name: db_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Database ID to use
+            title: Db Id
+          description: Database ID to use
+        - name: knowledge_id
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: 'null'
+            description: Knowledge base ID to use
+            title: Knowledge Id
+          description: Knowledge base ID to use
+      responses:
+        '202':
+          description: Refresh started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentResponseSchema'
+        '400':
+          description: Content has no recorded URL or path, its row ID cannot be matched to that source, or no URL reader can be determined
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Content not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: No knowledge base is configured on this AgentOS
+        '403':
+          description: Shared content cannot be refreshed by this caller
+        '501':
+          description: Refresh is not supported for remote knowledge
   /knowledge/content/{content_id}/status:
     get:
       tags:
@@ -7276,6 +8379,7 @@ paths:
       description: Retrieve the current processing status of a content item. Useful for monitoring asynchronous content processing progress and identifying any processing errors.
       operationId: get_content_status
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: content_id
@@ -7330,7 +8434,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/UnauthenticatedResponse'
         '404':
-          description: Content not found
+          description: The selected knowledge base or database was not found
           content:
             application/json:
               schema:
@@ -7347,6 +8451,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: No knowledge base is configured on this AgentOS
+        '403':
+          description: 'Insufficient permissions. Required scope(s): knowledge:read'
   /knowledge/search:
     post:
       tags:
@@ -7406,7 +8514,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: No knowledge base is configured on this AgentOS
+        '403':
+          description: 'Insufficient permissions. Required scope(s): knowledge:read'
       security:
+        - {}
         - HTTPBearer: []
   /knowledge/config:
     get:
@@ -7416,6 +8529,7 @@ paths:
       description: Retrieve available readers, chunkers, and configuration options for content processing. This endpoint provides metadata about supported file types, processing strategies, and filters.
       operationId: get_knowledge_config
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: db_id
@@ -7632,8 +8746,6 @@ paths:
                     - docling
                   .potm:
                     - docling
-                  .doc:
-                    - docx
                   .json:
                     - json
                   .md:
@@ -7797,6 +8909,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: No knowledge base is configured on this AgentOS
+        '403':
+          description: 'Insufficient permissions. Required scope(s): knowledge:read'
   /knowledge/{knowledge_id}/sources:
     get:
       tags:
@@ -7805,6 +8921,7 @@ paths:
       description: List all registered content sources (S3, GCS, SharePoint, GitHub) for the knowledge base.
       operationId: list_content_sources
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: knowledge_id
@@ -7870,6 +8987,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: No knowledge base is configured on this AgentOS
+        '501':
+          description: Source listing is not supported for remote knowledge
+        '403':
+          description: 'Insufficient permissions. Required scope(s): knowledge:read'
   /knowledge/{knowledge_id}/sources/{source_id}/files:
     get:
       tags:
@@ -7878,6 +9001,7 @@ paths:
       description: List available files and folders in a specific content source. Supports pagination and folder navigation.
       operationId: list_source_files
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: knowledge_id
@@ -8002,6 +9126,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '503':
+          description: No knowledge base is configured on this AgentOS
+        '403':
+          description: 'Insufficient permissions. Required scope(s): knowledge:read'
   /traces:
     get:
       tags:
@@ -8023,13 +9151,14 @@ paths:
         - By time range
 
         **Pagination:**
-        - Use `page` (1-indexed) and `limit` parameters
+        - Use `page` and `limit` parameters
         - Response includes pagination metadata (total_pages, total_count, etc.)
 
         **Response Format:**
         Returns summary information for each trace. Use GET `/traces/{trace_id}` for detailed hierarchy.
       operationId: get_traces
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: run_id
@@ -8128,10 +9257,10 @@ paths:
           schema:
             type: integer
             minimum: 0
-            description: Page number (1-indexed)
+            description: Page number
             default: 1
             title: Page
-          description: Page number (1-indexed)
+          description: Page number
         - name: limit
           in: query
           required: false
@@ -8209,6 +9338,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): traces:read'
   /traces/filter-schema:
     get:
       tags:
@@ -8261,7 +9392,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): traces:read'
       security:
+        - {}
         - HTTPBearer: []
   /traces/{trace_id}:
     get:
@@ -8301,6 +9435,7 @@ paths:
         - `TOOL`: Tool calls with parameters and results
       operationId: get_trace
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: trace_id
@@ -8416,6 +9551,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): traces:read'
   /trace_session_stats:
     get:
       tags:
@@ -8441,6 +9578,7 @@ paths:
         - Analyze user engagement patterns
       operationId: get_trace_stats
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: user_id
@@ -8583,6 +9721,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): traces:read'
   /traces/search:
     post:
       tags:
@@ -8626,6 +9766,7 @@ paths:
         ```
       operationId: search_traces
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: db_id
@@ -8684,6 +9825,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): traces:read'
   /databases/all/migrate:
     post:
       tags:
@@ -8692,6 +9835,7 @@ paths:
       description: Migrate all database schemas to the given target version. If a target version is not provided, all databases will be migrated to the latest version.
       operationId: migrate_all_databases
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: target_version
@@ -8740,6 +9884,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): config:write'
   /databases/{db_id}/migrate:
     post:
       tags:
@@ -8748,6 +9894,7 @@ paths:
       description: Migrate the given database schema to the given target version. If a target version is not provided, the database will be migrated to the latest version.
       operationId: migrate_database
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: db_id
@@ -8802,6 +9949,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): config:write'
   /components:
     get:
       tags:
@@ -8810,6 +9959,7 @@ paths:
       description: Retrieve a paginated list of components with optional filtering by type.
       operationId: list_components
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: component_type
@@ -8843,6 +9993,15 @@ paths:
             default: 20
             title: Limit
           description: Items per page
+        - name: include_deleted
+          in: query
+          required: false
+          schema:
+            type: boolean
+            description: Also list archived (soft-deleted) components, marked by a deleted_at timestamp
+            default: false
+            title: Include Deleted
+          description: Also list archived (soft-deleted) components, marked by a deleted_at timestamp
       responses:
         '200':
           description: Successful Response
@@ -8880,6 +10039,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): components:read'
     post:
       tags:
         - Components
@@ -8887,6 +10048,7 @@ paths:
       description: Create a new component (agent, team, or workflow) with initial config.
       operationId: create_component
       security:
+        - {}
         - HTTPBearer: []
       requestBody:
         required: true
@@ -8931,6 +10093,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): components:write'
   /components/{component_id}:
     get:
       tags:
@@ -8939,6 +10103,7 @@ paths:
       description: Retrieve a component by ID.
       operationId: get_component
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: component_id
@@ -8949,6 +10114,15 @@ paths:
             description: Component ID
             title: Component Id
           description: Component ID
+        - name: include_deleted
+          in: query
+          required: false
+          schema:
+            type: boolean
+            description: Also return an archived (soft-deleted) component, marked by a deleted_at timestamp
+            default: false
+            title: Include Deleted
+          description: Also return an archived (soft-deleted) component, marked by a deleted_at timestamp
       responses:
         '200':
           description: Successful Response
@@ -8986,6 +10160,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): components:read'
     patch:
       tags:
         - Components
@@ -8993,6 +10169,7 @@ paths:
       description: Partially update a component by ID.
       operationId: update_component
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: component_id
@@ -9047,6 +10224,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: The shared component or another user's published component cannot be modified
+        '409':
+          description: The version guard is stale or the component update conflicts with another write
     delete:
       tags:
         - Components
@@ -9054,6 +10235,7 @@ paths:
       description: Soft-delete a component by ID. Component configs and links remain stored.
       operationId: delete_component
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: component_id
@@ -9064,6 +10246,25 @@ paths:
             description: Component ID
             title: Component Id
           description: Component ID
+        - name: expected_current_version
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: integer
+              - type: 'null'
+            description: Optional compare-and-set guard on the current version
+            title: Expected Current Version
+          description: Optional compare-and-set guard on the current version
+      requestBody:
+        content:
+          application/json:
+            schema:
+              anyOf:
+                - $ref: '#/components/schemas/ComponentDeleteRequest'
+                - type: 'null'
+              description: Optional compare-and-set guard, matching the other guarded routes
+              title: Body
       responses:
         '204':
           description: Successful Response
@@ -9097,6 +10298,68 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): components:delete'
+  /components/{component_id}/restore:
+    post:
+      tags:
+        - Components
+      summary: Restore Component
+      description: Restore an archived (soft-deleted) component by ID.
+      operationId: restore_component
+      security:
+        - {}
+        - HTTPBearer: []
+      parameters:
+        - name: component_id
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Component ID
+            title: Component Id
+          description: Component ID
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComponentResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnauthenticatedResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: The archived component is shared and cannot be modified by this caller
+        '409':
+          description: The component is not archived or the restore conflicts with another write
   /components/{component_id}/configs:
     get:
       tags:
@@ -9105,6 +10368,7 @@ paths:
       description: List all configs for a component.
       operationId: list_configs
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: component_id
@@ -9164,6 +10428,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): components:read'
     post:
       tags:
         - Components
@@ -9171,6 +10437,7 @@ paths:
       description: Create a new config version for a component.
       operationId: create_config
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: component_id
@@ -9225,6 +10492,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): components:write'
   /components/{component_id}/configs/{version}:
     patch:
       tags:
@@ -9233,6 +10502,7 @@ paths:
       description: Update an existing draft config. Cannot update published configs.
       operationId: update_config
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: component_id
@@ -9295,13 +10565,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): components:write'
     get:
       tags:
         - Components
       summary: Get Config Version
       description: Get a specific config version by number.
-      operationId: get_config
+      operationId: get_component_config
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: component_id
@@ -9357,6 +10630,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): components:read'
     delete:
       tags:
         - Components
@@ -9364,6 +10639,7 @@ paths:
       description: Delete a specific draft config version. Cannot delete published or current configs.
       operationId: delete_config
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: component_id
@@ -9415,6 +10691,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): components:delete'
   /components/{component_id}/configs/current:
     get:
       tags:
@@ -9423,6 +10701,7 @@ paths:
       description: Get the current config version for a component.
       operationId: get_current_config
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: component_id
@@ -9470,6 +10749,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): components:read'
   /components/{component_id}/configs/{version}/set-current:
     post:
       tags:
@@ -9478,6 +10759,7 @@ paths:
       description: Set a published config version as current (for rollback).
       operationId: set_current_config
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: component_id
@@ -9496,6 +10778,15 @@ paths:
             description: Version number
             title: Version
           description: Version number
+      requestBody:
+        content:
+          application/json:
+            schema:
+              anyOf:
+                - $ref: '#/components/schemas/SetCurrentRequest'
+                - type: 'null'
+              description: Optional guard; an empty POST keeps working
+              title: Body
       responses:
         '200':
           description: Successful Response
@@ -9533,6 +10824,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): components:write'
   /schedules:
     get:
       tags:
@@ -9540,6 +10833,7 @@ paths:
       summary: List Schedules
       operationId: list_schedules_schedules_get
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: enabled
@@ -9580,12 +10874,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): schedules:read'
     post:
       tags:
         - Schedules
       summary: Create Schedule
       operationId: create_schedule_schedules_post
       security:
+        - {}
         - HTTPBearer: []
       requestBody:
         required: true
@@ -9606,6 +10903,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): schedules:write'
   /schedules/{schedule_id}:
     get:
       tags:
@@ -9613,6 +10912,7 @@ paths:
       summary: Get Schedule
       operationId: get_schedule_schedules__schedule_id__get
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: schedule_id
@@ -9634,12 +10934,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): schedules:read'
     patch:
       tags:
         - Schedules
       summary: Update Schedule
       operationId: update_schedule_schedules__schedule_id__patch
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: schedule_id
@@ -9667,12 +10970,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): schedules:write'
     delete:
       tags:
         - Schedules
       summary: Delete Schedule
       operationId: delete_schedule_schedules__schedule_id__delete
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: schedule_id
@@ -9690,6 +10996,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): schedules:delete'
   /schedules/{schedule_id}/enable:
     post:
       tags:
@@ -9697,6 +11005,7 @@ paths:
       summary: Enable Schedule
       operationId: enable_schedule_schedules__schedule_id__enable_post
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: schedule_id
@@ -9718,6 +11027,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '401':
+          description: Authentication is required by the configured AgentOS security policy
+        '403':
+          description: The caller cannot run the target or schedule the target endpoint
+        '404':
+          description: Schedule not found
+        '409':
+          description: The target is archived or unpublished, or the schedule endpoint no longer matches its target
+        '503':
+          description: The configured database does not support scheduler operations or scheduler dependencies are not installed
+      description: Enable a schedule after verifying access to its target and confirming that the target is published, active, and still matches the schedule endpoint.
   /schedules/{schedule_id}/disable:
     post:
       tags:
@@ -9725,6 +11045,7 @@ paths:
       summary: Disable Schedule
       operationId: disable_schedule_schedules__schedule_id__disable_post
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: schedule_id
@@ -9746,6 +11067,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): schedules:write'
   /schedules/{schedule_id}/trigger:
     post:
       tags:
@@ -9753,6 +11076,7 @@ paths:
       summary: Trigger Schedule
       operationId: trigger_schedule_schedules__schedule_id__trigger_post
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: schedule_id
@@ -9774,6 +11098,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '404':
+          description: Schedule not found
+        '409':
+          description: Schedule is disabled
+        '503':
+          description: Scheduler is not running
+        '403':
+          description: 'Insufficient permissions. Required scope(s): schedules:write'
   /schedules/{schedule_id}/runs:
     get:
       tags:
@@ -9781,6 +11113,7 @@ paths:
       summary: List Schedule Runs
       operationId: list_schedule_runs_schedules__schedule_id__runs_get
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: schedule_id
@@ -9819,6 +11152,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): schedules:read'
   /schedules/{schedule_id}/runs/{run_id}:
     get:
       tags:
@@ -9826,6 +11161,7 @@ paths:
       summary: Get Schedule Run
       operationId: get_schedule_run_schedules__schedule_id__runs__run_id__get
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: schedule_id
@@ -9853,6 +11189,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): schedules:read'
   /approvals:
     get:
       tags:
@@ -9860,6 +11198,7 @@ paths:
       summary: List Approvals
       operationId: list_approvals_approvals_get
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: status
@@ -9981,6 +11320,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): approvals:read'
   /approvals/count:
     get:
       tags:
@@ -9988,6 +11329,7 @@ paths:
       summary: Get Approval Count
       operationId: get_approval_count_approvals_count_get
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: user_id
@@ -10011,6 +11353,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '401':
+          description: Authentication is required by the configured AgentOS security policy
+        '403':
+          description: The caller lacks the approvals:read scope or a required isolated user ID
+        '503':
+          description: The configured database does not support approval operations
   /approvals/{approval_id}/status:
     get:
       tags:
@@ -10018,6 +11366,7 @@ paths:
       summary: Get Approval Status
       operationId: get_approval_status_approvals__approval_id__status_get
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: approval_id
@@ -10039,6 +11388,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): approvals:read'
   /approvals/{approval_id}:
     get:
       tags:
@@ -10046,6 +11397,7 @@ paths:
       summary: Get Approval
       operationId: get_approval_approvals__approval_id__get
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: approval_id
@@ -10067,12 +11419,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): approvals:read'
     delete:
       tags:
         - Approvals
       summary: Delete Approval
       operationId: delete_approval_approvals__approval_id__delete
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: approval_id
@@ -10090,6 +11445,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '401':
+          description: Authentication is required by the configured AgentOS security policy
+        '403':
+          description: The caller lacks the approvals:delete scope or a required isolated user ID
+        '404':
+          description: Approval deletion is unavailable to a scoped non-admin caller
+        '500':
+          description: The configured database reported that the approval was not deleted
+        '503':
+          description: The configured database does not support approval operations
+      description: Delete an approval audit record. Scoped non-admin callers receive 404 so approval existence is not disclosed.
   /approvals/{approval_id}/resolve:
     post:
       tags:
@@ -10097,6 +11463,7 @@ paths:
       summary: Resolve Approval
       operationId: resolve_approval_approvals__approval_id__resolve_post
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: approval_id
@@ -10124,6 +11491,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): approvals:write'
   /service-accounts:
     post:
       tags:
@@ -10152,6 +11521,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): service_accounts:write'
     get:
       tags:
         - Service Accounts
@@ -10159,6 +11530,7 @@ paths:
       description: List service accounts. Returns metadata and display prefixes only - never hashes or plaintext.
       operationId: list_service_accounts_service_accounts_get
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: include_revoked
@@ -10212,6 +11584,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '503':
+          description: The configured database does not support service account operations
+        '403':
+          description: 'Insufficient permissions. Required scope(s): service_accounts:read'
   /service-accounts/{service_account_id}:
     delete:
       tags:
@@ -10224,6 +11600,7 @@ paths:
         evicted) and within the cache TTL on other workers.
       operationId: revoke_service_account_service_accounts__service_account_id__delete
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: service_account_id
@@ -10241,6 +11618,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          description: 'Insufficient permissions. Required scope(s): service_accounts:delete'
   /registry:
     get:
       tags:
@@ -10249,6 +11628,7 @@ paths:
       description: List all resources in the registry with optional filtering.
       operationId: list_registry
       security:
+        - {}
         - HTTPBearer: []
       parameters:
         - name: resource_type
@@ -10329,273 +11709,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InternalServerErrorResponse'
-  /queue/jobs:
-    get:
-      tags:
-      - Queue
-      summary: List Queue Jobs
-      description: 'List job queue jobs, optionally filtered by status. Repeat the status param to match any of several (e.g. status=failed&status=cancelled for the requeueable set; status=failed alone is the dead-letter list). Useful sort_by fields: created_at (default), updated_at, completed_at, status, attempt, component_type, component_id, user_id. Unknown sort fields are ignored.'
-      operationId: list_queue_jobs
-      security:
-      - HTTPBearer: []
-      parameters:
-      - name: status
-        in: query
-        required: false
-        schema:
-          anyOf:
-          - type: array
-            items:
-              type: string
-          - type: 'null'
-          description: Status filter; repeatable to match any of several statuses
-          title: Status
-        description: Status filter; repeatable to match any of several statuses
-      - name: limit
-        in: query
-        required: false
-        schema:
-          type: integer
-          maximum: 1000
-          minimum: 1
-          description: Number of jobs to return per page
-          default: 20
-          title: Limit
-        description: Number of jobs to return per page
-      - name: page
-        in: query
-        required: false
-        schema:
-          type: integer
-          minimum: 1
-          description: Page number for pagination
-          default: 1
-          title: Page
-        description: Page number for pagination
-      - name: sort_by
-        in: query
-        required: false
-        schema:
-          type: string
-          description: Field to sort jobs by
-          default: created_at
-          title: Sort By
-        description: Field to sort jobs by
-      - name: sort_order
-        in: query
-        required: false
-        schema:
-          $ref: '#/components/schemas/SortOrder'
-          description: Sort order (asc or desc)
-          default: desc
-        description: Sort order (asc or desc)
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PaginatedResponse_QueueJobSchema_'
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BadRequestResponse'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UnauthenticatedResponse'
-        '404':
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NotFoundResponse'
-        '500':
-          description: Internal Server Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InternalServerErrorResponse'
-        '503':
-          description: Durable job queue not enabled on this replica
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /queue/jobs/{job_id}:
-    get:
-      tags:
-      - Queue
-      summary: Get Queue Job
-      operationId: get_queue_job
-      security:
-      - HTTPBearer: []
-      parameters:
-      - name: job_id
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Job Id
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/QueueJobSchema'
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BadRequestResponse'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UnauthenticatedResponse'
-        '404':
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NotFoundResponse'
-        '500':
-          description: Internal Server Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InternalServerErrorResponse'
-        '503':
-          description: Durable job queue not enabled on this replica
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /queue/jobs/{job_id}/requeue:
-    post:
-      tags:
-      - Queue
-      summary: Requeue Failed Queue Job
-      description: 'Requeue a terminally failed or cancelled job for one more execution (raises its attempt budget by one). The operator remedy for crashed runs under the no-silent-re-execution default. Requeueing a CANCELLED job whose cancellation intent is still live requires clear_cancellation=true - an explicit override of the recorded cancel; without it the re-driven attempt is re-cancelled at its first checkpoint. Requeueing a job that FAILED within the last lock_grace seconds requires force=true: its worker may still be executing (swept-but-alive), and a second producer would race unfenced writes.'
-      operationId: requeue_queue_job
-      security:
-      - HTTPBearer: []
-      parameters:
-      - name: job_id
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Job Id
-      - name: clear_cancellation
-        in: query
-        required: false
-        schema:
-          type: boolean
-          default: false
-          title: Clear Cancellation
-      - name: force
-        in: query
-        required: false
-        schema:
-          type: boolean
-          default: false
-          title: Force
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/QueueJobSchema'
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BadRequestResponse'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UnauthenticatedResponse'
-        '404':
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NotFoundResponse'
-        '500':
-          description: Internal Server Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InternalServerErrorResponse'
-        '503':
-          description: Durable job queue not enabled on this replica
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /queue/stats:
-    get:
-      tags:
-      - Queue
-      summary: Queue Stats
-      description: Job counts by status and the oldest queued job's age - the queue-health signals to alert on.
-      operationId: get_queue_stats
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema: {}
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BadRequestResponse'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UnauthenticatedResponse'
-        '404':
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NotFoundResponse'
-        '500':
-          description: Internal Server Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InternalServerErrorResponse'
-        '503':
-          description: Durable job queue not enabled on this replica
-      security:
-      - HTTPBearer: []
+        '403':
+          description: 'Insufficient permissions. Required scope(s): registry:read'
 components:
   schemas:
     ActivityMessage:
       properties:
+        metadata:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Metadata
         id:
           type: string
           title: Id
@@ -10611,6 +11736,11 @@ components:
           additionalProperties: true
           type: object
           title: Content
+        subagentRunId:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Subagentrunid
       additionalProperties: true
       type: object
       required:
@@ -11122,6 +12252,12 @@ components:
       description: Represents a file, data structure, or other resource generated by an agent during a task.
     AssistantMessage:
       properties:
+        metadata:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Metadata
         id:
           type: string
           title: Id
@@ -11145,6 +12281,11 @@ components:
             - type: string
             - type: 'null'
           title: Encryptedvalue
+        subagentRunId:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Subagentrunid
         toolCalls:
           anyOf:
             - items:
@@ -11191,20 +12332,25 @@ components:
         detail:
           type: string
           title: Detail
-          description: Error detail message
-        error_code:
+          description: Human-readable error message
+        error_id:
           anyOf:
             - type: string
             - type: 'null'
-          title: Error Code
-          description: Error code for categorization
+          title: Error Id
+          description: Stable identifier for the specific error, present only when the error carries one
+        error_type:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Error Type
+          description: Category of the error, present only when the error carries one
       type: object
       required:
         - detail
       title: BadRequestResponse
       example:
         detail: Bad request
-        error_code: BAD_REQUEST
     BinaryInputContent:
       properties:
         type:
@@ -11383,6 +12529,11 @@ components:
           title: Stream
           description: Enable streaming responses via Server-Sent Events (SSE)
           default: true
+        background:
+          type: boolean
+          title: Background
+          description: Continue in background (survives client disconnect). Requires database. Use /resume to reconnect.
+          default: false
         factory_input:
           anyOf:
             - type: string
@@ -11423,9 +12574,15 @@ components:
             - type: 'null'
           title: Files
           description: Files to upload (images, audio, video, or documents)
-        version:
+        files_metadata:
           anyOf:
             - type: string
+            - type: 'null'
+          title: Files Metadata
+          description: JSON array of per-file metadata objects, matched to files[] by position
+        version:
+          anyOf:
+            - type: integer
             - type: 'null'
           title: Version
           description: Agent version to use for this run
@@ -11481,6 +12638,12 @@ components:
             - type: 'null'
           title: Files
           description: Files to upload (images, audio, video, or documents)
+        files_metadata:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Files Metadata
+          description: JSON array of per-file metadata objects, matched to files[] by position
         version:
           anyOf:
             - type: integer
@@ -11902,6 +13065,43 @@ components:
         - name
         - component_type
       title: ComponentCreate
+    ComponentDeleteRequest:
+      properties:
+        guard:
+          anyOf:
+            - $ref: '#/components/schemas/ComponentGuard'
+            - type: 'null'
+          description: Optional compare-and-set guard
+      type: object
+      title: ComponentDeleteRequest
+      description: |-
+        Body for delete. Optional: a bodyless DELETE keeps working.
+
+        Delete also accepts the guard as an ``expected_current_version`` query
+        param; this shape exists so the guard reads the same as on every other
+        guarded component route instead of being silently ignored here.
+    ComponentGuard:
+      properties:
+        latest_version:
+          anyOf:
+            - type: integer
+            - type: 'null'
+          title: Latest Version
+          description: Expected latest config version
+        current_version:
+          anyOf:
+            - type: integer
+            - type: 'null'
+          title: Current Version
+          description: Expected current (published) version; 0 expects the component to have none yet
+      type: object
+      title: ComponentGuard
+      description: |-
+        Optional compare-and-set guard for component writes.
+
+        When present, each non-None field is checked against the stored state and
+        the write is rejected with 409 on mismatch. None fields skip that half of
+        the check; omitting the guard keeps the write last-writer-wins.
     ComponentResponse:
       properties:
         component_id:
@@ -11914,6 +13114,11 @@ components:
             - type: string
             - type: 'null'
           title: Name
+        user_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: User Id
         description:
           anyOf:
             - type: string
@@ -11938,6 +13143,11 @@ components:
             - type: integer
             - type: 'null'
           title: Updated At
+        deleted_at:
+          anyOf:
+            - type: integer
+            - type: 'null'
+          title: Deleted At
       type: object
       required:
         - component_id
@@ -11979,6 +13189,10 @@ components:
             - type: integer
             - type: 'null'
           title: Current Version
+        guard:
+          anyOf:
+            - $ref: '#/components/schemas/ComponentGuard'
+            - type: 'null'
       type: object
       title: ComponentUpdate
     ConfigCreate:
@@ -12025,6 +13239,11 @@ components:
           title: Set Current
           description: Set as current version
           default: true
+        guard:
+          anyOf:
+            - $ref: '#/components/schemas/ComponentGuard'
+            - type: 'null'
+          description: Optional compare-and-set guard
       type: object
       required:
         - config
@@ -12048,13 +13267,11 @@ components:
           title: Description
           description: Description of the OS instance
         available_models:
-          anyOf:
-            - items:
-                type: string
-              type: array
-            - type: 'null'
+          items:
+            $ref: '#/components/schemas/Model'
+          type: array
           title: Available Models
-          description: List of available models
+          description: Unique models (id + provider) in use by agents and teams in this OS
         os_database:
           anyOf:
             - type: string
@@ -12201,6 +13418,22 @@ components:
             - type: 'null'
           title: Remote Content Sources
           description: Configured remote content sources (S3, GCS, SharePoint, GitHub)
+        unavailable_readers:
+          anyOf:
+            - additionalProperties:
+                $ref: '#/components/schemas/UnavailableReaderSchema'
+              type: object
+            - type: 'null'
+          title: Unavailable Readers
+          description: Readers that are not usable in this install, and the packages they need
+        unavailable_chunkers:
+          anyOf:
+            - additionalProperties:
+                $ref: '#/components/schemas/UnavailableChunkerSchema'
+              type: object
+            - type: 'null'
+          title: Unavailable Chunkers
+          description: Chunking strategies that are not usable in this install, and the packages they need
       type: object
       title: ConfigResponseSchema
     ConfigUpdate:
@@ -12234,6 +13467,10 @@ components:
               type: array
             - type: 'null'
           title: Links
+        guard:
+          anyOf:
+            - $ref: '#/components/schemas/ComponentGuard'
+            - type: 'null'
       type: object
       title: ConfigUpdate
     ContentResponseSchema:
@@ -12695,6 +13932,12 @@ components:
       title: DeleteSessionRequest
     DeveloperMessage:
       properties:
+        metadata:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Metadata
         id:
           type: string
           title: Id
@@ -12716,6 +13959,11 @@ components:
             - type: string
             - type: 'null'
           title: Encryptedvalue
+        subagentRunId:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Subagentrunid
       additionalProperties: true
       type: object
       required:
@@ -12935,6 +14183,12 @@ components:
             - type: 'null'
           title: Evaluated Component Name
           description: Name of the evaluated component
+        user_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: User Id
+          description: Owner of the evaluation run
         eval_type:
           $ref: '#/components/schemas/EvalType'
           description: Type of evaluation (accuracy, performance, or reliability)
@@ -13211,6 +14465,10 @@ components:
             - type: 'null'
           title: Name
           description: Name of the OS instance
+        os_version:
+          type: string
+          title: Os Version
+          description: Version of this AgentOS instance
         agno_version:
           type: string
           title: Agno Version
@@ -13245,6 +14503,7 @@ components:
       type: object
       required:
         - os_id
+        - os_version
         - agno_version
       title: InfoResponse
       description: Response schema for the /info endpoint returning lightweight OS metadata.
@@ -13314,20 +14573,25 @@ components:
         detail:
           type: string
           title: Detail
-          description: Error detail message
-        error_code:
+          description: Human-readable error message
+        error_id:
           anyOf:
             - type: string
             - type: 'null'
-          title: Error Code
-          description: Error code for categorization
+          title: Error Id
+          description: Stable identifier for the specific error, present only when the error carries one
+        error_type:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Error Type
+          description: Category of the error, present only when the error carries one
       type: object
       required:
         - detail
       title: InternalServerErrorResponse
       example:
         detail: Internal server error
-        error_code: INTERNAL_SERVER_ERROR
     KnowledgeConfig:
       properties:
         display_name:
@@ -13827,6 +15091,52 @@ components:
       type: object
       title: MetricsDomainConfig
       description: Configuration for the Metrics domain of the AgentOS
+    MetricsRefreshResponse:
+      properties:
+        status:
+          type: string
+          title: Status
+          description: Status of the refresh request
+        message:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Message
+          description: Additional details
+      type: object
+      required:
+        - status
+      title: MetricsRefreshResponse
+    MetricsRefreshStatusResponse:
+      properties:
+        status:
+          type: string
+          title: Status
+          description: 'Refresh status: ''idle'', ''running'', ''completed'' or ''failed'''
+        started_at:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+          title: Started At
+          description: When the most recent refresh started
+        finished_at:
+          anyOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+          title: Finished At
+          description: When the most recent refresh finished
+        error:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Error
+          description: Error message if the most recent refresh failed
+      type: object
+      required:
+        - status
+      title: MetricsRefreshStatusResponse
     MetricsResponse:
       properties:
         metrics:
@@ -13889,20 +15199,25 @@ components:
         detail:
           type: string
           title: Detail
-          description: Error detail message
-        error_code:
+          description: Human-readable error message
+        error_id:
           anyOf:
             - type: string
             - type: 'null'
-          title: Error Code
-          description: Error code for categorization
+          title: Error Id
+          description: Stable identifier for the specific error, present only when the error carries one
+        error_type:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Error Type
+          description: Category of the error, present only when the error carries one
       type: object
       required:
         - detail
       title: NotFoundResponse
       example:
         detail: Not found
-        error_code: NOT_FOUND
     OptimizeMemoriesRequest:
       properties:
         user_id:
@@ -14084,8 +15399,8 @@ components:
           description: Pagination metadata
       type: object
       required:
-      - data
-      - meta
+        - data
+        - meta
       title: PaginatedResponse[QueueJobSchema]
     PaginatedResponse_RegistryContentResponse_:
       properties:
@@ -14269,7 +15584,7 @@ components:
           type: integer
           minimum: 0.0
           title: Page
-          description: Current page number (0-indexed)
+          description: Current page number
           default: 0
         limit:
           type: integer
@@ -14328,8 +15643,8 @@ components:
           default: run
         user_id:
           anyOf:
-          - type: string
-          - type: 'null'
+            - type: string
+            - type: 'null'
           title: User Id
           description: User the run was submitted for
         payload:
@@ -14353,59 +15668,59 @@ components:
           default: 1
         idempotency_key:
           anyOf:
-          - type: string
-          - type: 'null'
+            - type: string
+            - type: 'null'
           title: Idempotency Key
           description: Client-provided dedupe key, if any
         available_at:
           anyOf:
-          - type: integer
-          - type: 'null'
+            - type: integer
+            - type: 'null'
           title: Available At
           description: Epoch seconds the job becomes claimable
         locked_by:
           anyOf:
-          - type: string
-          - type: 'null'
+            - type: string
+            - type: 'null'
           title: Locked By
           description: Worker currently holding the job's lock
         locked_at:
           anyOf:
-          - type: integer
-          - type: 'null'
+            - type: integer
+            - type: 'null'
           title: Locked At
           description: Epoch seconds the current lock was taken
         error:
           anyOf:
-          - type: string
-          - type: 'null'
+            - type: string
+            - type: 'null'
           title: Error
           description: Terminal error of the last attempt, if any
         created_at:
           anyOf:
-          - type: integer
-          - type: 'null'
+            - type: integer
+            - type: 'null'
           title: Created At
           description: Epoch seconds the job was accepted
         updated_at:
           anyOf:
-          - type: integer
-          - type: 'null'
+            - type: integer
+            - type: 'null'
           title: Updated At
           description: Epoch seconds of the last state change
         completed_at:
           anyOf:
-          - type: integer
-          - type: 'null'
+            - type: integer
+            - type: 'null'
           title: Completed At
           description: Epoch seconds the job reached a terminal state
       type: object
       required:
-      - id
-      - component_type
-      - component_id
-      - session_id
-      - status
+        - id
+        - component_type
+        - component_id
+        - session_id
+        - status
       title: QueueJobSchema
       description: One durable queue job (a background run's queue ticket).
     ReaderSchema:
@@ -14434,12 +15749,36 @@ components:
             - type: 'null'
           title: Chunkers
           description: List of supported chunking strategies
+        content_types:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: 'null'
+          title: Content Types
+          description: Content types this reader can read in this install
+        unavailable_content_types:
+          anyOf:
+            - additionalProperties:
+                items:
+                  type: string
+                type: array
+              type: object
+            - type: 'null'
+          title: Unavailable Content Types
+          description: Content types this reader supports but cannot read here, and the packages each needs
       type: object
       required:
         - id
       title: ReaderSchema
     ReasoningMessage:
       properties:
+        metadata:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Metadata
         id:
           type: string
           title: Id
@@ -14456,6 +15795,11 @@ components:
             - type: string
             - type: 'null'
           title: Encryptedvalue
+        subagentRunId:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Subagentrunid
       additionalProperties: true
       type: object
       required:
@@ -14502,9 +15846,11 @@ components:
         - function
         - agent
         - team
+        - workflow
         - knowledge
         - memory_manager
         - session_summary_manager
+        - learning
       title: RegistryResourceType
       description: Types of resources that can be stored in a registry.
     RemoteContentSourceSchema:
@@ -14543,6 +15889,12 @@ components:
       description: Schema for remote content source configuration.
     ResumeEntry:
       properties:
+        metadata:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Metadata
         interruptId:
           type: string
           title: Interruptid
@@ -14563,7 +15915,12 @@ components:
         - interruptId
         - status
       title: ResumeEntry
-      description: A per-interrupt response in the resume array of a RunAgentInput.
+      description: |-
+        A per-interrupt response in the resume array of a RunAgentInput.
+
+        ``metadata`` carries envelope data about the response — signatures, routing
+        keys — as opposed to ``payload``, which is the answer the agent asked for
+        and will act on.
     Role:
       type: string
       enum:
@@ -14632,7 +15989,6 @@ components:
       required:
         - threadId
         - runId
-        - state
         - messages
         - tools
         - context
@@ -14946,6 +16302,11 @@ components:
         id:
           type: string
           title: Id
+        user_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: User Id
         name:
           type: string
           title: Name
@@ -14989,6 +16350,26 @@ components:
             - type: integer
             - type: 'null'
           title: Next Run At
+        managed_by:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Managed By
+        target_type:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Target Type
+        target_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Target Id
+        disabled_reason:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Disabled Reason
         created_at:
           anyOf:
             - type: integer
@@ -15020,6 +16401,11 @@ components:
         schedule_id:
           type: string
           title: Schedule Id
+        user_id:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: User Id
         attempt:
           type: integer
           title: Attempt
@@ -15563,6 +16949,16 @@ components:
         - team
         - workflow
       title: SessionType
+    SetCurrentRequest:
+      properties:
+        guard:
+          anyOf:
+            - $ref: '#/components/schemas/ComponentGuard'
+            - type: 'null'
+          description: Optional compare-and-set guard
+      type: object
+      title: SetCurrentRequest
+      description: 'Body for set-current. Optional: an empty POST keeps working.'
     SlackChallengeResponse:
       properties:
         challenge:
@@ -15683,6 +17079,12 @@ components:
       description: Schema for a folder in a content source.
     SystemMessage:
       properties:
+        metadata:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Metadata
         id:
           type: string
           title: Id
@@ -15704,6 +17106,11 @@ components:
             - type: string
             - type: 'null'
           title: Encryptedvalue
+        subagentRunId:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Subagentrunid
       additionalProperties: true
       type: object
       required:
@@ -16360,6 +17767,12 @@ components:
       description: A tool definition.
     ToolCall:
       properties:
+        metadata:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Metadata
         id:
           type: string
           title: Id
@@ -16381,9 +17794,20 @@ components:
         - id
         - function
       title: ToolCall
-      description: A tool call, modelled after OpenAI tool calls.
+      description: |-
+        A tool call, modelled after OpenAI tool calls.
+
+        Carries its own metadata rather than folding into the assistant message that
+        owns it: several tool calls can share one parent, so merging them all into it
+        would make the result depend on their relative order.
     ToolMessage:
       properties:
+        metadata:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Metadata
         id:
           type: string
           title: Id
@@ -16408,6 +17832,11 @@ components:
             - type: string
             - type: 'null'
           title: Encryptedvalue
+        subagentRunId:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Subagentrunid
       additionalProperties: true
       type: object
       required:
@@ -16862,20 +18291,91 @@ components:
         detail:
           type: string
           title: Detail
-          description: Error detail message
-        error_code:
+          description: Human-readable error message
+        error_id:
           anyOf:
             - type: string
             - type: 'null'
-          title: Error Code
-          description: Error code for categorization
+          title: Error Id
+          description: Stable identifier for the specific error, present only when the error carries one
+        error_type:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Error Type
+          description: Category of the error, present only when the error carries one
       type: object
       required:
         - detail
       title: UnauthenticatedResponse
       example:
         detail: Unauthenticated access
-        error_code: UNAUTHENTICATED
+    UnavailableChunkerSchema:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: Chunker key that could not be loaded
+        name:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Name
+          description: Name of the chunker
+        description:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Description
+          description: Description of the chunking strategy
+        missing_packages:
+          items:
+            type: string
+          type: array
+          title: Missing Packages
+          description: Packages that are not importable
+        reason:
+          type: string
+          title: Reason
+          description: Verbatim import failure, including its install instruction
+      type: object
+      required:
+        - id
+        - reason
+      title: UnavailableChunkerSchema
+    UnavailableReaderSchema:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: Reader key that could not be loaded
+        name:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Name
+          description: Name of the reader
+        description:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Description
+          description: Description of the reader's capabilities
+        missing_packages:
+          items:
+            type: string
+          type: array
+          title: Missing Packages
+          description: Packages that are not importable
+        reason:
+          type: string
+          title: Reason
+          description: Verbatim import failure, including its install instruction
+      type: object
+      required:
+        - id
+        - reason
+      title: UnavailableReaderSchema
     UpdateEvalRunRequest:
       properties:
         name:
@@ -16996,6 +18496,12 @@ components:
       title: UserMemorySchema
     UserMessage:
       properties:
+        metadata:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          title: Metadata
         id:
           type: string
           title: Id
@@ -17036,6 +18542,11 @@ components:
             - type: string
             - type: 'null'
           title: Encryptedvalue
+        subagentRunId:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Subagentrunid
       additionalProperties: true
       type: object
       required:
@@ -17093,25 +18604,61 @@ components:
         - msg
         - type
       title: ValidationError
+    ValidationErrorDetail:
+      properties:
+        loc:
+          items:
+            anyOf:
+              - type: string
+              - type: integer
+          type: array
+          title: Loc
+          description: Path to the offending field, e.g. ['body', 'endpoint']
+        msg:
+          type: string
+          title: Msg
+          description: Human-readable error message
+        type:
+          type: string
+          title: Type
+          description: Error type identifier, e.g. 'value_error' or 'missing'
+      type: object
+      required:
+        - loc
+        - msg
+        - type
+      title: ValidationErrorDetail
+      description: One field-level error inside a 422 body, matching FastAPI's default shape.
     ValidationErrorResponse:
       properties:
         detail:
-          type: string
-          title: Detail
-          description: Error detail message
-        error_code:
           anyOf:
             - type: string
-            - type: 'null'
-          title: Error Code
-          description: Error code for categorization
+            - items:
+                $ref: '#/components/schemas/ValidationErrorDetail'
+              type: array
+          title: Detail
+          description: A single message for an explicitly raised 422, or a list of field-level errors for a request-validation failure
       type: object
       required:
         - detail
       title: ValidationErrorResponse
+      description: |-
+        422 body. Two runtime shapes share this status code, and the same endpoint can
+        return either, so ``detail`` is typed as their union:
+
+        - FastAPI's request-validation handler emits a **list** of field-level errors (built-in
+          coercion errors and custom-validator ``ValueError``s alike).
+        - A route that raises ``HTTPException(status_code=422, detail="...")`` for a semantic
+          check (e.g. an invalid cron expression) emits a **string** through the HTTPException
+          handler.
       example:
-        detail: Validation error
-        error_code: VALIDATION_ERROR
+        detail:
+          - loc:
+              - body
+              - endpoint
+            msg: Value error, Endpoint must be a path, not a full URL
+            type: value_error
     VectorDbSchema:
       properties:
         id:
@@ -17202,7 +18749,9 @@ components:
     VectorSearchResult:
       properties:
         id:
-          type: string
+          anyOf:
+            - type: string
+            - type: 'null'
           title: Id
           description: Unique identifier for the search result document
         content:
@@ -17258,7 +18807,6 @@ components:
           description: Size of the content in bytes
       type: object
       required:
-        - id
         - content
       title: VectorSearchResult
       description: Schema for search result documents.
@@ -17725,6 +19273,577 @@ components:
           description: Stage of the loaded config (draft/published)
       type: object
       title: WorkflowSummaryResponse
+    APIKeySecurityScheme:
+      description: Defines a security scheme using an API key.
+      properties:
+        description:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Description
+        in:
+          $ref: '#/components/schemas/In'
+        name:
+          title: Name
+          type: string
+        type:
+          const: apiKey
+          default: apiKey
+          title: Type
+          type: string
+      required:
+        - in
+        - name
+      title: APIKeySecurityScheme
+      type: object
+    AgentCapabilities:
+      description: Defines optional capabilities supported by an agent.
+      properties:
+        extensions:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/AgentExtension'
+              type: array
+            - type: 'null'
+          default: null
+          title: Extensions
+        pushNotifications:
+          anyOf:
+            - type: boolean
+            - type: 'null'
+          default: null
+          title: Pushnotifications
+        stateTransitionHistory:
+          anyOf:
+            - type: boolean
+            - type: 'null'
+          default: null
+          title: Statetransitionhistory
+        streaming:
+          anyOf:
+            - type: boolean
+            - type: 'null'
+          default: null
+          title: Streaming
+      title: AgentCapabilities
+      type: object
+    AgentCardSignature:
+      description: |-
+        AgentCardSignature represents a JWS signature of an AgentCard.
+        This follows the JSON format of an RFC 7515 JSON Web Signature (JWS).
+      properties:
+        header:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          default: null
+          title: Header
+        protected:
+          title: Protected
+          type: string
+        signature:
+          title: Signature
+          type: string
+      required:
+        - protected
+        - signature
+      title: AgentCardSignature
+      type: object
+    AgentExtension:
+      description: A declaration of a protocol extension supported by an Agent.
+      properties:
+        description:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Description
+        params:
+          anyOf:
+            - additionalProperties: true
+              type: object
+            - type: 'null'
+          default: null
+          title: Params
+        required:
+          anyOf:
+            - type: boolean
+            - type: 'null'
+          default: null
+          title: Required
+        uri:
+          title: Uri
+          type: string
+      required:
+        - uri
+      title: AgentExtension
+      type: object
+    AgentInterface:
+      description: |-
+        Declares a combination of a target URL and a transport protocol for interacting with the agent.
+        This allows agents to expose the same functionality over multiple transport mechanisms.
+      properties:
+        transport:
+          examples:
+            - JSONRPC
+            - GRPC
+            - HTTP+JSON
+          title: Transport
+          type: string
+        url:
+          examples:
+            - https://api.example.com/a2a/v1
+            - https://grpc.example.com/a2a
+            - https://rest.example.com/v1
+          title: Url
+          type: string
+      required:
+        - transport
+        - url
+      title: AgentInterface
+      type: object
+    AgentProvider:
+      description: Represents the service provider of an agent.
+      properties:
+        organization:
+          title: Organization
+          type: string
+        url:
+          title: Url
+          type: string
+      required:
+        - organization
+        - url
+      title: AgentProvider
+      type: object
+    AgentSkill:
+      description: Represents a distinct capability or function that an agent can perform.
+      properties:
+        description:
+          title: Description
+          type: string
+        examples:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: 'null'
+          default: null
+          examples:
+            - - I need a recipe for bread
+          title: Examples
+        id:
+          title: Id
+          type: string
+        inputModes:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: 'null'
+          default: null
+          title: Inputmodes
+        name:
+          title: Name
+          type: string
+        outputModes:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: 'null'
+          default: null
+          title: Outputmodes
+        security:
+          anyOf:
+            - items:
+                additionalProperties:
+                  items:
+                    type: string
+                  type: array
+                type: object
+              type: array
+            - type: 'null'
+          default: null
+          examples:
+            - - google:
+                  - oidc
+          title: Security
+        tags:
+          examples:
+            - - cooking
+              - customer support
+              - billing
+          items:
+            type: string
+          title: Tags
+          type: array
+      required:
+        - description
+        - id
+        - name
+        - tags
+      title: AgentSkill
+      type: object
+    AuthorizationCodeOAuthFlow:
+      description: Defines configuration details for the OAuth 2.0 Authorization Code flow.
+      properties:
+        authorizationUrl:
+          title: Authorizationurl
+          type: string
+        refreshUrl:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Refreshurl
+        scopes:
+          additionalProperties:
+            type: string
+          title: Scopes
+          type: object
+        tokenUrl:
+          title: Tokenurl
+          type: string
+      required:
+        - authorizationUrl
+        - scopes
+        - tokenUrl
+      title: AuthorizationCodeOAuthFlow
+      type: object
+    ClientCredentialsOAuthFlow:
+      description: Defines configuration details for the OAuth 2.0 Client Credentials flow.
+      properties:
+        refreshUrl:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Refreshurl
+        scopes:
+          additionalProperties:
+            type: string
+          title: Scopes
+          type: object
+        tokenUrl:
+          title: Tokenurl
+          type: string
+      required:
+        - scopes
+        - tokenUrl
+      title: ClientCredentialsOAuthFlow
+      type: object
+    HTTPAuthSecurityScheme:
+      description: Defines a security scheme using HTTP authentication.
+      properties:
+        bearerFormat:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Bearerformat
+        description:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Description
+        scheme:
+          title: Scheme
+          type: string
+        type:
+          const: http
+          default: http
+          title: Type
+          type: string
+      required:
+        - scheme
+      title: HTTPAuthSecurityScheme
+      type: object
+    ImplicitOAuthFlow:
+      description: Defines configuration details for the OAuth 2.0 Implicit flow.
+      properties:
+        authorizationUrl:
+          title: Authorizationurl
+          type: string
+        refreshUrl:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Refreshurl
+        scopes:
+          additionalProperties:
+            type: string
+          title: Scopes
+          type: object
+      required:
+        - authorizationUrl
+        - scopes
+      title: ImplicitOAuthFlow
+      type: object
+    In:
+      description: The location of the API key.
+      enum:
+        - cookie
+        - header
+        - query
+      title: In
+      type: string
+    MutualTLSSecurityScheme:
+      description: Defines a security scheme using mTLS authentication.
+      properties:
+        description:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Description
+        type:
+          const: mutualTLS
+          default: mutualTLS
+          title: Type
+          type: string
+      title: MutualTLSSecurityScheme
+      type: object
+    OAuth2SecurityScheme:
+      description: Defines a security scheme using OAuth 2.0.
+      properties:
+        description:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Description
+        flows:
+          $ref: '#/components/schemas/OAuthFlows'
+        oauth2MetadataUrl:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Oauth2Metadataurl
+        type:
+          const: oauth2
+          default: oauth2
+          title: Type
+          type: string
+      required:
+        - flows
+      title: OAuth2SecurityScheme
+      type: object
+    OAuthFlows:
+      description: Defines the configuration for the supported OAuth 2.0 flows.
+      properties:
+        authorizationCode:
+          anyOf:
+            - $ref: '#/components/schemas/AuthorizationCodeOAuthFlow'
+            - type: 'null'
+          default: null
+        clientCredentials:
+          anyOf:
+            - $ref: '#/components/schemas/ClientCredentialsOAuthFlow'
+            - type: 'null'
+          default: null
+        implicit:
+          anyOf:
+            - $ref: '#/components/schemas/ImplicitOAuthFlow'
+            - type: 'null'
+          default: null
+        password:
+          anyOf:
+            - $ref: '#/components/schemas/PasswordOAuthFlow'
+            - type: 'null'
+          default: null
+      title: OAuthFlows
+      type: object
+    OpenIdConnectSecurityScheme:
+      description: Defines a security scheme using OpenID Connect.
+      properties:
+        description:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Description
+        openIdConnectUrl:
+          title: Openidconnecturl
+          type: string
+        type:
+          const: openIdConnect
+          default: openIdConnect
+          title: Type
+          type: string
+      required:
+        - openIdConnectUrl
+      title: OpenIdConnectSecurityScheme
+      type: object
+    PasswordOAuthFlow:
+      description: Defines configuration details for the OAuth 2.0 Resource Owner Password flow.
+      properties:
+        refreshUrl:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Refreshurl
+        scopes:
+          additionalProperties:
+            type: string
+          title: Scopes
+          type: object
+        tokenUrl:
+          title: Tokenurl
+          type: string
+      required:
+        - scopes
+        - tokenUrl
+      title: PasswordOAuthFlow
+      type: object
+    SecurityScheme:
+      anyOf:
+        - $ref: '#/components/schemas/APIKeySecurityScheme'
+        - $ref: '#/components/schemas/HTTPAuthSecurityScheme'
+        - $ref: '#/components/schemas/OAuth2SecurityScheme'
+        - $ref: '#/components/schemas/OpenIdConnectSecurityScheme'
+        - $ref: '#/components/schemas/MutualTLSSecurityScheme'
+      title: SecurityScheme
+    AgentCard:
+      description: |-
+        The AgentCard is a self-describing manifest for an agent. It provides essential
+        metadata including the agent's identity, capabilities, skills, supported
+        communication methods, and security requirements.
+      properties:
+        additionalInterfaces:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/AgentInterface'
+              type: array
+            - type: 'null'
+          default: null
+          title: Additionalinterfaces
+        capabilities:
+          $ref: '#/components/schemas/AgentCapabilities'
+        defaultInputModes:
+          items:
+            type: string
+          title: Defaultinputmodes
+          type: array
+        defaultOutputModes:
+          items:
+            type: string
+          title: Defaultoutputmodes
+          type: array
+        description:
+          examples:
+            - Agent that helps users with recipes and cooking.
+          title: Description
+          type: string
+        documentationUrl:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Documentationurl
+        iconUrl:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: null
+          title: Iconurl
+        name:
+          examples:
+            - Recipe Agent
+          title: Name
+          type: string
+        preferredTransport:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: JSONRPC
+          examples:
+            - JSONRPC
+            - GRPC
+            - HTTP+JSON
+          title: Preferredtransport
+        protocolVersion:
+          anyOf:
+            - type: string
+            - type: 'null'
+          default: 0.3.0
+          title: Protocolversion
+        provider:
+          anyOf:
+            - $ref: '#/components/schemas/AgentProvider'
+            - type: 'null'
+          default: null
+        security:
+          anyOf:
+            - items:
+                additionalProperties:
+                  items:
+                    type: string
+                  type: array
+                type: object
+              type: array
+            - type: 'null'
+          default: null
+          examples:
+            - - oauth:
+                  - read
+              - api-key: []
+                mtls: []
+          title: Security
+        securitySchemes:
+          anyOf:
+            - additionalProperties:
+                $ref: '#/components/schemas/SecurityScheme'
+              type: object
+            - type: 'null'
+          default: null
+          title: Securityschemes
+        signatures:
+          anyOf:
+            - items:
+                $ref: '#/components/schemas/AgentCardSignature'
+              type: array
+            - type: 'null'
+          default: null
+          title: Signatures
+        skills:
+          items:
+            $ref: '#/components/schemas/AgentSkill'
+          title: Skills
+          type: array
+        supportsAuthenticatedExtendedCard:
+          anyOf:
+            - type: boolean
+            - type: 'null'
+          default: null
+          title: Supportsauthenticatedextendedcard
+        url:
+          examples:
+            - https://api.example.com/a2a/v1
+          title: Url
+          type: string
+        version:
+          examples:
+            - 1.0.0
+          title: Version
+          type: string
+      required:
+        - capabilities
+        - defaultInputModes
+        - defaultOutputModes
+        - description
+        - name
+        - skills
+        - url
+        - version
+      title: AgentCard
+      type: object
   securitySchemes:
     HTTPBearer:
       type: http

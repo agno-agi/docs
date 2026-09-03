@@ -226,7 +226,15 @@ def main():
     post_tag = 0
     ok_count = 0
     for stmt in sorted(stmt_files):
-        r = subprocess.run([VENV_PY, "-c", stmt], capture_output=True, text=True)
+        # Run from the pinned package root so the docs checkout's top-level
+        # ``agno/`` directory cannot shadow the installed package as an empty
+        # namespace package.
+        r = subprocess.run(
+            [VENV_PY, "-c", stmt],
+            capture_output=True,
+            text=True,
+            cwd=os.path.dirname(AGNO_SRC),
+        )
         if r.returncode == 0:
             ok_count += 1
             continue

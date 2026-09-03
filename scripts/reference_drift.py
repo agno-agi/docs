@@ -32,6 +32,7 @@ import inspect
 import json
 import os
 import re
+import sys
 from dataclasses import MISSING as DC_MISSING
 from dataclasses import fields as dc_fields
 from dataclasses import is_dataclass
@@ -40,8 +41,15 @@ from pathlib import Path
 
 DOCS_ROOT = Path(__file__).resolve().parents[1]
 AGNO_ROOT = Path(os.environ.get("AGNO_REPO") or DOCS_ROOT / "agno")
-AGNO_SRC = AGNO_ROOT / "libs/agno/agno"
+AGNO_LIB = (AGNO_ROOT / "libs/agno").resolve()
+AGNO_SRC = AGNO_LIB / "agno"
 OUT_PATH = Path(__file__).resolve().parent / "out" / "drift-report.json"
+
+# Bind runtime introspection to the reviewed source tree. An earlier
+# PYTHONPATH entry must never substitute another installed Agno checkout.
+while str(AGNO_LIB) in sys.path:
+    sys.path.remove(str(AGNO_LIB))
+sys.path.insert(0, str(AGNO_LIB))
 
 REQUIRED = "<required>"
 
@@ -106,7 +114,7 @@ TABLE_OVERRIDES: dict[tuple[str, str], str] = {
     # event (agent_id, content, ...), which is BaseAgentRunEvent in source;
     # BaseRunOutputEvent in run/base.py is a thin mixin without those fields.
     ("reference/agents/run-response.mdx", "baserunoutputevent"): "agno.run.agent:BaseAgentRunEvent",
-    ("reference/teams/team-response.mdx", "baserunoutputevent"): "agno.run.team:BaseTeamRunEvent",
+    ("reference/teams/team-response.mdx", "baseteamrunoutputevent"): "agno.run.team:BaseTeamRunEvent",
 }
 
 SKIP_PAGES: dict[str, str] = {
@@ -312,8 +320,22 @@ def _class_properties(obj) -> set[str]:
     return props
 
 
+def assert_reviewed_module(mod: object, module_name: str) -> None:
+    module_file = getattr(mod, "__file__", None)
+    if module_file is None:
+        raise RuntimeError(f"{module_name} has no filesystem provenance")
+    resolved = Path(module_file).resolve()
+    try:
+        resolved.relative_to(AGNO_SRC)
+    except ValueError as exc:
+        raise RuntimeError(
+            f"{module_name} imported from {resolved}, outside reviewed source {AGNO_SRC}"
+        ) from exc
+
+
 def introspect_target(module_name: str, obj_name: str, is_function: bool) -> SourceParams:
     mod = importlib.import_module(module_name)
+    assert_reviewed_module(mod, module_name)
     obj = getattr(mod, obj_name)
     src_file = None
     try:
@@ -353,8 +375,16 @@ def introspect_target(module_name: str, obj_name: str, is_function: bool) -> Sou
         return SourceParams(params, "introspection", module_name, obj_name,
                             properties=_class_properties(obj))
 
-    if is_dataclass(obj) and "__init__" not in vars(obj):
-        # synthesized dataclass __init__: fields include inherited ones
+    init_code = getattr(getattr(obj, "__init__", None), "__code__", None)
+    generated_dataclass_init = (
+        is_dataclass(obj)
+        and init_code is not None
+        and init_code.co_filename == "<string>"
+    )
+    if generated_dataclass_init:
+        # Dataclass fields with init=False are public result attributes rather
+        # than constructor parameters. The decorator still installs __init__
+        # in vars(obj), so testing for its absence misclassifies these fields.
         src = ""
         for klass in reversed(obj.__mro__):
             if is_dataclass(klass) and klass.__module__.startswith("agno"):
@@ -363,8 +393,12 @@ def introspect_target(module_name: str, obj_name: str, is_function: bool) -> Sou
                 except OSError:
                     pass
         params = {}
+        dataclass_properties = _class_properties(obj)
         for f in dc_fields(obj):
             if f.name.startswith("_"):
+                continue
+            if not f.init:
+                dataclass_properties.add(f.name)
                 continue
             if f.default is not DC_MISSING:
                 default = _default_repr(f.default)
@@ -376,10 +410,24 @@ def introspect_target(module_name: str, obj_name: str, is_function: bool) -> Sou
             else:
                 default = REQUIRED
             params[f.name] = {"default": default, "deprecated": False}
+        # dataclasses.fields() excludes annotations inherited from plain base
+        # classes. Agno uses that pattern for serialized public attributes such
+        # as event_index, so merge those annotations into the runtime surface.
+        for klass in reversed(obj.__mro__[1:]):
+            if is_dataclass(klass) or not klass.__module__.startswith("agno"):
+                continue
+            for name, annotation in getattr(klass, "__annotations__", {}).items():
+                if name.startswith("_") or name in params:
+                    continue
+                if "ClassVar" in str(annotation):
+                    continue
+                default_value = vars(klass).get(name, DC_MISSING)
+                default = REQUIRED if default_value is DC_MISSING else _default_repr(default_value)
+                params[name] = {"default": default, "deprecated": False}
         for p in find_deprecated_params(src, set(params), corpus):
             params[p]["deprecated"] = True
         return SourceParams(params, "introspection", module_name, obj_name,
-                            properties=_class_properties(obj))
+                            properties=dataclass_properties)
 
     sig = inspect.signature(obj.__init__)
     params, has_kwargs = _sig_params(sig)
@@ -461,7 +509,7 @@ class AstExtractor:
         return chain
 
     @staticmethod
-    def _fn_params(fn: ast.FunctionDef) -> tuple[dict[str, dict], bool]:
+    def _fn_params(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[dict[str, dict], bool]:
         params: dict[str, dict] = {}
         args = fn.args
         pos = args.posonlyargs + args.args
@@ -576,6 +624,49 @@ class AstExtractor:
         for p in find_deprecated_params(fn_src, set(params), fn_src):
             params[p]["deprecated"] = True
         return SourceParams(params, "ast", module, name, has_kwargs)
+
+    @staticmethod
+    def _is_overload(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+        for dec in fn.decorator_list:
+            name = dec.id if isinstance(dec, ast.Name) else (
+                dec.attr if isinstance(dec, ast.Attribute) else ""
+            )
+            if name == "overload":
+                return True
+        return False
+
+    def extract_method(self, class_name: str, method: str,
+                       module_hint: str | None = None) -> SourceParams | None:
+        """Extract a method signature from the class MRO without importing it.
+
+        Prefer the final concrete implementation over @overload declarations.
+        If only overload declarations exist, retain the most complete one.
+        """
+        for cnode, cpath, module in self._mro_chain(class_name, module_hint):
+            candidates = [
+                item for item in cnode.body
+                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and item.name == method
+            ]
+            if not candidates:
+                continue
+            concrete = [fn for fn in candidates if not self._is_overload(fn)]
+            if concrete:
+                fn = concrete[-1]
+            else:
+                fn = max(
+                    enumerate(candidates),
+                    key=lambda pair: (len(self._fn_params(pair[1])[0]), pair[0]),
+                )[1]
+            _, text = self._load(cpath)
+            params, has_kwargs = self._fn_params(fn)
+            fn_src = ast.get_source_segment(text, fn) or ""
+            for p in find_deprecated_params(fn_src, set(params), package_corpus(cpath)):
+                params[p]["deprecated"] = True
+            return SourceParams(
+                params, "ast", module, f"{class_name}.{method}", has_kwargs
+            )
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -840,6 +931,7 @@ class Resolver:
         for module, _path in entries[:4]:
             try:
                 mod = importlib.import_module(module)
+                assert_reviewed_module(mod, module)
                 cls = getattr(mod, class_name)
                 fn = getattr(cls, method, None)
                 if fn is None:
@@ -849,7 +941,8 @@ class Resolver:
                                     f"{class_name}.{method}", has_kwargs)
             except BaseException:
                 continue
-        return None
+        best_module = entries[0][0] if entries else module_hint
+        return self.extractor.extract_method(class_name, method, best_module)
 
     def candidates_for(self, title: str, rel_dir: str, stem: str) -> list[str]:
         titles = [title, title.replace(" ", ""), title.replace("-", ""),
@@ -902,6 +995,16 @@ def strip_heading_suffix(heading: str) -> str:
     while words and words[-1].lower() in HEADING_SUFFIX_WORDS:
         words = words[:-1]
     return "".join(words)
+
+
+def callable_names_in_heading(heading: str) -> list[str]:
+    """Return callable names from a combined heading such as run() and arun()."""
+    names = re.findall(r"\b([a-z][a-z0-9_]*)\(\)", heading)
+    if len(names) < 2:
+        return []
+    remainder = re.sub(r"`?[a-z][a-z0-9_]*\(\)`?", " ", heading)
+    remainder = re.sub(r"\b(?:and|or)\b|[,/&]", " ", remainder, flags=re.I)
+    return names if not remainder.strip() else []
 
 
 # ---------------------------------------------------------------------------
@@ -1069,6 +1172,26 @@ def main() -> None:
             for idx, cand_h in enumerate([h] + t.get("chain", [])):
                 ckey = norm_key(cand_h)
                 stripped = strip_heading_suffix(cand_h)
+                combined_methods = callable_names_in_heading(cand_h)
+                if (main_target and not main_target[2]
+                        and combined_methods
+                        and ckey not in generic_norms):
+                    for method_name in combined_methods:
+                        method_tables.append((method_name, t["rows"]))
+                    mapped = True
+                    break
+                # Lower-case callable headings on class pages are methods. Bind
+                # them to the page target before global normalized-name lookup,
+                # which can otherwise map arun to a top-level _arun helper.
+                if (main_target and not main_target[2]
+                        and method_re.match(cand_h.strip())
+                        and ckey not in generic_norms):
+                    method_tables.append((
+                        cand_h.strip().strip("`").strip(".").rstrip("()"),
+                        t["rows"],
+                    ))
+                    mapped = True
+                    break
                 if stripped and norm_key(stripped) not in generic_norms:
                     resolved = resolver.resolve_name(stripped)
                     if resolved:
@@ -1078,11 +1201,6 @@ def main() -> None:
                         grouped.setdefault((hint, resolved, False), []).extend(t["rows"])
                         mapped = True
                         break
-                if main_target and method_re.match(cand_h.strip()) and ckey not in generic_norms:
-                    method_tables.append((cand_h.strip().strip("`").strip(".").rstrip("()"),
-                                          t["rows"]))
-                    mapped = True
-                    break
                 # a non-generic heading that is neither class nor method blocks
                 # further ancestor walking only if it's the table's own heading
                 generic = (
@@ -1131,7 +1249,11 @@ def main() -> None:
                 continue
             sp = resolver.get_method_params(main_target[0], main_target[1], mname, main_prefs)
             if sp is None:
-                unmapped_tables.append(mname)
+                results.append({
+                    "class": f"{main_target[1]}.{mname}()",
+                    "status": "SOURCE_NOT_FOUND",
+                    "is_method": True,
+                })
                 continue
             cmp = compare(rows, sp)
             cmp.update({"class": f"{main_target[1]}.{mname}()", "module": sp.module,
@@ -1139,20 +1261,21 @@ def main() -> None:
             results.append(cmp)
 
         ok = [r for r in results if r.get("status") == "OK"]
-        if not ok:
+        source_not_found = [
+            r for r in results if r.get("status") == "SOURCE_NOT_FOUND"
+        ]
+        if not ok and not source_not_found:
             entry["status"] = "UNPARSEABLE"
             reasons = []
             if not main_target:
                 reasons.append(f"could not map title {title!r} to a class in agno source")
             if unmapped_tables:
                 reasons.append(f"unmapped tables: {unmapped_tables}")
-            if any(r.get("status") == "SOURCE_NOT_FOUND" for r in results):
-                reasons.append("mapped class not found in source")
             entry["reason"] = "; ".join(reasons) or "no table mapped to a class"
             report_pages.append(entry)
             continue
 
-        entry["status"] = "OK"
+        entry["status"] = "SOURCE_NOT_FOUND" if source_not_found else "OK"
         entry["targets"] = results
         if unmapped_tables:
             entry["unmapped_tables"] = unmapped_tables
@@ -1164,22 +1287,35 @@ def main() -> None:
             "wrong_defaults": sum(len(r["wrong_defaults"]) for r in ok),
             "documented_aliases": sum(len(r["documented_aliases"]) for r in ok),
             "inherited_documented": sum(len(r["inherited_documented"]) for r in ok),
+            "source_not_found": len(source_not_found),
         }
         report_pages.append(entry)
 
     ok_pages = [p for p in report_pages if p["status"] == "OK"]
-    unparseable = [p for p in report_pages if p["status"] != "OK"]
+    source_not_found_pages = [
+        p for p in report_pages if p["status"] == "SOURCE_NOT_FOUND"
+    ]
+    compared_pages = ok_pages + source_not_found_pages
+    unparseable = [p for p in report_pages if p["status"] == "UNPARSEABLE"]
     totals = {
         "pages_total": len(report_pages),
         "pages_ok": len(ok_pages),
+        "pages_source_not_found": len(source_not_found_pages),
         "pages_unparseable": len(unparseable),
-        "missing_total": sum(p["totals"]["missing"] for p in ok_pages),
-        "phantom_total": sum(p["totals"]["phantom"] for p in ok_pages),
-        "wrong_defaults_total": sum(p["totals"]["wrong_defaults"] for p in ok_pages),
-        "documented_aliases_total": sum(p["totals"]["documented_aliases"] for p in ok_pages),
-        "inherited_documented_total": sum(p["totals"]["inherited_documented"] for p in ok_pages),
+        "source_not_found_targets": sum(
+            p["totals"]["source_not_found"] for p in source_not_found_pages
+        ),
+        "missing_total": sum(p["totals"]["missing"] for p in compared_pages),
+        "phantom_total": sum(p["totals"]["phantom"] for p in compared_pages),
+        "wrong_defaults_total": sum(p["totals"]["wrong_defaults"] for p in compared_pages),
+        "documented_aliases_total": sum(
+            p["totals"]["documented_aliases"] for p in compared_pages
+        ),
+        "inherited_documented_total": sum(
+            p["totals"]["inherited_documented"] for p in compared_pages
+        ),
         "pages_with_drift": sum(
-            1 for p in ok_pages
+            1 for p in compared_pages
             if p["totals"]["missing"] or p["totals"]["phantom"] or p["totals"]["wrong_defaults"]
         ),
         "pages_clean": sum(
@@ -1190,6 +1326,7 @@ def main() -> None:
     report = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "agno_source": str(AGNO_SRC),
+        "agno_import_root": str(AGNO_LIB),
         "docs_root": str(DOCS_ROOT),
         "notes": [
             "documented_aliases are deprecated alias params still documented: not phantoms.",
@@ -1197,6 +1334,8 @@ def main() -> None:
             "accepts via **kwargs from a parent signature: not phantoms.",
             "wrong_defaults only compares concrete, machine-comparable defaults.",
             "tables under '... Properties' headings are skipped (computed properties).",
+            "SOURCE_NOT_FOUND pages have one or more mapped targets that could not be "
+            "extracted; they are not counted as clean.",
         ],
         "totals": totals,
         "pages": report_pages,
@@ -1207,6 +1346,11 @@ def main() -> None:
     print(f"\nwrote {OUT_PATH}")
     for p in unparseable:
         print(f"UNPARSEABLE {p['page']}: {p.get('reason', '')[:140]}")
+    for p in source_not_found_pages:
+        print(
+            f"SOURCE_NOT_FOUND {p['page']}: "
+            f"{p['totals']['source_not_found']} target(s)"
+        )
 
 
 if __name__ == "__main__":

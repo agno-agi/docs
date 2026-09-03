@@ -1,0 +1,100 @@
+---
+title: "Use the built-in MCP authorization server"
+description: "Make AgentOS its own OAuth 2.1 authorization server for MCP connector clients."
+source: cookbook/05_agent_os/14_mcp/oauth_builtin.py
+---
+
+Make AgentOS its own OAuth 2.1 authorization server for MCP connector clients. The synchronous OS-level SQLite database stores clients, codes, signing keys, and refresh tokens for local development; use synchronous PostgresDb for a restart-safe, multi-replica production deployment.
+
+```python oauth_builtin.py
+"""
+Use the built-in MCP authorization server
+=========================================
+
+Make AgentOS its own OAuth 2.1 authorization server for MCP connector clients.
+The synchronous OS-level SQLite database stores clients, codes, signing keys,
+and refresh tokens for local development; use synchronous PostgresDb for a
+restart-safe, multi-replica production deployment.
+
+Prerequisites: OPENAI_API_KEY, AGENTOS_URL, and MCP_CONNECT_SECRET (16+ chars)
+Optional: AGENTOS_MCP_SIGNING_KEY (32+ high-entropy chars)
+Run: .venvs/demo/bin/python cookbook/05_agent_os/14_mcp/oauth_builtin.py
+Try: Inspect GET /.well-known/oauth-protected-resource/mcp
+"""
+
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIResponses
+from agno.os import AgentOS, AgentOSBuiltinAuth
+
+# ---------------------------------------------------------------------------
+# Create an OAuth-enabled AgentOS
+# ---------------------------------------------------------------------------
+
+db = SqliteDb(
+    id="mcp-oauth-builtin-db",
+    db_file="tmp/mcp_oauth_builtin.db",
+)
+
+oauth_agent = Agent(
+    id="oauth-assistant",
+    name="OAuth Assistant",
+    model=OpenAIResponses(id="gpt-5.5"),
+    db=db,
+    instructions="Answer authenticated connector users concisely.",
+)
+
+agent_os = AgentOS(
+    id="mcp-oauth-builtin-os",
+    description="AgentOS with its built-in MCP OAuth authorization server.",
+    db=db,
+    agents=[oauth_agent],
+    mcp=True,
+    mcp_auth=AgentOSBuiltinAuth.from_env(),
+)
+app = agent_os.get_app()
+
+# ---------------------------------------------------------------------------
+# Run OAuth AgentOS
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    agent_os.serve(app=app)
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U "agno[mcp,os]" openai
+    ```
+  </Step>
+
+  <Step title="Export environment variables">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export AGENTOS_MCP_SIGNING_KEY="your_agentos_mcp_signing_key_here"
+    export MCP_CONNECT_SECRET="your_mcp_connect_secret_here"
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:AGENTOS_MCP_SIGNING_KEY="your_agentos_mcp_signing_key_here"
+    $Env:MCP_CONNECT_SECRET="your_mcp_connect_secret_here"
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `oauth_builtin.py`, then run:
+    ```bash
+    python oauth_builtin.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/05_agent_os/14_mcp/oauth_builtin.py](https://github.com/agno-agi/agno/blob/v3.0.4/cookbook/05_agent_os/14_mcp/oauth_builtin.py)

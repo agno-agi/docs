@@ -1,10 +1,10 @@
 ---
 title: "AgentOS as MCP Server"
-description: "Serve AgentOS as an MCP server at /mcp, with eight built-in tools, custom tools, and per-call authorization via MCPServerConfig."
-keywords: [agentos, mcp, mcp server, expose as mcp, MCPServerConfig]
+description: "Serve AgentOS as an MCP server at /mcp, with eight built-in tools, custom tools, and per-call authorization via MCPConfig."
+keywords: [agentos, mcp, mcp server, expose as mcp, MCPConfig]
 ---
 
-Set `mcp_server=True` to serve an MCP server at `/mcp` alongside the REST API. MCP clients such as Claude, Claude Code, and Cursor can then discover your agents, teams, and workflows, run them, and browse past conversations.
+Set `mcp=True` to serve an MCP server at `/mcp` alongside the REST API. ChatGPT and Claude connect as hosted custom connectors. Claude Code, Claude Desktop, Codex, and Cursor connect from your machine through Agno Connect.
 
 ```python mcp_server.py
 from agno.agent import Agent
@@ -24,7 +24,7 @@ assistant = Agent(
 
 agent_os = AgentOS(
     agents=[assistant],
-    mcp_server=True,
+    mcp=True,
 )
 
 app = agent_os.get_app()
@@ -40,31 +40,44 @@ The MCP server needs `fastmcp` from the `mcp` extra. Building the app without it
 pip install -U "agno[os,mcp]" anthropic
 ```
 
-## Connect a Client
+## Connect MCP Clients
 
-The server uses the Streamable HTTP transport. On a secured instance, clients pass their credential in the `Authorization` header (see [Authentication](#authentication)).
+The server uses the Streamable HTTP transport. Choose the connection method based on where the client runs.
 
-<CodeGroup>
+### ChatGPT and Claude
 
-```bash Claude Code
-claude mcp add --transport http agentos http://localhost:7777/mcp \
-  --header "Authorization: Bearer $OS_SECURITY_KEY"
+Deploy AgentOS to a public HTTPS URL. In ChatGPT or Claude, open **Settings → Connectors → Add custom connector** and enter:
+
+```text
+https://<your-domain>/mcp
 ```
 
-```json mcp.json (Cursor and similar)
-{
-  "mcpServers": {
-    "agentos": {
-      "url": "http://localhost:7777/mcp",
-      "headers": {
-        "Authorization": "Bearer your-security-key"
-      }
-    }
-  }
-}
+The endpoint must be publicly reachable over HTTPS. For ChatGPT and Claude, a secured MCP endpoint must use OAuth. Their connector UIs do not accept bearer tokens. Hosted apps cannot reach an AgentOS running only on localhost.
+
+Configure MCP OAuth on the AgentOS:
+
+```python
+from agno.os import AgentOSBuiltinAuth
+
+agent_os = AgentOS(
+    agents=[assistant],
+    db=db,
+    mcp=True,
+    mcp_auth=AgentOSBuiltinAuth.from_env(),
+)
 ```
 
-</CodeGroup>
+Set `AGENTOS_URL` to the exact public origin and set `MCP_CONNECT_SECRET`. Leave the connector's optional OAuth client ID and client secret fields empty, then enter `MCP_CONNECT_SECRET` on the consent page. See the [built-in OAuth example](/examples/agent-os/mcp/oauth-builtin) for the complete setup.
+
+### Local MCP Clients
+
+Run Agno Connect on the machine where Claude Code, Claude Desktop, Codex, or Cursor is installed:
+
+```bash
+uvx agno connect --url http://localhost:7777
+```
+
+Agno Connect discovers `/mcp`, configures each detected client, handles the configured authentication flow, and verifies the connection with an MCP handshake. Pass the AgentOS base URL without `/mcp`. Use the deployed base URL to connect local clients to a remote AgentOS. See [`agno connect`](/cli/connect) for client selection, credentials, and project-scoped configuration.
 
 An Agno agent can operate the server through `MCPTools`. See [Enable AgentOS MCP](/agent-os/usage/mcp/enable-mcp-example) for a complete server and client pair.
 
@@ -90,19 +103,18 @@ Behavior shared by the run tools:
 - A result with `status=PAUSED` carries its unresolved requirements. Resolve them and pass them to `continue_run`.
 - `db_id` on the session tools is only needed when `get_agentos_config` lists multiple databases.
 
-## MCPServerConfig
+## MCPConfig
 
-Pass `mcp_server=MCPServerConfig(...)` to register custom tools, scope the built-ins, gate the server, and add transport protection:
+Pass `mcp=MCPConfig(...)` to register custom tools, scope the built-ins, gate the server, and add transport protection:
 
 ```python
-from agno.os import AgentOS
-from agno.os.config import MCPServerConfig
+from agno.os import AgentOS, MCPConfig
 
 OWNER_IDS = {"owner@example.com"}
 
 agent_os = AgentOS(
     agents=[assistant],
-    mcp_server=MCPServerConfig(
+    mcp=MCPConfig(
         tools=[ask_workspace],                           # register custom tools
         exclude_tags={"session"},                        # drop the read-only session tools
         authorize=lambda user_id: user_id in OWNER_IDS,  # 401 non-owners before any tool runs
@@ -113,16 +125,17 @@ agent_os = AgentOS(
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `tools` | `None` | Custom tools: plain callables or Agno tools/`Function`s. They share the `/mcp` mount, lifespan, and auth with the built-ins. |
-| `enable_builtin_tools` | `True` | Master switch for the 8 built-in tools. Set `False` to ship only your own tools (requires `tools`). |
-| `include_tags` / `exclude_tags` | `None` | Scope the built-ins by tag: `"core"` covers `get_agentos_config`, the run tools, `continue_run`, and `cancel_run`; `"session"` covers the read-only session tools. |
+| `tools` | `None` | Publish custom callables, Agno tools/`Function`s, toolkits, agents, teams, workflows, or `component.as_tool(...)` entries. They share the `/mcp` mount, lifespan, and auth with the built-ins. |
+| `default_tools` | `True` | Master switch for the 8 built-in tools. Set `False` to remove the default surface. `tools` must then contain at least one entry. |
+| `lifecycle_tools` | `True` | Add component-scoped `continue_run` and `cancel_run` tools when `tools` publishes components. |
+| `include_tags` / `exclude_tags` | `None` | Scope the built-ins by tag: `"core"` covers discovery, run, continue, and cancel tools; `"session"` covers the read-only session tools; `"lifecycle"` selects the continue and cancel pair. |
 | `result_mode` | `"trimmed"` | How the run tools serialize results. See [Result modes](#result-modes). |
 | `authorize` | `None` | Per-call gate `fn(user_id) -> bool`. Runs after token verification; returning `False` rejects the request with 401 before any tool or model runs. |
 | `allowed_hosts` | `None` | Host allowlist for DNS-rebinding protection. See [Transport Security](#transport-security). |
 | `allowed_origins` | `None` | Extra exact origins to allow when they are served from hosts outside `allowed_hosts`. |
 | `middleware` | `None` | `starlette.middleware.Middleware` instances added to the MCP app. |
 
-A config with `enable_builtin_tools=False` and no `tools` raises at construction, because it would mount a server with zero tools.
+A config with `default_tools=False` and no `tools` raises at construction, because it would mount a server with zero tools.
 
 ### Result Modes
 
@@ -130,7 +143,7 @@ MCP tool results land in the consuming model's context window, so the default ke
 
 | Mode | Result | Use when |
 |------|--------|----------|
-| `"trimmed"` (default) | Answer text plus generated media as MCP content blocks. `structuredContent` carries only `run_id`, `session_id`, `status`, and the unresolved requirements when paused. | The client is an LLM frontend. |
+| `"trimmed"` (default) | Answer text plus generated media as MCP content blocks. `structuredContent` carries the mirrored answer, `run_id`, `session_id`, `status`, the owning component ID, and unresolved requirements when paused. | The client is an LLM frontend. |
 | `"full"` | `structuredContent` is the run's complete `to_dict()`, with media base64-encoded. | Programmatic clients that need the whole run object. |
 
 ### Custom Tools
@@ -150,33 +163,38 @@ async def ask_workspace(question: str, user_id: str) -> str:
 
 Declare a `user_id` parameter and AgentOS fills it with the authenticated caller's ID (the JWT subject). The parameter is hidden from the client-facing tool schema, so callers cannot spoof it. Tools that need the full request can declare a FastMCP `Context` parameter, which FastMCP injects natively.
 
-Combine `tools=[...]` with `enable_builtin_tools=False` to expose a single purpose-built tool instead of the built-ins.
+Combine `tools=[...]` with `default_tools=False` to expose a focused tool surface instead of the built-ins. Publishing an agent, team, or workflow also adds its scoped lifecycle tools unless `lifecycle_tools=False`.
 
 ## Authentication
 
-Authentication is enforced on `/mcp` in every mode. One auth layer covers the REST routes and the MCP server: any credential that works against the API works against `/mcp`, passed as a Bearer token.
+AgentOS applies its configured authentication to the REST routes and MCP server. Without a security key, JWT authorization, or `mcp_auth`, `/mcp` accepts anonymous calls and restricts requests to localhost hosts by default. Configure authentication before deploying the endpoint.
 
 | Mode | Server setup | Client credential |
 |------|--------------|-------------------|
+| Open local development | `mcp=True` with no authentication configured | None |
 | Security key | `export OS_SECURITY_KEY="your-key"` | `Authorization: Bearer <security key>` |
 | Service account token | Issue via `POST /service-accounts` (requires a database) | `Authorization: Bearer agno_pat_...` |
 | JWT | `AgentOS(authorization=True, ...)` | `Authorization: Bearer <JWT>` |
+| OAuth | `AgentOS(mcp=True, mcp_auth=...)` | OAuth access token |
 
 With `authorization=True`, each tool call is checked against the scopes of its equivalent REST route: `run_agent` requires the same scopes as `POST /agents/{id}/runs`, `get_sessions` the same as `GET /sessions`. See [Security & Auth](/agent-os/security/overview).
 
-The `authorize` gate on `MCPServerConfig` layers on top of authentication: it receives the verified `user_id` and can reject callers per request. Without `authorization=True` no JWT layer resolves the caller, so the gate is called with `user_id=None`. Make sure your gate handles `None`, and return `False` if you want to reject unauthenticated callers.
+The `authorize` gate on `MCPConfig` layers on top of authentication and can reject callers per request. It receives a verified `user_id` from JWT, service-account, or `mcp_auth` credentials. Open and security-key requests carry no user identity, so the gate receives `None`. Make sure your gate handles `None`, and return `False` to reject callers without an identity.
 
 ## Transport Security
 
-fastmcp's built-in Host/Origin guard is disabled on `/mcp`, so `MCPServerConfig.allowed_hosts` acts as the transport guard instead:
+fastmcp's built-in Host/Origin guard is disabled on `/mcp`, so `MCPConfig.allowed_hosts` acts as the transport guard instead:
 
-- Left unset, the default depends on your auth mode. A server with authentication (a security key or JWT) skips host validation, because every request already has to prove itself. An open server gets localhost-only validation, since that is exactly the setup DNS rebinding attacks target.
+- Left unset, the default depends on your auth mode. A server with required authentication (a security key, JWT, or `mcp_auth`) skips host validation, because every request already has to prove itself. An open server gets localhost-only validation, since that is exactly the setup DNS rebinding attacks target.
 - When set, the request `Host` (and `Origin`, when present) must match your list or the localhost defaults (`localhost`, `127.0.0.1`, `[::1]`). Anything else is rejected with 400 before it reaches the MCP machinery. `*.example.com` wildcard patterns are supported.
 
 This is DNS-rebinding protection: it stops a malicious web page from driving an always-on local MCP server through a rebound DNS name. List only your deploy or tunnel host; localhost works out of the box.
 
 ## Developer Resources
 
-- [Enable AgentOS MCP example](/agent-os/usage/mcp/enable-mcp-example)
+- [Serve AgentOS over MCP example](/examples/agent-os/mcp/basic)
+- [Built-in OAuth example](/examples/agent-os/mcp/oauth-builtin)
+- [AuthKit OAuth example](/examples/agent-os/mcp/oauth-authkit)
+- [Connect local clients with `agno connect`](/cli/connect)
 - [MCPTools within AgentOS](/agent-os/mcp/tools)
 - [Security & Auth](/agent-os/security/overview)

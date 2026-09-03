@@ -1,0 +1,136 @@
+---
+title: "Receive and Return WhatsApp Media"
+description: "Use one multimodal Agent for inbound WhatsApp images, video, audio, and documents."
+source: cookbook/05_agent_os/19_whatsapp/media.py
+---
+
+Use one multimodal Agent for inbound WhatsApp images, video, audio, and documents. Image and video generation tools return media artifacts that the interface uploads and sends back through the WhatsApp Cloud API.
+
+```python media.py
+"""
+Receive and Return WhatsApp Media
+=================================
+
+Use one multimodal Agent for inbound WhatsApp images, video, audio, and
+documents. Image and video generation tools return media artifacts that the
+interface uploads and sends back through the WhatsApp Cloud API.
+
+Prerequisites: GOOGLE_API_KEY, FAL_API_KEY, fal-client, and WhatsApp credentials
+Run: .venvs/demo/bin/python cookbook/05_agent_os/19_whatsapp/media.py
+Try: Send an image for analysis, or ask for a generated image or short video
+"""
+
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.google import Gemini
+from agno.os import AgentOS
+from agno.os.interfaces.whatsapp import Whatsapp
+from agno.tools.fal import FalTools
+from agno.tools.models.gemini import GeminiTools
+
+# ---------------------------------------------------------------------------
+# Create the Media WhatsApp AgentOS
+# ---------------------------------------------------------------------------
+
+db = SqliteDb(
+    id="whatsapp-media-db",
+    db_file="tmp/whatsapp_media.db",
+)
+
+media_agent = Agent(
+    id="whatsapp-media-agent",
+    name="WhatsApp Media Agent",
+    model=Gemini(id="gemini-3.5-flash"),
+    db=db,
+    tools=[
+        GeminiTools(
+            enable_generate_image=True,
+            enable_generate_video=False,
+        ),
+        FalTools(model="fal-ai/hunyuan-video"),
+    ],
+    add_history_to_context=True,
+    num_history_runs=3,
+    instructions=[
+        "Analyze images, video, audio, and documents that the user sends.",
+        "Use generate_image when the user asks for a new still image.",
+        "Use generate_media when the user asks for a short generated video.",
+        "Keep accompanying text concise because the result is delivered on WhatsApp.",
+    ],
+)
+
+agent_os = AgentOS(
+    id="whatsapp-media-os",
+    description="A multimodal AgentOS that receives and returns WhatsApp media.",
+    agents=[media_agent],
+    interfaces=[
+        Whatsapp(
+            agent=media_agent,
+            media_timeout=60,
+        )
+    ],
+)
+app = agent_os.get_app()
+
+# ---------------------------------------------------------------------------
+# Run the Media WhatsApp Server
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    agent_os.serve(app=app)
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U "agno[os]" fal-client google-genai
+    ```
+  </Step>
+
+  <Step title="Export environment variables">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export FAL_API_KEY="your_fal_api_key_here"
+    export GOOGLE_API_KEY="your_google_api_key_here"
+    export WHATSAPP_ACCESS_TOKEN="your_whatsapp_access_token_here"
+    export WHATSAPP_APP_SECRET="your_whatsapp_app_secret_here"
+    export WHATSAPP_PHONE_NUMBER_ID="your_whatsapp_phone_number_id_here"
+    export WHATSAPP_VERIFY_TOKEN="your_whatsapp_verify_token_here"
+    ```
+
+    ```bash Windows
+    $Env:FAL_API_KEY="your_fal_api_key_here"
+    $Env:GOOGLE_API_KEY="your_google_api_key_here"
+    $Env:WHATSAPP_ACCESS_TOKEN="your_whatsapp_access_token_here"
+    $Env:WHATSAPP_APP_SECRET="your_whatsapp_app_secret_here"
+    $Env:WHATSAPP_PHONE_NUMBER_ID="your_whatsapp_phone_number_id_here"
+    $Env:WHATSAPP_VERIFY_TOKEN="your_whatsapp_verify_token_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Expose the server">
+    Start ngrok for port 7777 and copy its public HTTPS URL. Keep ngrok running:
+    ```bash
+    ngrok http 7777
+    ```
+  </Step>
+
+  <Step title="Start AgentOS">
+    Save the code above as `media.py`, then run:
+    ```bash
+    python media.py
+    ```
+    Keep the server running while you configure and verify the webhook.
+  </Step>
+
+  <Step title="Configure the webhook">
+    Follow [WhatsApp setup](/agent-os/interfaces/whatsapp/setup). In Meta, set the callback URL to `https://<your-ngrok-url>/whatsapp/webhook`, use the same verify token as `WHATSAPP_VERIFY_TOKEN`, and subscribe to the `messages` field. Verify the webhook while AgentOS and ngrok are running.
+  </Step>
+</Steps>
+
+Full source: [cookbook/05_agent_os/19_whatsapp/media.py](https://github.com/agno-agi/agno/blob/v3.0.4/cookbook/05_agent_os/19_whatsapp/media.py)

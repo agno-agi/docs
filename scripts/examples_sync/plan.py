@@ -42,10 +42,13 @@ import sys
 from pathlib import Path
 
 import generate  # the page generator; shared title/slug helpers
+from migration_manifest import load_migration_manifest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_AGNO = Path(os.environ.get("AGNO_REPO") or REPO_ROOT / "agno")
 OUT_DIR = Path(__file__).resolve().parent / "out"
+MIGRATION_MANIFEST_PATH = Path(__file__).resolve().parent / "migration-routes.json"
+MIGRATION_MANIFEST = load_migration_manifest(MIGRATION_MANIFEST_PATH)
 
 # ---------------------------------------------------------------------------
 # Scope and slug conventions
@@ -107,17 +110,24 @@ NAV_SEEDS = {
     "observability": ["More", "Integrations", "Observability"],
 }
 
-SIM_ACCEPT = 0.55   # basename match: accept relocation at/above this ratio
 KNOWLEDGE_REDIRECT_SIM = 0.5
 
-# Reserve explicit redirect overrides for retired routes without tracked page
-# content. Tracked pages remain live pages and must not be listed here.
-CANONICAL_REDIRECT_OVERRIDES: tuple[tuple[str, str], ...] = ()
+# Reviewed redirect-only migration routes. Direct successors come from the
+# pinned AgentOS path map; fallback redirects are approved in the manifest.
+CANONICAL_REDIRECT_OVERRIDES = tuple(
+    (slug, MIGRATION_MANIFEST.targets[slug][0][1])
+    for slug in sorted(MIGRATION_MANIFEST.redirect_slugs)
+)
 REDIRECT_SOURCE_SLUGS = {source for source, _ in CANONICAL_REDIRECT_OVERRIDES}
+
+# Chooser and removal-notice pages preserve useful context at legacy URLs but
+# stay outside navigation.
+PRESERVED_MIGRATION_PAGE_SLUGS = set(MIGRATION_MANIFEST.retained_page_slugs)
 
 # These shipped routes own tracked content outside the current navigation.
 # Preserve them as pages instead of classifying them as deletion candidates.
-PRESERVED_TRACKED_PAGE_SLUGS = {
+PRESERVED_TRACKED_PAGE_SLUGS = PRESERVED_MIGRATION_PAGE_SLUGS | {
+    "examples/agent-os/workflow/customer-research-workflow-parallel",
     "examples/agent-os/factories/agent/hitl-factory",
     "examples/agent-os/factories/agent/jwt-role-factory",
     "examples/integrations/rag/overview",
@@ -127,34 +137,45 @@ PRESERVED_TRACKED_PAGE_SLUGS = {
     "examples/reasoning/models/xai/overview",
 }
 
-# These examples landed on docs main after the pinned v2.7.2 source tag. Keep
-# their shipped pages while this sync remains pinned to that tag. The strict
+# These examples landed on docs main after the selected source tag. Keep their
+# shipped pages until the selected source contains them. The strict
 # source-field and navigation assertions make a renamed or replaced page fail
 # closed instead of silently bypassing source validation.
-POST_TAG_CURATED_SOURCE_OVERRIDES = {
-    "examples/agent-os/dbs/valkey-db": "05_agent_os/dbs/valkey_db.py",
-    "examples/integrations/observability/the-context-company": "observability/the_context_company.py",
-    "examples/storage/valkey/valkey-for-agent": "06_storage/valkey/valkey_for_agent.py",
-    "examples/storage/valkey/valkey-for-team": "06_storage/valkey/valkey_for_team.py",
-    "examples/storage/valkey/valkey-for-workflow": "06_storage/valkey/valkey_for_workflow.py",
-    "examples/tools/tavily-tools-advanced": "91_tools/tavily_tools_advanced.py",
+POST_TAG_CURATED_SOURCE_OVERRIDES = {}
+
+# These generated examples were updated on docs main after the selected source
+# tag while their cookbook paths continued to exist. Keep only exceptions that
+# remain newer than the selected source. Remove an entry when the target tag
+# contains the shipped implementation so normal source-fidelity checks resume.
+POST_TAG_EXISTING_SOURCE_OVERRIDES = {
 }
 
-# These generated examples were updated on docs main after the pinned source
-# tag while their cookbook paths continued to exist. Preserve the shipped
-# pages until the sync target advances past v2.7.2, otherwise regeneration
-# would restore the older callback API from the pinned source.
-POST_TAG_EXISTING_SOURCE_OVERRIDES = {
-    "examples/agent-os/workflow/customer-research-workflow-parallel":
-        "05_agent_os/workflow/customer_research_workflow_parallel.py",
-    "examples/workflows/advanced-concepts/session-state/state-in-condition":
-        "04_workflows/06_advanced_concepts/session_state/state_in_condition.py",
-    "examples/workflows/advanced-concepts/session-state/state-in-function":
-        "04_workflows/06_advanced_concepts/session_state/state_in_function.py",
-    "examples/workflows/advanced-concepts/session-state/state-in-router":
-        "04_workflows/06_advanced_concepts/session_state/state_in_router.py",
-    "examples/workflows/cel-expressions/condition/cel-session-state":
-        "04_workflows/07_cel_expressions/condition/cel_session_state.py",
+# Reviewed source relocations. Fuzzy basename similarity is recorded for
+# diagnostics but never authorizes a remap because unrelated provider examples
+# often share the same filename and structure.
+SOURCE_REMAP_OVERRIDES = {
+    "05_agent_os/human_in_the_loop/workflow/step_user_input.py":
+        "04_workflows/08_human_in_the_loop/user_input/02_step_user_input.py",
+    "05_agent_os/interfaces/whatsapp/reasoning_agent.py":
+        "05_agent_os/19_whatsapp/reasoning_agent.py",
+    "05_agent_os/mcp_demo/dynamic_headers/server.py":
+        "91_tools/mcp/dynamic_headers/server.py",
+    "05_agent_os/interfaces/discord/basic.py":
+        "integrations/discord/basic.py",
+    "05_agent_os/learnings/learnings_with_agentos.py":
+        "05_agent_os/11_learnings/learnings_with_agentos.py",
+    "05_agent_os/learnings/rest_api_learnings.py":
+        "05_agent_os/11_learnings/rest_api_learnings.py",
+    "05_agent_os/os_config/yaml_config.py":
+        "05_agent_os/08_os_config/yaml_config.py",
+    "05_agent_os/remote/01_remote_agent.py":
+        "05_agent_os/20_remote/01_remote_agent.py",
+    "05_agent_os/scheduler/scheduler_tools_agent.py":
+        "05_agent_os/12_scheduler/04_scheduler_tools_agent.py",
+    "05_agent_os/skills/sample_skills/system-info/scripts/get_system_info.py":
+        "05_agent_os/23_skills/sample_skills/system-info/scripts/get_system_info.py",
+    "05_agent_os/skills/sample_skills/system-info/scripts/list_directory.py":
+        "05_agent_os/23_skills/sample_skills/system-info/scripts/list_directory.py",
 }
 
 # ---------------------------------------------------------------------------
@@ -396,7 +417,14 @@ def main() -> None:
     walk_nav(tab["groups"], lambda s, p: (nav_slugs.append(s), nav_group_of.__setitem__(s, p)))
 
     page_files = {str(p.relative_to(docs))[:-4]: p for p in sorted((docs / "examples").rglob("*.mdx"))}
-    all_slugs = sorted(set(nav_slugs) | set(page_files))
+    nav_missing_files = set(nav_slugs) - set(page_files)
+    unexpected_missing_files = nav_missing_files - REDIRECT_SOURCE_SLUGS
+    if unexpected_missing_files:
+        raise RuntimeError(
+            "navigation routes missing page files: "
+            + ", ".join(sorted(unexpected_missing_files)[:20])
+        )
+    all_slugs = sorted((set(nav_slugs) | set(page_files)) - nav_missing_files)
 
     # cookbook index
     cookbook = agno / "cookbook"
@@ -472,17 +500,25 @@ def main() -> None:
         code = norm_code(info["code"]) if info["code"] else ""
         if not code:
             return None, 0.0
+        explicit = SOURCE_REMAP_OVERRIDES.get(info.get("ref"))
+        if explicit:
+            assert explicit in cb_files, (
+                f"reviewed remap target is absent from the selected source: {explicit}"
+            )
+            return explicit, similarity(code, cb_files[explicit])
         h = content_hash(code)
         if h in cb_hash:
-            return sorted(cb_hash[h])[0], 1.0
+            exact = sorted(cb_hash[h])
+            if len(exact) == 1:
+                return exact[0], 1.0
         stem = strip_num(Path(info["ref"]).stem) if info["ref"] else None
         cands = list(cb_by_stem.get(stem, [])) if stem else []
-        best, best_r = None, 0.0
+        best_r = 0.0
         for cand in sorted(cands):
             r = similarity(code, cb_files[cand])
             if r > best_r:
-                best, best_r = cand, r
-        return (best, best_r) if best_r >= SIM_ACCEPT else (None, best_r)
+                best_r = r
+        return None, best_r
 
     knowledge_old: list[dict] = []
     for slug in all_slugs:
@@ -527,20 +563,30 @@ def main() -> None:
             })
             results.append(entry)
             continue
+        if slug in REDIRECT_SOURCE_SLUGS:
+            redirect_to = dict(CANONICAL_REDIRECT_OVERRIDES)[slug]
+            entry.update({
+                "class": "DELETE",
+                "subtype": "migration-redirect",
+                "redirect_to": redirect_to,
+                "note": "reviewed legacy route replaced by a permanent redirect",
+            })
+            results.append(entry)
+            continue
+        if slug in PRESERVED_MIGRATION_PAGE_SLUGS:
+            entry.update({
+                "class": "PRESERVE_CURATED",
+                "subtype": "migration-page",
+                "in_nav": False,
+                "note": "reviewed chooser or removal notice retained outside navigation",
+            })
+            results.append(entry)
+            continue
         if slug in PRESERVED_TRACKED_PAGE_SLUGS:
             entry.update({
                 "class": "PRESERVE_CURATED",
                 "subtype": "tracked-page",
                 "note": "tracked page retained outside navigation",
-            })
-            results.append(entry)
-            continue
-        if slug in REDIRECT_SOURCE_SLUGS:
-            entry.update({
-                "class": "PRESERVE_CURATED",
-                "subtype": "redirect-source",
-                "in_nav": False,
-                "note": "preserved hidden source for an explicit canonical redirect",
             })
             results.append(entry)
             continue
@@ -860,7 +906,7 @@ def main() -> None:
     if len(override_sources) != len(set(override_sources)):
         raise RuntimeError("duplicate source in CANONICAL_REDIRECT_OVERRIDES")
     for source, dest in CANONICAL_REDIRECT_OVERRIDES:
-        if dest not in live:
+        if dest not in live and not (docs / f"{dest}.mdx").is_file():
             raise RuntimeError(
                 f"canonical redirect destination is not live: /{source} -> /{dest}"
             )
@@ -885,6 +931,16 @@ def main() -> None:
     ]
     if len(redirects) != len({redirect["source"] for redirect in redirects}):
         raise RuntimeError("duplicate redirect source in output")
+
+    # Bind every curated page to its bytes at the generator boundary. The
+    # one-off pass verifies these hashes before making sanctioned edits.
+    for entry in results:
+        if entry["class"] != "PRESERVE_CURATED":
+            continue
+        page_path = docs / f"{entry['slug']}.mdx"
+        if not page_path.is_file():
+            raise RuntimeError(f"preserved curated page is missing: {entry['slug']}")
+        entry["content_sha256"] = hashlib.sha256(page_path.read_bytes()).hexdigest()
 
     # ---- outputs -----------------------------------------------------------
     counts: dict[str, int] = {}

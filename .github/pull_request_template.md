@@ -23,5 +23,8 @@ Describe key changes, mention related issues or motivation for the changes.
 - [ ] Content is accurate and up-to-date
 - [ ] All links tested and working
 - [ ] Code examples verified (if applicable)
+- [ ] Deterministic scripts pass for the affected examples, imports, installs, and references
+- [ ] OpenAPI JSON and YAML were updated together and `scripts/make_openapi.py --check` passes (if applicable)
+- [ ] `mint broken-links -t false` and `mint validate -t false` pass
 - [ ] Spelling and grammar checked
 - [ ] Screenshots updated (if applicable)

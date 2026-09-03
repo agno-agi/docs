@@ -6,30 +6,56 @@ sidebarTitle: Overview
 
 `SingleStoreDb` stores Agent, Team, and Workflow sessions, memories, knowledge, evaluations, and traces in [SingleStore](https://www.singlestore.com/).
 
-See the [SingleStore documentation](https://docs.singlestore.com/db/v9.0/introduction/) for cluster and connection setup.
+Use the [Helios endpoint details](https://docs.singlestore.com/cloud/connect-to-singlestore/singlestore-helios-endpoints/) for the connection values below. See [Connect with Python](https://docs.singlestore.com/cloud/developer-resources/connect-with-application-development-tools/connect-with-python/) for driver setup.
 
 ## Usage
 
-Install the `sqlalchemy`, `pymysql`, and `openai` packages:
+Install Agno, SQLAlchemy, PyMySQL, and the OpenAI client:
 
 ```shell
-uv pip install sqlalchemy pymysql openai
+uv pip install -U agno sqlalchemy pymysql openai
 ```
+
+Set the SingleStore connection values and your model provider API key:
+
+<CodeGroup>
+
+```bash Mac/Linux
+export SINGLESTORE_USERNAME="your_username"
+export SINGLESTORE_PASSWORD="your_password"
+export SINGLESTORE_HOST="your_host"
+export SINGLESTORE_PORT="3306"
+export SINGLESTORE_DATABASE="your_database"
+export OPENAI_API_KEY="your_openai_api_key_here"
+```
+
+```powershell Windows
+$Env:SINGLESTORE_USERNAME="your_username"
+$Env:SINGLESTORE_PASSWORD="your_password"
+$Env:SINGLESTORE_HOST="your_host"
+$Env:SINGLESTORE_PORT="3306"
+$Env:SINGLESTORE_DATABASE="your_database"
+$Env:OPENAI_API_KEY="your_openai_api_key_here"
+```
+
+</CodeGroup>
 
 ```python singlestore_for_agent.py
 from os import getenv
 
 from agno.agent import Agent
 from agno.db.singlestore import SingleStoreDb
+from sqlalchemy import URL
 
-USERNAME = getenv("SINGLESTORE_USERNAME")
-PASSWORD = getenv("SINGLESTORE_PASSWORD")
-HOST = getenv("SINGLESTORE_HOST")
-PORT = getenv("SINGLESTORE_PORT")
-DATABASE = getenv("SINGLESTORE_DATABASE")
-db_url = (
-    f"mysql+pymysql://{USERNAME}:{PASSWORD}@{HOST}:{PORT}/{DATABASE}?charset=utf8mb4"
-)
+db_url = URL.create(
+    drivername="mysql+pymysql",
+    username=getenv("SINGLESTORE_USERNAME"),
+    password=getenv("SINGLESTORE_PASSWORD"),
+    host=getenv("SINGLESTORE_HOST"),
+    port=int(getenv("SINGLESTORE_PORT", "3306")),
+    database=getenv("SINGLESTORE_DATABASE"),
+    query={"charset": "utf8mb4"},
+).render_as_string(hide_password=False)
 
 db = SingleStoreDb(db_url=db_url)
 agent = Agent(db=db)

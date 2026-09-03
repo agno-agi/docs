@@ -33,11 +33,14 @@ from __future__ import annotations
 
 import argparse
 import ast
+import functools
 import json
 import os
+import pkgutil
 import re
 import subprocess
 import sys
+import sysconfig
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -216,13 +219,15 @@ EXTRA_MODULES = {
     "agno.tracing": "os",  # tracing ships with the AgentOS/opentelemetry bundle
 }
 
-# Packages each agno extra installs (libs/agno/pyproject.toml on feat/v2.7,
+# Packages each Agno extra installs (from the selected source checkout's
+# libs/agno/pyproject.toml),
 # nested agno[...] references resolved, names PEP 503-normalized). Used to
 # drop packages from the install line that the extra already provides.
 EXTRA_PROVIDES: dict[str, set[str]] = {
     "a2a": {"a2a-sdk"},
     "agui": {"ag-ui-protocol", "jsonpatch"},
     "clickhouse": {"clickhouse-connect"},
+    "gcs": {"google-cloud-storage"},
     "mcp": {"mcp", "fastmcp"},
     "os": {
         "fastapi", "python-multipart", "uvicorn", "websockets", "sqlalchemy",
@@ -231,6 +236,7 @@ EXTRA_PROVIDES: dict[str, set[str]] = {
         "croniter", "pytz",
     },
     "scheduler": {"croniter", "pytz"},
+    "s3": {"aioboto3", "boto3"},
     "slack": {"slack-sdk", "aiohttp"},
     "telegram": {"pytelegrambotapi", "telebot", "aiohttp"},
 }
@@ -363,13 +369,18 @@ DB_CLASS_PACKAGES = {
     "sqlite": {"SqliteDb": [], "AsyncSqliteDb": ["aiosqlite"]},
 }
 
+S3_MEDIA_STORAGE_CLASSES = {"S3MediaStorage", "AsyncS3MediaStorage"}
+GCS_MEDIA_STORAGE_CLASSES = {"GCSMediaStorage", "AsyncGCSMediaStorage"}
+
 # Third-party (non-agno) import name -> pip package(s). Stdlib is filtered
 # out separately; anything not listed here installs under its import name
 # (underscores hyphenated). Values verified against libs/agno/pyproject.toml.
 THIRD_PARTY_PACKAGES: dict[str, str | list[str]] = {
     "a2a": "a2a-sdk",
     "bs4": "beautifulsoup4",
+    "discord": "discord.py",
     "dotenv": "python-dotenv",
+    "glide_sync": "valkey-glide-sync",
     "PIL": "pillow",
     "yaml": "pyyaml",
     "googleapiclient": "google-api-python-client",
@@ -461,6 +472,7 @@ SERVICE_TRIGGERS = {
     "mongodb": ("agno.db.mongo", "agno.vectordb.mongodb", "pymongo", "motor"),
     "qdrant": ("agno.vectordb.qdrant", "qdrant_client"),
     "redis": ("agno.db.redis", "agno.vectordb.redis", "redis"),
+    "valkey": ("agno.db.valkey", "agno.vectordb.valkey", "glide_sync"),
     "surrealdb": ("agno.db.surrealdb", "agno.vectordb.surrealdb", "surrealdb"),
 }
 SERVICE_STEPS = {
@@ -472,6 +484,10 @@ SERVICE_STEPS = {
     "mongodb": ("Run MongoDB", "docker run -d -p 27017:27017 --name mongodb mongo:latest"),
     "qdrant": ("Run Qdrant", "docker run -d --name qdrant -p 6333:6333 qdrant/qdrant:latest"),
     "redis": ("Run Redis", "docker run -d --name my-redis -p 6379:6379 redis"),
+    "valkey": (
+        "Run Valkey",
+        "docker run -d --name my-valkey -p 6379:6379 valkey/valkey-bundle",
+    ),
     "surrealdb": (
         "Run SurrealDB",
         "docker run -d --rm --name surrealdb --pull always -p 8000:8000 surrealdb/surrealdb:latest start --user root --pass root",
@@ -703,6 +719,46 @@ LITELLM_STEP = (
     "Start the local OpenAI-compatible proxy on port 4000:",
     "litellm --model gpt-4o --host 127.0.0.1 --port 4000",
 )
+NEXUS_CONFIG_STEP = (
+    "Configure Nexus",
+    "[Install Nexus](https://nexusrouter.com/docs/installation), then create `nexus.toml` for the Anthropic model and the `/llm/v1/` endpoint used by Agno:",
+    """cat > nexus.toml <<'TOML'
+[server]
+listen_address = "127.0.0.1:8000"
+
+[llm]
+enabled = true
+
+[llm.protocols.openai]
+enabled = true
+path = "/llm"
+
+[llm.providers.anthropic]
+type = "anthropic"
+api_key = "{{ env.ANTHROPIC_API_KEY }}"
+
+[llm.providers.anthropic.models."claude-sonnet-4-6"]
+TOML""",
+)
+NEXUS_GATEWAY_STEP = (
+    "Start Nexus",
+    "Start the gateway from the directory that contains `nexus.toml`:",
+    "nexus",
+)
+NEXUS_RETRY_SETUP = (
+    f"{NEXUS_CONFIG_STEP[1]}\n\n"
+    f"```bash\n{NEXUS_CONFIG_STEP[2]}\n{NEXUS_GATEWAY_STEP[2]}\n```\n\n"
+)
+NEXUS_CLAUDE_MIGRATION_STEP = (
+    "Use a current Claude model",
+    "Replace `anthropic/claude-sonnet-4-20250514` with `anthropic/claude-sonnet-4-6` in the saved file.",
+    None,
+)
+NEXUS_RETIRED_MODEL_WARNING = (
+    "The source routes requests to Anthropic's retired `claude-sonnet-4-20250514` model. "
+    "Replace it with `anthropic/claude-sonnet-4-6` before running. See "
+    "[Anthropic model deprecations](https://platform.claude.com/docs/en/about-claude/model-deprecations)."
+)
 MCP_TOOLBOX_STEP = (
     "Start MCP Toolbox",
     "Start the demo database and toolbox service on port 5001:",
@@ -710,8 +766,43 @@ MCP_TOOLBOX_STEP = (
 )
 CLIENT_SERVER_STEP = (
     "Start the AgentOS server",
-    "In another terminal, start the [client example server](/examples/agent-os/client/server) on port 7777:",
-    "python cookbook/05_agent_os/client/server.py",
+    "Open another terminal in the parent directory where `.venv` and the cloned `agno` directory are siblings, then start the shared server on port 7778:",
+    {
+        "Mac/Linux": "source .venv/bin/activate\nexport OPENAI_API_KEY=\"your_openai_api_key_here\"\ncd agno\npython cookbook/05_agent_os/03_python_client/_server.py",
+        "Windows": ".venv\\Scripts\\activate\n$Env:OPENAI_API_KEY=\"your_openai_api_key_here\"\nSet-Location agno\npython cookbook/05_agent_os/03_python_client/_server.py",
+    },
+)
+YAML_CONFIG_SERVER_STEP = (
+    "Start the YAML-configured server",
+    "Open another terminal in the parent directory where `.venv` and the cloned `agno` directory are siblings, then start AgentOS on port 7777:",
+    {
+        "Mac/Linux": "source .venv/bin/activate\nexport OPENAI_API_KEY=\"your_openai_api_key_here\"\ncd agno\npython cookbook/05_agent_os/08_os_config/yaml_config.py",
+        "Windows": ".venv\\Scripts\\activate\n$Env:OPENAI_API_KEY=\"your_openai_api_key_here\"\nSet-Location agno\npython cookbook/05_agent_os/08_os_config/yaml_config.py",
+    },
+)
+SCHEDULER_TOOLS_SERVER_STEP = (
+    "Start the scheduler server",
+    "Open another terminal in the parent directory where `.venv` and the cloned `agno` directory are siblings, then start AgentOS on port 7777:",
+    {
+        "Mac/Linux": "source .venv/bin/activate\nexport OPENAI_API_KEY=\"your_openai_api_key_here\"\ncd agno\npython cookbook/05_agent_os/12_scheduler/04_scheduler_tools_agent.py",
+        "Windows": ".venv\\Scripts\\activate\n$Env:OPENAI_API_KEY=\"your_openai_api_key_here\"\nSet-Location agno\npython cookbook/05_agent_os/12_scheduler/04_scheduler_tools_agent.py",
+    },
+)
+SCHEDULER_REST_SERVER_STEP = (
+    "Start PostgreSQL and AgentOS",
+    "Open another terminal in the parent directory where `.venv` and the cloned `agno` directory are siblings. Start PostgreSQL, then keep AgentOS running on port 7777:",
+    {
+        "Mac/Linux": "docker run -d -e POSTGRES_DB=ai -e POSTGRES_USER=ai -e POSTGRES_PASSWORD=ai -e PGDATA=/var/lib/postgresql -v pgvolume:/var/lib/postgresql -p 5532:5432 --name pgvector agnohq/pgvector:18\nsource .venv/bin/activate\nexport OPENAI_API_KEY=\"your_openai_api_key_here\"\ncd agno\npython cookbook/05_agent_os/12_scheduler/01_run_in_agentos.py",
+        "Windows": "docker run -d -e POSTGRES_DB=ai -e POSTGRES_USER=ai -e POSTGRES_PASSWORD=ai -e PGDATA=/var/lib/postgresql -v pgvolume:/var/lib/postgresql -p 5532:5432 --name pgvector agnohq/pgvector:18\n.venv\\Scripts\\activate\n$Env:OPENAI_API_KEY=\"your_openai_api_key_here\"\nSet-Location agno\npython cookbook/05_agent_os/12_scheduler/01_run_in_agentos.py",
+    },
+)
+REMOTE_AGENTOS_SERVER_STEP = (
+    "Start the remote AgentOS",
+    "Open another terminal in the parent directory where `.venv` and the cloned `agno` directory are siblings, then start the upstream on port 7780:",
+    {
+        "Mac/Linux": "source .venv/bin/activate\nexport OPENAI_API_KEY=\"your_openai_api_key_here\"\ncd agno\npython cookbook/05_agent_os/20_remote/servers/agentos_server.py",
+        "Windows": ".venv\\Scripts\\activate\n$Env:OPENAI_API_KEY=\"your_openai_api_key_here\"\nSet-Location agno\npython cookbook/05_agent_os/20_remote/servers/agentos_server.py",
+    },
 )
 AUTHENTICATED_MONGODB_STEP = (
     "Run MongoDB",
@@ -750,16 +841,56 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "02_agents/01_quickstart/agent_with_tools.py": {
         "suppress_intro": True,
     },
-    "05_agent_os/scheduler/scheduler_tools_agent.py": {
-        "intro_override": "Serve an AgentOS scheduler agent, then use a separate chat process to create and manage recurring schedules.",
-        "run_title": "Start AgentOS",
-        "run_command": "python scheduler_tools_agent.py serve",
-        "run_after": "Keep the server running while you use the chat process.",
-        "post_run_steps": [
+    "02_agents/17_fallback_models/02_error_specific_fallbacks.py": {
+        "pre_code_warning": "The source says `on_error` handles any error. In v3.0.4, fallback routing catches `ModelProviderError` and uses `on_error` only for retryable provider failures. Ordinary client errors such as 400, 401, and 403 responses, plus non-provider exceptions, propagate without using this fallback.",
+    },
+    "05_agent_os/12_scheduler/04_scheduler_tools_agent.py": {
+        "intro_override": "Serve an AgentOS scheduler agent, then use a separate demo process to create and verify a recurring schedule.",
+        "repo_layout": True,
+        "pre_run_steps": [SCHEDULER_TOOLS_SERVER_STEP],
+        "run_title": "Run the demo",
+        "run_command": "python cookbook/05_agent_os/12_scheduler/04_scheduler_tools_agent.py --demo",
+    },
+    "05_agent_os/12_scheduler/02_rest_api.py": {
+        "repo_layout": True,
+        "needs_agno": True,
+        "extra_add": {"os"},
+        "package_add": {"httpx", "openai", "psycopg[binary]", "sqlalchemy"},
+        "env_add": {"OPENAI_API_KEY"},
+        "pre_run_steps": [SCHEDULER_REST_SERVER_STEP],
+        "run_title": "Run the REST client",
+    },
+    "03_teams/04_structured_input_output/json_schema_output.py": {
+        "intro_override": "Return a parsed stock-analysis dictionary through JSON mode with a JSON schema included in the prompt.",
+        "pre_code_warning": "`use_json_mode=True` requests a generic JSON object from the provider. The `output_schema` still guides the prompt and parses the result, but the provider does not enforce that schema. Remove `use_json_mode=True` to use provider-native structured output.",
+    },
+    "05_agent_os/08_os_config/yaml_config.py": {
+        "repo_layout": True,
+        "needs_agno": True,
+        "extra_add": {"os"},
+        "package_add": {"openai", "pyyaml", "sqlalchemy"},
+        "env_add": {"OPENAI_API_KEY"},
+        "pre_run_steps": [YAML_CONFIG_SERVER_STEP],
+        "run_title": "Verify the rendered configuration",
+        "run_command": "python cookbook/05_agent_os/08_os_config/yaml_config.py --demo",
+    },
+    "05_agent_os/20_remote/01_remote_agent.py": {
+        "repo_layout": True,
+        "needs_agno": True,
+        "extra_add": {"os"},
+        "package_add": {"openai"},
+        "env_add": {"OPENAI_API_KEY"},
+        "pre_run_steps": [REMOTE_AGENTOS_SERVER_STEP],
+    },
+    "integrations/discord/basic.py": {
+        "package_add": {"discord.py"},
+        "package_remove": {"discord"},
+        "env_add": {"DISCORD_BOT_TOKEN", "OPENAI_API_KEY"},
+        "pre_run_steps": [
             (
-                "Start the chat process",
-                "In a second terminal in the same directory, start the chat client:",
-                "python scheduler_tools_agent.py chat",
+                "Configure the Discord bot",
+                "Enable the Message Content privileged intent. Install the bot with View Channels, Send Messages, Read Message History, Create Public Threads, and Send Messages in Threads permissions.",
+                None,
             )
         ],
     },
@@ -1138,14 +1269,6 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "observability/traceloop_op.py": {"env_add": {"TRACELOOP_API_KEY"}},
     "09_evals/agent_as_judge/agent_as_judge_batch.py": {
         "env_add": {"OPENAI_API_KEY"},
-        "pre_code_warning": "The pinned source reads `eval_runs[-1]`, but `SqliteDb.get_eval_runs()` returns the newest evaluation first. Replace the index before running so the reported ID belongs to the evaluation that just completed.",
-        "pre_run_steps": [
-            (
-                "Read the latest evaluation",
-                "Replace `latest = eval_runs[-1]` with `latest = eval_runs[0]` in the saved file.",
-                None,
-            )
-        ],
     },
     "09_evals/performance/comparison/autogen_instantiation.py": {
         "env_add": {"OPENAI_API_KEY"},
@@ -1386,7 +1509,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
             )
         ],
     },
-    "05_agent_os/learnings/rest_api_learnings.py": {
+    "05_agent_os/11_learnings/rest_api_learnings.py": {
         "repo_layout": True,
         "needs_agno": True,
         "extra_add": {"os"},
@@ -1396,7 +1519,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
             (
                 "Start AgentOS",
                 "In another terminal, start the learnings server on port 7777:",
-                "python cookbook/05_agent_os/learnings/learnings_with_agentos.py",
+                "python cookbook/05_agent_os/11_learnings/learnings_with_agentos.py",
             )
         ],
     },
@@ -1413,14 +1536,14 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
             )
         ],
     },
-    "05_agent_os/mcp_demo/dynamic_headers/client.py": {
+    "91_tools/mcp/dynamic_headers/client.py": {
         "intro_override": "Forward per-run user and session context from AgentOS to an MCP server with dynamic HTTP headers.",
         "package_add": {"fastmcp"},
         "pre_run_steps": [
             (
                 "Start the MCP server",
-                "Follow the [server example](/examples/agent-os/mcp-demo/dynamic-headers/server) to save `server.py`, then start it in another terminal and keep it running:",
-                "python server.py",
+                "In another terminal, start the sibling FastMCP server on port 8000:",
+                "python cookbook/91_tools/mcp/dynamic_headers/server.py",
             )
         ],
     },
@@ -1463,7 +1586,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
             )
         ],
     },
-    "05_agent_os/interfaces/whatsapp/agent_with_media.py": {
+    "05_agent_os/19_whatsapp/media.py": {
         "pre_run_steps": [
             (
                 "Expose the server",
@@ -1487,11 +1610,17 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "91_tools/mcp/pipedream_linkedin.py": {
         "intro_override": "The pinned source uses a retired Pipedream per-app SSE URL and cannot connect to the current service without code and authentication changes. See [Pipedream MCP](https://pipedream.com/docs/connect/mcp) for the current connection flows.",
     },
+    "91_tools/mcp/pipedream_google_calendar.py": {
+        "intro_override": "The source-fidelity example uses Pipedream's retired per-app SSE URL and cannot connect to the current service without code and authentication changes.",
+        "replacement_only": True,
+        "replacement_heading": "Current Status",
+        "run_replacement": "<Warning>\n  This pinned example cannot connect to the current Pipedream MCP service as written. End users should use Pipedream's OAuth-authenticated v2 setup. Application developers should use the authenticated v3 endpoint. See [Pipedream MCP for end users](https://pipedream.com/docs/connect/mcp/users) and [Develop with Pipedream MCP](https://pipedream.com/docs/connect/mcp/developers).\n</Warning>",
+    },
     "91_tools/mcp/pipedream_slack.py": {
         "intro_override": "The source-fidelity example uses Pipedream's retired per-app SSE URL and cannot connect to the current service without code and authentication changes.",
         "replacement_only": True,
         "replacement_heading": "Current Status",
-        "run_replacement": "<Warning>\n  This v2.7.2 example cannot connect to the current Pipedream MCP service as written. End users should use Pipedream's OAuth-authenticated v2 setup. Application developers should use the authenticated v3 endpoint. See [Pipedream MCP for end users](https://pipedream.com/docs/connect/mcp/users) and [Develop with Pipedream MCP](https://pipedream.com/docs/connect/mcp/developers).\n</Warning>",
+        "run_replacement": "<Warning>\n  This pinned example cannot connect to the current Pipedream MCP service as written. End users should use Pipedream's OAuth-authenticated v2 setup. Application developers should use the authenticated v3 endpoint. See [Pipedream MCP for end users](https://pipedream.com/docs/connect/mcp/users) and [Develop with Pipedream MCP](https://pipedream.com/docs/connect/mcp/developers).\n</Warning>",
     },
     "91_tools/async_generator_tool_with_pydantic_args.py": {
         "pre_code_warning": "The pinned source omits `stream_events=True`, so Agno discards the yielded custom progress events and both final assertions fail. Add the option before running.",
@@ -1523,7 +1652,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         ],
     },
     "91_tools/mcp/sse_transport/client.py": {
-        "intro_override": "Connect to MCP servers that use SSE transport with MCPTools and MultiMCPTools.",
+        "intro_override": "Connect to one or more MCP servers with separate MCPTools instances, including a deprecated standalone SSE transport.",
         "repo_layout": True,
         "pre_run_steps": [
             (
@@ -1543,7 +1672,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "03_teams/19_multimodal/generate_image_with_team.py": {
         "intro_override": "The source-fidelity team uses `DalleTools`, whose supported DALL-E models are deprecated. Migrate the image member to GPT Image 2 before use.",
     },
-    "05_agent_os/interfaces/telegram/agent_with_media.py": {
+    "05_agent_os/18_telegram/media.py": {
         "intro_override": "The Telegram bot's DALL-E image path requires migration to GPT Image 2. Its media analysis and ElevenLabs paths remain as shown.",
     },
     "07_knowledge/05_integrations/rag/agentic_rag_with_lightrag.py": {
@@ -1579,6 +1708,59 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "service_remove": {"mongodb"},
         "pre_run_steps": [AUTHENTICATED_MONGODB_STEP],
     },
+    "06_storage/05_media_storage_local.py": {
+        "description_override": "Offload agent media to the local filesystem and persist a MediaReference after successful storage.",
+        "intro_override": "LocalMediaStorage writes media to the filesystem and replaces inline bytes with a MediaReference after a successful upload.",
+        "pre_code_warning": "Media offload is fail-open. If local storage raises an error, the run can still succeed and persist the inline media instead of a MediaReference.",
+    },
+    "06_storage/06_media_storage_s3.py": {
+        "description_override": "Offload agent media to S3 and persist a MediaReference after successful storage.",
+        "intro_override": "S3MediaStorage writes media to object storage and replaces inline bytes with a MediaReference after a successful upload.",
+        "pre_code_warning": "Media offload is fail-open. If the S3 upload fails, the run can still succeed and persist the inline media instead of a MediaReference.",
+    },
+    "06_storage/07_media_storage_multiturn.py": {
+        "description_override": "Read successfully offloaded S3 media across multiple turns of one session.",
+        "intro_override": "Run a second turn against media that a successful first-turn upload stored in S3.",
+        "pre_code_warning": "This example does not assert that offload succeeded. A storage failure can leave inline media in the persisted run, so verify the MediaReference and S3 object before using it as a read-back test.",
+        "post_run_steps": [
+            (
+                "Verify the offload",
+                "Confirm that the first stored run contains a MediaReference and that its storage key exists in the S3 bucket before treating the second turn as an S3 read-back test.",
+                None,
+            )
+        ],
+    },
+    "06_storage/08_media_storage_gcs.py": {
+        "description_override": "Offload agent media to Google Cloud Storage and persist a MediaReference after successful storage.",
+        "intro_override": "GCSMediaStorage writes media to Google Cloud Storage and replaces inline bytes with a MediaReference after a successful upload.",
+        "pre_code_warning": "Media offload is fail-open. If the GCS upload fails, the run can still succeed and persist the inline media instead of a MediaReference.",
+    },
+    "06_storage/09_media_storage_delete.py": {
+        "description_override": "Delete session rows, then attempt a best-effort sweep of their offloaded media.",
+        "intro_override": "Delete a session and request cleanup of its offloaded media with `delete_media=True`.",
+        "pre_code_warning": "Session deletion and object cleanup are not atomic. Agno records the storage keys, deletes the session rows, then attempts a best-effort object sweep. A storage failure can leave orphaned objects after the rows are gone.",
+    },
+    "05_agent_os/02_databases/media_storage_delete.py": {
+        "description_override": "Read session media through AgentOS, then delete the session and request a best-effort object sweep.",
+        "intro_override": "Attach and read session media through AgentOS, then request object cleanup when deleting the session.",
+        "pre_code_warning": "Session deletion and object cleanup are not atomic. AgentOS records the storage keys, deletes the session rows, then attempts a best-effort object sweep. A storage failure still returns a successful deletion and can leave orphaned objects.",
+        "post_run_steps": [
+            (
+                "Attach and read a file",
+                "In another terminal with `curl` and `jq`, attach a repository file, resolve its storage key from the session, and read it through AgentOS:",
+                "curl -sS -X POST http://127.0.0.1:7777/agents/media-delete-agent/runs \\\n  -F 'message=Summarize the attached file.' \\\n  -F 'session_id=media-delete-demo' \\\n  -F 'stream=false' \\\n  -F 'files=@README.md' > /tmp/agentos-media-run.json\n"
+                "curl -sS http://127.0.0.1:7777/sessions/media-delete-demo > /tmp/agentos-media-session.json\n"
+                "STORAGE_KEY=\"$(jq -r '.. | objects | .storage_key? // empty' /tmp/agentos-media-session.json | head -n 1)\"\n"
+                "test -n \"$STORAGE_KEY\"\n"
+                "curl -sS -o /tmp/agentos-media-download \"http://127.0.0.1:7777/sessions/media-delete-demo/media/${STORAGE_KEY}\"",
+            ),
+            (
+                "Delete the session and request cleanup",
+                "Delete the rows and request the best-effort storage sweep. Verify the object separately in S3 when cleanup assurance matters:",
+                "curl -i -X DELETE 'http://127.0.0.1:7777/sessions/media-delete-demo?delete_media=true'",
+            ),
+        ],
+    },
     "91_tools/searxng_tools.py": {
         "pre_run_steps": [
             (
@@ -1609,7 +1791,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "02_agents/16_skills/sample_skills/git-workflow/scripts/commit_message.py": {
         "run_command": "python commit_message.py validate \"feat: add search\"",
     },
-    "05_agent_os/skills/sample_skills/system-info/scripts/list_directory.py": {
+    "05_agent_os/23_skills/sample_skills/system-info/scripts/list_directory.py": {
         "run_note": "The system-info skill executes this helper as a subprocess and passes the directory path as its first argument.",
     },
     "05_agent_os/human_in_the_loop/workflow/workflow_db.py": {
@@ -1645,6 +1827,25 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "90_models/anthropic/prompt_caching.py": {
         "intro_override": "Use prompt caching with Anthropic agents to cache the system prompt passed to the model.",
+        "pre_code_warning": "Anthropic retired the source's `claude-sonnet-4-20250514` model on June 15, 2026. Replace it with `claude-sonnet-4-6` before running. See [Anthropic model deprecations](https://platform.claude.com/docs/en/about-claude/model-deprecations).",
+        "pre_run_steps": [
+            (
+                "Update the Claude model",
+                "Replace `Claude(id=\"claude-sonnet-4-20250514\")` with `Claude(id=\"claude-sonnet-4-6\")` in the saved file.",
+                None,
+            )
+        ],
+    },
+    "90_models/anthropic/prompt_caching_multi_block.py": {
+        "intro_override": "Configure per-block prompt-cache TTLs and cache tool definitions with Claude.",
+        "pre_code_warning": "The source creates `blocks` once, so the timestamp labeled as dynamic stays fixed for the model instance. Use a zero-argument block factory to rebuild dynamic content for every request.",
+        "pre_run_steps": [
+            (
+                "Refresh dynamic blocks per request",
+                "Move the `blocks` list into a zero-argument `build_system_prompt_blocks()` function that returns the list. Then pass the function with `system_prompt_blocks=build_system_prompt_blocks`. See [Prompt Caching With a Dynamic Block](/examples/models/anthropic/prompt-caching-with-dynamic-block) for the complete pattern.",
+                None,
+            )
+        ],
     },
     "90_models/vertexai/claude/prompt_caching.py": {
         "intro_override": "Use prompt caching with Claude on Vertex AI to cache the system prompt passed to the model.",
@@ -1743,17 +1944,12 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "90_models/openai/chat/pdf_input_file_upload.py": {
         "intro_override": "Pass a local PDF as base64-inlined file input to an OpenAI Chat agent.",
-        "pre_code_warning": "The source docstring incorrectly refers to Google GenAI. `OpenAIChat` base64-inlines a local file path, contrary to the source comment's automatic large-file upload claim. The source also uses deprecated `gpt-4o`. Replace the model before running.",
+        "pre_code_warning": "The source docstring incorrectly refers to Google GenAI. `OpenAIChat` base64-inlines the local file path; it does not upload a large file automatically.",
         "pre_run_steps": [
             (
                 "Download the sample PDF",
                 "Download `ThaiRecipes.pdf` next to the saved script:",
                 "python -c \"from urllib.request import urlretrieve; urlretrieve('https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf', 'ThaiRecipes.pdf')\"",
-            ),
-            (
-                "Update the model",
-                "Replace `OpenAIChat(id=\"gpt-4o\")` with `OpenAIChat(id=\"gpt-5.4-mini\")` in the saved file.",
-                None,
             ),
         ],
     },
@@ -1841,15 +2037,19 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "env_remove": {"LITELLM_API_KEY"},
         "env_title": "Export your Anthropic API key",
     },
+    "90_models/nexus/basic.py": {
+        "env_add": {"ANTHROPIC_API_KEY", "OPENAI_API_KEY"},
+        "pre_code_warning": NEXUS_RETIRED_MODEL_WARNING,
+        "pre_run_steps": [NEXUS_CLAUDE_MIGRATION_STEP, NEXUS_CONFIG_STEP, NEXUS_GATEWAY_STEP],
+    },
+    "90_models/nexus/tool_use.py": {
+        "env_add": {"ANTHROPIC_API_KEY", "OPENAI_API_KEY"},
+        "pre_code_warning": NEXUS_RETIRED_MODEL_WARNING,
+        "pre_run_steps": [NEXUS_CLAUDE_MIGRATION_STEP, NEXUS_CONFIG_STEP, NEXUS_GATEWAY_STEP],
+    },
     "90_models/nexus/retry.py": {
         "env_add": {"ANTHROPIC_API_KEY", "OPENAI_API_KEY"},
-        "pre_run_steps": [
-            (
-                "Start Nexus",
-                "Run a local [Nexus gateway](https://nexusrouter.com/docs) at `http://localhost:8000`. Configure the gateway with the provider keys exported above.",
-                None,
-            )
-        ],
+        "pre_run_steps": [NEXUS_CONFIG_STEP, NEXUS_GATEWAY_STEP],
     },
     "90_models/perplexity/knowledge.py": {
         "env_add": {"OPENAI_API_KEY"},
@@ -1874,7 +2074,8 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "pre_run_steps": [MCP_TOOLBOX_STEP],
     },
     "91_tools/mcp/airbnb.py": {
-        "intro_override": "Connect an OpenAI `gpt-4o` agent to the Airbnb MCP server over stdio and search property listings.",
+        "intro_override": "Connect an OpenAI `gpt-5.6-luna` agent to the Airbnb MCP server over stdio and search property listings.",
+        "pre_code_warning": "The pinned source docstring names Gemini 2.5 Pro and google-genai, but the executable code uses `OpenAIChat(id=\"gpt-5.6-luna\")`. Follow the generated OpenAI setup below.",
     },
     "91_tools/google/gmail/daily_digest.py": {
         "intro_override": "Group recent emails by category and record a priority for each message in a structured daily digest.",
@@ -1926,6 +2127,14 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     # Fresh-eyes batch E.
     "91_tools/custom_tool_events.py": {
         "intro_override": "Yield custom events from a custom tool and consume them while streaming.",
+        "pre_code_warning": "The pinned source omits `stream_events=True`, so Agno discards the yielded custom event. Add the option before running.",
+        "pre_run_steps": [
+            (
+                "Enable custom events",
+                "In the saved file, add `stream_events=True` next to `stream=True` in the `agent.arun()` call.",
+                None,
+            )
+        ],
     },
     "91_tools/docker_tools.py": {
         "pre_run_steps": [
@@ -1977,12 +2186,16 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
             )
         ],
     },
-    "05_agent_os/advanced_demo/_agents.py": {
+    "05_agent_os/24_showcase/_agents.py": {
         "env_add": {"OPENAI_API_KEY"},
-        "run_note": "This helper is imported by [Advanced Demo](/examples/agent-os/advanced-demo/demo). Keep it as `_agents.py` next to `demo.py`, then run the demo entry point.",
+        "run_note": "This helper is imported by the AgentOS showcase. Keep it as `_agents.py` next to `demo.py`, then run `python -m cookbook.05_agent_os.24_showcase.demo` from the repository root.",
     },
-    "05_agent_os/advanced_demo/demo.py": {
-        "env_add": {"OPENAI_API_KEY"},
+    "05_agent_os/24_showcase/demo.py": {
+        "env_add": {"ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OS_SECURITY_KEY"},
+        "package_add": {"ddgs", "openai", "pgvector", "psycopg[binary]", "sqlalchemy", "yfinance"},
+        "needs_pgvector": True,
+        "repo_layout": True,
+        "run_command": "python -m cookbook.05_agent_os.24_showcase.demo",
     },
     "05_agent_os/advanced_demo/mcp_demo.py": {
         "env_remove": {"GITHUB_ACCESS_TOKEN"},
@@ -1994,8 +2207,8 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
             )
         ],
     },
-    "05_agent_os/advanced_demo/_teams.py": {
-        "run_note": "This helper is imported by [Advanced Demo](/examples/agent-os/advanced-demo/demo). Keep it as `_teams.py` next to `demo.py`, then run the demo entry point.",
+    "05_agent_os/24_showcase/_teams.py": {
+        "run_note": "This helper is imported by the AgentOS showcase. Keep it as `_teams.py` next to `demo.py`, then run `python -m cookbook.05_agent_os.24_showcase.demo` from the repository root.",
     },
     "05_agent_os/client_a2a/05_connect_to_google_adk.py": {
         "repo_layout": True,
@@ -2056,7 +2269,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "05_agent_os/interfaces/slack/hitl_required_approval.py": {
         "intro_override": "Build an infrastructure agent that requires administrator approval for database schema migrations. The `@approval` decorator persists approval records across restarts and provides an audit trail.",
     },
-    "05_agent_os/interfaces/slack/hitl_user_input.py": {
+    "05_agent_os/17_slack/hitl_user_input.py": {
         "intro_override": "Open engineering tickets from Slack conversations. The agent extracts `title` and `description`, then Slack collects `priority` and `component` before the tool runs.",
     },
     "05_agent_os/interfaces/slack/support_team.py": {
@@ -2194,16 +2407,6 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
             )
         ],
     },
-    "03_teams/12_learning/10_team_agentic_learning.py": {
-        "pre_code_warning": "The pinned source imports `LearningMode` from a module that does not exist in Agno v2.7.2. Update the import before running.",
-        "pre_run_steps": [
-            (
-                "Fix the LearningMode import",
-                "Replace `from agno.learn.mode import LearningMode` with `from agno.learn import LearningMode` in the saved Python file.",
-                None,
-            )
-        ],
-    },
     "05_agent_os/scheduler/rest_api_schedules.py": {
         "repo_layout": True,
         "needs_agno": True,
@@ -2233,7 +2436,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
             )
         ],
     },
-    "05_agent_os/skills/sample_skills/system-info/scripts/get_system_info.py": {
+    "05_agent_os/23_skills/sample_skills/system-info/scripts/get_system_info.py": {
         "run_note": "The system-info skill executes this helper as a subprocess with no arguments. The pinned script prints JSON before its current main guard exits.",
     },
     "05_agent_os/tracing/dbs/basic_agent_with_clickhousedb.py": {
@@ -2397,7 +2600,7 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         ],
     },
     "90_models/google/gemini/url_context.py": {
-        "pre_code_warning": "This example's source docstring names the legacy `google-generativeai` package. Agno v2.7.2 uses the Google Gen AI SDK from `google-genai`. Use the generated install step below.",
+        "pre_code_warning": "This example's source docstring names the legacy `google-generativeai` package. Agno v3.0.4 uses the Google Gen AI SDK from `google-genai`. Use the generated install step below.",
     },
     "10_reasoning/models/gemini/basic_reasoning.py": {
         "intro_override": "Compare Gemini 2.5 Flash with thinking disabled against a fixed 1,024-token reasoning model, then inspect the captured reasoning content.",
@@ -2563,6 +2766,14 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     },
     "90_models/openai/chat/memory.py": {
         "pre_code_warning": "The pinned source docstring points to the nonexistent `cookbook/agents/personalized_memories_and_summaries.py` path. Save this fence as `memory.py` and use the generated run step below.",
+    },
+    "90_models/openai/responses/zdr_reasoning_agent.py": {
+        "intro_override": "Use `store=False` to disable Responses application-state storage while keeping multi-turn context in `InMemoryDb`.",
+        "pre_code_warning": "The source labels this agent ZDR compliant. `store=False` disables Responses application-state storage; default abuse-monitoring retention can still apply. Zero Data Retention requires prior OpenAI approval and organization or project configuration. See [OpenAI data controls](https://platform.openai.com/docs/models/default-usage-policies-by-endpoint).",
+    },
+    "90_models/openai/responses/background.py": {
+        "intro_override": "Background mode submits a Responses request and polls automatically for completion. Agno stops after `background_max_wait`, which defaults to 600 seconds.",
+        "pre_code_warning": "The source docstring overstates background-mode resilience. Polling requires connectivity, stops after `background_max_wait`, and surfaces polling failures.",
     },
     "90_models/anthropic/prompt_caching_extended.py": {
         "pre_code_warning": "Anthropic retired the source's `claude-sonnet-4-20250514` model on June 15, 2026. Replace it with `claude-sonnet-4-6` before running. See [Anthropic model deprecations](https://platform.claude.com/docs/en/about-claude/model-deprecations).",
@@ -3087,21 +3298,11 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
         "intro_override": "`run_agent()` sends two model requests. `PerformanceEval` invokes it once for runtime and once for memory, so the evaluation sends four requests total.",
         "package_remove": {"memory-profiler"},
     },
-    "05_agent_os/interfaces/agui/agent_with_tools.py": {
+    "05_agent_os/16_agui/agent_with_tools.py": {
         "post_run_steps": [
             (
                 "Run Dojo",
-                "Follow the [AG-UI frontend setup](/agent-os/interfaces/ag-ui/introduction) to clone, build, and start Dojo. Configure its Agno endpoint for port `9001`, then use Dojo to execute the `generate_haiku` frontend tool.",
-                None,
-            )
-        ],
-    },
-    "04_workflows/06_advanced_concepts/structured_io/input_schema.py": {
-        "pre_code_warning": "The source uses deprecated `gpt-4o` for the content planner. Replace that model ID before running.",
-        "pre_run_steps": [
-            (
-                "Update the content planner model",
-                "Replace `OpenAIChat(id=\"gpt-4o\")` with `OpenAIChat(id=\"gpt-5.4-mini\")` in the saved file.",
+                "Follow the [AG-UI frontend setup](/agent-os/interfaces/ag-ui/introduction) to clone, build, and start Dojo. Configure the Agno endpoint as `http://localhost:7777/tools/agui`, provide a request-scoped `change_background` frontend tool, then ask the agent to change the background.",
                 None,
             )
         ],
@@ -3109,64 +3310,99 @@ SOURCE_RENDER_OVERRIDES: dict[str, dict[str, object]] = {
     "91_tools/crawl4ai_tools.py": {
         "description_override": "Define three Crawl4aiTools configurations and execute the two pruning configurations.",
         "intro_override": "The source defines three Crawl4aiTools agents. It runs the default pruning agent and the explicit `enable_crawl` agent; the raw no-pruning agent is configured but not executed.",
-        "pre_code_warning": "The source uses deprecated `gpt-4o` in all three agent configurations and defines `agent_raw` without executing it. Update the model IDs before running.",
         "pre_run_steps": [
             (
                 "Set up Crawl4AI",
                 "Install the browser dependencies required by Crawl4AI:",
                 "crawl4ai-setup",
             ),
-            (
-                "Update the models",
-                "Replace all three `OpenAIChat(id=\"gpt-4o\")` constructors with `OpenAIChat(id=\"gpt-5.4-mini\")` in the saved file.",
-                None,
-            ),
         ],
     },
 }
 
 for _client_example in (
-    "01_basic_client.py",
-    "03_memory_operations.py",
-    "04_session_management.py",
-    "05_knowledge_search.py",
-    "08_run_evals.py",
-    "10_sse_reconnect.py",
-    "11_team_sse_reconnect.py",
-    "13_workflow_sse_reconnect.py",
+    "01_connect.py",
+    "02_run_and_stream.py",
+    "03_sessions_and_memory.py",
+    "04_knowledge.py",
+    "05_evals.py",
 ):
-    SOURCE_RENDER_OVERRIDES[f"05_agent_os/client/{_client_example}"] = {
+    SOURCE_RENDER_OVERRIDES[f"05_agent_os/03_python_client/{_client_example}"] = {
         "repo_layout": True,
         "needs_agno": True,
         "extra_add": {"os"},
-        "package_add": {"chromadb", "ddgs", "openai"},
+        "package_add": {"chromadb", "openai"},
         "package_remove": {"fastapi"},
         "env_add": {"OPENAI_API_KEY"},
         "pre_run_steps": [CLIENT_SERVER_STEP],
     }
 
-for _agui_helper in (
-    "agentic_chat.py",
-    "backend_tool_rendering.py",
-    "human_in_the_loop.py",
-    "shared_state.py",
-    "tool_based_generative_ui.py",
-):
-    SOURCE_RENDER_OVERRIDES[f"05_agent_os/interfaces/agui/{_agui_helper}"] = {
-        "repo_layout": True,
-        "extra_add": {"agui", "os"},
-        "package_add": {"ddgs", "google-genai", "requests"},
-        "env_add": {"GOOGLE_API_KEY", "OPENAI_API_KEY"},
-        "run_command": "python cookbook/05_agent_os/interfaces/agui/showcase.py",
+# These overrides belonged to cookbook files removed before v3.0.4. Keep the
+# retirement explicit so a stale entry cannot silently look active while the
+# generator targets a newer source tree.
+RETIRED_SOURCE_RENDER_OVERRIDES = frozenset(
+    {
+        "05_agent_os/advanced_demo/mcp_demo.py",
+        "05_agent_os/antigravity/data_enrichment.py",
+        "05_agent_os/background_tasks/evals_demo.py",
+        "05_agent_os/client/12_continue_run_sse_reconnect.py",
+        "05_agent_os/client_a2a/05_connect_to_google_adk.py",
+        "05_agent_os/client_a2a/servers/google_adk_server.py",
+        "05_agent_os/customize/custom_health_endpoint.py",
+        "05_agent_os/dbs/agentos_default_db.py",
+        "05_agent_os/dbs/dynamo.py",
+        "05_agent_os/dbs/firestore.py",
+        "05_agent_os/dbs/neon.py",
+        "05_agent_os/dbs/singlestore.py",
+        "05_agent_os/dbs/surreal_db/run.py",
+        "05_agent_os/dbs/surreal_db/teams.py",
+        "05_agent_os/dbs/surreal_db/workflows.py",
+        "05_agent_os/demo.py",
+        "05_agent_os/factories/agent/02_input_schema_factory.py",
+        "05_agent_os/human_in_the_loop/workflow/dual_level_hitl.py",
+        "05_agent_os/human_in_the_loop/workflow/workflow_db.py",
+        "05_agent_os/integrations/shopify_demo.py",
+        "05_agent_os/interfaces/a2a/basic_agent/client.py",
+        "05_agent_os/interfaces/agui/reasoning_agent.py",
+        "05_agent_os/interfaces/slack/agent_with_user_memory.py",
+        "05_agent_os/interfaces/slack/hitl_required_approval.py",
+        "05_agent_os/interfaces/slack/support_team.py",
+        "05_agent_os/interfaces/telegram/reasoning_agent.py",
+        "05_agent_os/interfaces/whatsapp/image_generation_model.py",
+        "05_agent_os/knowledge/agno_docs_agent.py",
+        "05_agent_os/mcp_demo/mcp_tools_advanced_example.py",
+        "05_agent_os/mcp_demo/oauth_authkit_example.py",
+        "05_agent_os/mcp_demo/oauth_builtin_example.py",
+        "05_agent_os/mcp_demo/test_client.py",
+        "05_agent_os/os_config/basic.py",
+        "05_agent_os/rbac/asymmetric/basic.py",
+        "05_agent_os/rbac/asymmetric/custom_scope_mappings.py",
+        "05_agent_os/rbac/asymmetric/workos_byot.py",
+        "05_agent_os/rbac/symmetric/advanced_scopes.py",
+        "05_agent_os/rbac/symmetric/custom_scope_mappings.py",
+        "05_agent_os/rbac/symmetric/user_isolation.py",
+        "05_agent_os/rbac/symmetric/with_cookie.py",
+        "05_agent_os/remote/02_remote_team.py",
+        "05_agent_os/remote/03_remote_agno_a2a_agent.py",
+        "05_agent_os/remote/04_remote_adk_agent.py",
+        "05_agent_os/remote/05_agent_os_gateway.py",
+        "05_agent_os/remote/06_remote_agent_as_team_member.py",
+        "05_agent_os/remote/07_a2a_agent_as_team_member.py",
+        "05_agent_os/remote/adk_server.py",
+        "05_agent_os/scheduler/rest_api_schedules.py",
+        "05_agent_os/scheduler/schedule_management.py",
+        "05_agent_os/team_tasks/team_tasks_streaming.py",
+        "05_agent_os/tracing/03_agent_with_knowledge_tracing.py",
+        "05_agent_os/tracing/dbs/basic_agent_with_clickhousedb.py",
+        "05_agent_os/workflow/workflow_with_custom_function_updating_session_state.py",
+        "08_learning/04_entity_memory/02_entity_relationships.py",
+        "90_models/together/reasoning_agent.py",
+        "91_tools/mcp/multiple_servers_allow_partial_failure.py",
     }
-    if _agui_helper == "agentic_chat.py":
-        SOURCE_RENDER_OVERRIDES[f"05_agent_os/interfaces/agui/{_agui_helper}"]["suppress_intro"] = True
-
-SOURCE_RENDER_OVERRIDES["05_agent_os/interfaces/a2a/basic_agent/basic_agent.py"] = {
-    "repo_layout": True,
-    "package_add": {"uvicorn"},
-    "run_command": "python cookbook/05_agent_os/interfaces/a2a/basic_agent/__main__.py",
-}
+)
+for _retired_source_render_override in sorted(RETIRED_SOURCE_RENDER_OVERRIDES):
+    assert _retired_source_render_override in SOURCE_RENDER_OVERRIDES
+    del SOURCE_RENDER_OVERRIDES[_retired_source_render_override]
 
 SUPPRESS_INTRO_SLUGS = {
     "examples/agent-os/factories/workflow/tiered-workflow-factory",
@@ -3184,9 +3420,20 @@ SUPPRESS_INTRO_SLUGS = {
     "examples/workflows/human-in-the-loop/dual-level-hitl/router-confirmation-and-tool-confirmation",
 }
 
-# Keep dependency inference stable across Python versions. Agno still probes
-# this removed stdlib module before falling back to `filetype`.
-STDLIB = set(getattr(sys, "stdlib_module_names", ())) | {"imghdr"}
+def stdlib_module_names() -> set[str]:
+    """Return stdlib roots on Python versions with or without the 3.10 API."""
+    names = set(getattr(sys, "stdlib_module_names", ()))
+    if not names:
+        names.update(sys.builtin_module_names)
+        roots = {sysconfig.get_path("stdlib"), sysconfig.get_path("platstdlib")}
+        for root in sorted(path for path in roots if path):
+            names.update(module.name for module in pkgutil.iter_modules([root]))
+    # Agno still probes this removed module before falling back to `filetype`.
+    names.add("imghdr")
+    return names
+
+
+STDLIB = stdlib_module_names()
 
 
 # ---------------------------------------------------------------------------
@@ -4112,6 +4359,7 @@ class Requirements:
         self.needs_agno = False
         self.needs_pgvector = False
         self.needs_google_adc = False
+        self.needs_aws_credentials = False
         self.services: set[str] = set()  # keys into SERVICE_STEPS
         self.ollama_models: set[str] = set()
         self.needs_npx = False
@@ -4237,6 +4485,21 @@ def derive_requirements(
         module.startswith(("agno.db.firestore", "agno.db.gcs", "google.cloud"))
         for module in modules
     )
+    media_storage_names = set().union(
+        *(
+            names
+            for module, names in modules.items()
+            if module == "agno.media.storage"
+            or module.startswith("agno.media.storage.")
+        ),
+        set(),
+    )
+    if media_storage_names & S3_MEDIA_STORAGE_CLASSES:
+        req.extras.add("s3")
+        req.needs_aws_credentials = True
+    if media_storage_names & GCS_MEDIA_STORAGE_CLASSES:
+        req.extras.add("gcs")
+        req.needs_google_adc = True
     if uses_gemini_vertex:
         req.env_keys.difference_update({"GOOGLE_API_KEY"})
         req.env_keys.update({"GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION"})
@@ -4277,7 +4540,7 @@ def derive_requirements(
     if any(
         has_nonfalse_keyword(src, "AgentOS", keyword)
         for src in srcs
-        for keyword in ("mcp_server", "mcp_auth")
+        for keyword in ("mcp", "mcp_server", "mcp_auth")
     ):
         req.extras.add("mcp")
     if any(has_nonfalse_keyword(src, "AgentOS", "a2a_interface") for src in srcs):
@@ -4700,7 +4963,11 @@ def apply_source_render_override(
         override["pre_code_warning"] = INVALID_MODEL_RETRY_WARNING
         override["replacement_only"] = True
         override["replacement_heading"] = "Current Alternative"
-        override["run_replacement"] = INVALID_MODEL_RETRY_REPLACEMENT
+        override["run_replacement"] = (
+            f"{NEXUS_RETRY_SETUP}{INVALID_MODEL_RETRY_REPLACEMENT}"
+            if rel == "90_models/nexus/retry.py"
+            else INVALID_MODEL_RETRY_REPLACEMENT
+        )
     package_remove = {
         requirement_key(str(package)) for package in override.get("package_remove", set())
     }
@@ -4737,30 +5004,49 @@ def apply_source_render_override(
     return override
 
 
+@functools.lru_cache(maxsize=None)
+def exact_source_tag(agno_root: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", agno_root, "describe", "--tags", "--exact-match", "HEAD"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, (
+        "generated source links require Agno source HEAD to have an exact tag"
+    )
+    return result.stdout.strip()
+
+
 def source_link(cookbook_rel: str, render_override: dict[str, object], agno_root: Path) -> str:
-    """Build a source link, optionally pinned to the exact Agno source tag."""
-    ref = render_override.get("source_link_ref", "main")
+    """Build a source link pinned to the exact Agno source tag by default."""
+    ref = render_override.get("source_link_ref", "pinned-tag")
     assert isinstance(ref, str), f"{cookbook_rel}: source_link_ref must be a string"
     if ref == "pinned-tag":
-        result = subprocess.run(
-            ["git", "-C", str(agno_root), "describe", "--tags", "--exact-match", "HEAD"],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        assert result.returncode == 0, (
-            f"{cookbook_rel}: source_link_ref requires the Agno source HEAD to have an exact tag"
-        )
-        ref = result.stdout.strip()
+        ref = exact_source_tag(str(agno_root.resolve()))
     assert re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", ref), (
         f"{cookbook_rel}: invalid source link ref {ref!r}"
     )
     return f"https://github.com/agno-agi/agno/blob/{ref}/{cookbook_rel}"
 
 
+@functools.lru_cache(maxsize=None)
+def validate_source_render_overrides(agno_root: Path) -> None:
+    """Fail when an active source-specific override no longer has a source file."""
+    cookbook_root = agno_root.resolve() / "cookbook"
+    missing = sorted(
+        rel for rel in SOURCE_RENDER_OVERRIDES if not (cookbook_root / rel).is_file()
+    )
+    assert not missing, (
+        "active source render overrides reference missing cookbook files: "
+        + ", ".join(missing)
+    )
+
+
 def render(
     source_path: Path, cookbook_rel: str, src: str, agno_root: Path, slug: str | None = None
 ) -> str:
+    validate_source_render_overrides(agno_root)
     try:
         docstring = ast.get_docstring(ast.parse(src))
     except SyntaxError:
@@ -4958,6 +5244,14 @@ def render(
         parts.append("    gcloud auth application-default login")
         parts.append("    ```")
         parts.append("  </Step>")
+    if req.needs_aws_credentials:
+        parts.append("")
+        parts.append('<Step title="Configure AWS credentials">')
+        parts.append(
+            "    Configure the AWS SDK default credential chain with environment variables, "
+            "a shared credentials file, or an IAM role."
+        )
+        parts.append("  </Step>")
     if req.needs_pgvector:
         parts.append("")
         parts.append('  <Snippet file="run-pgvector-step.mdx" />')
@@ -4982,10 +5276,11 @@ def render(
     if needs_repo_layout:
         parts.append("")
         parts.append('  <Step title="Clone Agno">')
-        parts.append("    Clone the repository and run the remaining commands from its root:")
+        parts.append("    Clone the pinned Agno source and run the remaining commands from its root:")
         parts.append("    ```bash")
         parts.append("    git clone https://github.com/agno-agi/agno.git")
         parts.append("    cd agno")
+        parts.append(f"    git checkout {exact_source_tag(str(agno_root.resolve()))}")
         parts.append("    ```")
         parts.append("  </Step>")
     for step_title, step_text, command in render_override.get("pre_run_steps", []):
@@ -4993,10 +5288,26 @@ def render(
         parts.append(f'  <Step title="{step_title}">')
         if step_text:
             parts.append(f"    {step_text}")
-        if command:
+        if isinstance(command, dict):
+            assert command and all(
+                isinstance(label, str)
+                and label
+                and isinstance(value, str)
+                and value
+                for label, value in command.items()
+            ), f"{cookbook_rel}: pre-run command variants must be non-empty strings"
+            parts.append("    <CodeGroup>")
+            for label, value in command.items():
+                language = "powershell" if label == "Windows" else "bash"
+                parts.append(f"    ```{language} {label}")
+                for command_line in value.splitlines():
+                    parts.append(f"    {command_line}")
+                parts.append("    ```")
+            parts.append("    </CodeGroup>")
+        elif command:
             parts.append("    ```bash")
             for command_line in str(command).splitlines():
-                parts.append(f"    {command_line}")
+                parts.append(f"    {command_line}" if command_line else "")
             parts.append("    ```")
         parts.append("  </Step>")
     parts.append("")

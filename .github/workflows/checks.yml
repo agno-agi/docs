@@ -1,4 +1,4 @@
-name: Mintlify Broken Links Check
+name: Documentation checks
 
 on:
   pull_request:
@@ -12,25 +12,80 @@ on:
     branches:
       - "main"
 
+env:
+  AGNO_REPO: ${{ github.workspace }}/agno
+  AGNO_EXPECTED_SHA: 9dd8f80d8984ceed5ae6bbde16eddf7475eaffa1
+  DOCS_VENV: ${{ github.workspace }}/../docs-venv
+
 jobs:
-  check-links:
-    name: Check Mintlify Broken Links
+  validate:
+    name: Validate documentation
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout docs
         uses: actions/checkout@v4
 
-      - name: Install Node
+      - name: Checkout Agno v3.0.4
+        uses: actions/checkout@v4
+        with:
+          repository: agno-agi/agno
+          ref: 9dd8f80d8984ceed5ae6bbde16eddf7475eaffa1
+          path: agno
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libsecret-1-dev
 
-      - name: Install Mintlify CLI
-        run: npm install -g mintlify
+      - name: Install validation tools
+        run: |
+          npm install -g mint@4.2.687
+          python -m pip install uv==0.12.5
+          uv venv "$DOCS_VENV" --python 3.12
+          uv pip install --python "$DOCS_VENV/bin/python" -e "./agno/libs/agno[os,mcp,telegram,agui,a2a,slack,openai]" pyyaml
 
-      - name: Run Broken Links Checker
-        run: mintlify broken-links
+      - name: Check generated examples
+        run: |
+          "$DOCS_VENV/bin/python" -B scripts/examples_sync/plan.py --agno-root "$AGNO_REPO"
+          "$DOCS_VENV/bin/python" -B scripts/examples_sync/merge_nav.py --check
+          "$DOCS_VENV/bin/python" -B scripts/examples_sync/drive_sync.py
+          "$DOCS_VENV/bin/python" -B scripts/examples_sync/dedupe_titles.py
+          "$DOCS_VENV/bin/python" -B scripts/examples_sync/apply_oneoffs.py
+          git diff --exit-code -- .
+          "$DOCS_VENV/bin/python" -B scripts/examples_sync/check_integrity.py
+
+      - name: Check repository inventory and imports
+        run: |
+          "$DOCS_VENV/bin/python" -B scripts/inventory/run_all.py --json
+          "$DOCS_VENV/bin/python" -B scripts/check_install_coverage.py --json --limit 0
+          "$DOCS_VENV/bin/python" -B scripts/reference_drift.py
+          "$DOCS_VENV/bin/python" -B scripts/check_imports.py
+
+      - name: Check OpenAPI freshness
+        env:
+          OPENAI_API_KEY: sk-fake-not-a-real-key
+          SLACK_TOKEN: xoxb-fake-token
+          SLACK_SIGNING_SECRET: fake-signing-secret
+          WHATSAPP_ACCESS_TOKEN: fake-whatsapp-access-token
+          WHATSAPP_PHONE_NUMBER_ID: "0000000000"
+          WHATSAPP_VERIFY_TOKEN: fake-verify-token
+          TELEGRAM_TOKEN: 123456789:AAFakeTokenValueForOpenAPIGenerationOnly
+          TELEGRAM_WEBHOOK_SECRET_TOKEN: fake-telegram-webhook-secret
+          AGNO_TELEMETRY: "false"
+        run: |
+          "$DOCS_VENV/bin/python" -B scripts/make_openapi.py --check
+
+      - name: Check Mintlify links and structure
+        run: |
+          mint broken-links -t false
+          mint validate -t false
