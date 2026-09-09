@@ -1,0 +1,99 @@
+---
+title: Managing Tool Results in Member Responses
+---
+
+When a team member (agent) completes a delegated task and its text content is empty, the framework falls back to yielding the member's tool call results as the response string to the supervisor. This can be noisy and undesirable.
+
+Setting `include_tool_results_in_member_response=False` on the Team suppresses that fallback behavior. When a member's text content is empty and only tool results exist, an empty string is returned instead of the raw tool output.
+
+## Code
+
+```python include_tool_results_in_member_response.py
+from textwrap import dedent
+
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agno.team import Team
+from agno.tools.duckduckgo import DuckDuckGoTools
+
+# Create members - one with tools that may produce noisy output
+web_researcher = Agent(
+    name="WebResearcher",
+    role="Web Research Specialist",
+    tools=[DuckDuckGoTools()],
+    instructions=dedent("""
+        You are a web research specialist.
+        - Use DuckDuckGo to find relevant information
+        - Provide concise, factual summaries
+    """).strip(),
+)
+
+writer = Agent(
+    name="Writer",
+    role="Content Writer",
+    instructions=dedent("""
+        You are a content writer.
+        - Synthesize research into well-written summaries
+        - Keep responses concise and informative
+    """).strip(),
+)
+
+# Create team that suppresses raw tool results
+research_team = Team(
+    name="Research Team",
+    model=OpenAIResponses(id="gpt-4o"),
+    members=[web_researcher, writer],
+    description="A research team that searches the web and writes summaries.",
+    instructions=dedent("""
+        You are a research coordinator.
+
+        Your Process:
+        1. Delegate web research to WebResearcher
+        2. Delegate writing to Writer
+        3. Synthesize the results
+    """).strip(),
+    # Suppress raw tool results from being sent back to the supervisor
+    include_tool_results_in_member_response=False,
+    markdown=True,
+)
+
+research_team.print_response("What are the latest trends in quantum computing?", stream=True)
+```
+
+## Usage
+
+<Steps>
+
+  <Step title="Create a Python file">
+    Create `include_tool_results_in_member_response.py` with the code above.
+  </Step>
+
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai duckduckgo-search
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+
+    <CodeGroup>
+
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run Team">
+    ```bash
+    python include_tool_results_in_member_response.py
+    ```
+  </Step>
+
+</Steps>
