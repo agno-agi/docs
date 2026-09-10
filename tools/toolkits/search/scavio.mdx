@@ -1,9 +1,9 @@
 ---
 title: Scavio
-description: Search Google, YouTube, marketplaces, and social platforms through the Scavio API.
+description: Search Google, YouTube, marketplaces, app stores, review sites, job boards, ad libraries, and company registries through the Scavio API.
 ---
 
-`ScavioTools` gives an agent access to Google, YouTube, Amazon, Walmart, Reddit, TikTok, and Instagram through the [Scavio](https://scavio.dev) Search API.
+`ScavioTools` gives an agent one API over 31 sources through [Scavio](https://scavio.dev): Google and its verticals, YouTube, Amazon, Walmart, eBay, Target, Home Depot, Reddit, TikTok, TikTok Shop, Instagram, X, LinkedIn, Threads, Kuaishou, Zillow, Redfin, Booking.com, Airbnb, TripAdvisor, Yelp, Indeed, Glassdoor, the Apple App Store, Google Play, SEC EDGAR, UK Companies House, G2, Capterra, Google Ads Transparency and the Meta Ad Library - plus an extract endpoint that reads any URL as HTML, Markdown or plain text.
 
 ## Prerequisites
 
@@ -32,10 +32,14 @@ web_agent = Agent(
             enable_google=True,
             enable_youtube=True,
             enable_reddit=True,
+            enable_extract=True,
             enable_amazon=False,
             enable_walmart=False,
             enable_tiktok=False,
+            enable_tiktok_shop=False,
             enable_instagram=False,
+            enable_x=False,
+            enable_linkedin=False,
         )
     ]
 )
@@ -47,80 +51,475 @@ web_agent.print_response(
 )
 ```
 
-Every provider is enabled by default. Use the `enable_*` flags to expose only the tools you need:
+## Enabling providers
+
+The toolkit exposes 189 tools, one per live Scavio endpoint. That is far more than any one agent should be shown, so every provider is gated by an `enable_*` flag.
+
+Ten providers are on by default - Google, Amazon, Walmart, YouTube, Reddit, TikTok, TikTok Shop, Instagram, X and LinkedIn. The rest are opt-in. Pass `all=True` to register everything, or use the `Toolkit` level `include_tools` / `exclude_tools` to pick individual tools.
 
 ```python
-# Web-only agent: Google, YouTube, Reddit
-agent = Agent(
+# Retail price research: every marketplace Scavio covers, nothing else
+commerce_agent = Agent(
     tools=[
         ScavioTools(
-            enable_google=True,
-            enable_youtube=True,
-            enable_reddit=True,
-            enable_amazon=False,
-            enable_walmart=False,
+            enable_amazon=True,
+            enable_walmart=True,
+            enable_ebay=True,
+            enable_target=True,
+            enable_home_depot=True,
+            enable_tiktok_shop=True,
+            enable_google=False,
+            enable_youtube=False,
+            enable_reddit=False,
             enable_tiktok=False,
             enable_instagram=False,
+            enable_x=False,
+            enable_linkedin=False,
         )
     ],
     markdown=True,
 )
 ```
 
+```python
+# Company research: filings, employer reviews, software reviews and competitor ads
+research_agent = Agent(
+    tools=[
+        ScavioTools(
+            enable_sec=True,
+            enable_companies_house=True,
+            enable_glassdoor=True,
+            enable_indeed=True,
+            enable_g2=True,
+            enable_capterra=True,
+            enable_google_ads=True,
+            enable_meta_ads=True,
+            enable_extract=True,
+            enable_google=False,
+            enable_amazon=False,
+            enable_walmart=False,
+            enable_youtube=False,
+            enable_reddit=False,
+            enable_tiktok=False,
+            enable_tiktok_shop=False,
+            enable_instagram=False,
+            enable_x=False,
+            enable_linkedin=False,
+        )
+    ],
+    markdown=True,
+)
+```
+
+## Credits
+
+Calls are billed in credits and the price is not uniform, so every tool docstring states its own cost. Most endpoints are 1 credit. YouTube transcripts are 8, LinkedIn job detail is 30, most Instagram calls are 10, G2 is 5, and Kuaishou runs from 1 to 40 depending on the endpoint.
+
+Four surfaces are priced by the request body rather than by the route, and no flat figure is correct for them:
+
+| Surface | Priced by |
+| --- | --- |
+| Walmart | `domain` - 1 credit on `com` or `ca`, 2 on `com.mx` |
+| Threads | identifier - 2 credits by `user_id`, 4 by `username` |
+| Kuaishou | the endpoint itself - 1, 2, 10 or 40 (`kuaishou_videos_batch` is 40) |
+| `extract_url` | `mode` - `normal` and `advanced` are 1 credit, `ultra` is 2. Only a successful extraction is billed |
+
 ## Toolkit Params
 
-| Parameter           | Type            | Default | Description                                                                  |
-| ------------------- | --------------- | ------- | ---------------------------------------------------------------------------- |
-| `api_key`           | `Optional[str]` | `None`  | Scavio API key. If not provided, uses the `SCAVIO_API_KEY` environment variable. |
-| `enable_google`     | `bool`          | `True`  | Register the Google web search tool.                                         |
-| `enable_amazon`     | `bool`          | `True`  | Register the Amazon search and product tools.                               |
-| `enable_walmart`    | `bool`          | `True`  | Register the Walmart search and product tools.                              |
-| `enable_youtube`    | `bool`          | `True`  | Register the YouTube search and metadata tools.                             |
-| `enable_reddit`     | `bool`          | `True`  | Register the Reddit search and post tools.                                  |
-| `enable_tiktok`     | `bool`          | `True`  | Register the TikTok tools.                                                   |
-| `enable_instagram`  | `bool`          | `True`  | Register the Instagram tools.                                                |
-| `all`               | `bool`          | `False` | Register every available tool, ignoring the individual flags.               |
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `api_key` | `Optional[str]` | `None` | Scavio API key. If not provided, uses the `SCAVIO_API_KEY` environment variable. |
+| `enable_google` | `bool` | `True` | Register the 14 Google tools: web search, AI Mode, Maps, Shopping, Flights, Hotels, News and Trends. |
+| `enable_amazon` | `bool` | `True` | Register the 4 Amazon tools: search, product, offer listing and marketplace options. |
+| `enable_walmart` | `bool` | `True` | Register the 7 Walmart tools: search, product, reviews, category, offers, seller and seller catalog. |
+| `enable_youtube` | `bool` | `True` | Register the 15 YouTube tools: search, Shorts, suggestions, video, comments, transcript, related, channel and streams. |
+| `enable_reddit` | `bool` | `True` | Register the 12 Reddit tools: search, post, subreddit, user, popular and trending. |
+| `enable_tiktok` | `bool` | `True` | Register the 11 TikTok tools. |
+| `enable_instagram` | `bool` | `True` | Register the 12 Instagram tools. |
+| `enable_x` | `bool` | `True` | Register the 11 X tools: search, tweet, user and trending. |
+| `enable_linkedin` | `bool` | `True` | Register the 9 LinkedIn tools: person, company, search, job and post. |
+| `enable_tiktok_shop` | `bool` | `True` | Register the 8 TikTok Shop tools: search, product, review, category, shop and URL resolution. |
+| `enable_threads` | `bool` | `False` | Register the 6 Threads tools: profile, posts, replies, post, post comments and user search. |
+| `enable_kuaishou` | `bool` | `False` | Register the 14 Kuaishou tools: profile, posts, live, video, comments, batch, search and leaderboards. |
+| `enable_ebay` | `bool` | `False` | Register the 3 eBay tools: search over live or sold listings, listing detail and seller profile. |
+| `enable_target` | `bool` | `False` | Register the 4 Target tools: search, category, product and reviews. |
+| `enable_home_depot` | `bool` | `False` | Register the 3 Home Depot tools: search, product and reviews. |
+| `enable_zillow` | `bool` | `False` | Register the 3 Zillow tools: listing search, property detail and agent reviews. |
+| `enable_booking` | `bool` | `False` | Register the 3 Booking.com tools: property search, property detail and guest reviews. |
+| `enable_tripadvisor` | `bool` | `False` | Register the 4 TripAdvisor tools: location lookup, search, location detail and reviews. |
+| `enable_indeed` | `bool` | `False` | Register the 4 Indeed tools: job search, job detail, employer profile and employer reviews. |
+| `enable_airbnb` | `bool` | `False` | Register the 3 Airbnb tools: stay search, listing detail and reviews. |
+| `enable_glassdoor` | `bool` | `False` | Register the 4 Glassdoor tools: company lookup, employer profile, reviews and salaries. |
+| `enable_yelp` | `bool` | `False` | Register the 3 Yelp tools: business search, business detail and reviews. |
+| `enable_app_store` | `bool` | `False` | Register the 3 Apple App Store tools: search, app detail and reviews. |
+| `enable_google_play` | `bool` | `False` | Register the 3 Google Play tools: search, app detail and reviews. |
+| `enable_sec` | `bool` | `False` | Register the 6 SEC EDGAR tools: CIK lookup, filer profile, filings, XBRL concept, XBRL fact index and full-text search. |
+| `enable_redfin` | `bool` | `False` | Register the 3 Redfin tools: listing search, property detail and market stats. |
+| `enable_companies_house` | `bool` | `False` | Register the 4 UK Companies House tools: search, company, officers and filing history. |
+| `enable_g2` | `bool` | `False` | Register the 3 G2 tools: product search, product profile and reviews. |
+| `enable_capterra` | `bool` | `False` | Register the 3 Capterra tools: product search, product profile and reviews. |
+| `enable_google_ads` | `bool` | `False` | Register the 3 Google Ads Transparency tools: advertiser lookup, ad search and creative detail. |
+| `enable_meta_ads` | `bool` | `False` | Register the 3 Meta Ad Library tools: keyword search, advertiser ads and ad detail. |
+| `enable_extract` | `bool` | `False` | Register `extract_url`, which reads any URL as HTML, Markdown or plain text. |
+| `all` | `bool` | `False` | Register every available tool, ignoring the individual flags. |
 
 ## Toolkit Functions
 
 Each function returns the Scavio response as a JSON string. Errors are returned as `{"error": "..."}` rather than raised.
 
-| Function                    | Description                                                  |
-| --------------------------- | ------------------------------------------------------------ |
-| `google_search`             | Search Google for real-time organic web results. Parameters include `query` (str), `gl` (two-letter country code), `hl` (two-letter UI language), `start` (result offset: 0, 10, 20, ...), `device` ("desktop" or "mobile"), `nfpr` (disable spelling auto-correction), `google_domain`, `location`, `safe` ("active" filters adult content), and `time_period` ("last_hour", "last_day", "last_week", "last_month", or "last_year"). |
-| `amazon_search`             | Search Amazon for products matching a query. Parameters include `query` (str), `domain`, `country`, `language`, `currency`, `device` ("desktop" or "mobile"), `sort_by`, `start_page`, `pages`, `category_id`, `merchant_id`, `zip_code`, and `autoselect_variant`. |
-| `amazon_product`            | Get full details for a single Amazon product by ASIN. Parameters include `asin` (str), `domain`, `country`, `language`, `currency`, `device` ("desktop" or "mobile"), `zip_code`, and `autoselect_variant`. |
-| `walmart_search`            | Search Walmart for products matching a query. Parameters include `query` (str), `domain`, `device` ("desktop" or "mobile"), `sort_by`, `start_page`, `min_price`, `max_price`, `fulfillment_speed`, `fulfillment_type`, `delivery_zip`, and `store_id`. |
-| `walmart_product`           | Get full details for a single Walmart product by product ID. Parameters include `product_id` (str), `domain`, `device` ("desktop" or "mobile"), `delivery_zip`, and `store_id`. |
-| `youtube_search`            | Search YouTube for videos matching a query. Parameters include `query` (str), `upload_date`, `type` ("video", "channel", or "playlist"), `duration`, `sort_by`, `hd`, `subtitles`, `creative_commons`, and `live`. |
-| `youtube_metadata`          | Get structured metadata for a single YouTube video. Parameters include `video_id` (str). |
-| `reddit_search`             | Search Reddit for posts or communities matching a query. Parameters include `query` (str), `type` ("posts" or "communities"), `sort`, and `cursor` (from a previous response). |
-| `reddit_post`               | Fetch a Reddit post with its threaded comments. Parameters include `url` (str), the full URL of the post. |
-| `tiktok_profile`            | Get a TikTok user profile. Parameters include `username` (without "@") and `sec_user_id`. Provide one. |
-| `tiktok_user_posts`         | List the videos posted by a TikTok user. Parameters include `sec_user_id` (str), `cursor`, `count`, and `sort_type`. |
-| `tiktok_video`              | Get details for a single TikTok video. Parameters include `video_id` (str). |
-| `tiktok_video_comments`     | List the comments on a TikTok video. Parameters include `video_id` (str), `cursor`, and `count`. |
-| `tiktok_comment_replies`    | List the replies to a TikTok comment. Parameters include `video_id` (str), `comment_id`, `cursor`, and `count`. |
-| `tiktok_search_videos`      | Search TikTok for videos matching a keyword. Parameters include `keyword` (str), `cursor`, `count`, `sort_type`, and `publish_time`. |
-| `tiktok_search_users`       | Search TikTok for users matching a keyword. Parameters include `keyword` (str), `cursor`, and `count`. |
-| `tiktok_hashtag`            | Get information about a TikTok hashtag. Parameters include `hashtag_name` (without "#") and `hashtag_id`. Provide one. |
-| `tiktok_hashtag_videos`     | List videos for a TikTok hashtag. Parameters include `hashtag_id` (from `tiktok_hashtag`), `cursor`, and `count`. |
-| `tiktok_user_followers`     | List the followers of a TikTok user. Parameters include `sec_user_id` (str), `count`, `page_token`, and `min_time`. |
-| `tiktok_user_followings`    | List the accounts a TikTok user follows. Parameters include `sec_user_id` (str), `count`, `page_token`, and `min_time`. |
-| `instagram_profile`         | Get an Instagram user profile. Parameters include `username` (without "@") and `user_id`. Provide one. |
-| `instagram_user_posts`      | List the posts of an Instagram user. Parameters include `username` (without "@"), `user_id`, `count`, and `cursor`. Provide a username or user ID. |
-| `instagram_user_reels`      | List the reels of an Instagram user. Parameters include `username` (without "@"), `user_id`, `count`, and `cursor`. Provide a username or user ID. |
-| `instagram_user_tagged`     | List posts an Instagram user is tagged in. Parameters include `username` (without "@"), `user_id`, `count`, and `cursor`. Provide a username or user ID. |
-| `instagram_user_stories`    | Get the active stories of an Instagram user. Parameters include `username` (without "@") and `user_id`. Provide one. |
-| `instagram_post`            | Get a single Instagram post. Parameters include `url`, `media_id`, and `shortcode`. Provide one. |
-| `instagram_post_comments`   | List the comments on an Instagram post. Parameters include `shortcode`, `url`, `cursor`, and `sort_order`. Provide a shortcode or URL. |
-| `instagram_comment_replies` | List the replies to an Instagram comment. Parameters include `media_id` (str), `comment_id`, and `cursor`. |
-| `instagram_search_users`    | Search Instagram for users matching a keyword. Parameters include `keyword` (str) and `cursor`. |
-| `instagram_search_hashtags` | Search Instagram for hashtags matching a keyword. Parameters include `keyword` (str) and `cursor`. |
-| `instagram_user_followers`  | List the followers of an Instagram user. Parameters include `username` (without "@"), `user_id`, `count`, and `cursor`. Provide a username or user ID. |
-| `instagram_user_followings` | List the accounts an Instagram user follows. Parameters include `username` (without "@"), `user_id`, `count`, and `cursor`. Provide a username or user ID. |
+Four platforms are lookup-first: `tripadvisor_locations`, `glassdoor_companies`, `sec_lookup` and `companies_house_search` resolve a name to the id their sibling tools are keyed by, so start there rather than guessing an id.
+
+### Google
+
+| Function | Description |
+| --- | --- |
+| `google_search` | Search Google for real-time organic web results. Required: `query`. Optional: `gl`, `hl`, `start`, `google_domain`, `device`, `location`, `safe`, `time_period`, `nfpr`. |
+| `google_ai_mode` | Ask Google AI Mode and get its generated answer with the sources it cited. Required: `query`. Optional: `gl`, `hl`, `google_domain`, `device`, `location`. |
+| `google_maps_search` | Find local businesses on Google Maps. Required: `query`. Optional: `gl`, `hl`, `ll`, `start`, `google_domain`. |
+| `google_maps_place` | Get the full Google Maps listing for one place. Optional: `place_id`, `data_cid`. |
+| `google_maps_reviews` | Read the Google Maps reviews for a place. Optional: `data_id`, `place_id`, `num`, `next_page_token`, `sort_by`, `hl`, `gl`. |
+| `google_shopping` | Search Google Shopping for products and prices across retailers. Required: `query`. Optional: `gl`, `hl`, `start`, `min_price`, `max_price`, `sort_by`, `free_shipping`, `on_sale`, `google_domain`, `location`. |
+| `google_shopping_product` | Get one Google Shopping product with the stores selling it. Optional: `catalog_id`, `query`, `product_id`, `page_token`, `device`, `sort_by`, `load_all_stores`, `more_stores`, `gl`, `hl`, `google_domain`. |
+| `google_shopping_stores` | Get the next page of stores for a Google Shopping product. Required: `catalog_id`, `next_page_token`. |
+| `google_flights` | Search Google Flights for fares between two airports. Required: `departure_id`, `arrival_id`, `outbound_date`. Optional: `return_date`, `type`, `adults`, `children`, `infants_in_seat`, `infants_on_lap`, `travel_class`, `stops`, `sort_by`, `include_airlines`, `exclude_airlines`, `currency`, `gl`, `hl`. |
+| `google_hotels` | Search Google Hotels for stays and nightly rates. Required: `query`, `check_in_date`, `check_out_date`. Optional: `gl`, `hl`, `currency`, `sort_by`, `min_price`, `max_price`, `rating`, `hotel_class`, `amenities`, `property_types`, `free_cancellation`, `eco_certified`, `special_offers`, `next_page_token`, `limit`. |
+| `google_hotels_detail` | Get one hotel's details and the sites booking it. Required: `detail_token`, `check_in_date`, `check_out_date`. Optional: `currency`, `gl`, `hl`. |
+| `google_news` | Read Google News: a keyword search, a topic, a story or a publication. Optional: `query`, `topic_token`, `section_token`, `story_token`, `publication_token`, `kgmid`, `hl`, `gl`, `so`. |
+| `google_trends` | Get Google Trends interest over time and by region for a search term. Required: `query`. Optional: `geo`, `hl`, `date`, `tz`, `data_type`, `cat`, `gprop`, `region`. |
+| `google_trending` | List what is trending on Google right now in one country. Required: `geo`. Optional: `hl`, `hours`, `cat`, `sort`, `status`. |
+
+### YouTube
+
+| Function | Description |
+| --- | --- |
+| `youtube_search` | Search YouTube for videos, channels, or playlists matching a query. Required: `query`. Optional: `upload_date`, `type`, `duration`, `sort_by`, `features`, `cursor`, `hd`, `subtitles`, `creative_commons`, `live`. |
+| `youtube_shorts` | Search YouTube Shorts for a query. Required: `query`. Optional: `sort_by`, `cursor`. |
+| `youtube_suggestions` | Get YouTube autocomplete suggestions for a partial query. Required: `query`. Optional: `language`, `region`. |
+| `youtube_video` | Get full metadata for a single YouTube video. Required: `video_id`. |
+| `youtube_comments` | List the top-level comments on a YouTube video. Required: `video_id`. Optional: `cursor`. |
+| `youtube_comment_replies` | List the replies to one YouTube comment. Required: `video_id`, `reply_cursor`. Optional: `cursor`. |
+| `youtube_transcript` | Get the transcript or timed subtitles for a YouTube video. Required: `video_id`. Optional: `language`, `format`. |
+| `youtube_related` | List videos YouTube considers related to a given video. Required: `video_id`. Optional: `cursor`. |
+| `youtube_channel_search` | Search YouTube for channels by name. Required: `query`. Optional: `cursor`. |
+| `youtube_channel` | Get details for a YouTube channel. Required: `channel_id`. |
+| `youtube_channel_videos` | List the videos uploaded by a YouTube channel. Required: `channel_id`. Optional: `cursor`. |
+| `youtube_channel_shorts` | List the Shorts posted by a YouTube channel. Required: `channel_id`. Optional: `cursor`. |
+| `youtube_channel_community` | List a YouTube channel's community posts. Required: `channel_id`. Optional: `cursor`. |
+| `youtube_channel_resolve` | Resolve a YouTube @handle or channel URL to a channel id. Required: `channel`. |
+| `youtube_streams` | Get playable and downloadable stream formats for a YouTube video. Required: `video_id`. |
+
+### Amazon
+
+| Function | Description |
+| --- | --- |
+| `amazon_search` | Search an Amazon marketplace for products matching a query. Required: `query`. Optional: `country`, `page`. |
+| `amazon_product` | Get the full product page for a single Amazon product by ASIN. Required: `asin`. Optional: `country`. |
+| `amazon_offers` | List every seller currently offering an Amazon product, by ASIN. Required: `asin`. Optional: `country`. |
+| `amazon_options` | List the Amazon marketplaces this API supports. |
+
+### Walmart
+
+| Function | Description |
+| --- | --- |
+| `walmart_search` | Search Walmart for products matching a query. Required: `query`. Optional: `domain`, `page`, `sort_by`, `min_price`, `max_price`, `fulfillment_speed`, `fulfillment_type`. |
+| `walmart_product` | Get full details for a single Walmart product. Required: `product_id`. |
+| `walmart_reviews` | Get customer reviews for a Walmart product. Required: `product_id`. Optional: `page`, `sort`. |
+| `walmart_category` | List the products in a Walmart category. Required: `category_id`. Optional: `domain`, `page`, `limit`, `sort_by`, `min_price`, `max_price`, `fulfillment_speed`. |
+| `walmart_offers` | Get the buy-box offer for a Walmart product. Required: `product_id`. |
+| `walmart_seller` | Get a Walmart marketplace seller's storefront. Required: `seller_id`. |
+| `walmart_seller_products` | List a Walmart marketplace seller's catalog. Required: `seller_id`. |
+
+### Reddit
+
+| Function | Description |
+| --- | --- |
+| `reddit_search` | Search Reddit posts. Required: `query`. Optional: `cursor`. |
+| `reddit_search_suggestions` | Get Reddit autocomplete search suggestions for a query. Required: `query`. |
+| `reddit_post` | Fetch a single Reddit post. Optional: `url`, `post_id`. |
+| `reddit_post_comments` | List the top-level comments on a Reddit post. Required: `post_id`. Optional: `sort`, `cursor`. |
+| `reddit_comment_replies` | List the replies to a specific Reddit comment. Required: `post_id`, `cursor`. Optional: `sort`. |
+| `reddit_subreddit` | Get metadata for a subreddit. Required: `subreddit`. |
+| `reddit_subreddit_posts` | List the posts in a subreddit's feed. Required: `subreddit`. Optional: `sort`, `cursor`. |
+| `reddit_user` | Get a redditor's profile. Required: `username`. |
+| `reddit_user_posts` | List the posts submitted by a redditor. Required: `username`. Optional: `sort`, `cursor`. |
+| `reddit_user_comments` | List the comments made by a redditor. Required: `username`. Optional: `sort`, `cursor`. |
+| `reddit_popular` | Get the site-wide Reddit popular feed. Optional: `cursor`. |
+| `reddit_trending` | Get the current trending Reddit search queries. |
+
+### TikTok
+
+| Function | Description |
+| --- | --- |
+| `tiktok_profile` | Get a TikTok user profile. Optional: `username`, `sec_user_id`. |
+| `tiktok_user_posts` | List the videos posted by a TikTok user. Required: `sec_user_id`. Optional: `cursor`, `count`, `sort_type`. |
+| `tiktok_video` | Get details for a single TikTok video. Required: `video_id`. |
+| `tiktok_video_comments` | List the comments on a TikTok video. Required: `video_id`. Optional: `cursor`, `count`. |
+| `tiktok_comment_replies` | List the replies to a TikTok comment. Required: `video_id`, `comment_id`. Optional: `cursor`, `count`. |
+| `tiktok_search_videos` | Search TikTok for videos matching a keyword. Required: `keyword`. Optional: `cursor`, `count`, `sort_type`, `publish_time`. |
+| `tiktok_search_users` | Search TikTok for users matching a keyword. Required: `keyword`. Optional: `cursor`, `count`. |
+| `tiktok_hashtag` | Get information about a TikTok hashtag. Optional: `hashtag_name`, `hashtag_id`. |
+| `tiktok_hashtag_videos` | List videos for a TikTok hashtag. Required: `hashtag_id`. Optional: `cursor`, `count`. |
+| `tiktok_user_followers` | List the followers of a TikTok user. Required: `sec_user_id`. Optional: `count`, `page_token`, `min_time`. |
+| `tiktok_user_followings` | List the accounts a TikTok user follows. Required: `sec_user_id`. Optional: `count`, `page_token`, `min_time`. |
+
+### TikTok Shop
+
+| Function | Description |
+| --- | --- |
+| `tiktok_shop_search` | Search TikTok Shop products by keyword (US catalog). Required: `search`. Optional: `cursor`. |
+| `tiktok_shop_search_suggestions` | Get keyword autocomplete and expansion for a partial TikTok Shop query. Required: `search`. Optional: `region`. |
+| `tiktok_shop_product` | Get full detail for a single TikTok Shop product. Required: `product_id`. Optional: `region`. |
+| `tiktok_shop_product_reviews` | List the reviews on a TikTok Shop product, up to 200 per call. Required: `product_id`. Optional: `page`, `page_size`, `sort`, `rating`, `has_media`, `verified_only`, `region`. |
+| `tiktok_shop_categories` | Get the global TikTok Shop category tree. |
+| `tiktok_shop_category_products` | List the products under a TikTok Shop category id, with exact prices. Required: `category_id`. Optional: `cursor`, `region`. |
+| `tiktok_shop_shop_products` | List a TikTok Shop seller's product catalog, 30 per page, with exact prices. Required: `shop_id`. Optional: `cursor`, `region`. |
+| `tiktok_shop_resolve` | Resolve a TikTok Shop URL or share link to a product id or shop id. Required: `url`. |
+
+### Instagram
+
+| Function | Description |
+| --- | --- |
+| `instagram_profile` | Get an Instagram user profile. Optional: `username`, `user_id`. |
+| `instagram_user_posts` | List the posts of an Instagram user. Optional: `username`, `user_id`, `count`, `cursor`. |
+| `instagram_user_reels` | List the reels of an Instagram user. Optional: `username`, `user_id`, `count`, `cursor`. |
+| `instagram_user_tagged` | List posts an Instagram user is tagged in. Optional: `username`, `user_id`, `count`, `cursor`. |
+| `instagram_user_stories` | Get the active stories of an Instagram user. Optional: `username`, `user_id`. |
+| `instagram_post` | Get a single Instagram post. Optional: `url`, `media_id`, `shortcode`. |
+| `instagram_post_comments` | List the comments on an Instagram post. Optional: `shortcode`, `url`, `cursor`, `sort_order`. |
+| `instagram_comment_replies` | List the replies to an Instagram comment. Required: `media_id`, `comment_id`. Optional: `cursor`. |
+| `instagram_search_users` | Search Instagram for users matching a keyword. Required: `keyword`. Optional: `cursor`. |
+| `instagram_search_hashtags` | Search Instagram for hashtags matching a keyword. Required: `keyword`. Optional: `cursor`. |
+| `instagram_user_followers` | List the followers of an Instagram user. Optional: `username`, `user_id`, `count`, `cursor`. |
+| `instagram_user_followings` | List the accounts an Instagram user follows. Optional: `username`, `user_id`, `count`, `cursor`. |
+
+### X
+
+| Function | Description |
+| --- | --- |
+| `x_search` | Search X for tweets and people. Required: `query`. Optional: `search_type`, `cursor`. |
+| `x_tweet` | Get full details for a single tweet. Required: `tweet_id`. |
+| `x_tweet_comments` | List the replies to a tweet. Required: `tweet_id`. Optional: `rank`, `cursor`. |
+| `x_tweet_retweeters` | List the users who retweeted a tweet. Required: `tweet_id`. Optional: `cursor`. |
+| `x_user` | Get profile details for a X user. Required: `screen_name`. |
+| `x_user_tweets` | List a user's tweets. Required: `screen_name`. Optional: `cursor`. |
+| `x_user_replies` | List a user's tweets and replies. Required: `screen_name`. Optional: `cursor`. |
+| `x_user_media` | List a user's media tweets. Required: `screen_name`. Optional: `cursor`. |
+| `x_user_followers` | List a user's followers. Required: `screen_name`. Optional: `cursor`. |
+| `x_user_followings` | List the accounts a user follows. Required: `screen_name`. Optional: `cursor`. |
+| `x_trending` | Get the trending topics for a country. Optional: `country`. |
+
+### LinkedIn
+
+| Function | Description |
+| --- | --- |
+| `linkedin_person` | Get the full profile for a LinkedIn member. Optional: `username`, `url`. |
+| `linkedin_person_about` | Get the about/overview sections of a LinkedIn member's profile. Optional: `username`, `url`. |
+| `linkedin_person_posts` | List a LinkedIn member's posts, or the posts they commented on or reacted to. Optional: `username`, `url`, `type`, `cursor`. |
+| `linkedin_company` | Get a LinkedIn company profile. Optional: `company`, `url`. |
+| `linkedin_company_posts` | List a LinkedIn company's recent posts. Optional: `company`, `url`, `cursor`. |
+| `linkedin_search_jobs` | Search LinkedIn for jobs by keyword. Required: `search`. Optional: `location`, `cursor`. |
+| `linkedin_job` | Get full details for a single LinkedIn job listing. Optional: `job_id`, `url`. |
+| `linkedin_post` | Get full details for a single LinkedIn post. Optional: `post_id`, `url`. |
+| `linkedin_post_comments` | Get the comments on a LinkedIn post. Optional: `post_id`, `url`, `page`. |
+
+### Threads
+
+| Function | Description |
+| --- | --- |
+| `threads_profile` | Get a Threads user's profile. Optional: `user_id`, `username`. |
+| `threads_user_posts` | List a Threads user's posts. Optional: `user_id`, `username`, `cursor`. |
+| `threads_user_replies` | List a Threads user's replies. Optional: `user_id`, `username`, `cursor`. |
+| `threads_post` | Get a single Threads post. Optional: `post_id`, `url`. |
+| `threads_post_comments` | List the replies to a Threads post. Required: `post_id`. Optional: `cursor`. |
+| `threads_search_users` | Search Threads profiles by name or handle. Required: `query`. |
+
+### Kuaishou
+
+| Function | Description |
+| --- | --- |
+| `kuaishou_profile` | Get a Kuaishou user's profile. Required: `user_id`. |
+| `kuaishou_user_posts` | List a Kuaishou user's top posts. Required: `user_id`. Optional: `cursor`. |
+| `kuaishou_user_live` | Check whether a Kuaishou user is live right now. Required: `user_id`. |
+| `kuaishou_user_resolve` | Turn a Kuaishou share link into a user id. Required: `share_link`. |
+| `kuaishou_video` | Get a single Kuaishou video. Optional: `photo_id`, `url`. |
+| `kuaishou_video_comments` | List the comments on a Kuaishou video. Required: `photo_id`. Optional: `cursor`. |
+| `kuaishou_comment_replies` | List the replies under a Kuaishou comment. Required: `photo_id`, `root_comment_id`. Optional: `cursor`, `count`. |
+| `kuaishou_videos_batch` | Fetch up to 20 Kuaishou videos in one call. Required: `photo_ids`. |
+| `kuaishou_search` | Search Kuaishou across all result types. Required: `keyword`. Optional: `cursor`. |
+| `kuaishou_search_videos` | Search Kuaishou videos. Required: `keyword`. Optional: `cursor`. |
+| `kuaishou_search_users` | Search Kuaishou users. Required: `keyword`. Optional: `cursor`. |
+| `kuaishou_search_live` | Search Kuaishou live streams. Required: `keyword`. Optional: `cursor`. |
+| `kuaishou_tag_feed` | List the posts under a Kuaishou hashtag. Required: `tag`. Optional: `cursor`. |
+| `kuaishou_trending` | Get a Kuaishou leaderboard. Optional: `board`. |
+
+### eBay
+
+| Function | Description |
+| --- | --- |
+| `ebay_search` | Search live or SOLD eBay listings. Optional: `query`, `seller`, `page`, `sort_by`, `min_price`, `max_price`, `condition`, `buying_format`, `free_shipping`, `sold`, `category_id`, `per_page`. |
+| `ebay_product` | Get one eBay listing in full. Required: `item_id`. |
+| `ebay_seller` | Get an eBay seller's profile card. Required: `seller`. |
+
+### Target
+
+| Function | Description |
+| --- | --- |
+| `target_search` | Search Target.com. Required: `keyword`. Optional: `page`, `count`, `sort`, `store_id`. |
+| `target_category` | List the products in a Target category. Required: `category_id`. Optional: `page`, `count`, `sort`, `store_id`. |
+| `target_product` | Get a Target product by TCIN. Required: `tcin`. Optional: `store_id`. |
+| `target_reviews` | Get the reviews for a Target product. Required: `tcin`. Optional: `limit`, `store_id`. |
+
+### Home Depot
+
+| Function | Description |
+| --- | --- |
+| `home_depot_search` | Search Home Depot. Required: `query`. Optional: `page`, `sort_by`, `min_price`, `max_price`. |
+| `home_depot_product` | Get a Home Depot item in full. Required: `item_id`. |
+| `home_depot_reviews` | Get a page of Home Depot reviews. Required: `item_id`. Optional: `page`. |
+
+### Zillow
+
+| Function | Description |
+| --- | --- |
+| `zillow_search` | Search Zillow listings in a region. Required: `location`. Optional: `listing_status`, `page`, `sort`, `min_price`, `max_price`, `beds_min`, `beds_max`, `baths_min`, `baths_max`, `sqft_min`, `sqft_max`, `lot_size_min`, `lot_size_max`, `year_built_min`, `year_built_max`, `max_hoa`, `home_type`, `days_on_zillow`, `keywords`, `has_pool`, `has_garage`, `has_air_conditioning`, `is_waterfront`, `has_basement`, `is_new_construction`, `has_open_house`, `price_reduced`, `is_3d_tour`. |
+| `zillow_property` | Get a Zillow listing in full. Required: `zpid`. |
+| `zillow_agent_reviews` | Get a Zillow AGENT's profile and reviews. Required: `screen_name`. |
+
+### Redfin
+
+| Function | Description |
+| --- | --- |
+| `redfin_search` | Search Redfin listings. Optional: `location`, `region_id`, `region_type`, `listing_status`, `sold_within_days`, `page`, `limit`, `sort`, `min_price`, `max_price`, `beds_min`, `beds_max`, `baths_min`, `sqft_min`, `sqft_max`, `lot_size_min`, `year_built_min`, `year_built_max`, `max_hoa`, `property_type`, `has_pool`, `max_days_on_market`, `min_days_on_market`. |
+| `redfin_property` | Get one Redfin listing in full. Required: `property_id`. |
+| `redfin_market` | Get Redfin housing-market stats for a region. Optional: `location`, `region_id`, `region_type`. |
+
+### Booking.com
+
+| Function | Description |
+| --- | --- |
+| `booking_search` | Search Booking.com properties for a destination and stay. Optional: `destination`, `dest_id`, `dest_type`, `page`, `sort_by`, `min_price`, `max_price`, `stars`, `min_review_score`, `property_type`, `free_cancellation`, `no_prepayment`, `breakfast_included`, `checkin`, `checkout`, `adults`, `children_ages`, `rooms`, `currency`. |
+| `booking_hotel` | Get one Booking.com property in full. Required: `hotel`. Optional: `country_code`, `checkin`, `checkout`, `adults`, `children_ages`, `rooms`, `currency`. |
+| `booking_reviews` | Get Booking.com guest reviews for a property. Required: `hotel`. Optional: `country_code`, `checkin`, `checkout`, `adults`, `children_ages`, `rooms`, `currency`. |
+
+### Airbnb
+
+| Function | Description |
+| --- | --- |
+| `airbnb_search` | Search Airbnb stays. Required: `location`. Optional: `check_in`, `check_out`, `adults`, `children`, `infants`, `pets`, `min_price`, `max_price`, `room_type`, `min_bedrooms`, `min_beds`, `min_bathrooms`, `superhost`, `instant_book`, `guest_favorite`, `free_cancellation`, `amenities`, `currency`, `page`, `cursor`. |
+| `airbnb_listing` | Get one Airbnb listing in full. Required: `listing_id`. Optional: `check_in`, `check_out`, `adults`, `children`, `infants`, `pets`, `currency`. |
+| `airbnb_reviews` | Get Airbnb review bodies for a listing. Required: `listing_id`. Optional: `currency`, `limit`, `offset`. |
+
+### TripAdvisor
+
+| Function | Description |
+| --- | --- |
+| `tripadvisor_locations` | Resolve a place or business name to TripAdvisor ids. Required: `query`. Optional: `limit`. |
+| `tripadvisor_search` | List restaurants, hotels or attractions in a TripAdvisor geo. Optional: `geo_id`, `category`, `page`, `url`. |
+| `tripadvisor_location` | Get one TripAdvisor location in full. Optional: `location_id`, `geo_id`, `category`, `url`. |
+| `tripadvisor_reviews` | Get a page of TripAdvisor reviews. Optional: `location_id`, `geo_id`, `category`, `url`, `page`. |
+
+### Yelp
+
+| Function | Description |
+| --- | --- |
+| `yelp_search` | Search Yelp businesses. Optional: `term`, `location`, `page`, `sort`, `price`, `open_now`, `attributes`, `url`. |
+| `yelp_business` | Get one Yelp business in full. Optional: `business_id`, `url`. |
+| `yelp_reviews` | Get a page of Yelp reviews. Optional: `business_id`, `url`, `page`, `sort`, `rating`. |
+
+### Indeed
+
+| Function | Description |
+| --- | --- |
+| `indeed_search` | Search Indeed job postings. Optional: `query`, `location`, `page`, `radius`, `max_age_days`, `job_type`, `min_salary`, `remote`. |
+| `indeed_job` | Get one Indeed posting in full. Required: `job_id`. |
+| `indeed_company` | Get an Indeed employer profile. Required: `company`. |
+| `indeed_company_reviews` | Get a page of Indeed employee reviews. Required: `company`. Optional: `page`. |
+
+### Glassdoor
+
+| Function | Description |
+| --- | --- |
+| `glassdoor_companies` | Resolve a company name to a Glassdoor employer_id. Required: `query`. |
+| `glassdoor_company` | Get a Glassdoor employer profile. Optional: `employer_id`, `company`, `url`. |
+| `glassdoor_reviews` | Get Glassdoor reviews and rating statistics. Optional: `employer_id`, `company`, `url`, `category`, `employment_status`. |
+| `glassdoor_salaries` | Get Glassdoor salary estimates by job title. Optional: `employer_id`, `company`, `url`, `page`. |
+
+### App Store
+
+| Function | Description |
+| --- | --- |
+| `app_store_search` | Search the Apple App Store. Required: `term`. Optional: `limit`, `country`, `entity`, `lang`. |
+| `app_store_app` | Get a full App Store listing. Required: `app_id`. Optional: `country`. |
+| `app_store_reviews` | Get a page of App Store reviews. Required: `app_id`. Optional: `country`, `page`, `sort`. |
+
+### Google Play
+
+| Function | Description |
+| --- | --- |
+| `google_play_search` | Search Google Play. Required: `query`. Optional: `hl`, `gl`. |
+| `google_play_app` | Get a full Google Play store listing. Required: `app_id`. Optional: `hl`, `gl`. |
+| `google_play_reviews` | Get a page of Google Play reviews. Required: `app_id`. Optional: `sort`, `count`, `cursor`, `hl`, `gl`. |
+
+### SEC EDGAR
+
+| Function | Description |
+| --- | --- |
+| `sec_lookup` | Resolve a company name or ticker to an SEC CIK. Required: `query`. Optional: `limit`, `exchange`. |
+| `sec_company` | Get an SEC EDGAR filer profile. Optional: `cik`, `ticker`. |
+| `sec_filings` | List a filer's SEC filings. Optional: `cik`, `ticker`, `form`, `date_from`, `date_to`, `page`, `limit`, `include_history`. |
+| `sec_concept` | Get every value a filer reported for one XBRL concept. Required: `concept`. Optional: `cik`, `ticker`, `taxonomy`, `unit`, `form`, `limit`. |
+| `sec_facts` | List every XBRL concept a filer reports. Optional: `cik`, `ticker`, `taxonomy`, `query`, `limit`. |
+| `sec_search` | Run an EDGAR full-text search over filing documents. Optional: `query`, `cik`, `ticker`, `form`, `date_from`, `date_to`, `location`, `sort`, `page`. |
+
+### Companies House
+
+| Function | Description |
+| --- | --- |
+| `companies_house_search` | Search the UK Companies House register by name. Required: `query`. Optional: `page`. |
+| `companies_house_company` | Get a full UK Companies House register entry. Required: `company_number`. |
+| `companies_house_officers` | List a UK company's officers. Required: `company_number`. Optional: `page`. |
+| `companies_house_filing_history` | List a UK company's filings. Required: `company_number`. Optional: `page`. |
+
+### G2
+
+| Function | Description |
+| --- | --- |
+| `g2_search` | Search G2 for B2B software products. Optional: `query`, `page`, `limit`, `sort`, `rating`, `url`. |
+| `g2_product` | Get a full G2 product profile. Optional: `product_id`, `url`. |
+| `g2_reviews` | Get a page of G2 reviews with facet counts. Optional: `product_id`, `url`, `page`, `sort`, `rating`, `company_size`, `role`, `region`, `query`. |
+
+### Capterra
+
+| Function | Description |
+| --- | --- |
+| `capterra_search` | Search Capterra for B2B software products. Optional: `query`, `url`. |
+| `capterra_product` | Get a full Capterra product profile. Optional: `product_id`, `slug`, `url`. |
+| `capterra_reviews` | Get a page of Capterra reviews. Optional: `product_id`, `slug`, `url`, `page`. |
+
+### Google Ads Transparency
+
+| Function | Description |
+| --- | --- |
+| `google_ads_advertisers` | Resolve a brand or domain to a Google advertiser_id. Required: `query`. Optional: `region`, `limit`. |
+| `google_ads_search` | List every ad Google Ads Transparency holds for an advertiser. Optional: `domain`, `advertiser_id`, `region`, `format`, `platform`, `topic`, `limit`, `cursor`. |
+| `google_ads_creative` | Get one Google ad creative with its impression history. Required: `advertiser_id`, `creative_id`. |
+
+### Meta Ad Library
+
+| Function | Description |
+| --- | --- |
+| `meta_ads_search` | Search the Meta Ad Library by keyword. Required: `query`. Optional: `country`, `active_status`, `ad_type`, `media_type`, `search_type`, `cursor`. |
+| `meta_ads_advertiser` | List every ad a Facebook Page is running. Required: `page_id`. Optional: `country`, `active_status`, `ad_type`, `media_type`, `cursor`. |
+| `meta_ads_ad` | Get one Meta ad by archive id. Required: `ad_archive_id`. |
+
+### Extract
+
+| Function | Description |
+| --- | --- |
+| `extract_url` | Read any URL and get the page back as HTML, Markdown or plain text. Required: `url`. Optional: `format`, `mode`. |
 
 ## Developer Resources
 
 - [Tools](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/tools/scavio.py)
 - [Cookbook](https://github.com/agno-agi/agno/blob/main/cookbook/91_tools/scavio_tools.py)
+- [Scavio API reference](https://scavio.dev/docs)
