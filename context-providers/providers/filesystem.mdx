@@ -8,20 +8,62 @@ keywords: [context providers, filesystem, files, local, directory]
 Read files from a scoped local directory. The provider exposes one tool: `query_fs` for searching and reading files.
 
 ```python
+import asyncio
+from pathlib import Path
+
 from agno.agent import Agent
 from agno.context.fs import FilesystemContextProvider
+from agno.models.openai import OpenAIResponses
 
-fs = FilesystemContextProvider(root="./docs")
-
-agent = Agent(
-    model=...,
-    tools=fs.get_tools(),
+fs = FilesystemContextProvider(
+    root=Path(__file__).resolve().parent,
+    model=OpenAIResponses(id="gpt-5.6-luna"),
 )
 
-await agent.aprint_response("What topics are covered in the documentation?")
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.4"),
+    tools=fs.get_tools(),
+    instructions=fs.instructions(),
+)
+
+if __name__ == "__main__":
+    asyncio.run(
+        agent.aprint_response("Summarize the files in this directory.")
+    )
 ```
 
-The agent calls `query_fs("documentation topics")`. A sub-agent handles file listing, searching, and reading.
+The agent can call `query_fs` with a filesystem question. A sub-agent handles file listing, searching, and reading.
+
+## Run
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```powershell Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code as `filesystem_context.py`, then run:
+    ```bash
+    python filesystem_context.py
+    ```
+  </Step>
+</Steps>
 
 ## Configuration
 
@@ -29,9 +71,13 @@ The agent calls `query_fs("documentation topics")`. A sub-agent handles file lis
 |-----------|------|---------|-------------|
 | `root` | `str \| Path` | required | Directory to scope the provider to. |
 | `id` | `str` | `"fs"` | Tool becomes `query_<id>`. |
-| `exclude_patterns` | `list[str]` | `None` | Glob patterns to exclude (e.g., `["*.pyc", "__pycache__"]`). |
-| `model` | `Model` | `None` | Model for the sub-agent. |
+| `name` | `str` | `"Filesystem"` | Display name used in provider instructions. |
+| `instructions` | `str \| None` | `None` | Instructions for the read-only filesystem sub-agent. |
+| `exclude_patterns` | `list[str] \| None` | `None` | Glob patterns to exclude (e.g., `["*.pyc", "__pycache__"]`). |
+| `model` | `Model \| None` | `None` | Model for the sub-agent. |
 | `mode` | `ContextMode` | `default` | `default` or `agent` expose `query_fs`. `tools` exposes raw FileTools. |
+| `query_timeout` | `float \| None` | `None` | Timeout in seconds for a sub-agent query. |
+| `stream_sub_agent_events` | `bool` | `True` | Include sub-agent events in the parent stream. |
 
 ## Tools Exposed
 
@@ -57,7 +103,7 @@ FilesystemContextProvider is read-only. There is no `update_fs` tool.
   <Card title="FileTools Reference" icon="wrench" href="/tools/toolkits/local/file">
     Underlying toolkit methods
   </Card>
-  <Card title="Cookbook Example" icon="book" href="https://github.com/agno-agi/agno/blob/main/cookbook/12_context/00_filesystem.py">
+  <Card title="Cookbook Example" icon="book" href="https://github.com/agno-agi/agno/blob/v3.0.4/cookbook/12_context/00_filesystem.py">
     Working example
   </Card>
 </CardGroup>

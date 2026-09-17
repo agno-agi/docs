@@ -1,0 +1,70 @@
+---
+title: GCS Media Storage
+sidebarTitle: GCS
+description: Store agent media in a Google Cloud Storage bucket with GCSMediaStorage.
+keywords: [media storage, GCS, Google Cloud Storage, GCSMediaStorage, signed URL, media_storage]
+---
+
+`GCSMediaStorage` uploads media to a Google Cloud Storage bucket and keeps only a `MediaReference` in the database.
+
+## Usage
+
+Install the required packages:
+
+```shell
+uv pip install "agno[gcs]" openai sqlalchemy
+```
+
+Authenticate with `gcloud auth application-default login`, or pass a service-account JSON through `credentials_path`.
+
+```python media_storage_gcs.py
+import os
+
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.media.storage import GCSMediaStorage
+from agno.models.openai import OpenAIResponses
+
+storage = GCSMediaStorage(
+    bucket=os.getenv("MEDIA_GCS_BUCKET"),
+    project=os.getenv("GCP_PROJECT"),
+    prefix="agno/media/",
+)
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.5"),
+    db=SqliteDb(db_file="tmp/data.db"),
+    media_storage=storage,
+)
+```
+
+## Async
+
+`AsyncGCSMediaStorage` takes the same parameters. `google-cloud-storage` has no native async API, so each call runs in a worker thread.
+
+```python
+from agno.media.storage import AsyncGCSMediaStorage
+
+storage = AsyncGCSMediaStorage(bucket=os.getenv("MEDIA_GCS_BUCKET"))
+```
+
+## URLs
+
+Signing a URL needs a credential that carries a private key. Pass `credentials_path`, or point `GOOGLE_APPLICATION_CREDENTIALS` at a service-account JSON.
+
+```python
+storage = GCSMediaStorage(
+    bucket=os.getenv("MEDIA_GCS_BUCKET"),
+    credentials_path="/path/to/service-account.json",
+)
+```
+
+Application-default credentials from `gcloud auth` or a VM carry only a token. With those, `get_url` returns `None` and AgentOS streams the bytes through its media route.
+
+`public=True` returns the public object URL instead of a signed one. It grants no access by itself: under uniform bucket-level access, the default for new buckets, the bucket must already grant `roles/storage.objectViewer` to `allUsers` or the URL answers 403.
+
+## Params
+
+<Snippet file="media-storage-gcs-params.mdx" />
+
+See the full example [here](/examples/storage/media-storage/gcs).

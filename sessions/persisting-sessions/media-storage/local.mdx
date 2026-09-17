@@ -1,0 +1,55 @@
+---
+title: Local Media Storage
+sidebarTitle: Local
+description: Store agent media on the local filesystem with LocalMediaStorage.
+keywords: [media storage, local filesystem, LocalMediaStorage, media_storage, MediaReference]
+---
+
+`LocalMediaStorage` writes media to a directory on disk and keeps only a `MediaReference` in the database. Use it for development and testing, and S3 or GCS in production.
+
+## Usage
+
+`LocalMediaStorage` needs no extra packages. The example below also uses `SqliteDb` and an OpenAI model:
+
+```shell
+uv pip install agno openai sqlalchemy
+```
+
+```python media_storage_local.py
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.media.storage import LocalMediaStorage
+from agno.models.openai import OpenAIResponses
+
+storage = LocalMediaStorage(base_path="./tmp/media_storage")
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.5"),
+    db=SqliteDb(db_file="tmp/data.db"),
+    media_storage=storage,
+)
+```
+
+`base_path` is resolved to an absolute path at construction, so a relative value does not follow the working directory if the process moves.
+
+## Async
+
+`AsyncLocalMediaStorage` takes the same parameters and runs each call in a worker thread, so a large file write does not block the event loop.
+
+```python
+from agno.media.storage import AsyncLocalMediaStorage
+
+storage = AsyncLocalMediaStorage(base_path="./tmp/media_storage")
+```
+
+## URLs
+
+`get_url` returns `None` for this backend. There is no durable HTTP URL for a local file, so AgentOS streams the bytes through its media route instead, and a run replaying history downloads the object and sends the bytes to the model each turn. The database stays small either way, but the bandwidth saving on replay only comes from a backend that signs.
+
+Each object is written with a `.meta.json` file beside it holding the filename, mime type, size, SHA-256 and any metadata you set. It is removed with the object.
+
+## Params
+
+<Snippet file="media-storage-local-params.mdx" />
+
+See the full example [here](/examples/storage/media-storage/local).

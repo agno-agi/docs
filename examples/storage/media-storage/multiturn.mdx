@@ -1,0 +1,130 @@
+---
+title: "Media Storage Across Turns"
+description: "Read successfully offloaded S3 media across multiple turns of one session."
+source: cookbook/06_storage/07_media_storage_multiturn.py
+---
+
+Run a second turn against media that a successful first-turn upload stored in S3.
+
+<Warning>
+  This example does not assert that offload succeeded. A storage failure can leave inline media in the persisted run, so verify the MediaReference and S3 object before using it as a read-back test.
+</Warning>
+
+```python media_storage_multiturn.py
+"""
+Multi-turn Media Storage
+========================
+
+Demonstrates a multi-turn conversation over offloaded media. Turn 1 uploads the image to S3
+and keeps only a MediaReference; turn 2 asks about it without re-attaching it. The stored
+reference is re-signed on read, so the model fetches the image from S3 and the bytes never
+travel back through the database.
+
+store=False keeps history client-side; OpenAIResponses would otherwise chain turns via
+previous_response_id and turn 2 would send no image at all.
+
+Requirements:
+- uv pip install 'agno[s3]'
+- AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION
+- Set MEDIA_S3_BUCKET to the destination bucket
+"""
+
+import os
+
+import httpx
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.media import Image
+from agno.media.storage import S3MediaStorage
+from agno.models.openai import OpenAIResponses
+
+# ---------------------------------------------------------------------------
+# Setup
+# ---------------------------------------------------------------------------
+DB_FILE = "tmp/multiturn.db"
+IMAGE_URL = "https://picsum.photos/id/15/800/600.jpg"
+
+bucket = os.getenv("MEDIA_S3_BUCKET")
+if not bucket:
+    raise ValueError("MEDIA_S3_BUCKET must be set to the destination S3 bucket")
+
+storage = S3MediaStorage(
+    bucket=bucket,
+    region=os.getenv("AWS_REGION"),
+    prefix="agno/media/",
+    presigned_url_expiry=3600,  # 1 hour
+)
+
+# ---------------------------------------------------------------------------
+# Create the Agent
+# ---------------------------------------------------------------------------
+agent = Agent(
+    model=OpenAIResponses(
+        id="gpt-5.5", store=False
+    ),  # keep history client-side, see docstring
+    media_storage=storage,
+    db=SqliteDb(db_file=DB_FILE),
+    session_id="multiturn-session",
+    add_history_to_context=True,
+)
+
+# ---------------------------------------------------------------------------
+# Run the Agent
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    image_bytes = httpx.get(IMAGE_URL, follow_redirects=True).content
+
+    # Turn 1: send the image and ask about it
+    agent.print_response(
+        "What do you see in this image?",
+        images=[Image(content=image_bytes, format="jpeg", mime_type="image/jpeg")],
+    )
+
+    # Turn 2: ask again without re-attaching it — the reference is re-signed for the model
+    agent.print_response("What was the image about?")
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U "agno[s3]" openai sqlalchemy
+    ```
+  </Step>
+
+  <Step title="Export environment variables">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export AWS_REGION="your_aws_region_here"
+    export MEDIA_S3_BUCKET="your_media_s3_bucket_here"
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:AWS_REGION="your_aws_region_here"
+    $Env:MEDIA_S3_BUCKET="your_media_s3_bucket_here"
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+<Step title="Configure AWS credentials">
+    Configure the AWS SDK default credential chain with environment variables, a shared credentials file, or an IAM role.
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `media_storage_multiturn.py`, then run:
+    ```bash
+    python media_storage_multiturn.py
+    ```
+  </Step>
+
+  <Step title="Verify the offload">
+    Confirm that the first stored run contains a MediaReference and that its storage key exists in the S3 bucket before treating the second turn as an S3 read-back test.
+  </Step>
+</Steps>
+
+Full source: [cookbook/06_storage/07_media_storage_multiturn.py](https://github.com/agno-agi/agno/blob/v3.0.4/cookbook/06_storage/07_media_storage_multiturn.py)

@@ -1,0 +1,95 @@
+---
+title: "Composition: LearningMachine + FileSystem, One Deliberate Order"
+description: "The point of the manual door: LearningMachine, FileSystem and your own system prompt compose in one order you can read off the page."
+source: cookbook/08_learning/11_composition/with_filesystem.py
+---
+
+The point of the manual door: LearningMachine, FileSystem and your own system prompt compose in one order you can read off the page. Nothing is attached behind your back.
+
+```python with_filesystem.py
+"""
+Composition: LearningMachine + FileSystem, One Deliberate Order
+===============================================================
+The point of the manual door: LearningMachine, FileSystem and your own
+system prompt compose in one order you can read off the page. Nothing is
+attached behind your back.
+
+Run:
+    .venvs/demo/bin/python cookbook/08_learning/11_composition/with_filesystem.py
+"""
+
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.fs import FileSystem
+from agno.learn import LearningMachine, LearningMode, UserMemoryConfig
+from agno.models.openai import OpenAIResponses
+
+db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+learning = LearningMachine(
+    db=db,
+    model=OpenAIResponses(id="gpt-5.5"),  # the manual door injects nothing
+    user_memory=UserMemoryConfig(mode=LearningMode.AGENTIC),
+)
+fs = FileSystem(db, namespace="composition-notes")
+
+USER_ID = "composer@example.com"
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.5"),
+    db=db,
+    tools=[*learning.get_tools(user_id=USER_ID), fs.tools()],
+    instructions=[
+        "You are a research assistant. Keep running notes on topics you research.",
+        learning.instructions(),
+        fs.instructions(),
+    ],
+    user_id=USER_ID,
+    markdown=True,
+)
+
+if __name__ == "__main__":
+    agent.print_response(
+        "Note down: the vector-db comparison is due Friday. And remember that "
+        "I want conclusions first in every summary.",
+        stream=True,
+    )
+    print("\n--- files ---")
+    for f in fs.list():
+        print(f.path)
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno "psycopg[binary]" openai sqlalchemy
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Snippet file="run-pgvector-step.mdx" />
+
+  <Step title="Run the example">
+    Save the code above as `with_filesystem.py`, then run:
+    ```bash
+    python with_filesystem.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/08_learning/11_composition/with_filesystem.py](https://github.com/agno-agi/agno/blob/v3.0.4/cookbook/08_learning/11_composition/with_filesystem.py)

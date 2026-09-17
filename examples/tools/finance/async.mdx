@@ -1,0 +1,85 @@
+---
+title: "Async FinanceTools"
+description: "Every FinanceTools tool has an async variant registered under the same name, so `agent.arun()` / `agent.aprint_response()` use them automatically."
+source: cookbook/91_tools/finance/05_async.py
+---
+
+Every FinanceTools tool has an async variant registered under the same name, so `agent.arun()` / `agent.aprint_response()` use them automatically. Providers with a native async client (financialdatasets.ai via httpx) run without a thread; sync-only providers (yfinance) run in a worker thread.
+
+```python async.py
+"""
+Async FinanceTools
+==================
+Every FinanceTools tool has an async variant registered under the same name,
+so `agent.arun()` / `agent.aprint_response()` use them automatically. Providers
+with a native async client (financialdatasets.ai via httpx) run without a
+thread; sync-only providers (yfinance) run in a worker thread.
+
+This example fans out three tickers concurrently with one agent.
+"""
+
+import asyncio
+
+from agno.agent import Agent
+from agno.tools.finance import FinanceTools
+
+# ---------------------------------------------------------------------------
+# Create the Agent (reused across all runs - never create agents in a loop)
+# ---------------------------------------------------------------------------
+agent = Agent(
+    name="Finance Agent",
+    model="openai:gpt-5.6",
+    tools=[FinanceTools()],
+    instructions="Answer in three bullets: price and day change, valuation, one notable headline.",
+    markdown=True,
+)
+
+
+async def main() -> None:
+    tickers = ["NVDA", "AMD", "AVGO"]
+    outputs = await asyncio.gather(
+        *(agent.arun(f"Quick take on {ticker}") for ticker in tickers)
+    )
+    for ticker, output in zip(tickers, outputs):
+        print(f"\n===== {ticker} =====\n{output.content}")
+
+
+# ---------------------------------------------------------------------------
+# Run the Agent
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno yfinance
+    ```
+  </Step>
+
+  <Step title="Export your API keys">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export FINANCIAL_DATASETS_API_KEY="your_financial_datasets_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:FINANCIAL_DATASETS_API_KEY="your_financial_datasets_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `async.py`, then run:
+    ```bash
+    python async.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/91_tools/finance/05_async.py](https://github.com/agno-agi/agno/blob/v3.0.4/cookbook/91_tools/finance/05_async.py)

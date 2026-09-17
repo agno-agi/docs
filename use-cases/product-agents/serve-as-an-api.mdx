@@ -5,7 +5,7 @@ description: "Turn agents into an HTTP service with streaming, sessions, and aut
 
 Product teams can connect web, mobile, and server-side clients to the same AgentOS backend. Registered agents become FastAPI services with streaming run routes, while AgentOS manages sessions, memory, knowledge, traces, evaluations, and approvals through the same API.
 
-```python copilot.py
+```python customer_agent.py
 from agno.agent import Agent
 from agno.db.postgres import PostgresDb
 from agno.models.openai import OpenAIResponses
@@ -14,7 +14,7 @@ from agno.os import AgentOS
 db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
 
 agent = Agent(
-    id="copilot",
+    id="customer-agent",
     model=OpenAIResponses(id="gpt-5.5"),
     db=db,
     add_history_to_context=True,
@@ -33,7 +33,7 @@ agent_os = AgentOS(
 app = agent_os.get_app()
 
 if __name__ == "__main__":
-    agent_os.serve(app="copilot:app", port=7777)
+    agent_os.serve(app="customer_agent:app", port=7777)
 ```
 
 Supplying `cors_allowed_origins` replaces the AgentOS defaults. Include every browser and AgentOS UI origin that needs to call the backend.
@@ -64,9 +64,9 @@ Supplying `cors_allowed_origins` replaces the AgentOS defaults. Include every br
   <Snippet file="run-pgvector-step.mdx" />
 
   <Step title="Start AgentOS">
-    Save the code as `copilot.py`, then run:
+    Save the code as `customer_agent.py`, then run:
     ```bash
-    python copilot.py
+    python customer_agent.py
     ```
   </Step>
 </Steps>
@@ -76,7 +76,7 @@ Supplying `cors_allowed_origins` replaces the AgentOS defaults. Include every br
 Every run endpoint takes the same shape, whether the caller is a browser widget or a backend job.
 
 ```bash
-curl -X POST http://localhost:7777/agents/copilot/runs \
+curl -X POST http://localhost:7777/agents/customer-agent/runs \
   -F 'message=Summarize this thread' \
   -F 'user_id=sarah@acme.com' \
   -F 'session_id=thread-42' \
@@ -88,7 +88,7 @@ curl -X POST http://localhost:7777/agents/copilot/runs \
   "run_id": "run_abc123",
   "session_id": "thread-42",
   "user_id": "sarah@acme.com",
-  "agent_id": "copilot",
+  "agent_id": "customer-agent",
   "status": "COMPLETED",
   "content": "..."
 }
@@ -97,13 +97,13 @@ curl -X POST http://localhost:7777/agents/copilot/runs \
 After enabling authorization, a browser widget can stream with a JWT:
 
 ```javascript
-async function askCopilot(message, threadId, jwt) {
+async function askCustomerAgent(message, threadId, jwt) {
   const body = new FormData();
   body.append("message", message);
   body.append("session_id", threadId);
   body.append("stream", "true");
 
-  const res = await fetch("https://os.yourproduct.com/agents/copilot/runs", {
+  const res = await fetch("https://os.yourproduct.com/agents/customer-agent/runs", {
     method: "POST",
     headers: { "Authorization": `Bearer ${jwt}` },
     body,

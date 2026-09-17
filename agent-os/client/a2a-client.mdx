@@ -34,10 +34,16 @@ asyncio.run(main())
 Google ADK uses JSON-RPC mode:
 
 ```python
+import asyncio
+
 from agno.client.a2a import A2AClient
 
-client = A2AClient("http://localhost:8001/", protocol="json-rpc")
-result = await client.send_message(message="Hello!")
+async def main():
+    client = A2AClient("http://localhost:8001/", protocol="json-rpc")
+    result = await client.send_message(message="Hello!")
+    print(result.content)
+
+asyncio.run(main())
 ```
 
 ## Streaming Responses
@@ -45,13 +51,18 @@ result = await client.send_message(message="Hello!")
 Stream responses in real-time:
 
 ```python
+import asyncio
+
 from agno.client.a2a import A2AClient
 
-client = A2AClient("http://localhost:7003/a2a/agents/my-agent")
+async def main():
+    client = A2AClient("http://localhost:7003/a2a/agents/my-agent")
 
-async for event in client.stream_message(message="Tell me a story"):
-    if event.is_content and event.content:
-        print(event.content, end="", flush=True)
+    async for event in client.stream_message(message="Tell me a story"):
+        if event.is_content and event.content:
+            print(event.content, end="", flush=True)
+
+asyncio.run(main())
 ```
 
 ## Authentication
@@ -59,17 +70,21 @@ async for event in client.stream_message(message="Tell me a story"):
 AgentOS instances running with `authorization=True` require a JWT on every A2A request. Pass it via `headers`:
 
 ```python
+import asyncio
 import os
 
 from agno.client.a2a import A2AClient
 
-client = A2AClient("https://my-agent-os.com/a2a/agents/my-agent")
-headers = {"Authorization": f"Bearer {os.environ['AGENT_OS_JWT']}"}
+async def main():
+    client = A2AClient("https://my-agent-os.com/a2a/agents/my-agent")
+    headers = {"Authorization": f"Bearer {os.environ['AGENT_OS_JWT']}"}
 
-result = await client.send_message(message="Hello!", headers=headers)
+    await client.send_message(message="Hello!", headers=headers)
 
-async for event in client.stream_message(message="Hello!", headers=headers):
-    ...
+    async for event in client.stream_message(message="Hello!", headers=headers):
+        ...
+
+asyncio.run(main())
 ```
 
 `send_message`, `stream_message`, and `get_agent_card` all accept `headers`. The token needs the target's run scope (`agents:run`, or per-resource `agents:my-agent:run`) for `message:send` and `message:stream`. See [Scopes](/agent-os/security/authorization/scopes) for the full mapping.

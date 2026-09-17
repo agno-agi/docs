@@ -1,0 +1,106 @@
+---
+title: "Serve an Agent on WhatsApp"
+description: "Mount one Agent on AgentOS's WhatsApp interface."
+source: cookbook/05_agent_os/19_whatsapp/basic.py
+---
+
+Mount one Agent on AgentOS's WhatsApp interface. The interface verifies Meta webhooks, maps each phone number to a persistent session, and sends the Agent's response back through the WhatsApp Cloud API.
+
+```python basic.py
+"""
+Serve an Agent on WhatsApp
+==========================
+
+Mount one Agent on AgentOS's WhatsApp interface. The interface verifies Meta
+webhooks, maps each phone number to a persistent session, and sends the Agent's
+response back through the WhatsApp Cloud API.
+
+Prerequisites: OPENAI_API_KEY and the four WHATSAPP_* credentials in README.md
+Run: .venvs/demo/bin/python cookbook/05_agent_os/19_whatsapp/basic.py
+Try: GET http://localhost:7777/whatsapp/status, then message the configured number
+"""
+
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIResponses
+from agno.os import AgentOS
+from agno.os.interfaces.whatsapp import Whatsapp
+
+# ---------------------------------------------------------------------------
+# Create the WhatsApp AgentOS
+# ---------------------------------------------------------------------------
+
+db = SqliteDb(
+    id="whatsapp-basic-db",
+    db_file="tmp/whatsapp_basic.db",
+)
+
+assistant = Agent(
+    id="whatsapp-assistant",
+    name="WhatsApp Assistant",
+    model=OpenAIResponses(id="gpt-5.5"),
+    db=db,
+    add_history_to_context=True,
+    num_history_runs=3,
+    instructions=[
+        "You are chatting with the user on WhatsApp.",
+        "Keep responses conversational, concise, and easy to read on a phone.",
+    ],
+)
+
+agent_os = AgentOS(
+    id="whatsapp-basic-os",
+    description="A minimal AgentOS exposed through the WhatsApp interface.",
+    agents=[assistant],
+    interfaces=[Whatsapp(agent=assistant)],
+)
+app = agent_os.get_app()
+
+# ---------------------------------------------------------------------------
+# Run the WhatsApp Server
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    agent_os.serve(app=app)
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U "agno[os]" openai
+    ```
+  </Step>
+
+  <Step title="Export environment variables">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    export WHATSAPP_ACCESS_TOKEN="your_whatsapp_access_token_here"
+    export WHATSAPP_APP_SECRET="your_whatsapp_app_secret_here"
+    export WHATSAPP_PHONE_NUMBER_ID="your_whatsapp_phone_number_id_here"
+    export WHATSAPP_VERIFY_TOKEN="your_whatsapp_verify_token_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    $Env:WHATSAPP_ACCESS_TOKEN="your_whatsapp_access_token_here"
+    $Env:WHATSAPP_APP_SECRET="your_whatsapp_app_secret_here"
+    $Env:WHATSAPP_PHONE_NUMBER_ID="your_whatsapp_phone_number_id_here"
+    $Env:WHATSAPP_VERIFY_TOKEN="your_whatsapp_verify_token_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `basic.py`, then run:
+    ```bash
+    python basic.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/05_agent_os/19_whatsapp/basic.py](https://github.com/agno-agi/agno/blob/v3.0.4/cookbook/05_agent_os/19_whatsapp/basic.py)

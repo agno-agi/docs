@@ -18,6 +18,8 @@ uv pip install -U "agno[os]" openai opentelemetry-api opentelemetry-sdk openinfe
   The OpenTelemetry packages provide the instrumentation infrastructure and the Agno-specific instrumentation logic. `agno[os]` covers the database and AgentOS dependencies used in the examples below.
 </Note>
 
+<Snippet file="set-openai-key.mdx" />
+
 ## Two Ways to Enable Tracing
 
 There are two ways to enable tracing in Agno:
@@ -123,13 +125,8 @@ agent2_db = SqliteDb(db_file="tmp/agent2.db", id="agent2_db")
 # Dedicated database for ALL traces (separate from agent databases)
 db = SqliteDb(db_file="tmp/traces.db", id="traces_db")
 
-# Enable tracing to the dedicated database
-setup_tracing(
-    db=db,
-    batch_processing=True,
-    max_queue_size=1024,
-    max_export_batch_size=256,
-)
+# Use simple processing because this example queries traces immediately
+setup_tracing(db=db, batch_processing=False)
 
 # Agent 1: HackerNews specialist with its own database
 hackernews_agent = Agent(
@@ -165,20 +162,26 @@ print(f"Found {count} traces across all agents")
 Once configured, traces and spans are automatically stored in your database. The tracing system creates two tables: `agno_traces` for high-level trace information and `agno_spans` for individual span details.
 
 <Tip>
-  **Use ClickHouse for high-volume tracing.** Traces are an append-heavy, OLAP workload: billions of rows, time-bucketed aggregates, low-cardinality filters. [ClickHouse](/database/providers/clickhouse/overview) is purpose-built for that shape. Pair it with a row-store (Postgres, MySQL, MongoDB) for sessions and memory; route traces to ClickHouse.
+  **Use ClickHouse for high-volume tracing.** Traces are an append-heavy, OLAP workload: billions of rows, time-bucketed aggregates, low-cardinality filters. [ClickHouse](/database/providers/clickhouse/overview) is purpose-built for that shape. Pair it with a row-store for sessions and memory. This example uses SQLite.
 
   ```bash
-  uv pip install -U clickhouse-connect psycopg
+  uv pip install -U clickhouse-connect
   ```
 
   ```python clickhouse_tracing.py
+  from agno.agent import Agent
   from agno.db.clickhouse import ClickhouseDb
-  from agno.db.postgres import PostgresDb
+  from agno.db.sqlite import SqliteDb
   from agno.os import AgentOS
   from agno.tracing import setup_tracing
 
-  primary_db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+  primary_db = SqliteDb(
+      id="clickhouse-primary",
+      db_file="tmp/clickhouse_primary.db",
+  )
+  my_agent = Agent(db=primary_db)
   traces_db = ClickhouseDb(
+      id="clickhouse-traces",
       host="localhost",
       port=8123,
       username="ai",
@@ -202,6 +205,8 @@ Once configured, traces and spans are automatically stored in your database. The
 
   ```
 
+  AgentOS discovers both database IDs. Pass `db_id=clickhouse-traces` to `/traces` and `/traces/{trace_id}` so the API reads from ClickHouse.
+
   `ClickhouseDb` is **traces-only**. Sessions, memories, and component configs are intentionally not supported there. See the [ClickHouse provider page](/database/providers/clickhouse/overview) for the full rationale and schema details.
 </Tip>
 
@@ -217,14 +222,14 @@ Agno supports two trace processing modes:
 
 ### Batch Processing
 
-Batch processing collects traces in memory and writes them in batches. This is more efficient and recommended for production:
+Batch processing collects spans in memory and writes them in batches. This is more efficient and recommended for production:
 
 ```python
 setup_tracing(
     db=db,
     batch_processing=True,
-    max_queue_size=2048,           # Max traces in memory
-    max_export_batch_size=512,     # Traces per batch write
+    max_queue_size=2048,           # Max spans in memory
+    max_export_batch_size=512,     # Spans per batch write
     schedule_delay_millis=5000,    # Export every 5 seconds
 )
 ```
@@ -236,11 +241,11 @@ setup_tracing(
 
 **Cons:**
 - Slight delay before traces appear (default 5 seconds)
-- Traces in memory if application crashes before export
+- Spans in memory if the application crashes before export
 
 ### Simple Processing (Default)
 
-Simple processing writes each trace immediately:
+Simple processing writes each span immediately:
 
 ```python
 setup_tracing(

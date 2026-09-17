@@ -13,13 +13,13 @@ A `TeamFactory` produces a fresh `Team` for each request. Register it in `AgentO
 
 ```python basic_team_factory.py
 from agno.agent import Agent
-from agno.db.postgres import PostgresDb
+from agno.db.sqlite import SqliteDb
 from agno.factory import RequestContext
 from agno.models.openai import OpenAIResponses
 from agno.os import AgentOS
 from agno.team import Team, TeamFactory
 
-db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+db = SqliteDb(db_file="tmp/team_factory.db")
 
 
 def build_support_team(ctx: RequestContext) -> Team:
@@ -60,21 +60,55 @@ support_team_factory = TeamFactory(
     description="Builds a support team with billing and tech agents per tenant.",
 )
 
-agent_os = AgentOS(teams=[support_team_factory])
+agent_os = AgentOS(teams=[support_team_factory], db=db)
 app = agent_os.get_app()
 
 if __name__ == "__main__":
     agent_os.serve(app="basic_team_factory:app", port=7777, reload=True)
 ```
 
-Run the team like any other team:
+## Run the Example
 
-```bash
-curl -X POST http://localhost:7777/teams/support-team/runs \
-    -F 'message=I need help with billing and a technical issue' \
-    -F 'user_id=tenant_42' \
-    -F 'stream=false'
-```
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U "agno[os,openai]"
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```powershell Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Start AgentOS">
+    Save the code above as `basic_team_factory.py`, then run:
+
+    ```bash
+    python basic_team_factory.py
+    ```
+  </Step>
+
+  <Step title="Run the team">
+    In another terminal, run:
+
+    ```bash
+    curl -X POST http://localhost:7777/teams/support-team/runs \
+        -F 'message=I need help with billing and a technical issue' \
+        -F 'user_id=tenant_42' \
+        -F 'stream=false'
+    ```
+  </Step>
+</Steps>
 
 See the [Factories reference](/reference/agent-os/factories) for the full constructor signature and parameter list.
 

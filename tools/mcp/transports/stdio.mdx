@@ -34,30 +34,25 @@ The `@modelcontextprotocol/server-google-maps` npm package is deprecated and no 
 For example, `uvx mcp-server-git` runs a [Git MCP server](https://github.com/modelcontextprotocol/servers/tree/main/src/git):
 
 ```python
+import asyncio
+
 from agno.agent import Agent
 from agno.models.openai import OpenAIResponses
 from agno.tools.mcp import MCPTools
 
-# Initialize and connect to the MCP server
-# Can also use custom binaries: command="./my-mcp-server"
-mcp_tools = MCPTools(command="uvx mcp-server-git")
-await mcp_tools.connect()
+async def main():
+    async with MCPTools(command="uvx mcp-server-git") as mcp_tools:
+        agent = Agent(model=OpenAIResponses(id="gpt-5.2"), tools=[mcp_tools])
+        await agent.aprint_response(
+            "What is the license for this project?",
+            stream=True,
+        )
 
-try:
-    agent = Agent(model=OpenAIResponses(id="gpt-5.2"), tools=[mcp_tools])
-    await agent.aprint_response("What is the license for this project?", stream=True)
-finally:
-    # Always close the connection when done
-    await mcp_tools.close()
+asyncio.run(main())
 ```
 
 
-You can also use multiple MCP servers at once, with the `MultiMCPTools` class. For example:
-
-<Note>
-`MultiMCPTools` is deprecated and will be removed in a future version. Use multiple `MCPTools` instances instead.
-</Note>
-
+Use one `MCPTools` instance per server when an agent needs tools from several servers:
 
 ```python
 import asyncio
@@ -65,43 +60,39 @@ import os
 from datetime import date, timedelta
 
 from agno.agent import Agent
-from agno.tools.mcp import MultiMCPTools
+from agno.models.openai import OpenAIResponses
+from agno.tools.mcp import MCPTools
 
 
 async def run_agent(message: str) -> None:
     """Run the Airbnb and Google Maps agent with the given message."""
 
-    env = {
-        "GOOGLE_MAPS_API_KEY": os.getenv("GOOGLE_MAPS_API_KEY"),
+    maps_env = {
+        **os.environ,
+        "GOOGLE_MAPS_API_KEY": os.environ["GOOGLE_MAPS_API_KEY"],
     }
 
-    # Initialize and connect to multiple MCP servers
-    mcp_tools = MultiMCPTools(
-        commands=[
-            "npx -y @openbnb/mcp-server-airbnb --ignore-robots-txt",
-            "npx -y @modelcontextprotocol/server-google-maps",
-        ],
-        env=env,
-    )
-    await mcp_tools.connect()
-
-    try:
+    async with (
+        MCPTools(
+            command="npx -y @openbnb/mcp-server-airbnb --ignore-robots-txt"
+        ) as airbnb_tools,
+        MCPTools(
+            command="npx -y @modelcontextprotocol/server-google-maps",
+            env=maps_env,
+        ) as maps_tools,
+    ):
         agent = Agent(
-            tools=[mcp_tools],
+            model=OpenAIResponses(id="gpt-5.2"),
+            tools=[airbnb_tools, maps_tools],
             markdown=True,
         )
-
         await agent.aprint_response(message, stream=True)
-    finally:
-        # Always close the connection when done
-        await mcp_tools.close()
 
 
 # Example usage
 if __name__ == "__main__":
     check_in = date.today() + timedelta(days=30)
     check_out = check_in + timedelta(days=3)
-    # Pull request example
     asyncio.run(
         run_agent(
             f"What listings are available in Cape Town for 2 people "

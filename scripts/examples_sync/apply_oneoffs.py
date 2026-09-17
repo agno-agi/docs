@@ -8,12 +8,13 @@ error. Idempotent: re-running after a regeneration re-applies exactly the same
 edits. --check reports each fix's state without writing.
 
 Usage:
-    python scripts/examples_sync/apply_oneoffs.py [--check]
+    python scripts/examples_sync/apply_oneoffs.py [--check | --refresh-preserve-baseline]
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -22,15 +23,59 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import generate as gen  # noqa: E402
+from migration_manifest import MigrationManifest, load_migration_manifest  # noqa: E402
 
 ROOT = HERE.parents[1]
 DOCS = ROOT / "examples"
+PLAN_PATH = HERE / "out" / "sync-plan.json"
+MIGRATION_MANIFEST_PATH = HERE / "migration-routes.json"
+PRESERVE_STATE_PATH = HERE / "out" / "preserve-curated-state.json"
+PRESERVE_BASELINE_PATH = HERE / "preserve-curated-baseline.json"
 GENERATED_DESCRIPTION_OVERRIDES = json.loads(
     (HERE / "description-overrides.json").read_text(encoding="utf-8")
 )
 
 CHECK = False
+REFRESH_PRESERVE_BASELINE = False
 would_apply = 0
+EXTERNAL_ONEOFF_PATHS: set[str] = set()
+
+
+SLACK_INDEX_TARGETS = (
+    "examples/agent-os/slack/basic",
+    "examples/agent-os/slack/hitl-confirmation",
+    "examples/agent-os/slack/hitl-external-execution",
+    "examples/agent-os/slack/hitl-incident-commander",
+    "examples/agent-os/slack/hitl-user-input",
+    "examples/agent-os/slack/multiple-bots",
+    "examples/agent-os/slack/peer-agents",
+    "examples/agent-os/slack/slack-tools",
+    "examples/agent-os/slack/streaming-ux",
+    "examples/agent-os/slack/team",
+    "examples/agent-os/slack/user-memory",
+    "examples/agent-os/slack/workflow",
+)
+
+MIGRATION_PAGE_INTROS = {
+    "examples/agents/advanced/use-cultural-knowledge-in-agent": (
+        "The Culture feature and `Agent(add_culture_to_context=...)` parameter were removed in Agno v3. "
+        "See the [Culture migration notice](/culture/overview). Use [Knowledge](/knowledge/overview) "
+        "for reviewed organizational content, or Learned Knowledge for reusable insights captured from interactions."
+    ),
+    "examples/agents/advanced/automatic-cultural-management": (
+        "The Culture feature and `Agent(update_cultural_knowledge=...)` parameter were removed in Agno v3. "
+        "See the [Culture migration notice](/culture/overview). Agentic Learned Knowledge lets an agent decide "
+        "when to save and retrieve reusable insights."
+    ),
+    "examples/agent-os/interfaces/slack/multimodal-team": (
+        "The v3.0.4 Slack cookbook has no one-to-one multimodal team successor. "
+        "Use the current Slack team and multimodal team examples together."
+    ),
+    "examples/reasoning/agents/mistral-reasoning-cot": (
+        "The built-in chain-of-thought example for Mistral was removed. "
+        "Use the current reasoning-agent patterns and select a supported model."
+    ),
+}
 
 
 # Curated overview frontmatter that cannot be derived from a cookbook docstring.
@@ -38,18 +83,25 @@ would_apply = 0
 # the changes without writing the pages first.
 DESCRIPTION_OVERRIDES = {
     "examples/agent-os/client-a2a/overview": "A2AClient examples for messaging, streaming, errors, multi-turn runs, and Agno or Google ADK servers.",
+    "examples/agent-os/client-a2a/servers/overview": "Serve Agno and Google ADK agents over A2A.",
     "examples/agent-os/interfaces/a2a/overview": "A2A interface examples for AgentOS: basic agents, teams, research, structured output, and multi-agent servers.",
     "examples/agent-os/dbs/overview": "Database backends for AgentOS agents, teams, workflows, and session storage.",
+    "examples/agent-os/dbs/surreal-db/overview": "Current AgentOS SurrealDB database example.",
     "examples/agent-os/knowledge/overview": "Serve AgentOS agents over Excel, markdown, Agno docs, and PgVector knowledge bases.",
     "examples/agent-os/mcp-demo/overview": "Expose AgentOS agents and custom tools through MCP with OAuth, dynamic headers, and managed MCPTools lifespans.",
-    "examples/agent-os/mcp-demo/dynamic-headers/overview": "Pass request-specific headers from AgentOS through MCPTools to an MCP server.",
     "examples/agent-os/middleware/overview": "AgentOS middleware examples for authentication, request context, rate limiting, and custom request handling.",
     "examples/agent-os/os-config/overview": "Configure AgentOS in Python or YAML, including manifests, memory, and interfaces.",
     "examples/agent-os/rbac/overview": "JWT-based AgentOS RBAC examples for symmetric and asymmetric keys, scope mapping, and user isolation.",
     "examples/agent-os/rbac/asymmetric/overview": "RS256 AgentOS RBAC examples for generated keys, custom scope mappings, and WorkOS-issued tokens.",
+    "examples/agent-os/rbac/symmetric/overview": "HS256 AgentOS RBAC examples for scopes, custom mappings, and user isolation.",
     "examples/agent-os/remote/overview": "Connect AgentOS to remote agents, teams, workflows, A2A endpoints, and gateway instances.",
     "examples/agent-os/skills/overview": "Load local skills into an AgentOS agent, including sample system-information scripts.",
-    "examples/agent-os/tracing/dbs/overview": "Persist AgentOS traces to ClickHouse, MongoDB, PostgreSQL, and SQLite.",
+    "examples/agent-os/tracing/overview": "OpenTelemetry tracing for AgentOS agents, teams, and workflows, including filtering, metrics, trace trees, and ClickHouse storage.",
+    "examples/agent-os/tracing/dbs/overview": "Route AgentOS traces to a dedicated ClickHouse database.",
+    "examples/tools/mcp/overview": "MCPTools examples for local, hosted, authenticated, and multi-server MCP connections.",
+    "examples/tools/mcp/sse-transport/overview": "Connect agents to SSE MCP servers with MCPTools.",
+    "examples/tools/mcp/streamable-http-transport/overview": "Connect agents to Streamable HTTP MCP servers with MCPTools.",
+    "examples/tools/mcp/multiple-servers-allow-partial-failure": "Migrate the removed multi-server partial-failure example to supported MCPTools instances.",
     "examples/evals/overview": "Evaluate agents and teams for accuracy, model-judged quality, performance, reliability, and reusable suites.",
     "examples/models/aws/bedrock/overview": "Amazon Bedrock examples for basic runs, image and PDF input, structured output, and tool use.",
     "examples/models/aws/claude/overview": "Claude on AWS Bedrock examples for runs, storage, images, knowledge, structured output, tools, and adaptive thinking.",
@@ -67,6 +119,7 @@ DESCRIPTION_OVERRIDES = {
     "examples/models/ollama/overview": "Ollama Chat and Responses API examples for local and cloud models, knowledge, memory, reasoning, structured output, and tools.",
     "examples/models/openai/overview": "OpenAI Chat and Responses API examples for multimodal input, tools, reasoning, structured output, storage, and streaming.",
     "examples/models/openai/chat/overview": "OpenAI Chat examples for multimodal input and output, tools, reasoning, structured output, storage, and retries.",
+    "examples/models/openai/responses/overview": "OpenAI Responses API examples for structured output, tool use, multimodal input, deep research, reasoning, and storage controls.",
     "examples/models/openrouter/overview": "OpenRouter Chat and Responses API examples for model routing, retries, structured output, and tools.",
     "examples/models/vertexai/overview": "Vertex AI examples for Claude models, retries, multimodal input, knowledge, memory, caching, structured output, and tools.",
     "examples/teams/context-compression/overview": "Compress team tool results to keep long-running collaboration within model context limits.",
@@ -156,24 +209,6 @@ EXPLICIT_MISSING_ROWS = {
         "examples/agent-os/interfaces/agui/team-state-events",
         "examples/agent-os/interfaces/agui/tool-based-generative-ui",
     ],
-    "examples/agent-os/interfaces/slack/overview": [
-        "examples/agent-os/interfaces/slack/hitl-audit-flow",
-        "examples/agent-os/interfaces/slack/hitl-confirmation",
-        "examples/agent-os/interfaces/slack/hitl-external-execution",
-        "examples/agent-os/interfaces/slack/hitl-incident-commander",
-        "examples/agent-os/interfaces/slack/hitl-required-approval",
-        "examples/agent-os/interfaces/slack/hitl-simple",
-        "examples/agent-os/interfaces/slack/hitl-user-feedback",
-        "examples/agent-os/interfaces/slack/hitl-user-input",
-        "examples/agent-os/interfaces/slack/multi-bot",
-        "examples/agent-os/interfaces/slack/multimodal-team",
-        "examples/agent-os/interfaces/slack/multimodal-workflow",
-        "examples/agent-os/interfaces/slack/streaming-deep-research",
-        "examples/agent-os/interfaces/slack/team-hitl-confirmation",
-        "examples/agent-os/interfaces/slack/team-hitl-external-execution-simple",
-        "examples/agent-os/interfaces/slack/team-hitl-team-tool-simple",
-        "examples/agent-os/interfaces/slack/team-hitl-user-input-simple",
-    ],
     "examples/agent-os/interfaces/whatsapp/overview": [
         "examples/agent-os/interfaces/whatsapp/deep-research",
         "examples/agent-os/interfaces/whatsapp/interactive-concierge",
@@ -185,9 +220,17 @@ EXPLICIT_MISSING_ROWS = {
     ],
     "examples/agent-os/knowledge/overview": ["examples/agent-os/knowledge/agentos-docling-markdown-analyst"],
     "examples/agent-os/mcp-demo/overview": [
+        "examples/tools/mcp/dynamic-headers/overview",
+        "examples/tools/mcp-tools",
         "examples/agent-os/mcp-demo/custom-mcp-tool-example",
         "examples/agent-os/mcp-demo/oauth-authkit-example",
         "examples/agent-os/mcp-demo/oauth-builtin-example",
+        "examples/agent-os/mcp/basic",
+        "examples/agent-os/mcp/custom-tools",
+        "examples/agent-os/mcp/mcp-client",
+        "examples/agent-os/mcp/oauth-authkit",
+        "examples/agent-os/mcp/oauth-builtin",
+        "examples/agent-os/mcp/secure-mcp",
     ],
     "examples/agent-os/overview": [
         "examples/agent-os/factories/overview",
@@ -204,17 +247,41 @@ EXPLICIT_MISSING_ROWS = {
         "examples/agent-os/team-tasks/team-tasks-streaming",
     ],
     "examples/agent-os/interfaces/overview": ["examples/agent-os/interfaces/telegram/basic"],
+    "examples/agent-os/dbs/overview": [
+        "examples/agent-os/databases/basic",
+        "examples/agent-os/databases/postgres",
+    ],
+    "examples/agent-os/dbs/surreal-db/overview": ["examples/agent-os/databases/surreal"],
     "examples/agent-os/rbac/overview": ["examples/agent-os/rbac/test-scopes"],
-    "examples/agent-os/rbac/asymmetric/overview": ["examples/agent-os/rbac/asymmetric/workos-byot"],
-    "examples/agent-os/rbac/symmetric/overview": ["examples/agent-os/rbac/symmetric/user-isolation"],
+    "examples/agent-os/rbac/asymmetric/overview": [
+        "examples/agent-os/security/asymmetric-keys",
+        "examples/agent-os/security/workos-byot",
+    ],
+    "examples/agent-os/rbac/symmetric/overview": [
+        "examples/agent-os/security/basic-scopes",
+        "examples/agent-os/security/custom-scope-mappings",
+        "examples/agent-os/security/user-isolation",
+    ],
     "examples/agent-os/remote/overview": [
-        "examples/agent-os/remote/remote-agent-as-team-member",
-        "examples/agent-os/remote/a2a-agent-as-team-member",
+        "examples/agent-os/remote/remote-team-and-workflow",
+        "examples/agent-os/remote/remote-via-a2a",
+        "examples/agent-os/remote/remote-as-team-member",
+        "examples/agent-os/remote/gateway",
+        "examples/agent-os/remote/remote-auth",
+        "examples/agent-os/remote/servers/a2a-server",
+        "examples/agent-os/remote/servers/adk-server",
+        "examples/agent-os/remote/servers/agentos-server",
     ],
     "examples/agent-os/scheduler/overview": ["examples/agent-os/scheduler/scheduler-tools-agent"],
-    "examples/agent-os/tracing/overview": ["examples/agent-os/tracing/advanced-trace-filtering"],
+    "examples/agent-os/tracing/overview": [
+        "examples/agent-os/observability/basic",
+        "examples/agent-os/observability/filtering",
+        "examples/agent-os/observability/metrics",
+        "examples/agent-os/observability/read-traces",
+        "examples/agent-os/observability/traces-to-clickhouse",
+    ],
     "examples/agent-os/tracing/dbs/overview": [
-        "examples/agent-os/tracing/dbs/basic-agent-with-clickhousedb"
+        "examples/agent-os/observability/traces-to-clickhouse"
     ],
     "examples/agent-os/workflow/overview": ["examples/agent-os/workflow/workflow-with-workflow-as-step"],
     "examples/agents/advanced/overview": [
@@ -227,6 +294,9 @@ EXPLICIT_MISSING_ROWS = {
         "examples/agents/advanced/interchange-model/openai-claude",
         "examples/agents/advanced/interchange-model/openai-gemini",
         "examples/agents/advanced/metrics",
+        "examples/agents/advanced/background-execution-concurrency",
+        "examples/agents/advanced/background-streaming-resume",
+        "examples/agents/advanced/redis-event-stream-resume",
     ],
     "examples/agents/guardrails/overview": ["examples/agents/guardrails/mixed-hooks"],
     "examples/agents/hooks/overview": [
@@ -238,14 +308,18 @@ EXPLICIT_MISSING_ROWS = {
         "examples/agents/human-in-the-loop/mixed-external-and-regular-tools",
         "examples/agents/human-in-the-loop/user-feedback",
         "examples/agents/approvals/approval-post-hook",
-        "examples/agent-os/approvals/team/member-agent-level-approval",
-        "examples/agent-os/approvals/team/team-and-member-agent-both-level-approval",
+        "examples/agents/human-in-the-loop/side-effecting-tool-approval",
+        "examples/agent-os/human-in-the-loop/team-approval",
     ],
     "examples/agents/input-output/overview": [
         "examples/agents/input-output/followup-suggestions",
         "examples/agents/input-output/followup-suggestions-streaming",
     ],
-    "examples/agents/state-and-session/overview": ["examples/agents/state-and-session/search-session-history"],
+    "examples/agents/state-and-session/overview": [
+        "examples/agents/state-and-session/search-session-history",
+        "examples/agents/state-and-session/metadata-resolution",
+        "examples/agents/state-and-session/search-past-sessions",
+    ],
     "examples/agents/tools/overview": ["examples/agents/tools/tools-with-literal-type-param"],
     "examples/components/overview": [
         "examples/components/auto-populate-registry",
@@ -268,6 +342,7 @@ EXPLICIT_MISSING_ROWS = {
         "examples/models/openai/responses/background",
         "examples/models/openai/responses/file-input-direct",
         "examples/models/openai/responses/image-agent-file",
+        "examples/models/openai/responses/reasoning-effort",
     ],
     "examples/models/anthropic/overview": [
         "examples/models/anthropic/adaptive-thinking",
@@ -298,7 +373,29 @@ EXPLICIT_MISSING_ROWS = {
         "examples/teams/modes/tasks-stream",
         "examples/teams/modes/tasks/streaming-events",
     ],
-    "examples/teams/state/overview": ["examples/teams/session/custom-session-summary"],
+    "examples/teams/state/overview": [
+        "examples/teams/session/custom-session-summary",
+        "examples/teams/session/metadata-resolution",
+        "examples/teams/session/nested-team-deep-history",
+        "examples/teams/session/nested-team-history",
+        "examples/teams/session/nested-team-history-to-members",
+        "examples/teams/session/search-past-sessions",
+    ],
+    "examples/learning/basics/overview": [
+        "examples/learning/basics/entity-memory",
+        "examples/learning/basics/extraction-limits",
+    ],
+    "examples/agent-os/client-a2a/servers/overview": [
+        "examples/agent-os/remote/servers/a2a-server",
+        "examples/agent-os/remote/servers/adk-server",
+    ],
+    "examples/agent-os/middleware/overview": [
+        "examples/agent-os/customize/custom-middleware",
+        "examples/agent-os/customize/response-middleware",
+        "examples/agent-os/security/cookie-auth",
+        "examples/agent-os/security/jwt-claims",
+        "examples/agent-os/security/service-accounts",
+    ],
     "examples/teams/structured-input-output/overview": ["examples/teams/structured-input-output/expected-output"],
     "examples/teams/tools/overview": [
         "examples/teams/tools/async-toolkit-context",
@@ -307,15 +404,82 @@ EXPLICIT_MISSING_ROWS = {
         "examples/teams/tools/tool-call-limit",
         "examples/teams/tools/tool-choice",
     ],
-    "examples/tools/mcp/overview": ["examples/tools/mcp/bgpt"],
+    "examples/tools/mcp/overview": [
+        "examples/tools/mcp/bgpt",
+        "examples/tools/mcp/emem",
+        "examples/tools/mcp/peer-cash",
+        "examples/tools/mcp/structured-content",
+    ],
     "examples/tools/tool-decorator/overview": ["examples/tools/tool-decorator/toolkit-per-tool-instructions"],
     "examples/tools/tool-hooks/overview": ["examples/tools/tool-hooks/message-history-in-hooks"],
+}
+
+# Existing overview rows that point at retained migration URLs but no longer
+# belong in the parent category.
+EXPLICIT_ROW_REMOVALS = {
+    "examples/agent-os/client-a2a/servers/overview": {"examples/introduction"},
+    "examples/agent-os/mcp-demo/overview": {"examples/introduction"},
+    "examples/agent-os/middleware/overview": {"examples/introduction"},
+    "examples/agent-os/dbs/surreal-db/overview": {"examples/introduction"},
+    "examples/agent-os/rbac/asymmetric/overview": {"examples/introduction"},
+    "examples/agent-os/rbac/symmetric/overview": {"examples/introduction"},
+    "examples/agent-os/tracing/dbs/overview": {"examples/introduction"},
+    "examples/agent-os/remote/overview": {
+        "examples/agent-os/remote/remote-team",
+        "examples/agent-os/remote/remote-agno-a2a-agent",
+        "examples/agent-os/remote/remote-adk-agent",
+        "examples/agent-os/remote/agent-os-gateway",
+        "examples/agent-os/remote/adk-server",
+        "examples/agent-os/remote/agno-a2a-server",
+        "examples/agent-os/remote/server",
+        "examples/agent-os/remote/remote-agent-as-team-member",
+        "examples/agent-os/remote/a2a-agent-as-team-member",
+    },
+    "examples/agents/human-in-the-loop/overview": {
+        "examples/agent-os/approvals/team/member-agent-level-approval",
+        "examples/agent-os/approvals/team/team-and-member-agent-both-level-approval",
+    },
+    "examples/models/openai/responses/overview": {
+        "examples/models/openai/responses/verbosity-control",
+    },
 }
 
 # Reviewed row copy that cannot be derived from the linked page alone. This
 # covers subgroup links without an overview page and factual corrections to
 # existing rows.
 EXPLICIT_ROW_OVERRIDES = {
+    "examples/teams/state/overview": {
+        "examples/teams/session/metadata-resolution": (
+            "Metadata Resolution",
+            "Resolve team, session, and call metadata with later layers taking precedence.",
+        ),
+        "examples/teams/session/nested-team-deep-history": (
+            "Deep Nested Team History",
+            "Reuse session history across a team nested three levels deep.",
+        ),
+        "examples/teams/session/nested-team-history": (
+            "Nested Team History",
+            "Persist a nested sub-team's conversation history across delegations.",
+        ),
+        "examples/teams/session/nested-team-history-to-members": (
+            "Nested Team History for Members",
+            "Pass a nested sub-team's filtered history to its members.",
+        ),
+        "examples/teams/session/search-past-sessions": (
+            "Search Past Sessions",
+            "List a user's team sessions, then read one session's history.",
+        ),
+    },
+    "examples/agent-os/client-a2a/servers/overview": {
+        "examples/agent-os/remote/servers/a2a-server": (
+            "Agno A2A Server",
+            "Serve an Agno Agent through the A2A REST interface.",
+        ),
+        "examples/agent-os/remote/servers/adk-server": (
+            "Google ADK A2A Server",
+            "Serve a Google ADK Agent through A2A JSON-RPC.",
+        ),
+    },
     "examples/workflows/cel-expressions/router/overview": {
         "examples/workflows/cel-expressions/router/cel-previous-step-route": (
             "CEL Previous Step Route",
@@ -419,6 +583,10 @@ EXPLICIT_ROW_OVERRIDES = {
         ),
     },
     "examples/agent-os/mcp-demo/overview": {
+        "examples/tools/mcp/dynamic-headers/overview": (
+            "Dynamic Headers",
+            "Send request-specific values to an MCP server through HTTP headers.",
+        ),
         "examples/agent-os/mcp-demo/oauth-authkit-example": (
             "OAuth with WorkOS AuthKit",
             "Bring a FastMCP AuthProvider backed by WorkOS AuthKit to the AgentOS MCP endpoint.",
@@ -442,6 +610,24 @@ EXPLICIT_ROW_OVERRIDES = {
         "examples/agent-os/remote/remote-team": (
             "Remote Team",
             "Run a team hosted on another AgentOS with RemoteTeam in single-shot or streaming mode.",
+        ),
+    },
+    "examples/agent-os/scheduler/overview": {
+        "examples/agent-os/scheduler/run-in-agentos": (
+            "Run in AgentOS",
+            "Seed a schedule, let the AgentOS poller execute it, and inspect the persisted run history.",
+        ),
+        "examples/agent-os/scheduler/rest-api": (
+            "Use the REST API",
+            "Create, list, update, enable, disable, trigger, and delete schedules through REST endpoints.",
+        ),
+        "examples/agent-os/scheduler/manage-with-python": (
+            "Manage with Python",
+            "Use synchronous and asynchronous `ScheduleManager` APIs, including validation, retries, and timeouts.",
+        ),
+        "examples/agent-os/scheduler/scheduler-tools-agent": (
+            "Give an Agent Scheduler Tools",
+            "Let an agent create and inspect schedules through `SchedulerTools`.",
         ),
     },
     "examples/models/anthropic/overview": {
@@ -500,6 +686,16 @@ INVALID_MODEL_RETRY_SLUGS = {
 # These pages have a reviewed, factual mismatch that is grammatical enough not
 # to be caught by the fail-closed malformed-row detector.
 EXPLICIT_ROW_REFRESH = {
+    "examples/tools/mcp/overview": {
+        "examples/tools/mcp/airbnb",
+        "examples/tools/mcp/multiple-servers",
+        "examples/tools/mcp/multiple-servers-allow-partial-failure",
+        "examples/tools/mcp/pipedream-google-calendar",
+        "examples/tools/mcp/pipedream-linkedin",
+        "examples/tools/mcp/pipedream-slack",
+        "examples/tools/mcp/sse-transport/overview",
+        "examples/tools/mcp/streamable-http-transport/overview",
+    },
     "examples/reasoning/tools/overview": {
         "examples/reasoning/tools/cerebras-llama-reasoning-tools",
     },
@@ -508,25 +704,26 @@ EXPLICIT_ROW_REFRESH = {
         "examples/agent-os/advanced-demo/reasoning-demo",
         "examples/agent-os/advanced-demo/reasoning-model",
     },
+    "examples/agent-os/client/overview": {
+        "examples/agent-os/client/knowledge-search",
+    },
     "examples/agent-os/client-a2a/servers/overview": {
         "examples/agent-os/client-a2a/servers/agno-server",
         "examples/agent-os/client-a2a/servers/google-adk-server",
     },
     "examples/agent-os/customize/overview": {"examples/agent-os/customize/custom-fastapi-app"},
     "examples/agent-os/mcp-demo/overview": {
+        "examples/agent-os/mcp-demo/dynamic-headers/overview",
         "examples/agent-os/mcp-demo/mcp-tools-advanced-example",
         "examples/agent-os/mcp-demo/mcp-tools-existing-lifespan",
         "examples/agent-os/mcp-demo/oauth-authkit-example",
         "examples/agent-os/mcp-demo/oauth-builtin-example",
     },
-    "examples/agent-os/mcp-demo/dynamic-headers/overview": {
-        "examples/agent-os/mcp-demo/dynamic-headers/client",
-        "examples/agent-os/mcp-demo/dynamic-headers/server",
-    },
     "examples/agent-os/overview": {
         "examples/agent-os/basic",
         "examples/agent-os/demo",
         "examples/agent-os/rbac/overview",
+        "examples/agent-os/tracing/overview",
     },
     "examples/agent-os/background-tasks/overview": {
         "examples/agent-os/background-tasks/background-hooks-decorator",
@@ -535,11 +732,9 @@ EXPLICIT_ROW_REFRESH = {
         "examples/agent-os/background-tasks/background-hooks-workflow",
         "examples/agent-os/background-tasks/evals-demo",
     },
-    "examples/agent-os/interfaces/slack/overview": {
-        "examples/agent-os/interfaces/slack/basic",
-        "examples/agent-os/interfaces/slack/multiple-instances",
-        "examples/agent-os/interfaces/slack/multimodal-team",
-        "examples/agent-os/interfaces/slack/multimodal-workflow",
+    "examples/agent-os/interfaces/agui/overview": {
+        "examples/agent-os/interfaces/agui/structured-output",
+        "examples/agent-os/interfaces/agui/tool-based-generative-ui",
     },
     "examples/agent-os/interfaces/whatsapp/overview": {
         "examples/agent-os/interfaces/whatsapp/multiple-instances",
@@ -565,11 +760,11 @@ EXPLICIT_ROW_REFRESH = {
     },
     "examples/agent-os/remote/overview": {
         "examples/agent-os/remote/remote-agent",
-        "examples/agent-os/remote/remote-team",
     },
     "examples/agent-os/scheduler/overview": {
-        "examples/agent-os/scheduler/rest-api-schedules",
-        "examples/agent-os/scheduler/scheduler-with-agentos",
+        "examples/agent-os/scheduler/manage-with-python",
+        "examples/agent-os/scheduler/rest-api",
+        "examples/agent-os/scheduler/run-in-agentos",
         "examples/agent-os/scheduler/scheduler-tools-agent",
     },
     "examples/agent-os/schemas/overview": {
@@ -586,9 +781,6 @@ EXPLICIT_ROW_REFRESH = {
         "examples/agent-os/tracing/dbs/basic-agent-with-mongodb",
         "examples/agent-os/tracing/dbs/basic-agent-with-postgresdb",
         "examples/agent-os/tracing/dbs/basic-agent-with-sqlite",
-    },
-    "examples/tools/mcp/overview": {
-        "examples/tools/mcp/pipedream-linkedin",
     },
     "examples/integrations/rag/overview": {
         "examples/knowledge/integrations/rag/agentic-rag-infinity-reranker",
@@ -782,6 +974,8 @@ EXPLICIT_ROW_REFRESH = {
         "examples/models/ollama/responses/structured-output",
     },
     "examples/models/openai/responses/overview": {
+        "examples/models/openai/responses/background",
+        "examples/models/openai/responses/basic",
         "examples/models/openai/responses/db",
         "examples/models/openai/responses/image-generation-agent",
         "examples/models/openai/responses/tool-use",
@@ -902,6 +1096,10 @@ EXPLICIT_ROW_REFRESH = {
     },
 }
 
+EXPLICIT_ROW_REMOVALS.setdefault("examples/agent-os/tracing/overview", set()).add(
+    "examples/agent-os/tracing/dbs/overview"
+)
+
 for _retry_slug in INVALID_MODEL_RETRY_SLUGS:
     _retry_overview = f"{_retry_slug.rsplit('/', 1)[0]}/overview"
     EXPLICIT_ROW_REFRESH.setdefault(_retry_overview, set()).add(_retry_slug)
@@ -929,8 +1127,9 @@ EXPLICIT_LABEL_REFRESH = {
     "examples/agent-os/interfaces/whatsapp/multiple-instances",
     "examples/agent-os/scheduler/async-schedule",
     "examples/agent-os/scheduler/demo",
-    "examples/agent-os/scheduler/rest-api-schedules",
-    "examples/agent-os/scheduler/scheduler-with-agentos",
+    "examples/agent-os/scheduler/manage-with-python",
+    "examples/agent-os/scheduler/rest-api",
+    "examples/agent-os/scheduler/run-in-agentos",
     "examples/agent-os/scheduler/scheduler-tools-agent",
     "examples/agent-os/schemas/agent-schemas",
     "examples/agent-os/schemas/team-schemas",
@@ -969,10 +1168,35 @@ EXPLICIT_LABEL_REFRESH = {
     "examples/tools/slack-tools",
 }
 
-# These two tables were explicitly reviewed as ordered subsets rather than
+# These tables were explicitly reviewed as ordered subsets rather than
 # append-only indexes. Rebuild only their row order, using current target
 # frontmatter for the rows that the audit marked stale or missing.
 EXPLICIT_TABLE_ORDER = {
+    "examples/agent-os/client-a2a/servers/overview": [
+        "examples/agent-os/remote/servers/a2a-server",
+        "examples/agent-os/remote/servers/adk-server",
+    ],
+    "examples/agent-os/middleware/overview": [
+        "examples/agent-os/customize/custom-middleware",
+        "examples/agent-os/customize/response-middleware",
+        "examples/agent-os/security/cookie-auth",
+        "examples/agent-os/security/jwt-claims",
+        "examples/agent-os/security/service-accounts",
+    ],
+    "examples/agent-os/mcp-demo/overview": [
+        "examples/tools/mcp/dynamic-headers/overview",
+        "examples/tools/mcp-tools",
+        "examples/agent-os/mcp/basic",
+        "examples/agent-os/mcp/custom-tools",
+        "examples/agent-os/mcp/mcp-client",
+        "examples/agent-os/mcp/oauth-authkit",
+        "examples/agent-os/mcp/oauth-builtin",
+        "examples/agent-os/mcp/secure-mcp",
+    ],
+    "examples/tools/mcp/streamable-http-transport/overview": [
+        "examples/tools/mcp/streamable-http-transport/server",
+        "examples/tools/mcp/streamable-http-transport/client",
+    ],
     "examples/teams/modes/tasks/overview": [
         "examples/teams/modes/tasks/basic",
         "examples/teams/modes/tasks/dependencies",
@@ -993,6 +1217,13 @@ EXPLICIT_TABLE_ORDER = {
         "examples/teams/tools/message-history-in-tool-hooks",
         "examples/teams/tools/tool-call-limit",
         "examples/teams/tools/tool-choice",
+    ],
+    "examples/agent-os/tracing/overview": [
+        "examples/agent-os/observability/basic",
+        "examples/agent-os/observability/filtering",
+        "examples/agent-os/observability/metrics",
+        "examples/agent-os/observability/read-traces",
+        "examples/agent-os/observability/traces-to-clickhouse",
     ],
 }
 
@@ -1155,11 +1386,9 @@ ROW_REPAIR_OVERVIEWS = {
     "examples/agent-os/interfaces/a2a/overview",
     "examples/agent-os/interfaces/agui/overview",
     "examples/agent-os/interfaces/overview",
-    "examples/agent-os/interfaces/slack/overview",
     "examples/agent-os/interfaces/whatsapp/overview",
     "examples/agent-os/knowledge/overview",
     "examples/agent-os/mcp-demo/overview",
-    "examples/agent-os/mcp-demo/dynamic-headers/overview",
     "examples/agent-os/os-config/overview",
     "examples/agent-os/overview",
     "examples/agent-os/rbac/symmetric/overview",
@@ -1264,8 +1493,17 @@ ROW_REPAIR_OVERVIEWS = {
 }
 
 
+def register_external_oneoff_path(p: Path) -> None:
+    """Record every non-example page whose final bytes this script owns."""
+    relative = p.relative_to(ROOT).as_posix()
+    assert relative.endswith(".mdx"), f"one-off output is not an MDX page: {relative}"
+    if not relative.startswith("examples/"):
+        EXTERNAL_ONEOFF_PATHS.add(relative)
+
+
 def sub_file(p: Path, old: str, new: str, required: bool = True) -> None:
     global would_apply
+    register_external_oneoff_path(p)
     path = str(p.relative_to(ROOT))
     text = p.read_text(encoding="utf-8")
     # `new` may contain `old` as a substring (insertion-style fixes), so the
@@ -1287,6 +1525,7 @@ def sub_file(p: Path, old: str, new: str, required: bool = True) -> None:
 
 def sub_all_file(p: Path, old: str, new: str, expected: int) -> None:
     global would_apply
+    register_external_oneoff_path(p)
     path = str(p.relative_to(ROOT))
     text = p.read_text(encoding="utf-8")
     old_count = text.count(old)
@@ -1318,10 +1557,15 @@ def root_sub(path: str, old: str, new: str, required: bool = True) -> None:
     sub_file(ROOT / path, old, new, required)
 
 
+def root_sub_all(path: str, old: str, new: str, expected: int) -> None:
+    sub_all_file(ROOT / path, old, new, expected)
+
+
 def normalize_terminal_newlines(path: str, count: int = 1) -> None:
     global would_apply
     assert count >= 0, "terminal newline count must be non-negative"
     p = ROOT / path
+    register_external_oneoff_path(p)
     data = p.read_bytes()
     assert b"\r\n" not in data, f"{path}: CRLF is not supported"
     normalized = data.rstrip(b"\n") + (b"\n" * count)
@@ -1336,9 +1580,19 @@ def normalize_terminal_newlines(path: str, count: int = 1) -> None:
     print(f"  normalized terminal newlines: {path}")
 
 
+def internal_docs_path(slug: str) -> Path:
+    assert (
+        slug
+        and not slug.startswith("/")
+        and ".." not in slug.split("/")
+        and not any(character.isspace() for character in slug)
+    ), f"not a safe internal docs slug: {slug!r}"
+    return ROOT / f"{slug}.mdx"
+
+
 def docs_path(slug: str) -> Path:
     assert slug.startswith("examples/"), f"not an example slug: {slug}"
-    return ROOT / f"{slug}.mdx"
+    return internal_docs_path(slug)
 
 
 def frontmatter_value(text: str, field: str, slug: str) -> str:
@@ -1352,7 +1606,7 @@ def frontmatter_value(text: str, field: str, slug: str) -> str:
 
 
 def desired_frontmatter(slug: str) -> tuple[str, str]:
-    p = docs_path(slug)
+    p = internal_docs_path(slug)
     assert p.is_file(), f"missing target page: {slug}"
     text = p.read_text(encoding="utf-8")
     title = TITLE_OVERRIDES.get(slug, gen.fix_title_casing(frontmatter_value(text, "title", slug)))
@@ -1377,17 +1631,237 @@ def desired_row(overview: str, target: str) -> tuple[str, str, bool]:
     return label, row_description, True
 
 
-def apply_frontmatter_overrides() -> None:
+def migration_manifest_contract() -> MigrationManifest:
+    """Load the migration policy and reject every unreviewed planned deletion."""
+    manifest = load_migration_manifest(MIGRATION_MANIFEST_PATH)
+    assert PLAN_PATH.is_file(), f"missing sync plan: {PLAN_PATH}"
+    plan = json.loads(PLAN_PATH.read_text(encoding="utf-8"))
+    delete_slugs = {
+        entry["slug"] for entry in plan["pages"] if entry["class"] == "DELETE"
+    }
+    unreviewed = sorted(delete_slugs - manifest.redirect_slugs)
+    assert not unreviewed, (
+        "DELETE routes require reviewed redirect policy: " + repr(unreviewed[:10])
+    )
+    return manifest
+
+
+def sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def verify_preserve_boundary() -> dict[str, str]:
+    """Fail before edits if generation changed a curated page from the plan."""
+    assert PLAN_PATH.is_file(), f"missing sync plan: {PLAN_PATH}"
+    plan = json.loads(PLAN_PATH.read_text(encoding="utf-8"))
+    planned: dict[str, str] = {}
+    problems: list[str] = []
+    for entry in plan["pages"]:
+        if entry["class"] != "PRESERVE_CURATED":
+            continue
+        slug = entry["slug"]
+        expected = entry.get("content_sha256")
+        if not isinstance(expected, str) or re.fullmatch(r"[0-9a-f]{64}", expected) is None:
+            problems.append(f"{slug}: missing or invalid planned content_sha256")
+            continue
+        path = ROOT / f"{slug}.mdx"
+        if not path.is_file():
+            problems.append(f"{slug}: page missing at one-off boundary")
+            continue
+        actual = sha256_file(path)
+        if actual != expected:
+            problems.append(f"{slug}: {actual} != planned {expected}")
+        planned[slug] = expected
+    assert not problems, "PRESERVE_CURATED boundary mismatch:\n" + "\n".join(problems[:20])
+    return planned
+
+
+def write_preserve_state(planned: dict[str, str]) -> None:
+    """Record deterministic pre-oneoff and final curated-page fingerprints."""
+    rows = []
+    for slug in sorted(planned):
+        final = sha256_file(ROOT / f"{slug}.mdx")
+        rows.append(
+            {
+                "slug": slug,
+                "planned_sha256": planned[slug],
+                "final_sha256": final,
+                "changed_by_oneoffs": final != planned[slug],
+            }
+        )
+    state = {
+        "schema_version": 2,
+        "plan_sha256": sha256_file(PLAN_PATH),
+        "apply_oneoffs_sha256": sha256_file(Path(__file__)),
+        "migration_manifest_sha256": sha256_file(MIGRATION_MANIFEST_PATH),
+        "external_pages": [
+            {
+                "path": path,
+                "final_sha256": sha256_file(ROOT / path),
+            }
+            for path in sorted(EXTERNAL_ONEOFF_PATHS)
+        ],
+        "pages": rows,
+    }
+    PRESERVE_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temporary = PRESERVE_STATE_PATH.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(PRESERVE_STATE_PATH)
+
+
+def write_preserve_baseline(planned: dict[str, str]) -> None:
+    """Explicitly refresh the tracked final-output lock after reviewed edits."""
+    manifest = json.loads(MIGRATION_MANIFEST_PATH.read_text(encoding="utf-8"))
+    source_ref = manifest.get("source_ref")
+    assert isinstance(source_ref, str) and source_ref, "migration source_ref is missing"
+    baseline = {
+        "schema_version": 1,
+        "source_ref": source_ref,
+        "preserve_curated": [
+            {
+                "path": f"{slug}.mdx",
+                "sha256": sha256_file(ROOT / f"{slug}.mdx"),
+            }
+            for slug in sorted(planned)
+        ],
+        "external_oneoffs": [
+            {
+                "path": path,
+                "sha256": sha256_file(ROOT / path),
+            }
+            for path in sorted(EXTERNAL_ONEOFF_PATHS)
+        ],
+    }
+    temporary = PRESERVE_BASELINE_PATH.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(baseline, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(PRESERVE_BASELINE_PATH)
+    print(f"refreshed tracked preserve baseline: {PRESERVE_BASELINE_PATH}")
+
+
+def validate_external_oneoff_ownership() -> None:
+    """Require the tracked baseline to cover every discovered external output."""
+    assert PRESERVE_BASELINE_PATH.is_file(), (
+        f"missing tracked preserve baseline: {PRESERVE_BASELINE_PATH}"
+    )
+    baseline = json.loads(PRESERVE_BASELINE_PATH.read_text(encoding="utf-8"))
+    raw_rows = baseline.get("external_oneoffs")
+    assert isinstance(raw_rows, list), "baseline external_oneoffs must be a list"
+    paths: list[str] = []
+    for index, row in enumerate(raw_rows):
+        assert isinstance(row, dict) and set(row) == {"path", "sha256"}, (
+            f"baseline external_oneoffs[{index}] has invalid fields"
+        )
+        path = row.get("path")
+        assert isinstance(path, str), f"baseline external_oneoffs[{index}] path is invalid"
+        paths.append(path)
+    assert len(paths) == len(set(paths)), "baseline external_oneoffs contains duplicates"
+    baseline_paths = set(paths)
+    assert baseline_paths == EXTERNAL_ONEOFF_PATHS, (
+        "external one-off ownership differs from the tracked baseline: "
+        f"missing={sorted(EXTERNAL_ONEOFF_PATHS - baseline_paths)[:20]}, "
+        f"unexpected={sorted(baseline_paths - EXTERNAL_ONEOFF_PATHS)[:20]}"
+    )
+
+
+def write_migration_pages(manifest: MigrationManifest) -> None:
+    """Reconstruct reviewed source-free pages for retained legacy routes."""
+    global would_apply
+    slack_overview = "examples/agent-os/interfaces/slack/overview"
+    redirect_pages_on_disk = sorted(
+        slug for slug in manifest.redirect_slugs if docs_path(slug).is_file()
+    )
+    assert not redirect_pages_on_disk, (
+        "redirect-backed migration pages must be removed: "
+        + ", ".join(redirect_pages_on_disk[:20])
+    )
+    expected_slugs = set(manifest.retained_page_slugs) | {slack_overview}
+
+    for slug in sorted(expected_slugs):
+        path = docs_path(slug)
+        assert path.is_file(), f"migration route is missing: {slug}"
+        current = path.read_text(encoding="utf-8")
+        title = frontmatter_value(current, "title", slug)
+        assert '"' not in title and "\n" not in title, f"invalid migration title: {slug}"
+
+        sidebar = 'sidebarTitle: "Overview"\n' if slug.endswith("/overview") else ""
+        if slug == slack_overview:
+            description = "Current AgentOS Slack examples for bots, tools, streaming, teams, memory, workflows, and human approval."
+            rows = []
+            for target in SLACK_INDEX_TARGETS:
+                assert docs_path(target).is_file(), f"Slack index target is missing: {target}"
+                label, row_description, _ = desired_row(slug, target)
+                assert is_suitable_target(row_description, label), (
+                    f"Slack index target has an unsuitable description: {target}"
+                )
+                rows.append(f"| [{label}](/" + target + f") | {row_description} |")
+            body = (
+                "The current v3.0.4 Slack examples:\n\n"
+                "| Example | Description |\n"
+                "| --- | --- |\n"
+                + "\n".join(rows)
+                + "\n"
+            )
+        else:
+            if slug in manifest.chooser_pages:
+                description = f"Current alternatives for the retired {title} example."
+                default_intro = (
+                    "This legacy example combined behavior now covered by multiple "
+                    "v3.0.4 examples. Choose the current page that matches your task."
+                )
+            else:
+                description = f"Migration notice for the retired {title} example."
+                default_intro = (
+                    "This legacy example has no one-to-one v3.0.4 replacement. "
+                    "Use the related current guidance below."
+                )
+            intro = MIGRATION_PAGE_INTROS.get(slug, default_intro)
+            rows = []
+            for task, target in manifest.targets[slug]:
+                assert internal_docs_path(target).is_file(), f"migration target is missing: {slug} -> {target}"
+                target_title, _ = desired_frontmatter(target)
+                if target.endswith("/overview") and task == "Open the current example":
+                    task = f"Browse {target_title}"
+                rows.append(f"| {task} | [{target_title}](/" + target + ") |")
+            body = (
+                intro
+                + "\n\n| Task | Current page |\n"
+                "| --- | --- |\n"
+                + "\n".join(rows)
+                + "\n"
+            )
+
+        expected = (
+            "---\n"
+            f'title: "{title}"\n'
+            + sidebar
+            + f'description: "{description}"\n'
+            "---\n\n"
+            + body
+        )
+        if current == expected:
+            continue
+        would_apply += 1
+        if CHECK:
+            print(f"  would write migration page: {slug}")
+        else:
+            path.write_text(expected, encoding="utf-8")
+            print(f"  wrote migration page: {slug}")
+
+
+def apply_frontmatter_overrides(migration_redirect_slugs: frozenset[str]) -> None:
     """Apply reviewed manual descriptions/titles before table rows consume them."""
     global would_apply
     for slug in sorted(
         set(DESCRIPTION_OVERRIDES) | set(TITLE_OVERRIDES) | set(SIDEBAR_TITLE_OVERRIDES)
     ):
         p = docs_path(slug)
+        if slug in migration_redirect_slugs:
+            assert not p.exists(), f"redirect-backed migration route still has a page: {slug}"
+            continue
         assert p.is_file(), f"missing override target: {slug}"
         text = p.read_text(encoding="utf-8")
         replacements: list[tuple[str, str, str]] = []
-        if slug in DESCRIPTION_OVERRIDES:
+        if slug in DESCRIPTION_OVERRIDES and LEGACY_OVERVIEW_NOTICE not in text:
             value = DESCRIPTION_OVERRIDES[slug]
             assert "\n" not in value and '"' not in value and "—" not in value, f"invalid description override: {slug}"
             replacements.append(("description", frontmatter_value(text, "description", slug), value))
@@ -1510,6 +1984,10 @@ ROW_RE = re.compile(
     r"^\|\s*\[(?P<label>.+)\]\((?P<href>/examples/[^)]+)\)\s*\|\s*(?P<description>.*?)\s*\|\s*$"
 )
 TABLE_HEADER_RE = re.compile(r"^\|\s*Example\s*\|\s*Description\s*\|\s*$")
+INTERNAL_DOC_LINK_RE = re.compile(r"\]\(/([^\s)#?]+)")
+LEGACY_OVERVIEW_NOTICE = (
+    "The v3.0.4 cookbook contains no matching sources for this section's prior examples."
+)
 
 
 def table_rows(text: str, slug: str) -> tuple[list[str], int, int, list[dict[str, str]]]:
@@ -1622,11 +2100,31 @@ def new_row(overview: str, target: str) -> dict[str, str]:
     return {"label": title, "target": target, "description": description, "raw": ""}
 
 
-def repair_overview_tables() -> None:
+def nearest_live_overview(overview: str, migration_slugs: set[str]) -> str:
+    """Return the stable examples landing page for a legacy-only section."""
+    assert overview.endswith("/overview"), f"not an overview slug: {overview}"
+    assert overview not in migration_slugs, f"migration overview cannot be its own fallback: {overview}"
+    introduction = "examples/introduction"
+    assert docs_path(introduction).is_file(), "examples introduction is missing"
+    return introduction
+
+
+def repair_overview_tables(
+    migration_targets: dict[str, tuple[tuple[str, str], ...]],
+) -> None:
     global would_apply
     nav = navigation_order()
+    migration_slugs = set(migration_targets)
+    migration_overviews = {
+        target
+        for targets in migration_targets.values()
+        for _, target in targets
+        if target.startswith("examples/") and target.endswith("/overview")
+    }
     for overview, overrides in EXPLICIT_ROW_OVERRIDES.items():
         for target, (label, description) in overrides.items():
+            if target in migration_slugs:
+                continue
             assert docs_path(target).is_file(), f"row override target is missing: {overview} -> {target}"
             assert label.strip() == label and "\n" not in label and "|" not in label, (
                 f"invalid row label override: {overview} -> {target}"
@@ -1638,6 +2136,8 @@ def repair_overview_tables() -> None:
         assert overview in nav, f"overview is no longer in navigation: {overview}"
         positions = []
         for target in targets:
+            if target in migration_slugs:
+                continue
             assert target in nav, f"explicit target is no longer in navigation: {overview} -> {target}"
             assert docs_path(target).is_file(), f"explicit target is missing: {overview} -> {target}"
             positions.append(nav[target])
@@ -1646,18 +2146,21 @@ def repair_overview_tables() -> None:
         )
     for overview, targets in EXPLICIT_TABLE_ORDER.items():
         assert overview in nav, f"ordered overview is no longer in navigation: {overview}"
-        assert all(target in nav for target in targets), f"ordered table target left navigation: {overview}"
-        positions = [nav[target] for target in targets]
+        current_targets = [target for target in targets if target not in migration_slugs]
+        assert all(target in nav for target in current_targets), f"ordered table target left navigation: {overview}"
+        positions = [nav[target] for target in current_targets]
         assert positions == sorted(positions), f"ordered table is not in docs.json order: {overview}"
 
     overview_slugs = (
         ROW_REPAIR_OVERVIEWS
         | set(EXPLICIT_MISSING_ROWS)
+        | set(EXPLICIT_ROW_REMOVALS)
         | set(EXPLICIT_ROW_OVERRIDES)
         | set(EXPLICIT_ROW_REFRESH)
         | FULL_ROW_REFRESH_OVERVIEWS
         | ACRONYM_LABEL_REFRESH_OVERVIEWS
         | set(EXPLICIT_TABLE_ORDER)
+        | migration_overviews
     )
     for overview in sorted(overview_slugs):
         p = docs_path(overview)
@@ -1666,6 +2169,36 @@ def repair_overview_tables() -> None:
         # Only pages with the standard two-column table participate. Other
         # overview formats are intentionally left alone.
         if not any(TABLE_HEADER_RE.fullmatch(line) for line in text.splitlines()):
+            if overview in migration_overviews:
+                kept_lines = []
+                removed = 0
+                for line in text.splitlines(keepends=True):
+                    links = set(INTERNAL_DOC_LINK_RE.findall(line))
+                    if line.lstrip().startswith("|") and links & migration_slugs:
+                        removed += 1
+                        continue
+                    kept_lines.append(line)
+                new_text = "".join(kept_lines)
+                assert removed > 0 or new_text == text, (
+                    f"{overview}: nonstandard migration cleanup was inconsistent"
+                )
+                remaining_links = set(INTERNAL_DOC_LINK_RE.findall(new_text))
+                assert not (remaining_links & migration_slugs), (
+                    f"{overview}: unsupported non-table migration link remains"
+                )
+                assert any(
+                    target not in migration_slugs
+                    and (ROOT / f"{target}.mdx").is_file()
+                    for target in remaining_links
+                ), f"{overview}: nonstandard overview has no live destination"
+                if new_text != text:
+                    would_apply += 1
+                    if CHECK:
+                        print(f"  would repair nonstandard overview: {overview}")
+                    else:
+                        p.write_text(new_text, encoding="utf-8")
+                        print(f"  repaired nonstandard overview: {overview}")
+                continue
             assert (
                 overview not in EXPLICIT_MISSING_ROWS
                 and overview not in EXPLICIT_ROW_OVERRIDES
@@ -1677,6 +2210,11 @@ def repair_overview_tables() -> None:
             continue
         lines, start, end, rows = table_rows(text, overview)
         changed = False
+        removals = EXPLICIT_ROW_REMOVALS.get(overview, set()) | migration_slugs
+        if removals:
+            retained_rows = [row for row in rows if row["target"] not in removals]
+            changed = len(retained_rows) != len(rows)
+            rows = retained_rows
         rewrites = ROW_TARGET_REWRITES.get(overview, {})
         for index, row in enumerate(rows):
             target = rewrites.get(row["target"])
@@ -1693,7 +2231,11 @@ def repair_overview_tables() -> None:
         repaired: list[dict[str, str]] = []
         existing_targets = set(counts)
         full_refresh = overview in FULL_ROW_REFRESH_OVERVIEWS
-        forced = existing_targets if full_refresh else EXPLICIT_ROW_REFRESH.get(overview, set())
+        forced = (
+            existing_targets
+            if full_refresh
+            else EXPLICIT_ROW_REFRESH.get(overview, set()) - migration_slugs
+        )
         missing = EXPLICIT_MISSING_ROWS.get(overview, [])
         for target in forced:
             assert target in existing_targets, f"{overview}: explicit refresh target is absent: {target}"
@@ -1708,6 +2250,8 @@ def repair_overview_tables() -> None:
             changed |= row_changed
 
         for target in missing:
+            if target in migration_slugs:
+                continue
             if target in existing_targets:
                 continue
             repaired.append(new_row(overview, target))
@@ -1715,7 +2259,11 @@ def repair_overview_tables() -> None:
             changed = True
 
         if overview in EXPLICIT_TABLE_ORDER:
-            order = EXPLICIT_TABLE_ORDER[overview]
+            order = [
+                target
+                for target in EXPLICIT_TABLE_ORDER[overview]
+                if target not in migration_slugs
+            ]
             assert len(order) == len(set(order)), f"{overview}: duplicate explicit table target"
             assert set(existing_targets) == set(order), (
                 f"{overview}: table membership drift; expected {order}, found {sorted(existing_targets)}"
@@ -1727,17 +2275,148 @@ def repair_overview_tables() -> None:
             for row in repaired:
                 row["raw"] = render_row(row)
 
-        if not changed:
-            continue
+        legacy_only = LEGACY_OVERVIEW_NOTICE in text
+        if legacy_only:
+            repaired = []
+            changed = True
+        if not repaired:
+            fallback = nearest_live_overview(overview, migration_slugs)
+            fallback_title, _ = desired_frontmatter(fallback)
+            repaired = [
+                {
+                    "label": fallback_title,
+                    "target": fallback,
+                    "description": "Browse current Agno v3.0.4 examples.",
+                    "raw": "",
+                }
+            ]
+            changed = True
+            legacy_only = True
+
         replacement = [row["raw"] or render_row(row) for row in repaired]
         new_text = "".join(lines[:start] + replacement + lines[end:])
-        assert new_text != text, f"{overview}: repair reported change without text delta"
+        if legacy_only:
+            title = frontmatter_value(new_text, "title", overview)
+            description = f"Current Agno v3.0.4 alternatives for {title} examples."
+            new_text, count = re.subn(
+                r'^description:\s*.+$',
+                f'description: "{description}"',
+                new_text,
+                count=1,
+                flags=re.M,
+            )
+            assert count == 1, f"{overview}: could not update legacy overview description"
+            if LEGACY_OVERVIEW_NOTICE not in new_text:
+                header = "| Example | Description |"
+                assert header in new_text, f"{overview}: table header disappeared"
+                new_text = new_text.replace(
+                    header,
+                    LEGACY_OVERVIEW_NOTICE + "\n\n" + header,
+                    1,
+                )
+        if new_text == text:
+            continue
         would_apply += 1
         if CHECK:
             print(f"  would repair overview: {overview}")
         else:
             p.write_text(new_text, encoding="utf-8")
             print(f"  repaired overview: {overview}")
+
+
+def reaches_concrete_page(
+    slug: str,
+    migration_slugs: set[str],
+    visiting: frozenset[str] = frozenset(),
+) -> bool:
+    """Return whether a current page contains or reaches concrete guidance."""
+    if slug in visiting or slug in migration_slugs:
+        return False
+    path = internal_docs_path(slug)
+    if not path.is_file():
+        return False
+    text = path.read_text(encoding="utf-8")
+    if not slug.endswith("/overview") or "```" in text:
+        return True
+    children = {
+        link
+        for link in INTERNAL_DOC_LINK_RE.findall(text)
+        if internal_docs_path(link).is_file()
+    }
+    next_visiting = visiting | {slug}
+    return any(
+        reaches_concrete_page(child, migration_slugs, next_visiting)
+        for child in children
+    )
+
+
+def validate_migration_graph(manifest: MigrationManifest) -> None:
+    """Reject migration targets that are missing, cyclic, or legacy-only."""
+    migration_slugs = set(manifest.targets)
+    retained_slugs = set(manifest.retained_page_slugs)
+    rendered_migrations = {
+        str(path.relative_to(ROOT).with_suffix(""))
+        for path in DOCS.rglob("*.mdx")
+        if re.search(
+            r'^description: "(?:Current alternatives|Migration notice) for the retired ',
+            path.read_text(encoding="utf-8"),
+            re.M,
+        )
+    }
+    assert rendered_migrations == retained_slugs, (
+        "migration manifest/page membership differs: "
+        f"missing={sorted(retained_slugs - rendered_migrations)[:10]}, "
+        f"unmanaged={sorted(rendered_migrations - retained_slugs)[:10]}"
+    )
+
+    overview_targets: set[str] = set()
+    for slug, targets in manifest.targets.items():
+        source_path = docs_path(slug)
+        if slug in manifest.redirect_slugs:
+            assert not source_path.exists(), f"migration redirect retains a page: {slug}"
+        else:
+            source_text = source_path.read_text(encoding="utf-8")
+            assert "\x60\x60\x60" not in source_text, f"migration page contains a code fence: {slug}"
+            assert re.search(r"^(?:source|curated_source):", source_text, re.M) is None, (
+                f"migration page retains a source binding: {slug}"
+            )
+            for link in INTERNAL_DOC_LINK_RE.findall(source_text):
+                assert internal_docs_path(link).is_file(), (
+                    f"migration page has a dead link: {slug} -> {link}"
+                )
+        for _, target in targets:
+            target_path = internal_docs_path(target)
+            assert target_path.is_file(), f"migration target is missing: {slug} -> {target}"
+            assert target not in migration_slugs, (
+                f"migration target is another migration page: {slug} -> {target}"
+            )
+            target_links = set(
+                INTERNAL_DOC_LINK_RE.findall(target_path.read_text(encoding="utf-8"))
+            )
+            assert slug not in target_links, f"migration target links back: {slug} -> {target}"
+            if target.endswith("/overview"):
+                overview_targets.add(target)
+                legacy_links = sorted(target_links & migration_slugs)
+                assert not legacy_links, (
+                    f"migration overview retains legacy rows: {target} -> {legacy_links[:10]}"
+                )
+                live_links = {
+                    link
+                    for link in target_links
+                    if link not in migration_slugs and (ROOT / f"{link}.mdx").is_file()
+                }
+                assert live_links, (
+                    f"migration overview has no live destination: {slug} -> {target}"
+                )
+                assert reaches_concrete_page(target, migration_slugs), (
+                    f"migration overview cannot reach a concrete current page: {slug} -> {target}"
+                )
+    print(
+        f"migration graph valid: {len(migration_slugs)} routes, "
+        f"{len(manifest.redirect_slugs)} redirects, "
+        f"{len(retained_slugs)} hidden pages, "
+        f"{len(overview_targets)} overview targets"
+    )
 
 
 def render_toolkit_card(title: str, href: str, description: str) -> str:
@@ -1755,6 +2434,7 @@ def repair_toolkit_index() -> None:
     """Add reviewed post-tag toolkit cards without duplicating upstream additions."""
     global would_apply
     p = ROOT / "tools/toolkits/overview.mdx"
+    register_external_oneoff_path(p)
     text = p.read_text(encoding="utf-8")
     changed = False
 
@@ -1801,10 +2481,138 @@ def repair_toolkit_index() -> None:
 
 
 def main() -> None:
-    global CHECK
+    global CHECK, REFRESH_PRESERVE_BASELINE
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--check", action="store_true", help="report fix state without writing")
-    CHECK = ap.parse_args().check
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--check", action="store_true", help="report fix state without writing")
+    mode.add_argument(
+        "--refresh-preserve-baseline",
+        action="store_true",
+        help="rewrite the tracked final-output lock after reviewed changes",
+    )
+    args = ap.parse_args()
+    CHECK = args.check
+    REFRESH_PRESERVE_BASELINE = args.refresh_preserve_baseline
+    planned_preserve_hashes = {} if CHECK else verify_preserve_boundary()
+
+    # Accepted sample-5 corrections for curated references and guides.
+    root_sub(
+        "reference/agent-os/jwt-middleware.mdx",
+        '| `verification_keys` | `Optional[List[str]]` | `JWT_VERIFICATION_KEY` env var | List of keys for JWT verification. For RS256, use public keys. For HS256, use shared secrets. Each key is tried in order until one succeeds - useful for accepting tokens from multiple issuers. |',
+        '| `verification_keys` | `Optional[List[str]]` | `None` | Explicit JWT verification keys. If `JWT_VERIFICATION_KEY` is set, its value is appended even when this list is supplied. Unset the environment variable to stop trusting that key. Each key is tried in order. |',
+    )
+    root_sub(
+        "reference/agent-os/jwt-middleware.mdx",
+        '| `validate` | `bool` | `True` | Whether to validate JWT tokens |',
+        '| `validate` | `bool` | `True` | Verify token signatures and reject invalid or expired tokens. `False` disables signature verification and is limited to development or deployments with a trusted upstream validator. |',
+    )
+    root_sub(
+        "reference/agent-os/jwt-middleware.mdx",
+        '| `excluded_route_paths` | `Optional[List[str]]` | See below | Routes to skip JWT/RBAC checks. |',
+        '| `excluded_route_paths` | `Optional[List[str]]` | See below | Routes that bypass all AuthMiddleware authentication, authorization, and request-state population. |',
+    )
+    root_sub(
+        "reference/agent-os/jwt-middleware.mdx",
+        """After processing, the middleware stores the following in `request.state`:
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `authenticated` | `bool` | Whether the user is authenticated |
+| `user_id` | `Optional[str]` | User ID from token claims |
+| `session_id` | `Optional[str]` | Session ID from token claims |
+| `scopes` | `List[str]` | User's permission scopes |
+| `claims` | `Dict[str, Any]` | Full decoded JWT payload. [Factories](/reference/agent-os/factories) read it as `ctx.trusted.claims` |
+| `audience` | `Optional[str]` | Audience claim value |
+| `token` | `str` | The raw JWT token |
+| `authorization_enabled` | `bool` | Whether RBAC is enabled |
+| `dependencies` | `Dict[str, Any]` | Extracted dependencies claims |
+| `session_state` | `Dict[str, Any]` | Extracted session state claims |
+| `accessible_resource_ids` | `Set[str]` | Resource IDs user can access (for listing endpoints) |""",
+        """State fields depend on the authentication path. Excluded routes and `OPTIONS` requests return before authentication and do not receive these fields.
+
+| Authentication path | Populated fields |
+|---------------------|------------------|
+| JWT | `authenticated`, `user_id`, `session_id`, `scopes`, `claims`, `audience`, `token`, and `authorization_enabled`. `dependencies`, `session_state`, and `accessible_resource_ids` are added only when configured or applicable. [Factories](/reference/agent-os/factories) read JWT claims as `ctx.trusted.claims`. |
+| Service account token (`agno_pat_...`) | `authenticated`, `user_id`, `session_id`, `scopes`, `authorization_enabled`, `service_account_name`, and authorization metadata. Service account requests do not include `claims` or `token`. |
+| Internal scheduler token | `authenticated`, `user_id`, `session_id`, `scopes`, `authorization_enabled`, and scheduler authorization metadata. |
+| Security key | `authenticated` only. |""",
+    )
+    root_sub(
+        "reference/agent-os/jwt-middleware.mdx",
+        """| `403 Forbidden` | Insufficient scopes for the requested operation |""",
+        """| `403 Forbidden` | Insufficient scopes for the requested operation |
+| `429 Too Many Requests` | Service account verification is rate limited |
+| `503 Service Unavailable` | Service account verification is unavailable |""",
+    )
+    root_sub(
+        "tools/toolkits/social/telegram.mdx",
+        """export TELEGRAM_TOKEN=***
+export TELEGRAM_CHAT_ID=***""",
+        """export OPENAI_API_KEY=***
+export TELEGRAM_TOKEN=***
+export TELEGRAM_CHAT_ID=***""",
+    )
+    root_sub(
+        "teams/building-teams.mdx",
+        """team.print_response("What are the trending AI stories and how is NVDA stock doing?", stream=True)
+```
+
+## Team Modes""",
+        """team.print_response("What are the trending AI stories and how is NVDA stock doing?", stream=True)
+```
+
+## Run the Minimal Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai yfinance
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```powershell Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the team">
+    ```bash
+    python research_team.py
+    ```
+  </Step>
+</Steps>
+
+## Team Modes""",
+    )
+    root_sub(
+        "teams/building-teams.mdx",
+        "Pass a function instead of a static list for `members`, `tools`, or `knowledge`. The function is called at the start of each run, so the composition can vary per user or session.",
+        "Pass a function instead of a static list for `members`, `tools`, or `knowledge`. Factories resolve during run setup. By default, results are cached by custom key, then user ID, then session ID. Set `cache_callables=False`, as below, to resolve on every run.",
+    )
+    root_sub(
+        "teams/building-teams.mdx",
+        """| `agent` | `Agent` | The current Agent instance |
+| `team` | `Team` | The current Team instance |""",
+        """| `agent` | `Team` | Owning Team instance. This alias supports factories shared by Agents and Teams. |
+| `team` | `Team` | Owning Team instance. |""",
+    )
+    root_sub_all(
+        "models/providers/native/google/gemini-interactions.mdx",
+        "gemini-3-flash-preview",
+        "gemini-3.7-flash",
+        7,
+    )
 
     # Source-backed corrections identified by the generated-example review.
     sub(
@@ -2168,18 +2976,27 @@ Valkey vector search requires""",
 
 <Note>""",
     )
+    approval_count_scope_note = """<Note>
+  With user isolation enabled, non-admin requests are scoped to the user ID in the JWT even when `user_id` is supplied.
+</Note>"""
+    root_sub(
+        "reference-api/schema/approvals/get-approval-count.mdx",
+        """<Warning>
+  This endpoint counts pending approvals. With user isolation enabled, non-admin requests are scoped to the user ID in the JWT even when `user_id` is supplied. Authentication failures can return `401`, and databases without approval support can return `503`; the current OpenAPI operation declares only `200` and `422`.
+</Warning>""",
+        approval_count_scope_note,
+        required=False,
+    )
     root_sub(
         "reference-api/schema/approvals/get-approval-count.mdx",
         """---
 openapi: get /approvals/count
 ---""",
-        """---
+        f"""---
 openapi: get /approvals/count
 ---
 
-<Warning>
-  This endpoint counts pending approvals. With user isolation enabled, non-admin requests are scoped to the user ID in the JWT even when `user_id` is supplied. Authentication failures can return `401`, and databases without approval support can return `503`; the current OpenAPI operation declares only `200` and `422`.
-</Warning>""",
+{approval_count_scope_note}""",
     )
     root_sub(
         "examples/tools/dalle-tools.mdx",
@@ -2265,153 +3082,41 @@ from agno.workflow.step import Step""",
         """tools=[WebSearchTools()],
     role="Search the web for the latest news and trends",""",
     )
-    sub(
-        "storage/valkey/valkey-for-team.mdx",
-        "Run `uv pip install ddgs valkey-glide-sync` to install dependencies.",
-        "Run `uv pip install ddgs openai valkey-glide-sync` to install dependencies.",
+    # Recover this legacy-only index now that the pinned source contains a
+    # direct ClickHouse tracing example under observability.
+    root_sub(
+        "examples/agent-os/tracing/dbs/overview.mdx",
+        """The v3.0.4 cookbook contains no matching sources for this section's prior examples.
+
+| Example | Description |
+|---------|-------------|
+| [Examples](/examples/introduction) | Browse current Agno v3.0.4 examples. |""",
+        """Current v3.0.4 examples:
+
+| Example | Description |
+|---------|-------------|
+| [Examples](/examples/introduction) | Browse current Agno v3.0.4 examples. |""",
+        required=False,
     )
-    valkey_descriptions = {
-        "agent": "Use Valkey as the storage backend for an agent.",
-        "team": "Use Valkey as the storage backend for a team.",
-        "workflow": "Use ValkeyDb as the session storage backend for a workflow.",
-    }
-    for example_type, description in valkey_descriptions.items():
-        sub(
-            f"storage/valkey/valkey-for-{example_type}.mdx",
-            f'description: "{description}"\n---',
-            f'description: "{description}"\nsource: cookbook/06_storage/valkey/valkey_for_{example_type}.py\n---',
-        )
-    for example_type in ("agent", "team", "workflow"):
-        filename = f"valkey_for_{example_type}.py"
+    for path in (
+        "examples/agent-os/dbs/surreal-db/overview.mdx",
+        "examples/agent-os/rbac/asymmetric/overview.mdx",
+        "examples/agent-os/rbac/symmetric/overview.mdx",
+    ):
         root_sub(
-            f"examples/storage/valkey/valkey-for-{example_type}.mdx",
-            f"""## Run the Example
-```bash
-# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/06_storage/valkey
+            path,
+            """The v3.0.4 cookbook contains no matching sources for this section's prior examples.
 
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
+| Example | Description |
+|---------|-------------|
+| [Examples](/examples/introduction) | Browse current Agno v3.0.4 examples. |""",
+            """Current v3.0.4 examples:
 
-python {filename}
-```""",
-            f"""## Run the Example
-
-<Steps>
-  <Step title="Clone Agno">
-    Clone the repository and run the remaining commands from its root:
-    ```bash
-    git clone https://github.com/agno-agi/agno.git
-    cd agno
-    ```
-  </Step>
-
-  <Step title="Set up the demo environment">
-    ```bash
-    ./scripts/demo_setup.sh
-    source .venvs/demo/bin/activate
-    uv pip install -U ddgs openai valkey-glide-sync
-    ```
-  </Step>
-
-  <Step title="Export your OpenAI API key">
-    <CodeGroup>
-    ```bash Mac/Linux
-    export OPENAI_API_KEY="your_openai_api_key_here"
-    ```
-
-    ```bash Windows
-    $Env:OPENAI_API_KEY="your_openai_api_key_here"
-    ```
-    </CodeGroup>
-  </Step>
-
-  <Step title="Run Valkey">
-    ```bash
-    docker run -d --name my-valkey -p 6379:6379 valkey/valkey-bundle
-    ```
-  </Step>
-
-  <Step title="Run the example">
-    ```bash
-    python cookbook/06_storage/valkey/{filename}
-    ```
-  </Step>
-</Steps>""",
+| Example | Description |
+|---------|-------------|
+| [Examples](/examples/introduction) | Browse current Agno v3.0.4 examples. |""",
+            required=False,
         )
-    sub(
-        "agent-os/dbs/valkey-db.mdx",
-        "```python\n",
-        "```python valkey_db.py\n",
-    )
-    sub(
-        "agent-os/dbs/valkey-db.mdx",
-        'description: "Setup the Valkey database."\n---',
-        'description: "Setup the Valkey database."\nsource: cookbook/05_agent_os/dbs/valkey_db.py\n---',
-    )
-    sub(
-        "agent-os/dbs/valkey-db.mdx",
-        """## Run the Example
-```bash
-# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/05_agent_os/dbs
-
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
-
-python valkey_db.py
-```""",
-        """## Run the Example
-
-<Steps>
-  <Step title="Clone Agno">
-    Clone the repository and run the remaining commands from its root:
-    ```bash
-    git clone https://github.com/agno-agi/agno.git
-    cd agno
-    ```
-  </Step>
-
-  <Step title="Set up the demo environment">
-    ```bash
-    ./scripts/demo_setup.sh
-    source .venvs/demo/bin/activate
-    uv pip install -U valkey-glide-sync
-    ```
-  </Step>
-
-  <Step title="Export your OpenAI API key">
-    <CodeGroup>
-    ```bash Mac/Linux
-    export OPENAI_API_KEY="your_openai_api_key_here"
-    ```
-
-    ```bash Windows
-    $Env:OPENAI_API_KEY="your_openai_api_key_here"
-    ```
-    </CodeGroup>
-  </Step>
-
-  <Step title="Run Valkey">
-    ```bash
-    docker run -d --name my-valkey -p 6379:6379 valkey/valkey-bundle
-    ```
-  </Step>
-
-  <Step title="Run the example">
-    Run the example from the repository root:
-    ```bash
-    python cookbook/05_agent_os/dbs/valkey_db.py
-    ```
-  </Step>
-</Steps>
-
-Full source: [cookbook/05_agent_os/dbs/valkey_db.py](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/dbs/valkey_db.py)""",
-    )
 
     root_sub(
         "knowledge/vector-stores/mongodb/usage/mongo-db-hybrid-search.mdx",
@@ -2620,83 +3325,6 @@ $Env:OPENAI_API_KEY="your_openai_api_key_here"
         "Without an API key, the toolkit runs a local Mem0 `Memory` instance. Configure it with the `config` parameter.",
         "Without a Mem0 API key, the toolkit runs a local Mem0 `Memory` instance. Configure it with the `config` parameter.",
     )
-    sub_all(
-        "storage/mongo/mongodb-for-team.mdx",
-        'model=OpenAIChat("gpt-5.4-mini"),',
-        'model=OpenAIChat("gpt-4o"),',
-        expected=3,
-    )
-    sub(
-        "storage/mongo/mongodb-for-team.mdx",
-        """~~~
-
-## Run the Example""",
-        """~~~
-
-<Warning>
-  The v2.7.2 cookbook uses the deprecated `gpt-4o` model. The source-fidelity fence above preserves those three model IDs. Replace all three with `gpt-5.4-mini` before running. See [GPT-4o](https://developers.openai.com/api/docs/models/gpt-4o) and [GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini).
-</Warning>
-
-## Run the Example""",
-    )
-    sub(
-        "storage/mongo/mongodb-for-team.mdx",
-        """## Run the Example
-```bash
-# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/06_storage/mongo
-
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
-
-python mongodb_for_team.py
-```""",
-        """## Run the Example
-
-<Steps>
-  <Step title="Clone Agno">
-    Clone the repository and run the remaining commands from its root:
-    ```bash
-    git clone https://github.com/agno-agi/agno.git
-    cd agno
-    ```
-  </Step>
-
-  <Step title="Set up the demo environment">
-    ```bash
-    ./scripts/demo_setup.sh
-    source .venvs/demo/bin/activate
-    uv pip install -U "pymongo[srv]"
-    ```
-  </Step>
-
-  <Step title="Export your OpenAI API key">
-    <CodeGroup>
-    ```bash Mac/Linux
-    export OPENAI_API_KEY="your_openai_api_key_here"
-    ```
-
-    ```bash Windows
-    $Env:OPENAI_API_KEY="your_openai_api_key_here"
-    ```
-    </CodeGroup>
-  </Step>
-
-  <Step title="Start MongoDB">
-    ```bash
-    ./cookbook/scripts/run_mongodb.sh
-    ```
-  </Step>
-
-  <Step title="Run the example">
-    ```bash
-    python cookbook/06_storage/mongo/mongodb_for_team.py
-    ```
-  </Step>
-</Steps>""",
-    )
     root_sub(
         "deploy/templates/scout/overview.mdx",
         "| **Slack** | `SLACK_BOT_TOKEN` | `query_slack`. Read-only access to messages, channel history, threads, and users. |",
@@ -2889,98 +3517,6 @@ python cookbook/91_tools/seltz_tools.py""",
     )
 
     sub(
-        "agents/approvals/approval-team.mdx",
-        """| Both | Team and member | Two pauses, two separate admin approvals. |
-
-<Tabs>""",
-        """| Both | Team and member | Two pauses, two separate admin approvals. |
-
-After starting an example, [connect the AgentOS UI](/agent-os/connect-your-os) to `http://localhost:7777` and start a team run. When the run pauses, open **Approvals**, complete any requested fields, approve the request, return to the run, and select **Continue Run**. Case 3 repeats the approval and continuation flow twice.
-
-<Tabs>""",
-    )
-    sub(
-        "agents/approvals/approval-team.mdx",
-        """# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/02_agents/11_approvals
-
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
-
-python team_level_approval.py""",
-        """# Clone and set up the repo
-git clone https://github.com/agno-agi/agno.git
-cd agno
-
-# Create and activate the demo virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
-
-export OPENAI_API_KEY="your_openai_api_key_here"
-
-python cookbook/05_agent_os/approvals/team/team_level_approval.py""",
-    )
-    sub(
-        "agents/approvals/approval-team.mdx",
-        """# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/02_agents/11_approvals
-
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
-
-python member_agent_level_approval.py""",
-        """# Clone and set up the repo
-git clone https://github.com/agno-agi/agno.git
-cd agno
-
-# Create and activate the demo virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
-
-export OPENAI_API_KEY="your_openai_api_key_here"
-
-python cookbook/05_agent_os/approvals/team/member_agent_level_approval.py""",
-    )
-    sub(
-        "agents/approvals/approval-team.mdx",
-        """# Clone and setup repo
-git clone https://github.com/agno-agi/agno.git
-cd agno/cookbook/02_agents/11_approvals
-
-# Create and activate virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
-
-python team_and_member_agent_both_level_approval.py""",
-        """# Clone and set up the repo
-git clone https://github.com/agno-agi/agno.git
-cd agno
-
-# Create and activate the demo virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
-
-export OPENAI_API_KEY="your_openai_api_key_here"
-
-python cookbook/05_agent_os/approvals/team/team_and_member_agent_both_level_approval.py""",
-    )
-    sub(
-        "agents/approvals/approval-team.mdx",
-        "</Tabs>",
-        """</Tabs>
-
-## Developer Resources
-
-- [Team-level approval source](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/approvals/team/team_level_approval.py)
-- [Member-level approval source](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/approvals/team/member_agent_level_approval.py)
-- [Team and member approval source](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/approvals/team/team_and_member_agent_both_level_approval.py)""",
-    )
-
-    sub(
         "models/huggingface/overview.mdx",
         "[Hugging Face Llama Essay Writer](/examples/models/huggingface/llama-essay-writer)",
         "[Hugging Face GPT-OSS Essay Writer](/examples/models/huggingface/llama-essay-writer)",
@@ -3124,17 +3660,8 @@ $Env:OPENAI_API_KEY="your_openai_api_key_here"
     ```""",
     )
 
-    root_sub(
-        "use-cases/document-processing/forms-and-intake.mdx",
-        """Forms and intake documents bring a different shape: a person's identity at the top, then several parallel lists (employment, education, skills, references). The agent fills out the nested structure in one pass.
-
-```python""",
-        """Forms and intake documents bring a different shape: a person's identity at the top, then several parallel lists (employment, education, skills, references). The agent fills out the nested structure in one pass.
-
-Place the resume to extract at `resume.pdf` in the directory where you run this code.
-
-```python""",
-    )
+    # The page now carries the local resume setup directly in its curated
+    # introduction, so the earlier opener-specific insertion is retired.
     root_sub(
         "use-cases/document-processing/forms-and-intake.mdx",
         'files=[File(url="https://example.com/resume-sjohnson.pdf")]',
@@ -3176,7 +3703,7 @@ Place the resume to extract at `resume.pdf` in the directory where you run this 
 
 ## Calling it from a surface""",
         """if __name__ == "__main__":
-    agent_os.serve(app="copilot:app", port=7777)
+    agent_os.serve(app="customer_agent:app", port=7777)
 ```
 
 Supplying `cors_allowed_origins` replaces the AgentOS defaults. Include every browser and AgentOS UI origin that needs to call the backend.
@@ -3207,9 +3734,9 @@ Supplying `cors_allowed_origins` replaces the AgentOS defaults. Include every br
   <Snippet file="run-pgvector-step.mdx" />
 
   <Step title="Start AgentOS">
-    Save the code as `copilot.py`, then run:
+    Save the code as `customer_agent.py`, then run:
     ```bash
-    python copilot.py
+    python customer_agent.py
     ```
   </Step>
 </Steps>
@@ -3219,7 +3746,28 @@ Supplying `cors_allowed_origins` replaces the AgentOS defaults. Include every br
     root_sub(
         "use-cases/product-agents/serve-as-an-api.mdx",
         "async function askCopilot(message, threadId) {",
-        "async function askCopilot(message, threadId, jwt) {",
+        "async function askCustomerAgent(message, threadId, jwt) {",
+    )
+    root_sub(
+        "use-cases/product-agents/serve-as-an-api.mdx",
+        "```python copilot.py",
+        "```python customer_agent.py",
+    )
+    root_sub(
+        "use-cases/product-agents/serve-as-an-api.mdx",
+        'id="copilot"',
+        'id="customer-agent"',
+    )
+    root_sub_all(
+        "use-cases/product-agents/serve-as-an-api.mdx",
+        "/agents/copilot/runs",
+        "/agents/customer-agent/runs",
+        expected=2,
+    )
+    root_sub(
+        "use-cases/product-agents/serve-as-an-api.mdx",
+        '"agent_id": "copilot"',
+        '"agent_id": "customer-agent"',
     )
     root_sub(
         "use-cases/product-agents/serve-as-an-api.mdx",
@@ -3280,17 +3828,8 @@ description: Write a 300-word essay on a user-provided topic with GPT-OSS 120B t
         """| Telegram | `tg:<entity_id>:<chat_id>[:<topic_id>][:<reset_id>]` | Telegram user ID |
 | WhatsApp | `wa:<entity_id>:<user_id>[:<reset_id>]` | Phone number or encrypted user ID |""",
     )
-    root_sub(
-        "use-cases/product-agents/interfaces.mdx",
-        """Stored memory can follow a user across surfaces when the interfaces resolve to the same `user_id` and use the same agent database and memory configuration. Session history remains scoped to each interface-generated `session_id`. Interfaces can add surface metadata and dependencies to a run.
-
-## One agent, every surface""",
-        """For Telegram and WhatsApp, `/new` preserves earlier sessions and creates a session whose ID has a new eight-character suffix. This command requires a database.
-
-Stored memory can follow a user across surfaces when the interfaces resolve to the same `user_id` and use the same agent database and memory configuration. Session history remains scoped to each interface-generated `session_id`. Interfaces can add surface metadata and dependencies to a run.
-
-## One agent, every surface""",
-    )
+    # The `/new` session behavior now lives in the curated page directly; the
+    # earlier heading-coupled insertion is retired.
     root_sub(
         "use-cases/product-agents/interfaces.mdx",
         """from agno.os.interfaces.agui import AGUI
@@ -4295,8 +4834,59 @@ The source uses the retired `imagen-4.0-generate-preview-05-20` model, the remov
   <Step title="Run Agent">""",
     )
 
+    # Recover reviewed current destinations for retained AgentOS migration
+    # indexes before the overview-table pass evaluates legacy-only pages.
+    for path in (
+        "examples/agent-os/client-a2a/servers/overview.mdx",
+        "examples/agent-os/mcp-demo/overview.mdx",
+        "examples/agent-os/middleware/overview.mdx",
+    ):
+        root_sub(
+            path,
+            "The v3.0.4 cookbook contains no matching sources for this section's prior examples.",
+            "Current v3.0.4 examples:",
+            required=False,
+        )
+
+    root_sub(
+        "examples/tools/parallel/competitor-tracker.mdx",
+        "```\n\n## Run the Example",
+        """```
+
+<Warning>
+Parallel monitors continue running after the script exits and may consume usage. Save every `monitor_id` returned by the creation response. When you finish, create a `ParallelTools(enable_search=False, enable_extract=False, enable_monitor=True)` instance and call `cancel_monitor(monitor_id)` for each saved ID. Leave unrelated account monitors active.
+</Warning>
+
+## Run the Example""",
+    )
+    root_sub(
+        "examples/agent-os/customize/dependencies.mdx",
+        """  <Step title="Run the example">
+    Save the code above as `dependencies.py`, then run:
+    ```bash
+    python dependencies.py
+    ```
+  </Step>""",
+        """  <Step title="Start AgentOS">
+    Save the code above as `dependencies.py`, then run:
+    ```bash
+    python dependencies.py
+    ```
+  </Step>
+
+  <Step title="Run the dependency request">
+    In a second terminal with the same environment, run:
+    ```bash
+    python dependencies.py --demo
+    ```
+  </Step>""",
+    )
+
+    migration_manifest = migration_manifest_contract()
+
     # 9. Reviewed frontmatter overrides consumed by the overview row pass.
-    apply_frontmatter_overrides()
+    #    Redirect-backed legacy routes intentionally have no page to update.
+    apply_frontmatter_overrides(migration_manifest.redirect_slugs)
 
     # 10. Title-casing pass over every page (fixes curated overview stubs:
     #    Openai -> OpenAI, Vertexai -> Vertex AI, Mcp Demo -> MCP Demo, ...).
@@ -4313,22 +4903,37 @@ The source uses the retired `imagen-4.0-generate-preview-05-20` model, the remov
                 p.write_text(text.replace(f'title: "{old_t}"', f'title: "{new_t}"', 1), encoding="utf-8")
             count += 1
 
-    # 11. Refresh only malformed or explicitly stale overview rows, then add
-    #    only the navigation-backed omissions approved by the audit.
-    repair_overview_tables()
+    # 11. Reconstruct only reviewed chooser and removal-notice routes. Routes
+    #     with approved destinations are redirect-only and have no page file.
+    migration_targets = migration_manifest.targets
+    write_migration_pages(migration_manifest)
 
-    # 12. Restore post-tag toolkit cards that shipped in navigation without
+    # 12. Refresh only malformed or explicitly stale overview rows, then add
+    #    only the navigation-backed omissions approved by the audit.
+    repair_overview_tables(migration_targets)
+    if not CHECK or (would_apply == 0 and count == 0):
+        validate_migration_graph(migration_manifest)
+
+    # 13. Restore post-tag toolkit cards that shipped in navigation without
     #     corresponding entries in the hand-maintained complete index.
     repair_toolkit_index()
 
-    # 13. Preserve the reviewed byte-level terminal-newline convention after
+    # 14. Preserve the reviewed byte-level terminal-newline convention after
     #     deterministic reconstruction.
     normalize_terminal_newlines("tracing/db-functions.mdx")
     normalize_terminal_newlines("reference-api/schema/approvals/get-approval-count.mdx")
 
+    if not REFRESH_PRESERVE_BASELINE:
+        validate_external_oneoff_ownership()
+
     if CHECK:
         print(f"check: {would_apply} fixes would apply; title-casing would change {count} pages")
+        if would_apply or count:
+            raise SystemExit(1)
     else:
+        write_preserve_state(planned_preserve_hashes)
+        if REFRESH_PRESERVE_BASELINE:
+            write_preserve_baseline(planned_preserve_hashes)
         print(f"one-offs applied; title-casing fixed on {count} additional pages")
 
 

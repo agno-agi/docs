@@ -53,32 +53,33 @@ from datetime import datetime
 from agno.agent import Agent
 from agno.models.anthropic import Claude, SystemPromptBlock
 
-blocks = [
-    # Static instructions, cached for 1 hour
-    SystemPromptBlock(
-        text="You are a senior software architect. Give concise, opinionated advice.",
-        cache=True,
-        ttl="1h",
-    ),
-    # Dynamic per-request context, never cached
-    SystemPromptBlock(
-        text=f"Current time: {datetime.now().isoformat()}",
-        cache=False,
-    ),
-]
+def get_system_prompt_blocks():
+    return [
+        # Static instructions, cached for 1 hour
+        SystemPromptBlock(
+            text="You are a senior software architect. Give concise, opinionated advice.",
+            cache=True,
+            ttl="1h",
+        ),
+        # Dynamic per-request context, never cached
+        SystemPromptBlock(
+            text=f"Current time: {datetime.now().isoformat()}",
+            cache=False,
+        ),
+    ]
 
 agent = Agent(
     model=Claude(
         id="claude-sonnet-4-5-20250929",
         cache_system_prompt=True,
         extended_cache_time=True,
-        system_prompt_blocks=blocks,
+        system_prompt_blocks=get_system_prompt_blocks,
     ),
     markdown=True,
 )
 ```
 
-Blocks are appended after the agent-built system message in the Anthropic `system` array. `system_prompt_blocks` may also be a zero-arg callable that returns the list, evaluated on every request, which is how you inject dynamic content into a cached prompt without reinstantiating the model.
+Blocks are appended after the agent-built system message in the Anthropic `system` array. Pass a zero-argument callable to evaluate dynamic blocks on every request without reinstantiating the model. See [Prompt Caching With a Dynamic Block](/examples/models/anthropic/prompt-caching-with-dynamic-block).
 
 | `SystemPromptBlock` field | Type | Default | Description |
 |---------------------------|------|---------|-------------|
@@ -123,7 +124,7 @@ system_message = txt_path.read_text()
 
 agent = Agent(
     model=Claude(
-        id="claude-sonnet-4-20250514",
+        id="claude-sonnet-4-6",
         cache_system_prompt=True,  # Activate prompt caching for Anthropic to cache the system prompt
     ),
     system_message=system_message,

@@ -1,0 +1,126 @@
+---
+title: Multi-Replica Deployments
+description: "QueueConfig(redis=...) sets the event stream and cancellation manager on every replica so runs can be resumed and cancelled from any of them."
+---
+
+```python
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIResponses
+from agno.os import AgentOS, QueueConfig
+
+db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+agent = Agent(
+    name="Resumable Stream Agent",
+    id="resumable-stream-agent",
+    model=OpenAIResponses(id="gpt-5.5"),
+    db=db,
+)
+
+agent_os = AgentOS(
+    agents=[agent],
+    db=db,
+    queue=QueueConfig(
+        durable=True,
+        redis="redis://localhost:6379",
+    ),
+)
+app = agent_os.get_app()
+```
+
+```bash
+pip install "agno[os]" openai psycopg redis
+```
+
+Set `redis` exactly when you run more than one replica. With one replica, in-process defaults do the same job.
+
+## One setting, two managers
+
+`queue.redis` sets **both** the event stream and the cancellation manager on every replica that constructs `AgentOS(...)`. No other wiring is needed.
+
+| Manager | Direction | Default | Set by `queue.redis` to | Explicit setter |
+|---------|-----------|---------|--------------------------|-----------------|
+| Event stream (`BaseEventStream`) | Events **out**: the executing worker publishes run events; any replica can tail or replay them for `/resume`, streaming submissions, and continues. | `InMemoryEventStream` | `RedisEventStream` | `set_event_stream()` or `AgentOS(event_stream=...)` |
+| Cancellation manager (`BaseRunCancellationManager`) | Cancel **in**: a `/cancel` received by any replica is recorded in Redis; the executing worker sees it at its next checkpoint. | In-memory | `RedisRunCancellationManager` | `set_cancellation_manager()` |
+
+A background run started on replica A may execute on replica B while the client's next request lands on replica C. Both directions have to cross replica boundaries. Configuring only one is a common misconfiguration: cancels reach every replica while resumed streams idle on the wrong one, or the reverse. One setting covers both so that cannot happen by accident.
+
+In v2, cross-replica cancellation meant constructing `RedisRunCancellationManager` yourself and calling `set_cancellation_manager()` in every process, and the event buffer had no shared backend at all.
+
+```python
+# v2: cancellation only, wired by hand in every process
+from agno.run.cancel import set_cancellation_manager
+from agno.run.cancellation_management.redis_cancellation_manager import RedisRunCancellationManager
+
+set_cancellation_manager(RedisRunCancellationManager(redis_client=..., async_redis_client=...))
+
+# v3: event stream and cancellation manager, from one setting
+agent_os = AgentOS(agents=[agent], db=db, queue=QueueConfig(redis="redis://localhost:6379"))
+```
+
+An explicit setter still wins for either manager. `queue.redis` only replaces defaults, never a backend you installed yourself, so a [custom cancellation manager](/examples/agents/advanced/custom-cancellation-manager) or an `AgentOS(event_stream=...)` override keeps working. If exactly one of the two is explicit, AgentOS logs a warning that cancellation and events may ride different Redis instances. Keys are namespaced under `{key_prefix}:run:cancellation:` and `{key_prefix}:os:events:` when `key_prefix` is set.
+
+Start a streaming run against one replica, then call `/resume` on another. Events replay and tail from Redis regardless of which replica executes the run.
+
+## Two Redis roles
+
+`queue.redis` and `db=RedisDb(...)` are different settings with different requirements.
+
+| Setting | Role | Persistence | What a Redis fault costs |
+|---------|------|-------------|--------------------------|
+| `QueueConfig(redis=...)` | Coordination: event streams, cancel signals | None needed. Keys carry TTLs and are rebuilt from the database. | The live view degrades. Runs still execute and complete. Nothing is corrupted or stranded. |
+| `QueueConfig(db=RedisDb(...))` | Job storage: the queue table itself | AOF with `appendfsync everysec` or `always`. | Recently accepted jobs can be lost on a Redis crash under default RDB snapshotting. |
+
+A common production layout is Postgres for `db` (truth and jobs) and a plain Redis or Valkey for `redis` (coordination). Pointing both at one Redis works, as in the [Redis event stream cookbook](https://github.com/agno-agi/agno/blob/feat/v3.0/cookbook/05_agent_os/background_tasks/redis_event_stream.py), but the persistence requirement then applies to it.
+
+## Connection options
+
+Pass a URL for the common case, or `RedisCoordination` to inject clients:
+
+```python
+from redis import Redis
+from redis.asyncio import Redis as AsyncRedis
+
+from agno.os import QueueConfig, RedisCoordination
+
+queue = QueueConfig(
+    durable=True,
+    redis=RedisCoordination(
+        sync_client=Redis.from_url("redis://localhost:6379"),
+        async_client=AsyncRedis.from_url("redis://localhost:6379"),
+        key_prefix="checkout-os",
+    ),
+)
+```
+
+| Field | Description |
+|-------|-------------|
+| `url` | Redis URL. Clients are constructed for you. |
+| `sync_client`, `async_client` | Existing clients. Both are required together. The cancellation manager needs both; the event stream uses the async one. |
+| `key_prefix` | Namespace for every coordination key. Set a per-deployment value when several AgentOS deployments share one Redis. With the default, they read each other's runs by `run_id`. |
+
+Valkey works anywhere Redis does. A `RedisCluster` client is rejected for the queue store.
+
+## Stream retention
+
+Per-run stream keys expire 30 minutes after the last activity, refreshed while the run is live. Each stream keeps roughly the most recent 10,000 events. A client that reconnects after expiry gets the persisted events from the database through `/resume` with `session_id`, not the live tail.
+
+## Without Redis on multiple replicas
+
+Durable execution still works: jobs live in the database and any replica can claim them. The live view does not. A streaming submission accepted on replica A whose job is claimed by replica B produces a tail that idles until the client times out, even though the run completes. AgentOS logs this at startup:
+
+```
+Durable queue with the in-memory event stream: streamed views of queued runs
+are replica-local. ... Set queue.redis to wire a shared event stream.
+```
+
+Polling is unaffected, because the run row is in the database.
+
+## Next Steps
+
+| Task | Guide |
+|------|-------|
+| Pin jobs to a subset of replicas | [Deployment affinity](/agent-os/background-execution/operations#deployment-affinity) |
+| Keep timing settings consistent across the fleet | [Fleet-wide settings](/agent-os/background-execution/operations#fleet-wide-settings) |
+| SSE resume protocol and meta events | [Background Execution (SDK)](/background-execution/overview) |

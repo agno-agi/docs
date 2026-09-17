@@ -1,12 +1,12 @@
 ---
-title: "Product Copilots & Agents"
+title: "Customer-Facing Agents"
 sidebarTitle: "Overview"
-description: "Embed agents in your product with REST endpoints, persistent user state, knowledge, and interfaces."
+description: "Build one agent for your product and serve it inside your product, through Claude and ChatGPT, and in messaging interfaces."
 ---
 
-Product engineering teams embed agents so customers can ask questions, work with their data, and take action inside the application. AgentOS gives these teams 80+ REST endpoints for running agents and managing sessions, memory, knowledge, traces, evaluations, and approvals. The same backend can power chat, inline actions, background jobs, and messaging interfaces while keeping user state in one database.
+Customer-facing agents let customers ask questions, work with their data, and take action through your product. Build one agent with tools for product actions and instructions that encode your product's rules and policies. AgentOS can serve that agent inside your product, through Claude and ChatGPT as an MCP connector, and in Slack or other messaging interfaces.
 
-```python copilot.py
+```python customer_agent.py
 from agno.agent import Agent
 from agno.db.postgres import PostgresDb
 from agno.models.openai import OpenAIResponses
@@ -15,7 +15,7 @@ from agno.os import AgentOS
 db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
 
 agent = Agent(
-    name="Product Copilot",
+    name="Customer-Facing Agent",
     model=OpenAIResponses(id="gpt-5.5"),
     db=db,
     add_history_to_context=True,
@@ -27,18 +27,19 @@ agent_os = AgentOS(agents=[agent], db=db)
 app = agent_os.get_app()
 
 if __name__ == "__main__":
-    agent_os.serve(app="copilot:app", port=7777)
+    agent_os.serve(app="customer_agent:app", port=7777)
 ```
 
 This configuration provides an HTTP API, persistent multi-turn history, and per-user memory. Authentication is disabled until you enable it. See [Serve as an API](/use-cases/product-agents/serve-as-an-api#auth) for JWT authorization and opt-in per-user isolation.
 
-## How product surfaces connect
+## Serve one agent across surfaces
 
-The agent runs in your AgentOS as a service. Every product surface is a client that calls it over HTTP.
+The agent runs in your AgentOS as a service. Product interfaces, MCP clients, messaging interfaces, and backend jobs connect to the same agent.
 
 | Surface | How it reaches the agent |
 |---------|--------------------------|
-| In-app copilot panel | `POST /agents/{agent_id}/runs` with `user_id` and a per-thread `session_id` |
+| In-product chat | `POST /agents/{agent_id}/runs` with `user_id` and a per-thread `session_id` |
+| Claude and ChatGPT | With MCP configured, [AgentOS MCP Server](/features/mcp-server) publishes the agent as a natural-language tool at `/mcp` |
 | Inline action ("summarize this", "draft a reply") | The same endpoint, a short-lived `session_id` |
 | Slack / Telegram / WhatsApp | An interface adapter maps the channel onto runs and sessions |
 | Backend event (webhook, cron) | A custom FastAPI route calling `agent.arun(...)` |
@@ -49,7 +50,8 @@ Stored memory can follow a user when surfaces call the same agent with the same 
 
 | You have | You want | Start with |
 |----------|----------|------------|
-| A B2B SaaS product | JWT authentication and opt-in per-user isolation | [Serve as an API](/use-cases/product-agents/serve-as-an-api) |
+| A SaaS product with customer accounts | JWT authentication and opt-in per-user isolation | [Serve as an API](/use-cases/product-agents/serve-as-an-api) |
+| Users in Claude or ChatGPT | Your agent published as an MCP tool | [AgentOS MCP Server](/features/mcp-server) |
 | Users in Slack or the browser | The same agent where they already work | [Interfaces](/use-cases/product-agents/interfaces) |
 | An indexed document corpus | Answers grounded in retrieved content | [Knowledge agents](/use-cases/knowledge-agents) |
 | Live systems such as Slack, Drive, or databases | Current records queried at run time | [Connecting your data](/use-cases/product-agents/connecting-your-data) |

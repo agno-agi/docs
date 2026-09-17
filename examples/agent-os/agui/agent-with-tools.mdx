@@ -1,0 +1,136 @@
+---
+title: "Use Backend and Frontend Tools over AG-UI"
+description: "Expose one server-side weather tool and accept a browser-side change_background tool supplied in an AG-UI request."
+source: cookbook/05_agent_os/16_agui/agent_with_tools.py
+---
+
+Expose one server-side weather tool and accept a browser-side change_background tool supplied in an AG-UI request. Frontend tools pause for external execution; backend tools execute in Python.
+
+```python agent_with_tools.py
+"""
+Use Backend and Frontend Tools over AG-UI
+=========================================
+
+Expose one server-side weather tool and accept a browser-side
+change_background tool supplied in an AG-UI request. Frontend tools pause for
+external execution; backend tools execute in Python.
+
+Prerequisites: OPENAI_API_KEY
+Run: .venvs/demo/bin/python cookbook/05_agent_os/16_agui/agent_with_tools.py
+Try: POST "Check the weather in London" or supply change_background to /tools/agui
+"""
+
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIResponses
+from agno.os import AgentOS
+from agno.os.interfaces.agui import AGUI
+from agno.tools import tool
+
+# ---------------------------------------------------------------------------
+# Create Backend Tool and AG-UI Agent
+# ---------------------------------------------------------------------------
+
+
+@tool
+def get_weather(location: str) -> dict:
+    """Get representative weather data for a city."""
+    weather = {
+        "London": {
+            "city": "London",
+            "temperature_c": 15,
+            "humidity_percent": 80,
+            "conditions": "Overcast",
+        },
+        "Tokyo": {
+            "city": "Tokyo",
+            "temperature_c": 26,
+            "humidity_percent": 70,
+            "conditions": "Rainy",
+        },
+    }
+    return weather.get(
+        location,
+        {
+            "city": location,
+            "temperature_c": 20,
+            "humidity_percent": 60,
+            "conditions": "Partly cloudy",
+        },
+    )
+
+
+db = SqliteDb(
+    id="agui-tools-db",
+    db_file="tmp/agui_tools.db",
+)
+
+tools_agent = Agent(
+    id="agui-tools-agent",
+    name="AG-UI Tools Agent",
+    model=OpenAIResponses(id="gpt-5.5"),
+    db=db,
+    tools=[get_weather],
+    instructions=[
+        "Use get_weather for weather questions.",
+        (
+            "A connected frontend may provide a change_background tool. "
+            "When it is available and the user asks for a background change, "
+            "call it with a CSS color or gradient."
+        ),
+        "Briefly summarize completed tool work.",
+    ],
+)
+
+agent_os = AgentOS(
+    id="agui-tools-os",
+    description="AG-UI with server tools and request-scoped frontend tools.",
+    agents=[tools_agent],
+    interfaces=[AGUI(agent=tools_agent, prefix="/tools")],
+)
+app = agent_os.get_app()
+
+# ---------------------------------------------------------------------------
+# Run Tools Server
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    agent_os.serve(app=app)
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U "agno[agui,os]" openai
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the example">
+    Save the code above as `agent_with_tools.py`, then run:
+    ```bash
+    python agent_with_tools.py
+    ```
+  </Step>
+
+  <Step title="Run Dojo">
+    Follow the [AG-UI frontend setup](/agent-os/interfaces/ag-ui/introduction) to clone, build, and start Dojo. Configure the Agno endpoint as `http://localhost:7777/tools/agui`, provide a request-scoped `change_background` frontend tool, then ask the agent to change the background.
+  </Step>
+</Steps>
+
+Full source: [cookbook/05_agent_os/16_agui/agent_with_tools.py](https://github.com/agno-agi/agno/blob/v3.0.4/cookbook/05_agent_os/16_agui/agent_with_tools.py)

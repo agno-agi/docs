@@ -1,352 +1,171 @@
 ---
 title: "Approval Team"
-description: "Three patterns for team approvals: tool on the team, on the member, or on both."
+description: "Team-level approval: member agent tool with @approval."
+source: cookbook/02_agents/11_approvals/approval_team.py
 ---
 
-An `@approval` tool can live on the team, on a member agent, or on both. Each placement produces a different pause flow.
-
-| Case | Placement | Pause behavior |
-| --- | --- | --- |
-| Team-level | Team | One pause when the team calls the tool. |
-| Member-level | Member agent | One pause when the member calls the tool. The team pauses with it. |
-| Both | Team and member | Two pauses, two separate admin approvals. |
-
-After starting an example, [connect the AgentOS UI](/agent-os/connect-your-os) to `http://localhost:7777` and start a team run. When the run pauses, open **Approvals**, complete any requested fields, approve the request, return to the run, and select **Continue Run**. Case 3 repeats the approval and continuation flow twice.
-
-<Tabs>
-  <Tab title="Team-level (Case 1)">
-```python team_level_approval.py
+```python approval_team.py
 """
-Team-Level Approval (Case 1)
+Approval Team
 =============================
 
-Approval tool lives on the team itself (not on a member agent).
-
-Flow:
-  1. User says "deploy payment to prod v2.5"
-  2. Team calls approve_deployment -> run pauses
-  3. Admin approves in Approvals page
-  4. User clicks Continue Run -> tool executes -> team responds
+Team-level approval: member agent tool with @approval.
 """
 
-from agno.approval import approval
-from agno.db.sqlite import SqliteDb
-from agno.models.openai import OpenAIResponses
-from agno.os import AgentOS
-from agno.team import Team
-from agno.tools import tool
-
-DB_FILE = "tmp/team_level_approval.db"
-
-session_db = SqliteDb(
-    db_file=DB_FILE, session_table="agent_sessions", approvals_table="approvals"
-)
-
-
-@approval(type="required")
-@tool(
-    name="approve_deployment",
-    description="Request human approval to deploy a service.",
-    requires_confirmation=True,
-)
-def approve_deployment(service: str, environment: str, version: str) -> str:
-    return (
-        f"Deployment approved for service={service}, "
-        f"environment={environment}, version={version}"
-    )
-
-
-approval_team = Team(
-    id="team-level-approval",
-    name="Deployment Approval Team",
-    model=OpenAIResponses(id="gpt-5-mini"),
-    members=[],
-    tools=[approve_deployment],
-    instructions=[
-        "When the user asks to deploy, call approve_deployment with the service, environment, and version they provide.",
-        "Do not ask for extra confirmation in chat. Just call the tool.",
-    ],
-    add_history_to_context=True,
-    store_member_responses=True,
-    db=session_db,
-    telemetry=False,
-)
-
-agent_os = AgentOS(
-    id="team-level-approval-demo",
-    description="Team-level approval: the team has a tool that requires admin approval before executing",
-    teams=[approval_team],
-    db=session_db,
-)
-
-app = agent_os.get_app()
-
-if __name__ == "__main__":
-    agent_os.serve(app="team_level_approval:app", port=7777, reload=True)
-```
-
-### Run the Example
-```bash
-# Clone and set up the repo
-git clone https://github.com/agno-agi/agno.git
-cd agno
-
-# Create and activate the demo virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
-
-export OPENAI_API_KEY="your_openai_api_key_here"
-
-python cookbook/05_agent_os/approvals/team/team_level_approval.py
-```
-  </Tab>
-  <Tab title="Member-level (Case 2)">
-```python member_agent_level_approval.py
-"""
-Member-Level Approval (Case 2)
-===============================
-
-Approval tool lives on the member agent. The team has no approval tools.
-
-Flow:
-  1. User says "deploy services"
-  2. Team delegates to Deployment Spec Collector member
-  3. Member calls collect_deployment_specs -> member pauses -> team pauses
-  4. User fills in the form fields (service, environment, version)
-  5. Admin approves in Approvals page
-  6. User clicks Continue Run -> member tool executes -> member returns result -> team responds
-"""
-
-from typing import Optional
+import os
+import time
 
 from agno.agent import Agent
 from agno.approval import approval
 from agno.db.sqlite import SqliteDb
 from agno.models.openai import OpenAIResponses
-from agno.os import AgentOS
-from agno.team import Team
+from agno.team.team import Team
 from agno.tools import tool
 
-DB_FILE = "tmp/member_level_approval.db"
+DB_FILE = "tmp/approvals_team_test.db"
 
-session_db = SqliteDb(
-    db_file=DB_FILE, session_table="agent_sessions", approvals_table="approvals"
+
+@approval
+@tool(requires_confirmation=True)
+def deploy_to_production(app_name: str, version: str) -> str:
+    """Deploy an application to production.
+
+    Args:
+        app_name (str): Name of the application.
+        version (str): Version to deploy.
+    """
+    return f"Successfully deployed {app_name} v{version} to production"
+
+
+# ---------------------------------------------------------------------------
+# Create Agent
+# ---------------------------------------------------------------------------
+db = SqliteDb(
+    db_file=DB_FILE, session_table="team_sessions", approvals_table="approvals"
 )
 
-
-@approval(type="required")
-@tool(
-    name="collect_deployment_specs",
-    description="Collect deployment fields from the user via a form.",
-    requires_user_input=True,
-    user_input_fields=["service", "environment", "version"],
-)
-def collect_deployment_specs(
-    service: Optional[str] = None,
-    environment: Optional[str] = None,
-    version: Optional[str] = None,
-) -> str:
-    return (
-        f"Deployment specs collected: "
-        f"service={service}, environment={environment}, version={version}"
-    )
-
-
-spec_collector = Agent(
-    name="Deployment Spec Collector",
+deploy_agent = Agent(
+    name="Deploy Agent",
+    role="Handles deployments to production",
     model=OpenAIResponses(id="gpt-5-mini"),
-    tools=[collect_deployment_specs],
-    instructions=[
-        "Call collect_deployment_specs to gather deployment details from the user.",
-        "Always call it even if the user provided some values. Pass known values and None for missing ones.",
-        "After the tool returns, output only the final values in one short line.",
-    ],
-    telemetry=False,
+    tools=[deploy_to_production],
 )
 
-approval_team = Team(
-    id="member-level-approval",
-    name="Deployment Team",
+team = Team(
+    name="DevOps Team",
+    members=[deploy_agent],
     model=OpenAIResponses(id="gpt-5-mini"),
-    members=[spec_collector],
-    tools=[],
-    instructions=[
-        "Delegate to Deployment Spec Collector to gather deployment specs from the user.",
-        "After the member returns, summarize the collected values.",
-    ],
-    add_history_to_context=True,
-    store_member_responses=True,
-    db=session_db,
-    telemetry=False,
+    db=db,
 )
 
-agent_os = AgentOS(
-    id="member-level-approval-demo",
-    description="Member-level approval: a member agent has a tool that requires admin approval",
-    agents=[spec_collector],
-    teams=[approval_team],
-    db=session_db,
-)
-
-app = agent_os.get_app()
-
+# ---------------------------------------------------------------------------
+# Run Agent
+# ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    agent_os.serve(app="member_agent_level_approval:app", port=7777, reload=True)
-```
+    # Clean up from previous runs
+    if os.path.exists(DB_FILE):
+        os.remove(DB_FILE)
+    os.makedirs("tmp", exist_ok=True)
 
-### Run the Example
-```bash
-# Clone and set up the repo
-git clone https://github.com/agno-agi/agno.git
-cd agno
-
-# Create and activate the demo virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
-
-export OPENAI_API_KEY="your_openai_api_key_here"
-
-python cookbook/05_agent_os/approvals/team/member_agent_level_approval.py
-```
-  </Tab>
-  <Tab title="Team + Member (Case 3)">
-```python team_and_member_agent_both_level_approval.py
-"""
-Both Member + Team Level Approval (Case 3)
-============================================
-
-Approval tools on both the member agent AND the team.
-This creates a two-pause flow with two separate admin approvals.
-
-Flow:
-  1. User says "deploy services"
-  2. Team delegates to Deployment Spec Collector member
-  3. Member calls collect_deployment_specs -> member pauses -> team pauses (PAUSE 1)
-  4. User fills in the form, admin approves
-  5. User clicks Continue Run -> member tool executes -> member returns values to team
-  6. Team calls approve_deployment with the collected values -> team pauses (PAUSE 2)
-  7. Admin approves in Approvals page
-  8. User clicks Continue Run -> team tool executes -> team responds with final result
-"""
-
-from typing import Optional
-
-from agno.agent import Agent
-from agno.approval import approval
-from agno.db.sqlite import SqliteDb
-from agno.models.openai import OpenAIResponses
-from agno.os import AgentOS
-from agno.team import Team
-from agno.tools import tool
-
-DB_FILE = "tmp/both_level_approval.db"
-
-session_db = SqliteDb(
-    db_file=DB_FILE, session_table="agent_sessions", approvals_table="approvals"
-)
-
-
-# --- Member agent tool: collects deployment specs via user input form ---
-
-
-@approval(type="required")
-@tool(
-    name="collect_deployment_specs",
-    description="Collect deployment fields from the user via a form.",
-    requires_user_input=True,
-    user_input_fields=["service", "environment", "version"],
-)
-def collect_deployment_specs(
-    service: Optional[str] = None,
-    environment: Optional[str] = None,
-    version: Optional[str] = None,
-) -> str:
-    return (
-        f"Deployment specs collected: "
-        f"service={service}, environment={environment}, version={version}"
+    # Re-create after cleanup
+    db = SqliteDb(
+        db_file=DB_FILE, session_table="team_sessions", approvals_table="approvals"
+    )
+    deploy_agent = Agent(
+        name="Deploy Agent",
+        role="Handles deployments to production",
+        model=OpenAIResponses(id="gpt-5-mini"),
+        tools=[deploy_to_production],
+    )
+    team = Team(
+        name="DevOps Team",
+        members=[deploy_agent],
+        model=OpenAIResponses(id="gpt-5-mini"),
+        db=db,
     )
 
+    # Step 1: Run - team will pause
+    print("--- Step 1: Running team (expects pause) ---")
+    response = team.run("Deploy the payments app version 2.1 to production")
+    print(f"Team run status: {response.status}")
+    assert response.is_paused, f"Expected paused, got {response.status}"
+    print("Team paused as expected.")
 
-# --- Team tool: requires confirmation before deploying ---
+    # Step 2: Check approval record
+    print("\n--- Step 2: Checking approval record in DB ---")
+    approvals_list, total = db.get_approvals(status="pending")
+    print(f"Pending approvals: {total}")
+    assert total >= 1, f"Expected at least 1 pending approval, got {total}"
+    approval_record = approvals_list[0]
+    print(f"  Approval ID:  {approval_record['id']}")
+    print(f"  Source type:   {approval_record['source_type']}")
+    print(f"  Source name:   {approval_record.get('source_name')}")
+    print(f"  Context:       {approval_record.get('context')}")
 
+    # Step 3: Confirm and continue
+    print("\n--- Step 3: Confirming and continuing ---")
+    for req in response.requirements:
+        if req.needs_confirmation:
+            print(
+                f"  Confirming tool: {req.tool_execution.tool_name}({req.tool_execution.tool_args})"
+            )
+            req.confirm()
 
-@approval(type="required")
-@tool(
-    name="approve_deployment",
-    description="Request human approval to deploy a service. Call after collecting specs from the member.",
-    requires_confirmation=True,
-)
-def approve_deployment(service: str, environment: str, version: str) -> str:
-    return (
-        f"Deployment approved for service={service}, "
-        f"environment={environment}, version={version}"
+    response = team.continue_run(response)
+    print(f"Team run status after continue: {response.status}")
+
+    # Step 4: Resolve approval in DB
+    print("\n--- Step 4: Resolving approval in DB ---")
+    resolved = db.update_approval(
+        approval_record["id"],
+        expected_status="pending",
+        status="approved",
+        resolved_by="devops_lead",
+        resolved_at=int(time.time()),
     )
+    assert resolved is not None, "Approval resolution failed"
+    print(f"  Resolved status: {resolved['status']}")
+    print(f"  Resolved by:     {resolved['resolved_by']}")
 
+    # Step 5: Verify
+    print("\n--- Step 5: Verifying no pending approvals ---")
+    count = db.get_pending_approval_count()
+    print(f"Remaining pending approvals: {count}")
+    assert count == 0
 
-spec_collector = Agent(
-    name="Deployment Spec Collector",
-    model=OpenAIResponses(id="gpt-5-mini"),
-    tools=[collect_deployment_specs],
-    instructions=[
-        "Call collect_deployment_specs to gather deployment details from the user.",
-        "Always call it even if the user provided some values. Pass known values and None for missing ones.",
-        "After the tool returns, output only the final values in one short line.",
-    ],
-    telemetry=False,
-)
-
-approval_team = Team(
-    id="both-level-approval",
-    name="Deployment Approval Team",
-    model=OpenAIResponses(id="gpt-5-mini"),
-    members=[spec_collector],
-    tools=[approve_deployment],
-    instructions=[
-        "Delegate to Deployment Spec Collector first to gather specs via its form.",
-        "Once the member returns service, environment, and version, call approve_deployment immediately.",
-        "Do not ask for extra confirmation in chat. Use the tools.",
-    ],
-    add_history_to_context=True,
-    store_member_responses=True,
-    db=session_db,
-    telemetry=False,
-)
-
-agent_os = AgentOS(
-    id="both-level-approval-demo",
-    description="Both-level approval: member collects specs (approval 1), team approves deployment (approval 2)",
-    agents=[spec_collector],
-    teams=[approval_team],
-    db=session_db,
-)
-
-app = agent_os.get_app()
-
-if __name__ == "__main__":
-    agent_os.serve(
-        app="team_and_member_agent_both_level_approval:app", port=7777, reload=True
-    )
+    print("\n--- All checks passed! ---")
+    print(f"\nTeam output: {response.content}")
 ```
 
-### Run the Example
-```bash
-# Clone and set up the repo
-git clone https://github.com/agno-agi/agno.git
-cd agno
+## Run the Example
 
-# Create and activate the demo virtual environment
-./scripts/demo_setup.sh
-source .venvs/demo/bin/activate
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
 
-export OPENAI_API_KEY="your_openai_api_key_here"
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U agno openai sqlalchemy
+    ```
+  </Step>
 
-python cookbook/05_agent_os/approvals/team/team_and_member_agent_both_level_approval.py
-```
-  </Tab>
-</Tabs>
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
 
-## Developer Resources
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
 
-- [Team-level approval source](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/approvals/team/team_level_approval.py)
-- [Member-level approval source](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/approvals/team/member_agent_level_approval.py)
-- [Team and member approval source](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/approvals/team/team_and_member_agent_both_level_approval.py)
+  <Step title="Run the example">
+    Save the code above as `approval_team.py`, then run:
+    ```bash
+    python approval_team.py
+    ```
+  </Step>
+</Steps>
+
+Full source: [cookbook/02_agents/11_approvals/approval_team.py](https://github.com/agno-agi/agno/blob/v3.0.4/cookbook/02_agents/11_approvals/approval_team.py)

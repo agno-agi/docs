@@ -4,7 +4,7 @@ sidebarTitle: RemoteAgent
 description: Execute agents hosted on a remote AgentOS instance.
 ---
 
-`RemoteAgent` allows you to run agents that are hosted on a remote AgentOS instance. It provides the same interface as a local agent, making it easy to integrate remote agents into your applications or compose them into teams and workflows.
+`RemoteAgent` provides an asynchronous network interface to an agent hosted by AgentOS or an A2A-compatible server. Use `arun()` for streaming or non-streaming execution. The AgentOS protocol also supports `acontinue_run()` and `acancel_run()`. Synchronous `Agent` methods such as `run()` and `print_response()` are unavailable.
 
 ## Installation
 
@@ -75,13 +75,14 @@ print(agent.role())  # "assistant"
 
 ### `tools`
 
-Returns the agent's tools as a list of dictionaries.
+In Agno v3.0.4, the `tools` property returns `None` for the normal AgentOS response shape. Read the materialized tool list from the remote configuration instead:
 
 ```python
-tools = agent.tools
-if tools:
-    for tool in tools:
-        print(tool["name"])
+config = await agent.get_agent_config()
+tools = (config.tools or {}).get("tools", [])
+
+for tool in tools:
+    print(tool["name"])
 ```
 
 ### `db`
@@ -135,18 +136,18 @@ async for event in agent.arun(
 | `stream` | `bool` | `False` | Whether to stream the response |
 | `user_id` | `Optional[str]` | `None` | User ID for the run |
 | `session_id` | `Optional[str]` | `None` | Session ID for context persistence |
-| `session_state` | `Optional[Dict]` | `None` | Session state dictionary |
+| `session_state` | `Optional[Dict]` | `None` | Session state dictionary. AgentOS protocol only |
 | `images` | `Optional[Sequence[Image]]` | `None` | Images to include |
 | `audio` | `Optional[Sequence[Audio]]` | `None` | Audio to include |
 | `videos` | `Optional[Sequence[Video]]` | `None` | Videos to include |
 | `files` | `Optional[Sequence[File]]` | `None` | Files to include |
-| `stream_events` | `Optional[bool]` | `None` | Whether to stream events |
-| `retries` | `Optional[int]` | `None` | Number of retries |
-| `knowledge_filters` | `Optional[Dict]` | `None` | Filters for knowledge search |
-| `add_history_to_context` | `Optional[bool]` | `None` | Add history to context |
-| `dependencies` | `Optional[Dict]` | `None` | Dependencies dictionary |
-| `add_dependencies_to_context` | `Optional[bool]` | `None` | Add dependencies to context |
-| `add_session_state_to_context` | `Optional[bool]` | `None` | Add session state to context |
+| `stream_events` | `Optional[bool]` | `None` | Whether to stream events. AgentOS protocol only |
+| `retries` | `Optional[int]` | `None` | Number of retries. AgentOS protocol only |
+| `knowledge_filters` | `Optional[Dict]` | `None` | Filters for knowledge search. AgentOS protocol only |
+| `add_history_to_context` | `Optional[bool]` | `None` | Add history to context. AgentOS protocol only |
+| `dependencies` | `Optional[Dict]` | `None` | Dependencies dictionary. AgentOS protocol only |
+| `add_dependencies_to_context` | `Optional[bool]` | `None` | Add dependencies to context. AgentOS protocol only |
+| `add_session_state_to_context` | `Optional[bool]` | `None` | Add session state to context. AgentOS protocol only |
 | `metadata` | `Optional[Dict]` | `None` | Metadata dictionary |
 | `auth_token` | `Optional[str]` | `None` | JWT token for authentication |
 
@@ -156,17 +157,20 @@ async for event in agent.arun(
 
 ### `acontinue_run`
 
-Continue a paused agent run with tool results.
+Continue a paused AgentOS run with completed requirements.
 
 ```python
 from agno.models.response import ToolExecution
+from agno.run.requirement import RunRequirement
 
 response = await agent.acontinue_run(
     run_id="run-123",
-    updated_tools=[
-        ToolExecution(
-            tool_call_id="call-1",
-            result="Tool result here",
+    requirements=[
+        RunRequirement(
+            tool_execution=ToolExecution(
+                tool_call_id="call-1",
+                result="Tool result here",
+            )
         )
     ],
 )
@@ -177,7 +181,7 @@ response = await agent.acontinue_run(
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `run_id` | `str` | Required | ID of the run to continue |
-| `updated_tools` | `Optional[List[ToolExecution]]` | `None` | Tool execution results |
+| `requirements` | `Optional[List[RunRequirement]]` | `None` | Completed requirements for paused tool calls |
 | `stream` | `bool` | `False` | Whether to stream the response |
 | `user_id` | `Optional[str]` | `None` | User ID |
 | `session_id` | `Optional[str]` | `None` | Session ID |
@@ -189,7 +193,7 @@ response = await agent.acontinue_run(
 
 ### `acancel_run`
 
-Cancel a running agent execution.
+Cancel a running AgentOS execution.
 
 ```python
 success = await agent.acancel_run(run_id="run-123")
@@ -280,6 +284,10 @@ async for event in agent.arun("Tell me a story", stream=True):
 | `"a2a"` | `"rest"` | Connect to A2A servers using REST endpoints |
 | `"a2a"` | `"json-rpc"` | Connect to Google ADK or pure JSON-RPC A2A servers |
 
+<Note>
+The A2A protocol supports streaming and non-streaming `arun()` calls. Run continuation and cancellation require the AgentOS protocol.
+</Note>
+
 ## Using in AgentOS Gateway
 
 Remote agents can be registered in a local AgentOS to create a gateway:
@@ -319,3 +327,5 @@ response = await agent.arun(
     auth_token="your-jwt-token",
 )
 ```
+
+In Agno v3.0.4, `auth_token` applies to run, continuation, and cancellation calls. Configuration and property fetches do not accept a token.

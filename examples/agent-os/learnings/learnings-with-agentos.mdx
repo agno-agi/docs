@@ -1,19 +1,20 @@
 ---
-title: "Server-side example for the learnings REST endpoints"
-description: "This sets up an AgentOS instance with a learning-enabled agent so that you can exercise the /learnings CRUD endpoints from a client (see rest_api_learnings.py)."
-source: cookbook/05_agent_os/learnings/learnings_with_agentos.py
+title: "Serve Agent Learning with AgentOS"
+description: "Serve a learning-enabled agent and the shared database that backs both its automatic user learning and the AgentOS /learnings CRUD routes."
+source: cookbook/05_agent_os/11_learnings/learnings_with_agentos.py
 ---
 
 ```python learnings_with_agentos.py
-"""Server-side example for the learnings REST endpoints.
+"""
+Serve Agent Learning with AgentOS
+=================================
 
-This sets up an AgentOS instance with a learning-enabled agent so that you can
-exercise the /learnings CRUD endpoints from a client (see rest_api_learnings.py).
+Serve a learning-enabled agent and the shared database that backs both its
+automatic user learning and the AgentOS /learnings CRUD routes.
 
-Run with:
-    .venvs/demo/bin/python cookbook/05_agent_os/learnings/learnings_with_agentos.py
-
-Then in another terminal, run rest_api_learnings.py to hit the endpoints.
+Prerequisites: OPENAI_API_KEY
+Run: .venvs/demo/bin/python cookbook/05_agent_os/11_learnings/learnings_with_agentos.py
+Try: Run rest_api_learnings.py from this folder in another terminal
 """
 
 from agno.agent import Agent
@@ -22,44 +23,49 @@ from agno.learn import LearningMachine
 from agno.models.openai import OpenAIResponses
 from agno.os import AgentOS
 
-db = SqliteDb(id="learnings-os-demo", db_file="tmp/learnings_os_demo.db")
+# ---------------------------------------------------------------------------
+# Create Learning-Enabled AgentOS
+# ---------------------------------------------------------------------------
+
+db = SqliteDb(
+    id="learnings-db",
+    db_file="tmp/learnings.db",
+)
 
 learning = LearningMachine(
     db=db,
-    model=OpenAIResponses(id="gpt-5.4"),
+    model=OpenAIResponses(id="gpt-5.5"),
     user_profile=True,
     user_memory=True,
     namespace="global",
 )
 
-assistant = Agent(
-    name="Assistant",
-    model=OpenAIResponses(id="gpt-5.4"),
-    instructions=["You are a helpful assistant. Use what you know about the user."],
+learning_assistant = Agent(
+    id="learning-assistant",
+    name="Learning Assistant",
+    model=OpenAIResponses(id="gpt-5.5"),
     db=db,
     learning=learning,
+    instructions=(
+        "Be concise and helpful. Use persistent user details when they are "
+        "relevant to the response."
+    ),
 )
 
 agent_os = AgentOS(
-    description="AgentOS exposing the /learnings CRUD endpoints",
-    agents=[assistant],
+    id="learnings-os",
+    description="AgentOS exposing agent learning and learning CRUD routes.",
+    db=db,
+    agents=[learning_assistant],
 )
 app = agent_os.get_app()
 
+# ---------------------------------------------------------------------------
+# Run Learnings Server
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    """Run the AgentOS.
-
-    The learnings endpoints will be available at:
-      GET    /learnings
-      POST   /learnings
-      GET    /learnings/{learning_id}
-      PATCH  /learnings/{learning_id}
-      DELETE /learnings/{learning_id}
-
-    See http://localhost:7777/docs for interactive OpenAPI docs.
-    """
-    agent_os.serve(app="learnings_with_agentos:app", reload=True)
+    agent_os.serve(app=app)
 ```
 
 ## Run the Example
@@ -93,4 +99,4 @@ if __name__ == "__main__":
   </Step>
 </Steps>
 
-Full source: [cookbook/05_agent_os/11_learnings/learnings_with_agentos.py](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/11_learnings/learnings_with_agentos.py)
+Full source: [cookbook/05_agent_os/11_learnings/learnings_with_agentos.py](https://github.com/agno-agi/agno/blob/v3.0.4/cookbook/05_agent_os/11_learnings/learnings_with_agentos.py)

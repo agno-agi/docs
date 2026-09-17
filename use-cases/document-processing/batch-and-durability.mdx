@@ -1,9 +1,9 @@
 ---
 title: "Batch and durability"
-description: "Bound concurrent batches, poll in-process background runs, and schedule AgentOS endpoints."
+description: "Bound concurrent batches, choose in-process or durable background runs, and schedule AgentOS endpoints."
 ---
 
-A single `agent.run(files=[File(...)])` handles one document. Folders, queues, and nightly drops also need concurrency limits, retry policy, and idempotent writes. The patterns below cover bounded async batches, in-process background runs, and scheduled AgentOS endpoints.
+A single `agent.run(files=[File(...)])` handles one document. Folders, queues, and nightly drops also need concurrency limits, retry policy, and idempotent writes. The patterns below cover bounded async batches, in-process background runs, durable AgentOS queues, and scheduled endpoints.
 
 ## Concurrent batch over a list
 
@@ -94,7 +94,57 @@ async def extract_long(file_url: str) -> Invoice:
     raise TimeoutError(f"Run {started.run_id} did not finish within 10 minutes")
 ```
 
-Content loaded from the database comes back as a plain dict, so validate it back into your schema. The database persists pending, running, and terminal state for polling. The work itself is an in-process asyncio task. If the process exits, Agno v2.7.2 does not resume that task from the database. Use a durable external queue or worker system when execution must survive process failure.
+Content loaded from the database comes back as a plain dict, so validate it back into your schema. The database persists pending, running, and terminal state for polling. The work itself is an in-process asyncio task. If the process exits, that direct `agent.arun()` task does not resume from the run record. Submit through an AgentOS durable queue when execution must survive process failure.
+
+## Durable background runs
+
+```python durable_intake.py
+from agno.agent import Agent
+from agno.db.postgres import PostgresDb
+from agno.models.openai import OpenAIResponses
+from agno.os import AgentOS, QueueConfig
+
+from your_schemas import Invoice
+
+db = PostgresDb(db_url="postgresql+psycopg://ai:ai@localhost:5532/ai")
+
+extractor = Agent(
+    id="invoice-extractor",
+    model=OpenAIResponses(id="gpt-5.5"),
+    db=db,
+    output_schema=Invoice,
+)
+
+agent_os = AgentOS(
+    agents=[extractor],
+    db=db,
+    queue=QueueConfig(
+        durable=True,
+        max_concurrency=8,
+        max_queue_depth=1000,
+        max_attempts=1,
+    ),
+)
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="durable_intake:app", port=7777)
+```
+
+In v3.0.4, the durable queue accepts runs that do not include uploaded files or media. Persist the document first, then send its URL or object key to an agent, team, or workflow whose code resolves that reference. Multipart file and media submissions use the in-process path. Use an external durable worker when the original upload must be the queued payload.
+
+For an extractor configured to resolve a stored URL, submit a non-streaming background run:
+
+```bash
+curl -X POST http://localhost:7777/agents/invoice-extractor/runs \
+  -F 'message=Process the invoice at s3://invoices/1042.pdf' \
+  -F 'background=true' \
+  -F 'stream=false'
+```
+
+AgentOS commits the accepted job to its database before returning `202`, and a live replica can claim queued work after a restart. The default `max_attempts=1` reports an interrupted claimed job as failed without silently repeating possible side effects. Set `max_attempts=2` or higher for automatic crash retries after making the target idempotent.
+
+Poll `/agents/invoice-extractor/runs/{run_id}?session_id={session_id}` for the result. See [Durable Queue](/examples/agent-os/background-tasks/durable-queue) for submission, polling, retry, and dead-letter operations.
 
 ## Scheduled batch with retries
 
@@ -148,14 +198,14 @@ if __name__ == "__main__":
     agent_os.serve(app="scheduled_intake:app", port=7777)
 ```
 
-`if_exists="update"` updates a schedule found by name instead of creating another schedule. The lookup and write are not atomic, and v2.7.2 does not place a unique constraint on schedule names. Run schedule bootstrap once when multiple application workers can start concurrently. The option also does not make the scheduled endpoint idempotent. The executor retries failed HTTP or run attempts with the configured delay, and each attempt writes a row to `agno_schedule_runs`.
+`if_exists="update"` updates a schedule found by name instead of creating another schedule. Agno v3.0.4 enforces schedule-name uniqueness per owner. The lookup and write are separate operations, so simultaneous first-time creation can still race and one insert can fail with a uniqueness error. Run schedule bootstrap once or retry that conflict when multiple application workers can start concurrently. The option also does not make the scheduled endpoint idempotent. The executor retries failed HTTP or run attempts with the configured delay, and each attempt writes a row to `agno_schedule_runs`.
 
 <Warning>
   Make the endpoint idempotent before enabling retries. A response or polling failure can cause another attempt after the target already performed a side effect.
 </Warning>
 
 <Warning>
-  In Agno v2.7.2, a scheduler claim becomes stale after 300 seconds and the executor does not refresh the lock. A schedule that runs longer than five minutes can be claimed again. Keep the target idempotent and use an external scheduler or queue for long-running jobs.
+  In Agno v3.0.4, a scheduler claim becomes stale after 300 seconds and the executor does not refresh the lock. A schedule that runs longer than five minutes can be claimed again. Keep the target idempotent and use an external scheduler or queue for long-running jobs.
 </Warning>
 
 ## Pattern comparison
@@ -164,6 +214,7 @@ if __name__ == "__main__":
 |---------|----------------------|------------------|
 | `asyncio.gather` over `agent.arun` | One-time backfill, a fixed list of files | One process, end-to-end |
 | `agent.arun(background=True)` + poll | Single long document without blocking the caller | Task in the current process; status in `db` |
+| `AgentOS(queue=QueueConfig(durable=True))` | Background runs that must survive restarts or move across replicas | Job and run state in `db`; worker in any live replica |
 | `AgentOS(scheduler=True)` + `ScheduleManager` | Recurring intake (nightly, hourly) | Poller and execution in AgentOS; schedule and attempts in `db` |
 | `Workflow` with `Loop` / `Parallel` steps | Multi-step pipelines per document | Either ad-hoc or scheduled |
 
@@ -201,6 +252,6 @@ Failed attempts keep their error text. Retries are separate rows with the same `
 
 ## Developer Resources
 
-- [Scheduler cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/05_agent_os/12_scheduler)
-- [Background execution cookbook](https://github.com/agno-agi/agno/blob/main/cookbook/02_agents/14_advanced/background_execution.py)
-- [Workflows cookbook](https://github.com/agno-agi/agno/tree/main/cookbook/04_workflows)
+- [Scheduler cookbook](https://github.com/agno-agi/agno/tree/v3.0.4/cookbook/05_agent_os/12_scheduler)
+- [Background execution cookbook](https://github.com/agno-agi/agno/blob/v3.0.4/cookbook/02_agents/14_advanced/background_execution.py)
+- [Workflows cookbook](https://github.com/agno-agi/agno/tree/v3.0.4/cookbook/04_workflows)

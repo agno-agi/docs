@@ -43,24 +43,10 @@ git push
 
 ## How to generate a new API reference
 
-1. In your local `agno` repo, run the `AgentOS` cookbook containing all supported interfaces, using the latest version of Agno.
-   ```bash
-   python cookbook/05_agent_os/interfaces/all_interfaces.py
-   ```
-
-2. Download the latest API reference files:
-   ```bash
-   curl -o reference-api/openapi.json http://localhost:7777/openapi.json
-   ```
-   Using swagger-cli to create openapi.yaml counterpart:
-   ```bash
-   swagger-cli bundle reference-api/openapi.json --outfile reference-api/openapi.yaml --type yaml
-   ```
-
-3. Delete all files in the `reference-api/schema/` folder (the auto-generated files)
-4. Run `npx @mintlify/scraping@latest openapi-file reference-api/openapi.json -o reference-api/schema` to generate the new API reference
-5. Update the `docs.json` file to include any new pages.
-6. Run `mint dev` to see the changes
+Use the source-pinned offline generator documented in
+[`scripts/README.md`](scripts/README.md#release-time-flow). Review every route
+and schema change before updating the tracked JSON and YAML specifications.
+Preserve curated schema pages and add navigation entries for new endpoints.
 
 ## Troubleshooting
 

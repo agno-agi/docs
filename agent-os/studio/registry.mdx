@@ -1,7 +1,7 @@
 ---
 title: "Registry"
 sidebarTitle: "Registry"
-description: "Register tools, models, databases, and schemas for use in AgentOS Studio."
+description: "Register tools, models, databases, workflows, and learning machines for use in AgentOS Studio."
 ---
 
 **The Registry manages non-serializable components (tools, models, databases, schemas, functions, etc.) that Studio depends on.**
@@ -20,6 +20,8 @@ description: "Register tools, models, databases, and schemas for use in AgentOS 
 - **Session Summary Managers**: `SessionSummaryManager` instances for generating session summaries.
 - **Teams**: `Team` instances to reuse as members in teams and workflows.
 - **Agents**: `Agent` instances to reuse as members in teams and workflows.
+- **Workflows**: `Workflow` instances for rehydration and Studio.
+- **Learning Machines**: Named `LearningMachine` instances shared by stored components.
 
 
 <img
@@ -35,6 +37,7 @@ Example of registry configuration:
 ```python
 from agno.db.postgres import PostgresDb
 from agno.knowledge.knowledge import Knowledge
+from agno.learn.machine import LearningMachine
 from agno.memory import MemoryManager
 from agno.models.anthropic import Claude
 from agno.models.openai import OpenAIChat, OpenAIResponses
@@ -44,7 +47,7 @@ from agno.session import SessionSummaryManager
 from agno.tools.calculator import CalculatorTools
 from agno.tools.websearch import WebSearchTools
 from agno.vectordb.pgvector import PgVector
-from agno.workflow import StepInput
+from agno.workflow import StepInput, Workflow
 from pydantic import BaseModel
 
 DB_URL = "postgresql+psycopg://ai:ai@localhost:5532/ai"
@@ -78,6 +81,16 @@ agent_knowledge = Knowledge(
     vector_db=PgVector(table_name="agent_knowledge_documents", db_url=DB_URL),
     contents_db=db,
 )
+shared_learning = LearningMachine(
+    name="Shared Learning",
+    db=db,
+    user_memory=True,
+)
+triage_workflow = Workflow(
+    id="triage-workflow",
+    name="Triage Workflow",
+    steps=[],
+)
 
 registry = Registry(
     name="My Registry",
@@ -90,6 +103,8 @@ registry = Registry(
     memory_managers=[user_memory_manager],
     session_summary_managers=[concise_summary_manager],
     knowledge=[agent_knowledge],
+    learning=[shared_learning],
+    workflows=[triage_workflow],
 )
 
 agent_os = AgentOS(id="my-app", registry=registry, db=db)
@@ -104,7 +119,7 @@ The registry exposes a [`GET /registry`](/reference-api/schema/registry/list-reg
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `resource_type` | `string` | `None` | Filter by type: `tool`, `model`, `db`, `vector_db`, `schema`, `function`, `agent`, `team`, `knowledge`, `memory_manager`, `session_summary_manager` |
+| `resource_type` | `string` | `None` | Filter by type: `tool`, `model`, `db`, `vector_db`, `schema`, `function`, `agent`, `team`, `workflow`, `knowledge`, `memory_manager`, `session_summary_manager`, `learning` |
 | `name` | `string` | `None` | Partial name match (case-insensitive) |
 | `page` | `int` | `1` | Page number |
 | `limit` | `int` | `20` | Items per page (1-100) |
@@ -126,6 +141,8 @@ Each component in the response includes type-specific metadata:
 | Session Summary Manager | `class_path`, `model_class`, `model_id`, `last_n_runs`, `conversation_limit` |
 | Team | `id`, `class_path` |
 | Agent | `id`, `class_path` |
+| Workflow | `id`, `class_path` |
+| Learning Machine | `class_path`, `namespace`, `stores`, `model_id`, `db`, `knowledge`, optional `custom_stores` |
 
 ## Developer Resources
 
