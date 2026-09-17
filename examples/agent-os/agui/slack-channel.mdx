@@ -1,0 +1,173 @@
+---
+title: "Slack Channel"
+description: "Run an AG-UI agent as a Slack bot with the CopilotKit Channels SDK."
+---
+
+Serve an Agno agent over AG-UI and drive it from Slack with a [CopilotKit Channels](https://docs.copilotkit.ai/slack/agno) process. The AgentOS server is unchanged. The channel is a separate Node process, connected to Slack through CopilotKit Intelligence, that runs the agent through `AgnoAgent` from [`@ag-ui/agno`](https://www.npmjs.com/package/@ag-ui/agno).
+
+The agent has a database and history enabled. Agno's AG-UI interface runs each request with the latest user message and uses the AG-UI thread id as the session id, so the database is what gives the agent the earlier turns of a Slack thread.
+
+```python basic.py
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIResponses
+from agno.os import AgentOS
+from agno.os.interfaces.agui import AGUI
+
+chat_agent = Agent(
+    name="Assistant",
+    model=OpenAIResponses(id="gpt-5.5"),
+    instructions="You are a helpful AI assistant.",
+    db=SqliteDb(db_file="tmp/agents.db"),
+    add_history_to_context=True,
+    num_history_runs=5,
+    add_datetime_to_context=True,
+    markdown=True,
+)
+
+agent_os = AgentOS(
+    agents=[chat_agent],
+    interfaces=[AGUI(agent=chat_agent)],
+)
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="basic:app", reload=True)
+```
+
+```ts agent.ts
+import { AgnoAgent } from "@ag-ui/agno";
+
+export function makeAgent(threadId: string) {
+  const agent = new AgnoAgent({
+    url: process.env.AGNO_AGUI_URL ?? "http://localhost:7777/agui",
+  });
+  agent.threadId = threadId;
+  return agent;
+}
+```
+
+```ts channel.ts
+import { createChannel } from "@copilotkit/channels";
+import { CopilotRuntime, CopilotKitIntelligence } from "@copilotkit/runtime/v2";
+import { createCopilotNodeListener } from "@copilotkit/runtime/v2/node";
+
+import { makeAgent } from "./agent.js";
+
+const required = (name: string) => {
+  const value = process.env[name];
+  if (!value) throw new Error(`Missing ${name}`);
+  return value;
+};
+
+const channel = createChannel({
+  name: required("CHANNEL_CODE"),
+  identifyUser: "platform",
+  agent: makeAgent,
+  showToolStatus: true, // show tool calls in Slack while the agent works
+});
+
+channel.onMention(async ({ thread }) => {
+  await thread.subscribe();
+  await thread.runAgent();
+});
+channel.onMessage(async ({ thread }) => {
+  if (await thread.isSubscribed()) await thread.runAgent();
+});
+
+const runtime = new CopilotRuntime({
+  agents: {},
+  intelligence: new CopilotKitIntelligence({
+    apiKey: required("CPK_INTELLIGENCE_API_KEY"),
+  }),
+  channels: [channel],
+});
+
+const listener = createCopilotNodeListener({ runtime });
+const channels = listener.channels;
+
+process.once("SIGINT", () => void channels.stop());
+process.once("SIGTERM", () => void channels.stop());
+
+await channels.ready({ timeoutMs: 30_000 });
+const status = channels.status();
+if (status.overall !== "online") {
+  throw new Error(`Slack Channel is not online: ${JSON.stringify(status)}`);
+}
+console.log(`Slack Channel "${channel.name}" is online`);
+```
+
+```json tsconfig.json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["*.ts"]
+}
+```
+
+## Run the Example
+
+<Steps>
+  <Snippet file="create-venv-step.mdx" />
+
+  <Step title="Install dependencies">
+    ```bash
+    uv pip install -U "agno[agui,os]" openai
+    ```
+  </Step>
+
+  <Step title="Export your OpenAI API key">
+    <CodeGroup>
+    ```bash Mac/Linux
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+    ```bash Windows
+    $Env:OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Run the AgentOS server">
+    Save the Python code above as `basic.py`, then run:
+    ```bash
+    python basic.py
+    ```
+  </Step>
+
+  <Step title="Set up the channel project">
+    You need Node.js 22 or later. In a separate directory, save `agent.ts`, `channel.ts`, and `tsconfig.json` from above and install. The SDK and runtime are a tested pair, so pin them and upgrade them together. The `overrides` block keeps every package on one copy of `@ag-ui/client`; two copies make the `agent` option fail to typecheck.
+    ```bash
+    npm init -y
+    npm pkg set type=module
+    npm install --save-exact @copilotkit/channels@0.9.2 @copilotkit/runtime@1.70.2 @ag-ui/agno@0.0.6
+    npm pkg set overrides.@ag-ui/client=0.0.59 overrides.@ag-ui/core=0.0.59
+    npm install -D tsx typescript @types/node
+    ```
+  </Step>
+
+  <Step title="Export the CopilotKit Intelligence credentials">
+    Create a Channel in the CopilotKit Intelligence dashboard and connect Slack there, following the [CopilotKit setup guide](https://docs.copilotkit.ai/slack/agno/intelligence). Then open **Connect a runtime** on the Channel page to read its name, and create a project-scoped key under **API Keys** in the project sidebar:
+    ```bash
+    export CPK_INTELLIGENCE_API_KEY="..."
+    export CHANNEL_CODE="..."
+    ```
+    Create the API key in the same Intelligence project as the Channel. `CHANNEL_CODE` is the Channel's lowercase kebab-case name, shown as **Channel name** under **Connect a runtime** and as its **Code** in the setup wizard (for example `support-slack`). It is not the `channel_…` value in the **ID** field. A key from another project or a mismatched name leaves the Channel at **Waiting for runtime**.
+  </Step>
+
+  <Step title="Run the channel">
+    ```bash
+    npx tsx channel.ts
+    ```
+    The channel prints `Slack Channel "..." is online` and the Channel in Intelligence changes to **Online**. Mention the bot in Slack. The channel runs the agent over AG-UI and posts the reply in the thread. The thread stays subscribed, so follow-up messages run without another mention and the agent remembers the earlier turns.
+  </Step>
+</Steps>
+
+See [Channels](/agent-os/interfaces/ag-ui/channels) for how Channels fit together with AG-UI, tool-call progress, other platforms, and production notes.

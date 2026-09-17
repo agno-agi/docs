@@ -1,0 +1,212 @@
+---
+title: Channels
+description: Run an AG-UI agent as a bot in Slack with the CopilotKit Channels SDK.
+---
+
+The same agent that powers your AG-UI frontend can also run as a bot in Slack. [CopilotKit Channels](https://docs.copilotkit.ai/slack/agno) connects an Agno agent to Slack, with threads, tool calls, and rich interactive messages handled natively in the channel.
+
+<Info>
+Full platform setup lives in the [CopilotKit Channels documentation](https://docs.copilotkit.ai/slack/agno). This page shows how Channels fit together with an Agno agent.
+</Info>
+
+## How it fits together
+
+Your AgentOS server stays where it is, exposed over [AG-UI](/agent-os/interfaces/ag-ui/introduction). A channel is a separate long-running Node service built with `@copilotkit/channels`, connected through CopilotKit Intelligence. Intelligence is a required surface for Channels, by design (free tier available): it holds the platform connection and credentials, receives each platform event, and delivers the turn to your channel process.
+
+```
+Slack  ──►  CopilotKit Intelligence  ──►  channel process (Node)  ──►  AgentOS (POST /agui)
+```
+
+The channel drives your agent through `AgnoAgent` from [`@ag-ui/agno`](https://www.npmjs.com/package/@ag-ui/agno), the AG-UI client for Agno. The agent receives ordinary AG-UI input and emits ordinary AG-UI events. The platform mechanics stay behind the channel, so the same Agno agent runs unchanged in Slack and keeps serving your web frontend from the same endpoint. Rich messages are written as JSX and rendered to each platform's native format (Block Kit on Slack, for example).
+
+## Slack
+
+The channel process holds a persistent connection to the Intelligence gateway, which delivers each turn to it. It needs Node.js 22 or later and a long-running host. A serverless request handler cannot own that connection.
+
+<Steps>
+  <Step title="Serve an agent over AG-UI">
+
+Give the agent a database and turn on history. Agno's AG-UI interface runs each request with the latest user message and uses the AG-UI thread id as the session id, so the agent's database is what supplies the earlier turns of a Slack thread. Without it, every follow-up in a thread starts from scratch.
+
+```python basic.py
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIResponses
+from agno.os import AgentOS
+from agno.os.interfaces.agui import AGUI
+
+chat_agent = Agent(
+    model=OpenAIResponses(id="gpt-5.5"),
+    db=SqliteDb(db_file="tmp/agents.db"),
+    add_history_to_context=True,
+    num_history_runs=5,
+)
+
+agent_os = AgentOS(agents=[chat_agent], interfaces=[AGUI(agent=chat_agent)])
+app = agent_os.get_app()
+
+if __name__ == "__main__":
+    agent_os.serve(app="basic:app", reload=True)
+```
+
+The AG-UI endpoint is served at `http://localhost:7777/agui`.
+
+  </Step>
+  <Step title="Install the channel packages">
+
+In a separate Node project, install the Channels SDK, the runtime that runs the channel, and the AG-UI client for Agno. The SDK and runtime are a tested pair, so pin them and upgrade them together. The `overrides` block keeps every package on one copy of `@ag-ui/client`; two copies make the `agent` option fail to typecheck.
+
+```bash
+npm init -y
+npm pkg set type=module
+npm install --save-exact @copilotkit/channels@0.9.2 @copilotkit/runtime@1.70.2 @ag-ui/agno@0.0.6
+npm pkg set overrides.@ag-ui/client=0.0.59 overrides.@ag-ui/core=0.0.59
+npm install -D tsx typescript @types/node
+```
+
+```json tsconfig.json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["*.ts"]
+}
+```
+
+  </Step>
+  <Step title="Create the Channel in CopilotKit Intelligence">
+
+Create a Channel in the Intelligence dashboard and connect Slack there. Intelligence walks you through the Slack app setup and holds its credentials. The full walkthrough is in the [CopilotKit setup guide](https://docs.copilotkit.ai/slack/agno/intelligence).
+
+```bash
+export CPK_INTELLIGENCE_API_KEY="..."
+export CHANNEL_CODE="..."
+```
+
+| Variable | Description |
+|----------|-------------|
+| `CPK_INTELLIGENCE_API_KEY` | Authenticates the runtime with Intelligence. API keys are project scoped, so create the key in the same project as the Channel. Free tier available. |
+| `CHANNEL_CODE` | The Channel's name in Intelligence, shown as **Channel name** under **Connect a runtime** on the Channel page and as its **Code** in the setup wizard (lowercase kebab-case, for example `support-slack`). It is passed as `createChannel({ name })`. This is not the `channel_…` value in the **ID** field. |
+
+A key from another project or a mismatched Code leaves the Channel at **Waiting for runtime** in Intelligence.
+
+  </Step>
+  <Step title="Point the channel at your agent">
+
+Build the agent as a per-thread factory so each conversation gets its own session:
+
+```ts agent.ts
+import { AgnoAgent } from "@ag-ui/agno";
+
+export function makeAgent(threadId: string) {
+  const agent = new AgnoAgent({
+    url: process.env.AGNO_AGUI_URL ?? "http://localhost:7777/agui",
+  });
+  agent.threadId = threadId;
+  return agent;
+}
+```
+
+Then point a channel at it:
+
+```ts channel.ts
+import { createChannel } from "@copilotkit/channels";
+import { CopilotRuntime, CopilotKitIntelligence } from "@copilotkit/runtime/v2";
+import { createCopilotNodeListener } from "@copilotkit/runtime/v2/node";
+
+import { makeAgent } from "./agent.js"; // your Agno AG-UI agent
+
+const required = (name: string) => {
+  const value = process.env[name];
+  if (!value) throw new Error(`Missing ${name}`);
+  return value;
+};
+
+const channel = createChannel({
+  name: required("CHANNEL_CODE"), // the Channel Code from Intelligence
+  identifyUser: "platform",
+  agent: makeAgent, // an AbstractAgent, or a per-thread factory
+});
+
+// A mention subscribes the thread and runs the agent. Afterwards every message
+// in a subscribed thread runs it without another mention.
+channel.onMention(async ({ thread }) => {
+  await thread.subscribe();
+  await thread.runAgent();
+});
+channel.onMessage(async ({ thread }) => {
+  if (await thread.isSubscribed()) await thread.runAgent();
+});
+
+// The runtime owns the channel lifecycle. Creating the listener connects it.
+const runtime = new CopilotRuntime({
+  agents: {}, // the channel supplies its own agent; no web-facing agents needed
+  intelligence: new CopilotKitIntelligence({
+    apiKey: required("CPK_INTELLIGENCE_API_KEY"),
+  }),
+  channels: [channel],
+});
+
+const listener = createCopilotNodeListener({ runtime });
+const channels = listener.channels;
+
+process.once("SIGINT", () => void channels.stop());
+process.once("SIGTERM", () => void channels.stop());
+
+// Wait for activation and report the result. ready() can settle while Slack
+// setup is still incomplete, so check status() before trusting the connection.
+await channels.ready({ timeoutMs: 30_000 });
+const status = channels.status();
+if (status.overall !== "online") {
+  throw new Error(`Slack Channel is not online: ${JSON.stringify(status)}`);
+}
+console.log(`Slack Channel "${channel.name}" is online`);
+```
+
+  </Step>
+  <Step title="Run both processes">
+
+```bash
+python basic.py    # terminal 1: AgentOS with the AG-UI interface
+npx tsx channel.ts # terminal 2: the Slack channel
+```
+
+The channel prints `Slack Channel "..." is online` and the Channel in Intelligence changes from **Waiting for runtime** to **Online**. Mention the bot in Slack. The channel runs your agent and posts the reply in the thread. The thread stays subscribed, so follow-up messages run without another mention and the agent remembers the earlier turns.
+
+  </Step>
+</Steps>
+
+## Tool-call progress
+
+By default the Slack reply shows only the final answer; tool calls run silently. To show the tool timeline in Slack while the agent works, opt in per channel:
+
+```ts channel.ts
+const channel = createChannel({
+  name: required("CHANNEL_CODE"),
+  identifyUser: "platform",
+  agent: makeAgent,
+  showToolStatus: true,
+});
+```
+
+## Other platforms
+
+Managed connections configured in Intelligence are available for Slack today, and Microsoft Teams is a controlled integration target. Discord, WhatsApp, and Telegram are supported through direct adapters instead: your channel process holds the platform credentials and passes an `adapters` list to `createChannel`, so the setup differs from the Slack flow above. See the [direct adapters reference](https://docs.copilotkit.ai/reference/channels/sdk/direct-adapters) and the [CopilotKit Channels documentation](https://docs.copilotkit.ai/slack/agno) for the current platform list.
+
+<Note>
+By default, interactive actions and per-thread state live in memory and reset on restart. Configure a durable state store for production so buttons and per-thread state survive restarts.
+</Note>
+
+## Next steps
+
+| Task | Guide |
+|------|-------|
+| Serve agents and teams over AG-UI | [AG-UI](/agent-os/interfaces/ag-ui/introduction) |
+| Run the full Slack example | [Slack Channel example](/examples/agent-os/agui/slack-channel) |
+| Rich messages, approvals, and platform setup | [CopilotKit Channels](https://docs.copilotkit.ai/slack/agno) |
