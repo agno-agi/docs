@@ -1,0 +1,141 @@
+---
+title: Confident AI
+description: Integrate Agno with Confident AI to trace agent runs and score them with online evals.
+---
+
+## Integrating Agno with Confident AI
+
+[Confident AI](https://www.confident-ai.com/) is an LLM observability and evaluation platform. [`confident-trace`](https://github.com/confident-ai/confident-trace), its OpenTelemetry-native tracing SDK, detects Agno automatically, so agent runs show up in the [Observatory](https://www.confident-ai.com/docs/llm-tracing/introduction) with their model and tool calls nested beneath them. No instrumentor or tracer provider configuration is required.
+
+## Prerequisites
+
+1. **Install Dependencies**
+
+   Ensure you have the necessary packages installed:
+
+   ```bash
+   uv pip install agno openai confident-trace
+   ```
+
+2. **Setup Confident AI Account**
+
+   - Sign up for an account at [Confident AI](https://app.confident-ai.com).
+   - Obtain your project API key from your project settings.
+
+3. **Set Environment Variables**
+
+   Configure your environment with the Confident AI API key, alongside the provider key your agent uses:
+
+   ```bash
+   export CONFIDENT_API_KEY=<your-confident-api-key>
+   export OPENAI_API_KEY=<your-openai-key>
+   ```
+
+   For users in the EU region, set the `CONFIDENT_OTEL_ENDPOINT` variable to `https://eu.otel.confident-ai.com/v1/traces`.
+
+## Sending Traces to Confident AI
+
+Call `init()` once at startup, before running your agent. You don't have to change your usual `agent.run()` calls. Confident AI automatically instruments everything for you.
+
+```python
+from confident_trace import init, shutdown
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+
+init()
+
+agent = Agent(
+    name="assistant",
+    model=OpenAIChat(id="gpt-4o-mini"),
+)
+
+try:
+    result = agent.run("Explain OpenTelemetry in one sentence.")
+    print(result.content)
+finally:
+    shutdown()
+```
+
+Your application code and Agno calls stay exactly the same. `confident-trace` automatically attaches an `Agno` integration label to your spans and captures:
+
+- **Agent and team execution**: Run names, timing, status, inputs, outputs, and parent-child relationships.
+- **Workflows and steps**: Workflow execution, individual steps, and supported parallel, conditional, loop, and router containers.
+- **Tool calls**: Tool names and their [input/output](https://www.confident-ai.com/docs/llm-tracing/features/input-output).
+- **Model calls**: Messages, model details, and [token usage](https://www.confident-ai.com/docs/llm-tracing/features/token-usage-cost) from supported provider integrations.
+- **Custom spans**: Application spans created inside a tool remain nested under that execution.
+
+Sync, async, and streamed runs are supported. Consume streams fully, or close them when stopping early.
+
+## Advanced Features
+
+### Online Evals
+
+You can configure what happens to your incoming traces on Confident AI's [workflows page](https://www.confident-ai.com/docs/llm-tracing/workflows).
+
+<Frame caption="Confident AI workflows page">
+  <img
+    src="/images/confident-ai-workflows.png"
+    style={{ borderRadius: '10px', width: '100%', maxWidth: '800px' }}
+    alt="confident-ai workflows page"
+  />
+</Frame>
+
+Here's what you can configure:
+
+- **Evaluation rules**: Evaluate incoming traces against a [metric collection](https://www.confident-ai.com/docs/metrics/metric-collections).
+- **Classifiers**: Label your traces by issue, sentiment, or any dimension you define, which lets you group or filter them later on.
+- **Queue ingestion**: Add your production traces to annotation queues so your internal review team can annotate them by hand.
+- **Dataset ingestion**: Ingest your production traces into datasets so you can reuse them as test cases and iterate on results to improve over time.
+
+You can create custom workflows for different data models like traces, spans, and threads individually as per your needs.
+
+To evaluate a component or trace manually, pass a metric collection via `update_trace`. See [online evaluations](https://www.confident-ai.com/docs/llm-tracing/online-evals).
+
+### Trace Properties
+
+Use a trace context to attach tags, metadata, and a user ID that you know before the run starts. It creates no extra span. The trace started by `agent.run()` inherits everything you pass:
+
+```python
+from confident_trace import init, trace_context
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+
+init()
+
+agent = Agent(name="assistant", model=OpenAIChat(id="gpt-4o-mini"))
+
+with trace_context(
+    tags=["support"],
+    metadata={"release": "2026-09"},
+    user_id="user-42",
+):
+    result = agent.run("Explain OpenTelemetry in one sentence.")
+    print(result.content)
+```
+
+### Group Traces Into Threads
+
+`confident-trace` provides a `turn()` method you can use to group two sequential Agno entry-point calls into one turn. Reuse the same thread ID on later turns to group them into one thread you can view and evaluate on Confident AI:
+
+```python
+from confident_trace import init, turn
+from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+
+init()
+
+agent = Agent(name="assistant", model=OpenAIChat(id="gpt-4o-mini"))
+
+with turn("support-turn", thread_id="chat-42"):
+    context = agent.run("Find the relevant account details.")
+    answer = agent.run(f"Summarize these details: {context.content}")
+    print(answer.content)
+```
+
+## Notes
+
+- **Initialize once, shut down once**: In a long-running server, call `init()` at startup and `shutdown()` during graceful shutdown, after active agent runs finish. Do not call them per request.
+- **Missing traces**: If you don't see a trace, it is almost always because the program exited before the traces were posted. Make sure you're calling `shutdown()`, or `flush()` in long-running processes, before exit.
+- **Model spans**: Agno spans describe the structure of a run. Model calls are captured by the supported provider integrations that `init()` enables alongside Agno, so keep the relevant provider integration on. Model backends that bypass those SDKs show the agent structure but no LLM spans.
+- **Background jobs**: Background job dispatch is not traced as completed agent execution; instrument the worker that runs the job.
+- **Need help integrating?**: [Talk to a human.](https://www.confident-ai.com/book-a-demo)
