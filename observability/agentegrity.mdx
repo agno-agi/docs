@@ -1,0 +1,83 @@
+---
+title: Agentegrity
+description: Add agent integrity and security verification to Agno agents and teams with adversarial detection, behavioral monitoring, and signed attestations.
+---
+
+## Integrating Agno with Agentegrity
+
+[Agentegrity](https://github.com/Cogensec/agentegrity) is an open agent-integrity and security-verification framework from Cogensec. It instruments Agno agents and teams to evaluate whether they maintain integrity under adversarial pressure and to produce structured security evidence alongside normal execution.
+
+Agentegrity complements tracing and observability by focusing on security properties such as adversarial-input detection, behavioral drift, reasoning and memory integrity, decision provenance, recovery verification, and cryptographically signed attestations.
+
+## Prerequisites
+
+Install Agentegrity with Agno support:
+
+```bash
+uv pip install "agentegrity[agno]"
+```
+
+The Agentegrity Agno adapter supports Agno 2.x.
+
+## Instrument an Agno Agent
+
+Wrap an existing Agno agent with `instrument()` and run it normally:
+
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from agentegrity.agno import instrument, report
+
+agent = Agent(
+    model=OpenAIResponses(id="gpt-5.2"),
+    instructions="Be concise and helpful.",
+)
+
+agent = instrument(agent)
+agent.run("Summarize the security implications of an autonomous agent using tools.")
+
+print(report())
+```
+
+`instrument()` attaches Agentegrity hooks to the agent and returns the same agent object so the rest of the Agno application can continue to use its existing execution flow.
+
+## Instrument an Agno Team
+
+Agentegrity can also instrument an Agno `Team` and its members:
+
+```python
+from agentegrity.agno import instrument_team, report
+
+team = instrument_team(team)
+team.run("Review this task as a coordinated team.")
+
+print(report())
+```
+
+For teams, Agentegrity captures structural evidence about the multi-agent topology in addition to session integrity evidence.
+
+## What Agentegrity Evaluates
+
+Agentegrity provides four complementary verification layers:
+
+- **Adversarial:** Detects attack patterns including prompt injection, jailbreaks, role confusion, system-prompt extraction, data-exfiltration attempts, prompt obfuscation, action injection, and tool poisoning.
+- **Cortical:** Evaluates reasoning consistency, memory integrity, behavioral baselines, and drift.
+- **Governance:** Produces policy, decision-provenance, oversight, and audit evidence for security and governance workflows.
+- **Recovery:** Verifies declared recovery capabilities such as state restoration, checkpointing, rollback, and session reset.
+
+Agentegrity also produces integrity scores and tamper-evident attestation chains. Cryptographic signing is available with the project's crypto support.
+
+## Local-First Evaluation and Telemetry
+
+Agentegrity evaluation runs locally. Anonymous shape-only telemetry can be disabled without changing application code:
+
+```bash
+export DO_NOT_TRACK=1
+```
+
+Full session content is only sent to an external destination when a session exporter is explicitly configured.
+
+## Resources
+
+- [Agentegrity GitHub repository](https://github.com/Cogensec/agentegrity)
+- [Agentegrity on PyPI](https://pypi.org/project/agentegrity/)
