@@ -1,0 +1,120 @@
+---
+title: StudioRunnerTools
+description: "Give an agent discovery and execution access to AgentOS Studio components."
+---
+
+`StudioRunnerTools` exposes dispatch tools for AgentOS Studio components. It lists and runs agents, teams, and workflows from the component database or an explicit allowlist. Use it for routers, team leads, and dispatcher agents while a separate builder owns component mutations through [`StudioTools`](/tools/toolkits/agent-os/studio).
+
+<Note>
+Mount one of `StudioRunnerTools` or `StudioTools` on a component. Both expose overlapping `list_*` and `run_*` function names, and Agno's tool namespace is flat.
+</Note>
+
+## Prerequisites
+
+The following example requires the `openai` and `sqlalchemy` libraries.
+
+```shell
+uv pip install openai sqlalchemy
+```
+
+## Example
+
+```python cookbook/05_agent_os/22_studio/studio_runner_dispatcher.py
+from pathlib import Path
+
+from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
+from agno.models.openai import OpenAIResponses
+from agno.registry import Registry
+from agno.tools.studio import StudioTools
+from agno.tools.studio_runner import StudioRunnerTools
+
+DB_DIR = Path(__file__).parent / "tmp"
+DB_DIR.mkdir(exist_ok=True)
+DB_FILE = DB_DIR / "studio_runner.db"
+DB_FILE.unlink(missing_ok=True)
+
+db = SqliteDb(
+    id="studio-runner-db",
+    db_file=str(DB_FILE),
+)
+
+registry = Registry(
+    name="Runner Registry",
+    models=[OpenAIResponses(id="gpt-5.5")],
+    dbs=[db],
+)
+
+builder = StudioTools(registry=registry, db=db, default_model_id="gpt-5.5")
+builder.create_agent(
+    name="Haiku Writer",
+    instructions="Answer with a single haiku.",
+    model_id="gpt-5.5",
+)
+
+dispatcher = Agent(
+    name="Dispatcher",
+    model=OpenAIResponses(id="gpt-5.5"),
+    tools=[StudioRunnerTools(registry=registry, db=db)],
+    instructions="Discover what exists, then delegate the request to the right component.",
+    db=db,
+    markdown=True,
+)
+
+dispatcher.print_response(
+    "Have the haiku writer produce a haiku about databases."
+)
+```
+
+`StudioTools` creates the example component. The dispatcher receives `StudioRunnerTools` for discovery and execution.
+
+## Toolkit Params
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `registry` | `Optional[Registry]` | `None` | Registry used to rebuild persisted tools, knowledge, schemas, functions, and code-defined members. |
+| `db` | `Optional[BaseDb]` | first Registry DB | Database containing persisted Studio components. |
+| `agents_list` | `Optional[list[Agent]]` | `None` | Explicit allowlist of code-defined agents the runner can list and run. |
+| `teams_list` | `Optional[list[Team]]` | `None` | Explicit allowlist of code-defined teams the runner can list and run. |
+| `workflows_list` | `Optional[list[Workflow]]` | `None` | Explicit allowlist of code-defined workflows the runner can list and run. |
+| `agents` | `bool` | `True` | Expose agent discovery and execution tools. |
+| `teams` | `bool` | `True` | Expose team discovery and execution tools. |
+| `workflows` | `bool` | `True` | Expose workflow discovery and execution tools. |
+| `include_all_components` | `bool` | `False` | Allow all code-defined agents and teams in the Registry to be dispatched. |
+| `list_limit` | `int` | `100` | Maximum number of persisted components returned by each list function. |
+
+The Registry restores resources referenced by persisted component configurations. Set `include_all_components=True` to dispatch all code-defined Registry agents and teams. Use explicit component lists for a narrower allowlist.
+
+## Toolkit Functions
+
+Functions are exposed for component types enabled by the corresponding `agents`, `teams`, and `workflows` parameters.
+
+| Function | Description |
+| --- | --- |
+| `list_agents` | List runnable agents by ID, name, and description. |
+| `run_agent` | Send a message to an agent and return its run result. |
+| `list_teams` | List runnable teams by ID, name, and description. |
+| `run_team` | Send a message to a team and return its run result. |
+| `list_workflows` | List runnable workflows by ID, name, and description. |
+| `run_workflow` | Send input to a workflow and return its run result. |
+
+All functions have sync and async variants.
+
+## Execution Behavior
+
+- List components first and run them by exact ID. Display names and their slugs also resolve. An ambiguous name returns the matching IDs for a retry.
+- Runs execute as the current user, preserving user-scoped memory, learning, and storage.
+- Each target receives one stable session per calling conversation, so repeated dispatches continue its context.
+- Runs use `stream=False` and return JSON containing the component ID, `run_id`, `session_id`, `status`, and `content`.
+- A paused human-in-the-loop run also returns its unresolved `requirements`. Resume it through the AgentOS continuation endpoint with the returned run and session IDs.
+- Persisted components are rebuilt for each call. Admitted code-defined components are copied before dispatch to isolate per-run state.
+- The runner requires complete Registry-backed configuration before executing a persisted component.
+
+## Developer Resources
+
+- [StudioTools toolkit reference](/tools/toolkits/agent-os/studio)
+- [StudioTools with human-in-the-loop](/agent-os/studio/tools)
+- [AgentOS Studio](/agent-os/studio/introduction)
+- [StudioRunnerTools source](https://github.com/agno-agi/agno/blob/main/libs/agno/agno/tools/studio_runner.py)
+- [StudioRunner dispatcher cookbook](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/22_studio/studio_runner_dispatcher.py)
+- [Direct StudioRunner usage](https://github.com/agno-agi/agno/blob/main/cookbook/05_agent_os/22_studio/studio_runner_direct.py)
