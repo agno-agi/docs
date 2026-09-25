@@ -1,0 +1,93 @@
+---
+title: Agent Action Capsule
+description: Signed (COSE_Sign1), content-addressed evidence records for agent runs. A two-record capsule chain per tool call, checkable offline.
+---
+
+[capsule-emit](https://github.com/action-state-group/capsule-emit) records each tool call in an Agno agent run as a chain of **Agent Action Capsules** (signed with a COSE_Sign1 producer signature, content-addressed): a *planned* capsule sealed before the tool runs, then a *confirmed* (or *errored*) capsule sealed when it returns, chained to the planned one by capsule id. Capsules are audit and compliance evidence for what an agent actually did, complementary to tracing.
+
+Two verification layers, deliberately distinct:
+
+- **Offline, `capsule-emit verify`** checks structure, content addressing (every digest recomputes from the record's own contents), chain consistency, and every producer signature it finds. No service, no credentials. A signature proves the key named in the record signed it, not who holds that key: the signature and key id sit outside the digest, so a ledger re-signed under a fresh key still passes. A record with no signature is warned, not failed, unless you pass `--require-signature`.
+- **Tamper-evidence toward an outside party** comes from the checkpoint/witness stream, on by default (see [Network behavior](#network-behavior)). Each checkpoint the witness accepts gives an outside party a reference to check the ledger against, to the extent that party trusts the witness to be independent of you. Records sealed after the last accepted checkpoint are not yet committed outside your environment; a run that seals fewer than 100 records, all within 900 seconds, exits without posting one. The older per-seal SCITT anchor is a legacy channel, off by default.
+
+## Features
+
+- **One listener, every tool call**: register `AgnoCapsuleListener(...).hook` once via Agno's standard `tool_hooks` mechanism. No per-tool code changes. The same hook can be scoped to a whole `Agent`, a `Team`, or a single `@tool`.
+- **Planned to confirmed chains**: a planned capsule is sealed before a tool call runs; when it returns, a confirmed capsule is sealed and chained to it; an exception seals a chained failed-effect capsule instead. Because Agno's tool hook wraps the call as a continuation, both records are sealed inside a single invocation and the chain link is structural. There is no start/end pairing heuristic to get wrong under concurrency.
+- **Digest-only capture**: tool inputs and outputs are committed as SHA-256 digests (`agent_input_digest`, `agent_output_digest`). Digests are commitments, not encryption: a digest of a low-entropy value can be confirmed by guessing. Raw content stays local, and digests leave your environment only when an egress channel is enabled. One network channel is on by default: the checkpoint/witness stream, which sends checkpoint metadata (log size, root hash, timestamp), never record content (see [Network behavior](#network-behavior)).
+- **Offline consistency checks**: `capsule-emit verify` re-checks structure, content addressing, chain links, and producer signatures from the ledger alone.
+- **Checkpointed tamper-evidence**: each accepted checkpoint commits the ledger's root hash outside your environment; the tail after it is not covered yet.
+- **Agent-safe by construction**: every sealing path is wrapped. A listener failure warns and is skipped rather than failing your tool, and your tool's own exception propagates unchanged after the listener seals it.
+
+## Setup Instructions
+
+<Steps>
+    <Step title="Install capsule-emit with the Agno extra">
+      ```bash
+      uv pip install "capsule-emit[agno]"
+      ```
+      The `[agno]` extra pins `agno>=3.0`.
+    </Step>
+    <Step title="Register the hook once">
+      ```python
+      from agno.agent import Agent
+      from capsule_emit.adapters.agno_listener import AgnoCapsuleListener
+
+      # Register once. Every tool call the agent makes seals a capsule chain.
+      listener = AgnoCapsuleListener(operator="acme-co", developer="my-agent@v1")
+      agent = Agent(model=..., tools=[...], tool_hooks=[listener.hook])
+      ```
+      Use `listener.async_hook` on `arun` and `aexecute` paths. Register the hook that matches the path you drive.
+    </Step>
+    <Step title="Run your agent as usual">
+      ```python
+      result = agent.run("...")
+      ```
+      Each tool call now produces sealed records in the local ledger (`ledger.jsonl` by default).
+    </Step>
+    <Step title="Check the evidence">
+      ```bash
+      capsule-emit verify --store ./ledger.jsonl
+      ```
+      `verify --store` recomputes every digest and chain link across the ledger and checks every producer signature it finds. Offline, no service and no credentials. Add `--require-signature` to fail records that carry no signature.
+    </Step>
+</Steps>
+
+## Runnable quickstart
+
+A hermetic end-to-end demo (real Agno tool calls, covering success, failure, and a cache hit, with the witness off so nothing leaves your machine, and no LLM key) ships in the capsule-emit repository:
+
+```bash
+git clone --depth 1 --branch v0.8.6 https://github.com/action-state-group/capsule-emit.git
+cd capsule-emit
+uv pip install "capsule-emit[agno]"
+python examples/agno-listener/demo.py
+```
+
+The demo drives real Agno tool calls, then ends with an offline verification over every capsule and a `capsule-emit evidence` render.
+
+## What gets recorded
+
+| Field | Content |
+|---|---|
+| `effect.type` | which tool call this capsule chain records |
+| `model_attestation.compute_attestation.agent_input_digest` | SHA-256 commitment to the tool arguments, carried on the planned capsule |
+| `model_attestation.compute_attestation.agent_output_digest` | SHA-256 commitment to the tool result, carried on the outcome capsule |
+| `effect.status` | `planned` before the tool runs, `confirmed` on clean return, `failed` on exception |
+| `chain.parent_capsule_id` | the outcome capsule cites the planned capsule by content address, with `chain.relation` set to `confirms` |
+| `disposition.verdict_class` | `errored` when the tool raised. Errors are recorded as evidence, not dropped |
+
+Raw arguments and results are never written to the ledger. Only their digests are.
+
+## Network behavior
+
+| Channel | Default | How to change it |
+|---|---|---|
+| Checkpoint/witness stream | On: a checkpoint after every 100 records, or at the next seal once 900 seconds have passed (no background timer), posted to the project's public witness at `witness.agentactioncapsule.org` | `witness=False` or `CAPSULE_WITNESS=off`; send it to a witness you choose with `CAPSULE_WITNESS_URL` |
+| Per-seal SCITT anchor submission | Off | `anchor=True` or `CAPSULE_ANCHOR=legacy-on` |
+
+Pre-0.5.0 affirmative values such as `CAPSULE_ANCHOR=true` no longer enable the anchor channel and are treated as no-ops. Setting `witness=False` or `CAPSULE_WITNESS=off` disables all network egress, including the anchor channel when it has been opted into.
+
+Capsules are self-attested (`assurance.attestation_mode = "self_attested"`) unless a stronger mode is configured. Offline verification proves the ledger is internally consistent and, where a signature is present, signed by the key it names. It never consults a checkpoint: the witness adds an outside reference, not a stronger offline check. It does not assert that a third party has countersigned anything, and it does not replace review.
+
+The record format is an open specification (`draft-mih-scitt-agent-action-capsule`, an individual IETF Internet-Draft) with an Apache-2.0 reference implementation.
