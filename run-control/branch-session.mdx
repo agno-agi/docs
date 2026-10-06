@@ -1,0 +1,107 @@
+---
+title: Branch a Session
+description: Deep-copy every run from a session into a brand-new session.
+---
+
+`branch_session` clones an entire session into a new session with a fresh `session_id`. Every run, plus session state and metadata, is copied. Use it to spin off an independent conversation thread from a known starting state.
+
+## Basic Usage
+
+```python
+new_session_id = agent.branch_session(session_id="sess-original")
+
+# Continue in the new session. Independent of the original.
+result = agent.run(
+    input="What if we went a different direction?",
+    session_id=new_session_id,
+)
+```
+
+The new session contains deep copies of every run. The original session is untouched.
+
+## Branch vs Fork
+
+| | Branch session | Fork run |
+|---|---|---|
+| Granularity | Whole session | One run |
+| Result | New `session_id`, all runs deep-copied | New `run_id`, sibling in same session |
+| Endpoint | `POST /sessions/{session_id}/branch` | `POST /runs/{run_id}/continue` with `fork=True` |
+| Lineage field on new entity | `branched_from` on the new session | `forked_from_run_id` on the new run |
+
+Use **branch** when you want a whole new conversation thread that starts from the current state of an existing one. Use **fork** when you want to try an alternative path that lives next to the original.
+
+## When to Use
+
+| Scenario | Use |
+|---|---|
+| "Save this conversation, let me try a different approach in a new thread" | Branch |
+| "Rewind to message 3 and explore an alternative" | Fork |
+| "Try the last response again with steering" | Regenerate |
+| "Resume this paused run with tool results" | Continue (HITL) |
+
+## What Gets Copied
+
+- All `RunOutput` rows in the source session
+- `session_data` (including `session_state`)
+- `session_name` and metadata
+
+What does NOT carry over:
+
+- Live runs in flight on the source (only persisted runs are copied)
+- Cross-session memory (memory is keyed by `user_id`, shared across sessions of that user by design)
+
+## User Scoping
+
+`branch_session` reads the source session with the caller's `user_id`. A user cannot branch another user's session. Pass `user_id` explicitly if you're calling outside an authenticated request context:
+
+```python
+new_session_id = agent.branch_session(
+    session_id="sess-original",
+    user_id="user-123",
+)
+```
+
+## Teams
+
+`Team.branch_session` works the same way:
+
+```python
+new_team_session_id = team.branch_session(session_id="team-sess-original")
+```
+
+All team runs and any nested member runs from the source are deep-copied. The new team session is independent.
+
+## HTTP
+
+```bash
+curl -X POST "$HOST/agents/{agent_id}/sessions/{session_id}/branch" \
+  -F "user_id=user-123"
+```
+
+Returns the new `session_id`. See [API Reference](/run-control/api-reference).
+
+## Lineage Tracking
+
+The branched session carries `branched_from = <source session_id>`. Each copied run carries `forked_from_session_id = <source session_id>` so you can render the lineage in a UI.
+
+## Examples
+
+### Agents
+
+| Example | What it shows |
+|---|---|
+| [Branch a session](https://github.com/agno-agi/agno/blob/main/cookbook/02_agents/21_fork_session/01_fork_session.py) | Spins off a new session from an existing one, runs an independent follow-up in each, and verifies the original session is untouched. |
+
+### Teams
+
+| Example | What it shows |
+|---|---|
+| [Branch a team session](https://github.com/agno-agi/agno/blob/main/cookbook/03_teams/26_fork_session/01_fork_session.py) | Team variant. All team runs and nested member runs are deep-copied; the new session is fully independent. |
+
+## Next Steps
+
+| Task | Guide |
+|---|---|
+| Sibling run in the same session | [Fork a Run](/run-control/fork-run) |
+| Redo the last response | [Regenerate](/run-control/regenerate) |
+| Persist sessions across requests | [Persisting Sessions](/sessions/persisting-sessions) |

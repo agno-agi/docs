@@ -1,0 +1,72 @@
+---
+title: Run Control
+sidebarTitle: Overview
+description: Persist mid-run state, resume, regenerate, fork, and branch agent and team runs.
+---
+
+Once a run has been persisted, you can advance it, redo it, branch off it, or pick a specific point in its history to continue from. All five operations go through one endpoint: `/continue` (HTTP) or `agent.continue_run()` / `team.continue_run()` (SDK).
+
+## Operations
+
+| Operation | What it does | Stays in same session? | Same `run_id`? |
+|---|---|---|---|
+| Resume | Advance a run that's mid-flight (HITL pause, error, crash) | Yes | Yes |
+| Regenerate | Redo the last response, optionally with steering input | Yes | No (new sibling run) |
+| Fork run | Rewind to a chosen message and continue from there | Yes | No (new sibling run) |
+| Branch session | Deep-copy every run into a new session | No (new session) | n/a |
+| Checkpoint | Persist run state after each tool batch for crash recovery | Yes | Yes |
+
+## Why one endpoint
+
+`/continue` dispatches on the body. The same call resumes a HITL-paused run, regenerates the last response, forks at message K, or continues a completed run with a follow-up. The body fields name the verb:
+
+```python
+# Resume a HITL pause
+agent.continue_run(run_id="...", requirements=[...])
+
+# Redo the last response
+agent.continue_run(run_id="...", regenerate=True)
+
+# Rewind to message 4
+agent.continue_run(run_id="...", continue_from=4, fork=True)
+
+# Follow up on a completed run
+agent.continue_run(run_id="...", input="Now compare with Lagos")
+```
+
+One code path on the server, one mental model for the caller.
+
+## The "1 run = 1 model loop" invariant
+
+A run row in the DB represents exactly one model loop. Whenever a model loop has already finished (status `COMPLETED`), `/continue` produces a new `run_id`. There is no way to mix two loops' metrics, timestamps, or events into one row.
+
+Mid-flight resumes (`RUNNING` / `ERROR` / `PAUSED`, where the loop never finished) stay on the same `run_id`. Everything else gets a new one.
+
+## Learn How To
+
+<CardGroup cols={2}>
+  <Card title="Checkpointing" href="/run-control/checkpointing">
+    Persist mid-run state with `checkpoint="tool-batch"` so a crashed process can resume.
+  </Card>
+  <Card title="Continue Run" href="/run-control/continue-run">
+    The unified `/continue` endpoint: resume HITL pauses, mid-flight errors, or completed runs with a follow-up.
+  </Card>
+  <Card title="Regenerate" href="/run-control/regenerate">
+    Redo the last assistant response, optionally with steering input.
+  </Card>
+  <Card title="Fork a Run" href="/run-control/fork-run">
+    Rewind to a chosen message boundary and explore an alternative path. Sibling run in the same session.
+  </Card>
+  <Card title="Branch a Session" href="/run-control/branch-session">
+    Deep-copy every run into a brand-new session for independent exploration.
+  </Card>
+  <Card title="API Reference" href="/run-control/api-reference">
+    HTTP endpoints, request bodies, and response shapes.
+  </Card>
+</CardGroup>
+
+## Developer Resources
+
+- [Run-control cookbook examples](https://github.com/agno-agi/agno/tree/main/cookbook/02_agents/18_checkpointing)
+- [`Agent.continue_run` reference](/reference/agents/agent)
+- [`Team.continue_run` reference](/reference/teams/team)

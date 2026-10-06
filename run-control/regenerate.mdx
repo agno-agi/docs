@@ -1,0 +1,121 @@
+---
+title: Regenerate
+description: Redo the last response with a fresh run_id, optionally with steering input.
+---
+
+`regenerate=True` drops the trailing assistant response and re-runs the model. The new attempt gets a fresh `run_id` and fresh metrics. The source run is always retained in storage.
+
+## Basic Usage
+
+```python
+new_run = agent.continue_run(
+    run_id="run-abc",
+    session_id="sess-xyz",
+    regenerate=True,
+)
+```
+
+The source's last assistant response is dropped. The model is invoked again on the remaining transcript. The new run is a sibling in the same session with `forked_from_run_id` and `regenerated_from` pointing at the source.
+
+## Steering the New Response
+
+```python
+new_run = agent.continue_run(
+    run_id="run-abc",
+    session_id="sess-xyz",
+    regenerate=True,
+    additional_instructions="Be more concise. Use bullet points.",
+)
+```
+
+`additional_instructions` is appended to the transcript as a user message before the model runs. Use it to guide the new output without manually editing the prompt.
+
+## Keep the Original Visible
+
+By default, regenerating hides the source run (`status=REGENERATED`) so chat history shows only the new response.
+
+```python
+# Keep both visible for side-by-side comparison
+new_run = agent.continue_run(
+    run_id="run-abc",
+    regenerate=True,
+    replace_original=False,
+)
+```
+
+| `replace_original` | Source run status after regenerate | Visible in `GET /runs`? |
+|---|---|---|
+| `True` (default) | `REGENERATED` | No |
+| `False` | unchanged (`COMPLETED`) | Yes |
+
+The source row is always retained in storage either way. `replace_original` only controls history visibility.
+
+## What Gets Dropped
+
+Regenerate drops only the trailing assistant message. Intermediate tool exchanges (assistant `tool_calls` plus their results) survive. The model regenerates a fresh summary of the same tool outputs without re-invoking the tools.
+
+```
+Source transcript:
+  [1] user: "weather in Paris?"
+  [2] assistant tool_calls=[get_weather]
+  [3] tool: "14°C, cloudy"
+  [4] assistant: "It's cloudy in Paris at 14°C."
+
+After regenerate=True:
+  [1] user: "weather in Paris?"
+  [2] assistant tool_calls=[get_weather]
+  [3] tool: "14°C, cloudy"
+  → model runs on [1..3], produces new [4]
+```
+
+This makes regenerate cheap. To force tool re-invocation, use `continue_from="last_user"` instead.
+
+## Always Forks
+
+Regenerate always creates a new run with a new `run_id`. The "1 run = 1 model loop" invariant means a completed model loop cannot be overwritten with a new one. Metrics, timestamps, and events on the source row remain accurate.
+
+## Teams
+
+`Team.continue_run(regenerate=True)` works the same way:
+
+```python
+new_team_run = team.continue_run(
+    run_id="team-run-abc",
+    regenerate=True,
+    additional_instructions="Delegate fewer tasks this time",
+)
+```
+
+Member runs from the source team stay attached to the original team via `parent_run_id`. The regenerated team is a fresh model loop that may or may not delegate to members again.
+
+## HTTP
+
+```bash
+curl -X POST "$HOST/agents/{agent_id}/runs/{run_id}/continue" \
+  -F "session_id=sess-xyz" \
+  -F "regenerate=true" \
+  -F "additional_instructions=Be more concise"
+```
+
+## Examples
+
+### Agents
+
+| Example | What it shows |
+|---|---|
+| [Regenerate end-to-end](https://github.com/agno-agi/agno/blob/main/cookbook/02_agents/19_regenerate/01_regenerate.py) | All three flavors in one file: bare regenerate, regenerate with `additional_instructions`, and regenerate with `replace_original=False` (both runs visible side by side). |
+| [Continue from a boundary](https://github.com/agno-agi/agno/blob/main/cookbook/02_agents/20_time_travel/01_continue_from.py) | Direct comparison of `regenerate=True` against the related `continue_from="last_user"` and integer-index forms. Useful for understanding when to pick which. |
+
+### Teams
+
+| Example | What it shows |
+|---|---|
+| [Regenerate end-to-end](https://github.com/agno-agi/agno/blob/main/cookbook/03_teams/24_regenerate/01_regenerate.py) | Team variant. Member runs from the original team stay attached to the original; the regenerated team is a fresh model loop. |
+
+## Next Steps
+
+| Task | Guide |
+|---|---|
+| Drop more than the last response | [Fork a Run](/run-control/fork-run) |
+| Continue a completed run with a follow-up | [Continue Run](/run-control/continue-run) |
+| Branch the whole session | [Branch a Session](/run-control/branch-session) |

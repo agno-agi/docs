@@ -1,0 +1,139 @@
+---
+title: Fork a Run
+description: Rewind to a message boundary and explore an alternative path. Sibling run in the same session.
+---
+
+A fork is a sibling run within the same session, started from a chosen message boundary of an existing run. Use it to explore alternative paths, run evals from a known-good state, or A/B-test instructions.
+
+## Basic Usage
+
+```python
+fork = agent.continue_run(
+    run_id="run-abc",
+    session_id="sess-xyz",
+    continue_from="last_user",
+    fork=True,
+    input="Try a different approach this time",
+)
+```
+
+The new run has a fresh `run_id`, `forked_from_run_id` pointing at the source, and `forked_from_message_index` recording where it cut.
+
+## Where to Fork From
+
+`continue_from` chooses the message boundary.
+
+| Value | What it keeps |
+|---|---|
+| `"end"` | Full transcript. Use to continue a completed run with a new turn. |
+| `"last_user"` | Drop everything past the last user message. Tools will be re-invoked. |
+| `K: int` | Keep `messages[:K]`. Pair-safe: indices that split a tool batch snap down to the boundary before the batch. |
+
+For valid integer indices on a specific run, call the [checkpoints endpoint](/run-control/api-reference). Every index it returns is pair-safe.
+
+## Forking vs Regenerating
+
+| | Fork | Regenerate |
+|---|---|---|
+| What's kept | Up to `continue_from` (you choose) | Everything up to last user message + tool exchanges |
+| Tools re-invoked? | Depends on cut point | No. Intermediate tool exchanges survive. |
+| Source visibility | Always visible | `replace_original=True` hides; `False` keeps visible |
+| Use case | "Try a different reasoning path" | "Redo the final summary" |
+
+If you want a cheap "try again with steering" without re-running tools, use [Regenerate](/run-control/regenerate). If you want to rewind further (drop tools, drop intermediate turns, change the prompt entirely), fork.
+
+## Auto-Fork on COMPLETED
+
+Continuing a completed run always produces a new `run_id`, even without `fork=True`:
+
+```python
+# Source is COMPLETED. /continue produces a new run_id automatically.
+new_run = agent.continue_run(
+    run_id="run-abc",
+    session_id="sess-xyz",
+    input="Now compare with Tokyo",
+)
+```
+
+The 1-run-1-loop invariant: a completed model loop cannot be overwritten. The new turn always lands on a new run row.
+
+## Pair-Safe Truncation
+
+Integer `continue_from=K` snaps down to a "pair-safe" boundary when `K` lands mid-tool-batch.
+
+Given the transcript:
+
+```
+[1] user
+[2] assistant tool_calls=[tc1, tc2, tc3]
+[3] tool: result for tc1
+[4] tool: result for tc2
+[5] tool: result for tc3
+[6] assistant: final reply
+```
+
+| `continue_from=K` | Actual boundary | Why |
+|---|---|---|
+| 1 | 1 | Clean cut |
+| 2 | 1 | Would orphan assistant tool_calls |
+| 3 | 1 | Mid-batch (tc2, tc3 results not yet in prefix) |
+| 4 | 1 | Mid-batch (tc3 result not yet in prefix) |
+| 5 | 5 | Whole batch present |
+| 6 | 6 | Full transcript |
+
+The fork response's `forked_from_message_index` reflects the actual boundary used. If it differs from what you sent, the dispatch snapped the index down.
+
+Indices returned by the [checkpoints endpoint](/run-control/api-reference) are always pair-safe by construction.
+
+## Teams
+
+`Team.continue_run(fork=True, continue_from=...)` works the same way:
+
+```python
+fork = team.continue_run(
+    run_id="team-run-abc",
+    session_id="team-sess-xyz",
+    continue_from="last_user",
+    fork=True,
+    input="What if we routed differently?",
+)
+```
+
+The forked team is a new run in the same session. Member runs from the original team stay attached to the original via `parent_run_id`. The fork starts fresh and may produce new member runs.
+
+## HTTP
+
+```bash
+curl -X POST "$HOST/agents/{agent_id}/runs/{run_id}/continue" \
+  -F "session_id=sess-xyz" \
+  -F "continue_from=last_user" \
+  -F "fork=true" \
+  -F "input=Try a different approach"
+```
+
+`continue_from` accepts `"end"`, `"last_user"`, or a numeric string (e.g. `"4"`).
+
+## Examples
+
+### Agents
+
+| Example | What it shows |
+|---|---|
+| [Fork a run](https://github.com/agno-agi/agno/blob/main/cookbook/02_agents/20_time_travel/02_fork_run.py) | `fork=True, continue_from=...` to clone a run at a chosen boundary. The forked run lives next to the original in the same session. |
+| [Continue from a boundary](https://github.com/agno-agi/agno/blob/main/cookbook/02_agents/20_time_travel/01_continue_from.py) | All four `continue_from` forms (`"end"`, `"last_user"`, integer, `regenerate=True`) including the auto-fork-on-completed case. |
+| [Checkpoint endpoints](https://github.com/agno-agi/agno/blob/main/cookbook/02_agents/18_checkpointing/03_checkpoint_endpoints.py) | How to discover valid integer indices: call `GET /checkpoints`, then feed `message_index` back into `continue_from=K`. Every index returned is pair-safe. |
+
+### Teams
+
+| Example | What it shows |
+|---|---|
+| [Fork a team run](https://github.com/agno-agi/agno/blob/main/cookbook/03_teams/25_time_travel/02_fork_run.py) | Team variant. Member runs from the source team stay attached to the source via `parent_run_id`; the forked team may delegate fresh. |
+| [Continue from a boundary](https://github.com/agno-agi/agno/blob/main/cookbook/03_teams/25_time_travel/01_continue_from.py) | Team variant of the four-form dispatch demo. |
+
+## Next Steps
+
+| Task | Guide |
+|---|---|
+| Get valid boundaries from the timeline endpoint | [API Reference](/run-control/api-reference) |
+| Redo only the last response | [Regenerate](/run-control/regenerate) |
+| Whole-session clone | [Branch a Session](/run-control/branch-session) |
