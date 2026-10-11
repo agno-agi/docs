@@ -3,7 +3,7 @@ title: Scavio
 description: Search Google, YouTube, marketplaces, app stores, review sites, job boards, ad libraries, and company registries through the Scavio API.
 ---
 
-`ScavioTools` gives an agent one API over 31 sources through [Scavio](https://scavio.dev): Google and its verticals, YouTube, Amazon, Walmart, eBay, Target, Home Depot, Reddit, TikTok, TikTok Shop, Instagram, X, LinkedIn, Threads, Kuaishou, Zillow, Redfin, Booking.com, Airbnb, TripAdvisor, Yelp, Indeed, Glassdoor, the Apple App Store, Google Play, SEC EDGAR, UK Companies House, G2, Capterra, Google Ads Transparency and the Meta Ad Library - plus an extract endpoint that reads any URL as HTML, Markdown or plain text.
+`ScavioTools` gives an agent one API over 31 sources through [Scavio](https://scavio.dev): Google and its verticals, YouTube, Amazon, Walmart, eBay, Target, Home Depot, Reddit, TikTok, TikTok Shop, Instagram, X, LinkedIn, Threads, Kuaishou, Zillow, Redfin, Booking.com, Airbnb, TripAdvisor, Yelp, Indeed, Glassdoor, the Apple App Store, Google Play, SEC EDGAR, UK Companies House, G2, Capterra, Google Ads Transparency and the Meta Ad Library - plus an extract endpoint that reads any URL as HTML, Markdown or plain text, and website map, crawl and batch extract for whole sites.
 
 ## Prerequisites
 
@@ -53,7 +53,7 @@ web_agent.print_response(
 
 ## Enabling providers
 
-The toolkit exposes 189 tools, one per live Scavio endpoint. That is far more than any one agent should be shown, so every provider is gated by an `enable_*` flag.
+The toolkit exposes 194 tools, one per live Scavio endpoint plus the free crawl and batch status reads. That is far more than any one agent should be shown, so every provider is gated by an `enable_*` flag.
 
 Ten providers are on by default - Google, Amazon, Walmart, YouTube, Reddit, TikTok, TikTok Shop, Instagram, X and LinkedIn. The rest are opt-in. Pass `all=True` to register everything, or use the `Toolkit` level `include_tools` / `exclude_tools` to pick individual tools.
 
@@ -115,7 +115,7 @@ research_agent = Agent(
 
 Calls are billed in credits and the price is not uniform, so every tool docstring states its own cost. Most endpoints are 1 credit. YouTube transcripts are 8, LinkedIn job detail is 30, most Instagram calls are 10, G2 is 5, and Kuaishou runs from 1 to 40 depending on the endpoint.
 
-Four surfaces are priced by the request body rather than by the route, and no flat figure is correct for them:
+These surfaces are priced by the request body rather than by the route, and no flat figure is correct for them:
 
 | Surface | Priced by |
 | --- | --- |
@@ -123,6 +123,8 @@ Four surfaces are priced by the request body rather than by the route, and no fl
 | Threads | identifier - 2 credits by `user_id`, 4 by `username` |
 | Kuaishou | the endpoint itself - 1, 2, 10 or 40 (`kuaishou_videos_batch` is 40) |
 | `extract_url` | `mode` - `normal` and `advanced` are 1 credit, `ultra` is 2. Only a successful extraction is billed |
+| `map_website` | `mode` - 1 credit on `normal`; up to 2 on `advanced` and up to 10 on `ultra`, priced by what the call needed |
+| `crawl_website`, `batch_extract_urls` | per successful page at extract's price for the `mode` (1, 1 or 2). Failed and skipped pages are free; `get_crawl_status` and `get_batch_status` are free |
 
 ## Toolkit Params
 
@@ -161,6 +163,7 @@ Four surfaces are priced by the request body rather than by the route, and no fl
 | `enable_google_ads` | `bool` | `False` | Register the 3 Google Ads Transparency tools: advertiser lookup, ad search and creative detail. |
 | `enable_meta_ads` | `bool` | `False` | Register the 3 Meta Ad Library tools: keyword search, advertiser ads and ad detail. |
 | `enable_extract` | `bool` | `False` | Register `extract_url`, which reads any URL as HTML, Markdown or plain text. |
+| `enable_crawl` | `bool` | `False` | Register the 5 website tools: `map_website`, `crawl_website`, `get_crawl_status`, `batch_extract_urls` and `get_batch_status`. |
 | `all` | `bool` | `False` | Register every available tool, ignoring the individual flags. |
 
 ## Toolkit Functions
@@ -517,6 +520,18 @@ Four platforms are lookup-first: `tripadvisor_locations`, `glassdoor_companies`,
 | Function | Description |
 | --- | --- |
 | `extract_url` | Read any URL and get the page back as HTML, Markdown or plain text. Required: `url`. Optional: `format`, `mode`. |
+
+### Website map, crawl and batch
+
+`crawl_website` and `batch_extract_urls` start a background job and wait up to `wait_seconds` (default 45, max 300) for it to finish, returning its status and first page of results either way. A job still `queued` or `running` when the wait ends keeps going: read it later with `get_crawl_status` / `get_batch_status` and the returned `data.id`, and page on with `data.next_cursor`. Crawl and map obey the site's robots.txt; results are kept for 3 days.
+
+| Function | Description |
+| --- | --- |
+| `map_website` | List a site's page URLs from its sitemaps and start page. Required: `url`. Optional: `search`, `limit`, `sitemap`, `include_subdomains`, `include_paths`, `exclude_paths`, `ignore_query_parameters`, `mode`. |
+| `crawl_website` | Crawl a site from one start URL; each page as Markdown, text or HTML. Required: `url`. Optional: `max_pages`, `max_depth`, `include_paths`, `exclude_paths`, `allow_subdomains`, `sitemap`, `format`, `mode`, `wait_seconds`, `limit`. |
+| `get_crawl_status` | A crawl's progress and cursor-paged results. Required: `id`. Optional: `cursor`, `limit`, `status`, `include_content`. |
+| `batch_extract_urls` | Extract a list of URLs in one job. Required: `urls`. Optional: `format`, `mode`, `wait_seconds`, `limit`. |
+| `get_batch_status` | A batch's progress and cursor-paged results. Required: `id`. Optional: `cursor`, `limit`, `status`, `include_content`. |
 
 ## Developer Resources
 
